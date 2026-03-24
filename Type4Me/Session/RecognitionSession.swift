@@ -77,6 +77,10 @@ actor RecognitionSession {
     private var activeFlashTask: Task<String?, Never>?
     private var hasEmittedReadyForCurrentSession = false
 
+    // MARK: - Prompt context (selected text + clipboard captured at recording start)
+
+    private var promptContext: PromptContext = PromptContext(selectedText: "", clipboardText: "")
+
     // MARK: - Speculative LLM (fire during recording pauses)
 
     private var speculativeLLMTask: Task<String?, Never>?
@@ -204,6 +208,9 @@ actor RecognitionSession {
             return
         }
 
+        // Capture prompt context (selected text + clipboard) before recording starts
+        promptContext = PromptContext.capture()
+
         // Reset text state
         currentTranscript = .empty
 
@@ -307,7 +314,7 @@ actor RecognitionSession {
                 } else if let llmConfig = KeychainService.loadLLMConfig() {
                     // Text changed since last speculative call, fire fresh
                     speculativeLLMTask?.cancel()
-                    let prompt = currentMode.prompt
+                    let prompt = promptContext.expandContextVariables(currentMode.prompt)
                     let client = currentLLMClient()
                     state = .postProcessing
                     DebugFileLogger.log("stop: fresh LLM firing with \(earlyText.count) chars +\(ContinuousClock.now - stopT0)")
@@ -440,7 +447,7 @@ actor RecognitionSession {
                     do {
                         let client = currentLLMClient()
                         let result = try await client.process(
-                            text: finalText, prompt: currentMode.prompt, config: llmConfig
+                            text: finalText, prompt: promptContext.expandContextVariables(currentMode.prompt), config: llmConfig
                         )
                         processedText = result
                         finalText = result
@@ -570,7 +577,7 @@ actor RecognitionSession {
         // Cancel previous speculative call if text changed
         speculativeLLMTask?.cancel()
         speculativeLLMText = text
-        let prompt = currentMode.prompt
+        let prompt = promptContext.expandContextVariables(currentMode.prompt)
 
         let client = currentLLMClient()
         DebugFileLogger.log("speculative LLM: firing with \(text.count) chars")

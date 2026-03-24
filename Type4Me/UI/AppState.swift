@@ -141,6 +141,7 @@ struct ProcessingMode: Codable, Identifiable, Equatable, Hashable {
     private static let formalWritingId = UUID(uuidString: "7FC0076F-A85E-454B-8789-47A2F15A6E2F")!
     private static let promptOptimizeId = UUID(uuidString: "5D0A24D4-ECE9-4C13-9FC5-F9C81BD6B1C3")!
     private static let defaultTranslateId = UUID(uuidString: "87AF4048-83C3-4306-8AF8-1E52DB7CA2F5")!
+    private static let commandModeId = UUID(uuidString: "A3B1D9E7-6F42-4C8A-B5E0-9D3F7A2C1E84")!
 
     static var formalWriting: ProcessingMode {
         ProcessingMode(
@@ -174,8 +175,19 @@ struct ProcessingMode: Codable, Identifiable, Equatable, Hashable {
         )
     }
 
+    static var commandMode: ProcessingMode {
+        ProcessingMode(
+            id: commandModeId,
+            name: L("命令模式", "Command Mode"),
+            prompt: "你是一个文字处理工具，\n现在选择的内容是：\"{selected}\"\n现在剪切板(复制)的内容是:\"{clipboard}\"\n请在以下规则下执行命令\n1. 不用解释，直接输出\n2. 不要使用任何 markdown 语法\n命令如下：{text}",
+            isBuiltin: false,
+            processingLabel: L("执行中", "Executing"),
+            hotkeyStyle: .toggle
+        )
+    }
+
     static var builtins: [ProcessingMode] { [.direct, .performance] }
-    static var defaults: [ProcessingMode] { [.direct, .performance, .formalWriting, .promptOptimize, .translate] }
+    static var defaults: [ProcessingMode] { [.direct, .performance, .formalWriting, .promptOptimize, .translate, .commandMode] }
 }
 
 // MARK: - Audio Level (isolated from @Observable to avoid high-frequency view invalidation)
