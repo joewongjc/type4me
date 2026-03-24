@@ -185,7 +185,7 @@ actor DeepgramASRClient: SpeechRecognizer {
     }
 }
 
-private final class DeepgramWebSocketDelegate: NSObject, URLSessionWebSocketDelegate, URLSessionTaskDelegate {
+final class DeepgramWebSocketDelegate: NSObject, URLSessionWebSocketDelegate, URLSessionTaskDelegate {
 
     private let connectionGate: DeepgramConnectionGate
 
