@@ -31,7 +31,9 @@ final class FloatingBarPanel: NSPanel {
     override var canBecomeMain: Bool { false }
 
     func positionAtBottomCenter() {
-        guard let screen = NSScreen.main else { return }
+        let mouseLocation = NSEvent.mouseLocation
+        let screen = NSScreen.screens.first(where: { $0.frame.contains(mouseLocation) }) ?? NSScreen.main ?? NSScreen.screens.first
+        guard let screen else { return }
         let visible = screen.visibleFrame
         let x = visible.midX - frame.width / 2
         let y = visible.origin.y + TF.barBottomOffset - 16  // compensate for shadow inset
