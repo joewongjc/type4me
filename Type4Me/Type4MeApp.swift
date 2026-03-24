@@ -108,8 +108,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Start periodic update checking
         UpdateChecker.shared.startPeriodicChecking(appState: appState)
 
-        // Register per-mode hotkeys
-        registerHotkeys()
+        // Reconcile current mode against the active provider before hotkeys are registered.
+        refreshModeAvailability()
 
         // Re-register when modes change in Settings
         NotificationCenter.default.addObserver(
@@ -118,7 +118,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated { [weak self] in
-                self?.registerHotkeys()
+                self?.refreshModeAvailability()
+            }
+        }
+
+        NotificationCenter.default.addObserver(
+            forName: .asrProviderDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { [weak self] in
+                self?.refreshModeAvailability()
             }
         }
 
@@ -172,8 +182,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
     }
 
-    private func registerHotkeys() {
-        let modes = appState.availableModes
+    private func refreshModeAvailability() {
+        let provider = KeychainService.selectedASRProvider
+        appState.reconcileCurrentMode(for: provider)
+        registerHotkeys(for: provider)
+    }
+
+    private func registerHotkeys(for provider: ASRProvider) {
+        let availableModes = appState.availableModes
+        let modes = ASRProviderRegistry.supportedModes(from: availableModes, for: provider)
         let bindings: [ModeBinding] = modes.compactMap { mode in
             guard let code = mode.hotkeyCode else { return nil }
             let modifiers = CGEventFlags(rawValue: mode.hotkeyModifiers ?? 0)
@@ -185,13 +202,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 style: capturedMode.hotkeyStyle,
                 onStart: { [weak self] in
                     guard let self else { return }
-                    NSLog("[Type4Me] >>> HOTKEY: Record START (mode: %@)", capturedMode.name)
-                    DebugFileLogger.log("hotkey record start mode=\(capturedMode.name)")
+                    let selectedProvider = KeychainService.selectedASRProvider
+                    let resolvedMode = ASRProviderRegistry.resolvedMode(for: capturedMode, provider: selectedProvider)
+                    let effectiveMode = availableModes.first(where: { $0.id == resolvedMode.id }) ?? resolvedMode
+                    NSLog("[Type4Me] >>> HOTKEY: Record START (mode: %@)", effectiveMode.name)
+                    DebugFileLogger.log("hotkey record start mode=\(effectiveMode.name)")
                     Task { @MainActor in
-                        self.appState.currentMode = capturedMode
+                        self.appState.currentMode = effectiveMode
                         self.appState.startRecording()
                     }
-                    Task { await self.session.startRecording(mode: capturedMode) }
+                    Task { await self.session.startRecording(mode: effectiveMode) }
                 },
                 onStop: { [weak self] in
                     guard let self else { return }
@@ -208,15 +228,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Switch to mode B and stop, so the recording is processed with mode B.
         hotkeyManager.onCrossModeStop = { [weak self] newModeId in
             guard let self else { return }
-            guard let newMode = self.appState.availableModes.first(where: { $0.id == newModeId }) else { return }
-            NSLog("[Type4Me] >>> HOTKEY: Cross-mode stop → %@", newMode.name)
-            DebugFileLogger.log("hotkey cross-mode stop → \(newMode.name)")
+            guard let newMode = availableModes.first(where: { $0.id == newModeId }) else { return }
+            let selectedProvider = KeychainService.selectedASRProvider
+            let resolvedMode = ASRProviderRegistry.resolvedMode(for: newMode, provider: selectedProvider)
+            let effectiveMode = availableModes.first(where: { $0.id == resolvedMode.id }) ?? resolvedMode
+            NSLog("[Type4Me] >>> HOTKEY: Cross-mode stop → %@", effectiveMode.name)
+            DebugFileLogger.log("hotkey cross-mode stop → \(effectiveMode.name)")
             Task { @MainActor in
-                self.appState.currentMode = newMode
+                self.appState.currentMode = effectiveMode
                 self.appState.stopRecording()
             }
             Task {
-                await self.session.switchMode(to: newMode)
+                await self.session.switchMode(to: effectiveMode)
                 await self.session.stopRecording()
             }
         }

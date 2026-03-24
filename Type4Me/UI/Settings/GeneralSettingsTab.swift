@@ -197,6 +197,10 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
         ASRProviderRegistry.entry(for: selectedASRProvider)?.isAvailable ?? false
     }
 
+    private var asrCapabilitySummary: String {
+        ASRProviderRegistry.supportedModesSummary(for: selectedASRProvider)
+    }
+
     // MARK: Body
 
     var body: some View {
@@ -206,6 +210,11 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
                 .foregroundStyle(TF.settingsTextTertiary)
                 .padding(.bottom, 6)
             asrProviderPicker
+            Text(asrCapabilitySummary)
+                .font(.system(size: 11))
+                .foregroundStyle(TF.settingsTextTertiary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 2)
             SettingsDivider()
 
             if hasASRCredentials && !isEditingASR {

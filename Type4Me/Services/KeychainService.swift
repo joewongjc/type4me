@@ -58,7 +58,10 @@ enum KeychainService {
             return provider
         }
         set {
+            let previous = selectedASRProvider
             UserDefaults.standard.set(newValue.rawValue, forKey: selectedProviderKey)
+            guard previous != newValue else { return }
+            NotificationCenter.default.post(name: .asrProviderDidChange, object: newValue)
         }
     }
 
@@ -191,6 +194,19 @@ enum KeychainService {
             mutableDict.removeValue(forKey: "tf_resourceId")
             migrated = true
             NSLog("[KeychainService] Migrated legacy ASR credentials to tf_asr_volcano")
+        }
+
+        // Migrate mistakenly stored Bailian ASR credentials from tf_asr_aliyun → tf_asr_bailian
+        if let aliyunValues = dict[asrStorageKey(for: .aliyun)] as? [String: String],
+           let apiKey = aliyunValues["apiKey"], !apiKey.isEmpty,
+           dict[asrStorageKey(for: .bailian)] == nil {
+            mutableDict[asrStorageKey(for: .bailian)] = aliyunValues
+            mutableDict.removeValue(forKey: asrStorageKey(for: .aliyun))
+            if selectedASRProvider == .aliyun {
+                selectedASRProvider = .bailian
+            }
+            migrated = true
+            NSLog("[KeychainService] Migrated Bailian ASR credentials from tf_asr_aliyun → tf_asr_bailian")
         }
 
         // Migrate LLM: tf_llmEndpointId → tf_llmModel

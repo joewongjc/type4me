@@ -23,6 +23,11 @@ actor RecognitionSession {
         state = newState
     }
 
+    /// Exposed for testing; production code should resolve modes through startRecording / switchMode.
+    func currentModeForTesting() -> ProcessingMode {
+        currentMode
+    }
+
     // MARK: - Dependencies
 
     private let audioEngine = AudioCaptureEngine()
@@ -105,13 +110,14 @@ actor RecognitionSession {
             await forceReset()
         }
 
-        self.currentMode = mode
+        let provider = KeychainService.selectedASRProvider
+        let effectiveMode = ASRProviderRegistry.resolvedMode(for: mode, provider: provider)
+        self.currentMode = effectiveMode
         self.recordingStartTime = nil
         hasEmittedReadyForCurrentSession = false
         state = .starting
 
         // Load credentials for selected provider
-        let provider = KeychainService.selectedASRProvider
         let config: any ASRProviderConfig
 
         if let savedConfig = KeychainService.loadASRConfig(for: provider) {
@@ -152,7 +158,7 @@ actor RecognitionSession {
         // Load hotwords
         let hotwords = HotwordStorage.load()
         let biasSettings = ASRBiasSettingsStorage.load()
-        let needsLLM = !mode.prompt.isEmpty
+        let needsLLM = !effectiveMode.prompt.isEmpty
         let requestOptions = ASRRequestOptions(
             enablePunc: !needsLLM,
             hotwords: hotwords,
@@ -242,7 +248,7 @@ actor RecognitionSession {
 
     /// Switch the processing mode before stopping. Used for cross-mode hotkey stops.
     func switchMode(to mode: ProcessingMode) {
-        currentMode = mode
+        currentMode = ASRProviderRegistry.resolvedMode(for: mode, provider: KeychainService.selectedASRProvider)
     }
 
     // MARK: - Stop

@@ -168,6 +168,10 @@ struct SetupWizardView: View {
         }
     }
 
+    private var providerCapabilitySummary: String {
+        ASRProviderRegistry.supportedModesSummary(for: selectedProvider)
+    }
+
     private var providerStep: some View {
         VStack(spacing: 24) {
             Spacer()
@@ -201,6 +205,11 @@ struct SetupWizardView: View {
                     credentialValues = defaults
                 }
 
+                Text(providerCapabilitySummary)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 300, alignment: .leading)
+
                 // Dynamic credential fields
                 ForEach(currentFields) { field in
                     if field.isSecure {
@@ -229,10 +238,10 @@ struct SetupWizardView: View {
                 Spacer()
                 Button(L("下一步", "Next")) {
                     if hasRequiredFields {
-                        KeychainService.selectedASRProvider = selectedProvider
                         try? KeychainService.saveASRCredentials(
                             for: selectedProvider, values: credentialValues
                         )
+                        KeychainService.selectedASRProvider = selectedProvider
                     }
                     step = 5
                 }

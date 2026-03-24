@@ -320,6 +320,12 @@ final class AppState {
         segments.map(\.text).joined()
     }
 
+    func reconcileCurrentMode(for provider: ASRProvider) {
+        let resolved = ASRProviderRegistry.resolvedMode(for: currentMode, provider: provider)
+        guard resolved.id != currentMode.id else { return }
+        currentMode = availableModes.first(where: { $0.id == resolved.id }) ?? resolved
+    }
+
     // MARK: Private
 
     private func showDone(message: String = L("已完成", "Done")) {
@@ -344,6 +350,7 @@ extension AppState: FloatingBarState {}
 
 extension Notification.Name {
     static let modesDidChange = Notification.Name("Type4MeModesDidChange")
+    static let asrProviderDidChange = Notification.Name("Type4MeASRProviderDidChange")
     static let hotkeyRecordingDidStart = Notification.Name("Type4MeHotkeyRecordingDidStart")
     static let hotkeyRecordingDidEnd = Notification.Name("Type4MeHotkeyRecordingDidEnd")
     static let navigateToMode = Notification.Name("Type4MeNavigateToMode")

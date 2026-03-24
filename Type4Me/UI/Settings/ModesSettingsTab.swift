@@ -18,6 +18,7 @@ struct ModesSettingsTab: View {
     @State private var recordingTarget: RecordingTarget?
     @State private var deletingModeId: UUID?
     @State private var draggingModeId: UUID?
+    @State private var selectedASRProvider: ASRProvider = KeychainService.selectedASRProvider
 
     private var builtinModes: [ProcessingMode] {
         modes.filter { $0.isBuiltin }
@@ -32,7 +33,7 @@ struct ModesSettingsTab: View {
             SettingsSectionHeader(
                 label: "MODES",
                 title: L("处理模式", "Modes"),
-                description: L("配置语音转写后的文本处理流水线。快速模式输出原文，其他模式经 LLM 加工。", "Configure text processing pipelines after speech-to-text. Quick mode outputs raw text; others use LLM processing.")
+                description: L("配置语音转写与后处理流水线。快速模式实时输出，性能模式优先整段识别，自定义模式可经 LLM 加工。", "Configure speech-to-text and post-processing pipelines. Quick Mode outputs live text, Performance Mode prefers full-audio recognition, and custom modes can use LLM processing.")
             )
 
             // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -102,8 +103,16 @@ struct ModesSettingsTab: View {
             .frame(maxWidth: .infinity)
         }
         .onAppear {
+            selectedASRProvider = KeychainService.selectedASRProvider
             if selectedModeId == nil {
                 selectedModeId = customModes.first?.id
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .asrProviderDidChange)) { note in
+            if let provider = note.object as? ASRProvider {
+                selectedASRProvider = provider
+            } else {
+                selectedASRProvider = KeychainService.selectedASRProvider
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .selectMode)) { note in
@@ -183,32 +192,45 @@ struct ModesSettingsTab: View {
 
     // MARK: - Builtin Mode Card
 
-    private var builtinMeta: [UUID: (icon: String, desc: String, badge: String)] {
-        [
-            ProcessingMode.directId: (
+    private func builtinMeta(for mode: ProcessingMode) -> (icon: String, desc: String, badge: String) {
+        let isSupported = ASRProviderRegistry.supports(mode, for: selectedASRProvider)
+
+        if mode.id == ProcessingMode.directId {
+            return (
                 icon: "bolt.fill",
                 desc: L("流式语音识别，边说边出字。松开快捷键后立即将文本粘贴到光标位置，响应最快。适合日常短句、即时通讯和快速笔记。",
                          "Streaming ASR, text appears as you speak. Pastes to cursor immediately on key release. Best for short phrases, messaging and quick notes."),
                 badge: L("低延迟，边说边出", "Low latency, real-time")
-            ),
-            ProcessingMode.performanceId: (
+            )
+        }
+
+        if mode.id == ProcessingMode.performanceId, !isSupported {
+            return (
                 icon: "waveform.badge.magnifyingglass",
-                desc: L("录音结束后将完整音频提交识别引擎，获得更准确的全文结果。适合长段落口述、正式文档和需要高准确率的场景。",
-                         "Submits full audio after recording for more accurate results. Best for long dictation, formal documents and high-accuracy scenarios."),
-                badge: L("高准确率，整段识别", "High accuracy, full-segment")
-            ),
-        ]
+                desc: ASRProviderRegistry.unsupportedReason(for: mode, provider: selectedASRProvider)
+                    ?? L("当前引擎不支持该模式。", "This engine does not support this mode."),
+                badge: L("当前引擎不支持", "Unsupported for current engine")
+            )
+        }
+
+        return (
+            icon: "waveform.badge.magnifyingglass",
+            desc: L("录音结束后将完整音频提交识别引擎，获得更准确的全文结果。适合长段落口述、正式文档和需要高准确率的场景。",
+                     "Submits full audio after recording for more accurate results. Best for long dictation, formal documents and high-accuracy scenarios."),
+            badge: L("高准确率，整段识别", "High accuracy, full-segment")
+        )
     }
 
     private func builtinModeCard(_ mode: ProcessingMode) -> some View {
-        let meta = builtinMeta[mode.id] ?? (icon: "mic.fill", desc: "", badge: "")
+        let meta = builtinMeta(for: mode)
+        let isSupported = ASRProviderRegistry.supports(mode, for: selectedASRProvider)
 
         return VStack(alignment: .leading, spacing: 0) {
             // Header: icon + name + badge
             HStack(spacing: 6) {
                 Image(systemName: meta.icon)
                     .font(.system(size: 13))
-                    .foregroundStyle(TF.settingsAccentGreen)
+                    .foregroundStyle(isSupported ? TF.settingsAccentGreen : TF.settingsTextTertiary)
                 Text(mode.name)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(TF.settingsText)
@@ -233,16 +255,16 @@ struct ModesSettingsTab: View {
             HStack(spacing: 5) {
                 Image(systemName: meta.icon)
                     .font(.system(size: 9))
-                    .foregroundStyle(TF.settingsAccentGreen)
+                    .foregroundStyle(isSupported ? TF.settingsAccentGreen : TF.settingsTextTertiary)
                 Text(meta.badge)
                     .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(TF.settingsAccentGreen)
+                    .foregroundStyle(isSupported ? TF.settingsAccentGreen : TF.settingsTextTertiary)
             }
             .padding(.horizontal, 7)
             .padding(.vertical, 3)
             .background(
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(TF.settingsAccentGreen.opacity(0.1))
+                    .fill((isSupported ? TF.settingsAccentGreen : TF.settingsTextTertiary).opacity(0.1))
             )
 
             Spacer(minLength: 8)
@@ -277,6 +299,7 @@ struct ModesSettingsTab: View {
                     }
                     .buttonStyle(.plain)
                     .help(L("删除快捷键", "Remove hotkey"))
+                    .disabled(!isSupported)
                 } else {
                     Text(L("未设置快捷键", "No hotkey"))
                         .font(.system(size: 9))
@@ -305,6 +328,7 @@ struct ModesSettingsTab: View {
                     )
                 }
                 .buttonStyle(.plain)
+                .disabled(!isSupported)
             }
         }
         .padding(14)
@@ -312,6 +336,7 @@ struct ModesSettingsTab: View {
             RoundedRectangle(cornerRadius: 8)
                 .fill(TF.settingsBg)
         )
+        .opacity(isSupported ? 1 : 0.7)
     }
 
     // MARK: - Custom Mode Row

@@ -3,8 +3,17 @@ import XCTest
 
 final class KeychainServiceTests: XCTestCase {
 
+    private var originalProvider: ASRProvider!
+
+    override func setUp() {
+        super.setUp()
+        originalProvider = KeychainService.selectedASRProvider
+    }
+
     override func tearDown() {
         KeychainService.delete(key: "test_key")
+        KeychainService.selectedASRProvider = originalProvider
+        super.tearDown()
     }
 
     func testSaveAndLoad() throws {
@@ -51,5 +60,23 @@ final class KeychainServiceTests: XCTestCase {
         XCTAssertEqual(config?.appKey, "myAppKey")
         XCTAssertEqual(config?.accessKey, "myAccessKey")
         XCTAssertEqual(config?.resourceId, "myResource")
+    }
+
+    func testSelectedASRProviderPostsNotificationOnChange() {
+        let targetProvider: ASRProvider = originalProvider == .bailian ? .volcano : .bailian
+        let expectation = expectation(description: "provider change notification")
+        let token = NotificationCenter.default.addObserver(
+            forName: .asrProviderDidChange,
+            object: nil,
+            queue: .main
+        ) { note in
+            XCTAssertEqual(note.object as? ASRProvider, targetProvider)
+            expectation.fulfill()
+        }
+        defer { NotificationCenter.default.removeObserver(token) }
+
+        KeychainService.selectedASRProvider = targetProvider
+
+        wait(for: [expectation], timeout: 1.0)
     }
 }

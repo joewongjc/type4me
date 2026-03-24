@@ -2,6 +2,10 @@ import XCTest
 @testable import Type4Me
 
 final class RecognitionSessionTests: XCTestCase {
+    override func tearDown() {
+        KeychainService.selectedASRProvider = .volcano
+    }
+
     func testInitialStateIsIdle() async {
         let session = RecognitionSession()
         let state = await session.state
@@ -25,5 +29,25 @@ final class RecognitionSessionTests: XCTestCase {
         canStart = await session.canStartRecording
         XCTAssertFalse(canStart)
         await session.setState(.idle)
+    }
+
+    func testSwitchModeFallsBackToDirectWhenPerformanceModeIsUnsupported() async {
+        KeychainService.selectedASRProvider = .bailian
+        let session = RecognitionSession()
+
+        await session.switchMode(to: .performance)
+
+        let mode = await session.currentModeForTesting()
+        XCTAssertEqual(mode.id, ProcessingMode.directId)
+    }
+
+    func testSwitchModeKeepsPerformanceModeForVolcano() async {
+        KeychainService.selectedASRProvider = .volcano
+        let session = RecognitionSession()
+
+        await session.switchMode(to: .performance)
+
+        let mode = await session.currentModeForTesting()
+        XCTAssertEqual(mode.id, ProcessingMode.performanceId)
     }
 }

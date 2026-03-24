@@ -12,6 +12,7 @@ enum ASRProvider: String, CaseIterable, Codable, Sendable {
     // China
     case volcano
     case aliyun
+    case bailian
     case tencent
     case iflytek
     // Fallback
@@ -26,6 +27,7 @@ enum ASRProvider: String, CaseIterable, Codable, Sendable {
         case .deepgram: return "Deepgram"
         case .volcano:  return L("火山引擎 (Doubao)", "Volcano (Doubao)")
         case .aliyun:   return L("阿里云", "Alibaba Cloud")
+        case .bailian:  return L("阿里云百炼", "Alibaba Cloud Bailian")
         case .tencent:  return L("腾讯云", "Tencent Cloud")
         case .iflytek:  return L("讯飞", "iFLYTEK")
         case .custom:   return L("自定义", "Custom")
