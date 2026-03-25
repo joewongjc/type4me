@@ -361,11 +361,25 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
                     .font(.system(size: 12))
                     .foregroundStyle(TF.settingsTextSecondary)
 
-                    Text("bash scripts/build-sherpa.sh && bash scripts/deploy.sh")
-                        .font(.system(size: 11, design: .monospaced))
-                        .padding(8)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(RoundedRectangle(cornerRadius: 6).fill(TF.settingsBg.opacity(0.5)))
+                    HStack(spacing: 6) {
+                        Text("bash scripts/build-sherpa.sh && bash scripts/deploy.sh")
+                            .font(.system(size: 11, design: .monospaced))
+                            .textSelection(.enabled)
+                        Spacer()
+                        Button {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString("bash scripts/build-sherpa.sh && bash scripts/deploy.sh", forType: .string)
+                        } label: {
+                            Image(systemName: "doc.on.doc")
+                                .font(.system(size: 10))
+                                .foregroundStyle(TF.settingsTextTertiary)
+                        }
+                        .buttonStyle(.plain)
+                        .help(L("复制命令", "Copy command"))
+                    }
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(TF.settingsBg.opacity(0.5)))
 
                     Link(
                         L("查看完整说明 →", "View full instructions →"),
