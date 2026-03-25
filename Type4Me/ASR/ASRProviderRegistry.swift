@@ -26,8 +26,30 @@ enum ASRProviderRegistry {
         }
     }
 
-    static let all: [ASRProvider: ProviderEntry] = [
-        .sherpa:  ProviderEntry(
+    static let all: [ASRProvider: ProviderEntry] = {
+        var dict: [ASRProvider: ProviderEntry] = [
+            .volcano: ProviderEntry(
+                configType: VolcanoASRConfig.self,
+                createClient: { VolcASRClient() },
+                offlineRecognize: { pcmData, config in
+                    guard let volcConfig = config as? VolcanoASRConfig else {
+                        throw VolcFlashASRError.missingCredentials
+                    }
+                    return try await VolcFlashASRClient.recognize(pcmData: pcmData, config: volcConfig)
+                }
+            ),
+            .openai:  ProviderEntry(configType: OpenAIASRConfig.self,  createClient: nil),
+            .azure:   ProviderEntry(configType: AzureASRConfig.self,   createClient: nil),
+            .google:  ProviderEntry(configType: GoogleASRConfig.self,  createClient: nil),
+            .aws:     ProviderEntry(configType: AWSASRConfig.self,     createClient: nil),
+            .deepgram: ProviderEntry(configType: DeepgramASRConfig.self, createClient: { DeepgramASRClient() }),
+            .aliyun:  ProviderEntry(configType: AliyunASRConfig.self,  createClient: nil),
+            .tencent: ProviderEntry(configType: TencentASRConfig.self, createClient: nil),
+            .iflytek: ProviderEntry(configType: IflytekASRConfig.self, createClient: nil),
+            .custom:  ProviderEntry(configType: CustomASRConfig.self,  createClient: nil),
+        ]
+        #if canImport(SherpaOnnxLib)
+        dict[.sherpa] = ProviderEntry(
             configType: SherpaASRConfig.self,
             createClient: { SherpaASRClient() },
             offlineRecognize: { pcmData, config in
@@ -36,27 +58,12 @@ enum ASRProviderRegistry {
                 }
                 return try await SherpaOfflineASRClient.recognize(pcmData: pcmData, config: sherpaConfig)
             }
-        ),
-        .volcano: ProviderEntry(
-            configType: VolcanoASRConfig.self,
-            createClient: { VolcASRClient() },
-            offlineRecognize: { pcmData, config in
-                guard let volcConfig = config as? VolcanoASRConfig else {
-                    throw VolcFlashASRError.missingCredentials
-                }
-                return try await VolcFlashASRClient.recognize(pcmData: pcmData, config: volcConfig)
-            }
-        ),
-        .openai:  ProviderEntry(configType: OpenAIASRConfig.self,  createClient: nil),
-        .azure:   ProviderEntry(configType: AzureASRConfig.self,   createClient: nil),
-        .google:  ProviderEntry(configType: GoogleASRConfig.self,  createClient: nil),
-        .aws:     ProviderEntry(configType: AWSASRConfig.self,     createClient: nil),
-        .deepgram: ProviderEntry(configType: DeepgramASRConfig.self, createClient: { DeepgramASRClient() }),
-        .aliyun:  ProviderEntry(configType: AliyunASRConfig.self,  createClient: nil),
-        .tencent: ProviderEntry(configType: TencentASRConfig.self, createClient: nil),
-        .iflytek: ProviderEntry(configType: IflytekASRConfig.self, createClient: nil),
-        .custom:  ProviderEntry(configType: CustomASRConfig.self,  createClient: nil),
-    ]
+        )
+        #else
+        dict[.sherpa] = ProviderEntry(configType: SherpaASRConfig.self, createClient: nil)
+        #endif
+        return dict
+    }()
 
     static func entry(for provider: ASRProvider) -> ProviderEntry? {
         all[provider]

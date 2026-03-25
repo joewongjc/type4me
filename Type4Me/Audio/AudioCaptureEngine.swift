@@ -38,6 +38,17 @@ final class AudioCaptureEngine: NSObject, @unchecked Sendable, AVCaptureAudioDat
     var onAudioChunk: ((Data) -> Void)?
     var onAudioLevel: ((Float) -> Void)?
 
+    /// Set to `false` to bypass VAD filtering (A/B testing).
+    var vadEnabled: Bool = true
+
+    // MARK: - VAD
+
+    #if canImport(SherpaOnnxLib)
+    private var sileroVAD: SileroVAD?
+    #endif
+    private let vadFilter = VADFilter()
+    private var vadRemainder = [Float]()
+
     // MARK: - Private
 
     private var captureSession: AVCaptureSession?
@@ -95,8 +106,21 @@ final class AudioCaptureEngine: NSObject, @unchecked Sendable, AVCaptureAudioDat
         bufferLock.lock()
         buffer = Data()
         accumulatedAudio = Data()
+        vadRemainder.removeAll()
         bufferLock.unlock()
         converter = nil
+
+        // Initialize VAD if enabled and SherpaOnnx is available
+        vadFilter.reset()
+        #if canImport(SherpaOnnxLib)
+        if vadEnabled && sileroVAD == nil {
+            sileroVAD = SileroVAD()
+            if sileroVAD != nil {
+                NSLog("[Audio] Silero VAD initialized")
+            }
+        }
+        sileroVAD?.reset()
+        #endif
 
         try startWithAVCapture()
     }
@@ -133,6 +157,9 @@ final class AudioCaptureEngine: NSObject, @unchecked Sendable, AVCaptureAudioDat
         converter = nil
         levelCounter = 0
         flushRemaining()
+        bufferLock.lock()
+        vadRemainder.removeAll()
+        bufferLock.unlock()
         NSLog("[Audio] Capture session stopped")
     }
 
@@ -214,11 +241,50 @@ final class AudioCaptureEngine: NSObject, @unchecked Sendable, AVCaptureAudioDat
     /// Emit all complete chunks from the buffer. Must be called with bufferLock held.
     private func emitFullChunks() {
         while buffer.count >= Self.chunkByteSize {
-            let chunk = buffer.prefix(Self.chunkByteSize)
+            let chunk = Data(buffer.prefix(Self.chunkByteSize))
             buffer.removeFirst(Self.chunkByteSize)
-            onAudioChunk?(Data(chunk))
+
+            #if canImport(SherpaOnnxLib)
+            if vadEnabled, let vad = sileroVAD {
+                if runVAD(on: chunk, vad: vad) {
+                    onAudioChunk?(chunk)
+                }
+                continue
+            }
+            #endif
+            onAudioChunk?(chunk)
         }
     }
+
+    #if canImport(SherpaOnnxLib)
+    /// Convert Int16 PCM to Float32, split into 512-sample VAD windows,
+    /// and return whether this chunk should be emitted.
+    /// Must be called with bufferLock held.
+    private func runVAD(on chunk: Data, vad: SileroVAD) -> Bool {
+        // Int16 → Float32 [-1, 1]
+        let sampleCount = chunk.count / MemoryLayout<Int16>.size
+        chunk.withUnsafeBytes { raw in
+            let int16s = raw.bindMemory(to: Int16.self)
+            vadRemainder.reserveCapacity(vadRemainder.count + sampleCount)
+            for i in 0..<sampleCount {
+                vadRemainder.append(Float(int16s[i]) / 32768.0)
+            }
+        }
+
+        // Process all complete 512-sample VAD windows
+        var shouldEmit = vadFilter.state != .waitingForSpeech
+
+        while vadRemainder.count >= SileroVAD.windowSize {
+            let window = Array(vadRemainder.prefix(SileroVAD.windowSize))
+            vadRemainder.removeFirst(SileroVAD.windowSize)
+
+            let detected = vad.isSpeechDetected(samples: window)
+            shouldEmit = vadFilter.shouldEmit(speechDetected: detected)
+        }
+
+        return shouldEmit
+    }
+    #endif
 
     /// RMS → normalized 0..1 level from float PCM buffer.
     private static func calculateLevel(from buffer: AVAudioPCMBuffer) -> Float {

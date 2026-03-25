@@ -1,6 +1,8 @@
 import Foundation
 import os
 
+#if canImport(SherpaOnnxLib)
+
 /// One-shot offline speech recognizer using SherpaOnnx + Paraformer.
 ///
 /// Used for dual-channel mode: after streaming recognition ends,
@@ -140,3 +142,5 @@ enum SherpaOfflineASRError: Error, LocalizedError {
         }
     }
 }
+
+#endif  // canImport(SherpaOnnxLib)

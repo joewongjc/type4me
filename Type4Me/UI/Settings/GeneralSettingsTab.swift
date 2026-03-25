@@ -528,6 +528,7 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
         testTask?.cancel()
         asrTestStatus = .testing
         testTask = Task {
+            #if canImport(SherpaOnnxLib)
             do {
                 let config = SherpaASRConfig(credentials: ["modelDir": ModelManager.defaultModelsDir])
                 guard let config else {
@@ -544,6 +545,9 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
                 guard !Task.isCancelled else { return }
                 asrTestStatus = .failed(L("加载失败", "Load failed"))
             }
+            #else
+            asrTestStatus = .failed(L("SherpaOnnx 未编译", "SherpaOnnx not available"))
+            #endif
         }
     }
 

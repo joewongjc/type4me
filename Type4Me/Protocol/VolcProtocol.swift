@@ -42,7 +42,7 @@ enum VolcProtocol: Sendable {
             "enable_nonstream": true,
             "show_utterances": showUtterances,
             "result_type": resultType,
-            "end_window_size": 1500,
+            "end_window_size": 3000,
             "force_to_speech_time": 1000,
         ]
 
@@ -84,7 +84,7 @@ enum VolcProtocol: Sendable {
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
         if !cleanedHotwords.isEmpty {
-            contextObject["hotwords"] = cleanedHotwords.map { ["word": $0] }
+            contextObject["hotwords"] = cleanedHotwords.map { ["word": $0, "scale": 3.0] as [String: Any] }
         }
 
         guard !contextObject.isEmpty,

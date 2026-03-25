@@ -2,9 +2,9 @@
 /// Copyright (c)  2023  Xiaomi Corporation
 
 import Foundation  // For NSString
+
 #if canImport(SherpaOnnxLib)
 import SherpaOnnxLib
-#endif
 
 /// Convert a String from swift to a `const char*` so that we can pass it to
 /// the C language.
@@ -2000,3 +2000,5 @@ func getSherpaOnnxGitSha1() -> String {
 func getSherpaOnnxGitDate() -> String {
   return String(cString: SherpaOnnxGetGitDate())
 }
+
+#endif  // canImport(SherpaOnnxLib)
