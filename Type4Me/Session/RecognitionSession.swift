@@ -188,6 +188,11 @@ actor RecognitionSession {
             boostingTableID: biasSettings.boostingTableID
         )
 
+        // Capture prompt context (selected text + clipboard) before connect(),
+        // because cloud ASR connect involves network round-trips that can take
+        // hundreds of milliseconds, by which time the user's selection may be gone.
+        promptContext = await PromptContext.capture()
+
         do {
             try await client.connect(config: config, options: requestOptions)
             NSLog(
@@ -207,9 +212,6 @@ actor RecognitionSession {
             onASREvent?(.completed)
             return
         }
-
-        // Capture prompt context (selected text + clipboard) before recording starts
-        promptContext = PromptContext.capture()
 
         // Reset text state
         currentTranscript = .empty

@@ -77,13 +77,16 @@ enum SherpaOfflineASRClient {
     // MARK: - Internal
 
     private static func getOrCreateRecognizer(modelDir: String) throws -> SherpaOnnxOfflineRecognizer {
+        // Fast path: return cached recognizer (lock held briefly, safe in async context)
         lock.lock()
-        defer { lock.unlock() }
-
         if let cached = cachedRecognizer, cachedModelDir == modelDir {
+            lock.unlock()
             return cached
         }
+        lock.unlock()
 
+        // Slow path: model initialization runs outside the lock to avoid
+        // blocking the cooperative thread pool for extended periods.
         let paraConfig = sherpaOnnxOfflineParaformerModelConfig(
             model: (modelDir as NSString).appendingPathComponent("model.int8.onnx")
         )
@@ -102,8 +105,12 @@ enum SherpaOfflineASRClient {
         )
 
         let recognizer = SherpaOnnxOfflineRecognizer(config: &recConfig)
+
+        lock.lock()
         cachedRecognizer = recognizer
         cachedModelDir = modelDir
+        lock.unlock()
+
         return recognizer
     }
 

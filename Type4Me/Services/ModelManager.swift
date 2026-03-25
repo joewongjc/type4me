@@ -357,11 +357,20 @@ actor ModelManager {
 
             logger.info("Extracting \(key) to \(self.modelsDir)")
             onProgress(0.95)
-            try await extractTarBz2(tempFile, to: modelsDir)
+            do {
+                try await extractTarBz2(tempFile, to: modelsDir)
+            } catch {
+                // Clean up partial extraction directory
+                let partialDir = (modelsDir as NSString).appendingPathComponent(key)
+                try? FileManager.default.removeItem(atPath: partialDir)
+                throw error
+            }
             try? FileManager.default.removeItem(at: tempFile)
 
             guard checkFiles(dir: key, files: requiredFiles) else {
                 logger.error("Model validation failed: \(key)")
+                // Clean up incomplete model directory
+                try? FileManager.default.removeItem(atPath: destDir)
                 throw ModelError.extractionFailed
             }
 
@@ -549,12 +558,16 @@ actor ModelManager {
         process.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
         process.arguments = ["xjf", archive.path, "-C", destDir]
         process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
+        let errPipe = Pipe()
+        process.standardError = errPipe
 
         try process.run()
         process.waitUntilExit()
 
         guard process.terminationStatus == 0 else {
+            let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
+            let errMsg = String(data: errData, encoding: .utf8) ?? "unknown"
+            logger.error("tar extraction failed (status \(process.terminationStatus)): \(errMsg)")
             throw ModelError.extractionFailed
         }
     }

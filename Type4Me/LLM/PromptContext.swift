@@ -9,8 +9,9 @@ struct PromptContext: Sendable {
     let clipboardText: String
 
     /// Capture the current selected text (via Accessibility) and clipboard content.
-    /// AX calls are synchronous IPC and can hang if the target app is unresponsive,
-    /// so we run them on a background thread with a short timeout.
+    /// Clipboard is read on MainActor (AppKit requirement).
+    /// AX calls run on a background thread with a short timeout.
+    @MainActor
     static func capture() -> PromptContext {
         let clipboard = NSPasteboard.general.string(forType: .string) ?? ""
         let selected = readSelectedTextWithTimeout(ms: 200) ?? ""
@@ -18,11 +19,31 @@ struct PromptContext: Sendable {
     }
 
     /// Expand context variables (`{selected}`, `{clipboard}`) in a prompt string.
-    /// Note: `{text}` is expanded separately by the LLM client with the ASR output.
+    /// Uses single-pass replacement to prevent user content containing `{clipboard}`
+    /// or `{text}` from being expanded as variables.
     func expandContextVariables(_ prompt: String) -> String {
-        prompt
-            .replacingOccurrences(of: "{selected}", with: selectedText)
-            .replacingOccurrences(of: "{clipboard}", with: clipboardText)
+        var result = ""
+        var remaining = prompt[...]
+
+        while let openRange = remaining.range(of: "{") {
+            // Append everything before the `{`
+            result += remaining[remaining.startIndex..<openRange.lowerBound]
+            remaining = remaining[openRange.lowerBound...]
+
+            if remaining.hasPrefix("{selected}") {
+                result += selectedText
+                remaining = remaining[remaining.index(remaining.startIndex, offsetBy: 10)...]
+            } else if remaining.hasPrefix("{clipboard}") {
+                result += clipboardText
+                remaining = remaining[remaining.index(remaining.startIndex, offsetBy: 11)...]
+            } else {
+                // Not a known variable, keep the `{` literal and advance past it
+                result += "{"
+                remaining = remaining[remaining.index(after: remaining.startIndex)...]
+            }
+        }
+        result += remaining
+        return result
     }
 
     // MARK: - Private
@@ -30,14 +51,16 @@ struct PromptContext: Sendable {
     /// Read selected text with a hard timeout to prevent UI hangs.
     /// AXUIElementCopyAttributeValue is synchronous IPC — if the target app's
     /// accessibility implementation is slow or deadlocked, it blocks indefinitely.
+    /// Uses a heap-allocated box to avoid write-after-return on the stack.
     private static func readSelectedTextWithTimeout(ms: Int) -> String? {
         guard AXIsProcessTrusted() else { return nil }
 
-        var result: String?
+        final class Box: @unchecked Sendable { var value: String?; init() {} }
+        let box = Box()
         let semaphore = DispatchSemaphore(value: 0)
 
         DispatchQueue.global(qos: .userInitiated).async {
-            result = readSelectedText()
+            box.value = readSelectedText()
             semaphore.signal()
         }
 
@@ -45,7 +68,7 @@ struct PromptContext: Sendable {
         if semaphore.wait(timeout: timeout) == .timedOut {
             return nil
         }
-        return result
+        return box.value
     }
 
     private static func readSelectedText() -> String? {

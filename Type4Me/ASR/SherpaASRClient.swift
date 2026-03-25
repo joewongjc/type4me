@@ -64,9 +64,23 @@ actor SherpaASRClient: SpeechRecognizer {
 
     // MARK: - Cached recognizer (avoid reloading model each session)
 
-    private static var cachedRecognizer: SherpaOnnxRecognizer?
-    private static var cachedPunctProcessor: SherpaPunctuationProcessor?
-    private static var cachedModelDir: String?
+    private static let cacheLock = NSLock()
+    private static var _cachedRecognizer: SherpaOnnxRecognizer?
+    private static var _cachedPunctProcessor: SherpaPunctuationProcessor?
+    private static var _cachedModelDir: String?
+
+    private static var cachedRecognizer: SherpaOnnxRecognizer? {
+        get { cacheLock.withLock { _cachedRecognizer } }
+        set { cacheLock.withLock { _cachedRecognizer = newValue } }
+    }
+    private static var cachedPunctProcessor: SherpaPunctuationProcessor? {
+        get { cacheLock.withLock { _cachedPunctProcessor } }
+        set { cacheLock.withLock { _cachedPunctProcessor = newValue } }
+    }
+    private static var cachedModelDir: String? {
+        get { cacheLock.withLock { _cachedModelDir } }
+        set { cacheLock.withLock { _cachedModelDir = newValue } }
+    }
 
     /// Pre-load models at app startup for instant first recording.
     static func preloadModels(config: SherpaASRConfig) {
