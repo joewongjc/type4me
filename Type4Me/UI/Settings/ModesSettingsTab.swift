@@ -867,7 +867,8 @@ private struct ModeDetailInner: View {
                         RoundedRectangle(cornerRadius: 6)
                             .stroke(TF.settingsTextTertiary.opacity(0.2), lineWidth: 1)
                     )
-                Text(L("用 {text} 代表转写文本，留空则直接输出", "Use {text} for transcribed text. Leave empty for raw output."))
+                Text(L("变量: {text} 转写文本, {selected} 选中文本, {clipboard} 剪切板。留空则直接输出",
+                       "Variables: {text} transcribed text, {selected} selected text, {clipboard} clipboard. Leave empty for raw output."))
                     .font(.system(size: 10))
                     .foregroundStyle(TF.settingsTextTertiary)
             }

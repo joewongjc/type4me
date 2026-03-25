@@ -1,8 +1,26 @@
 import AppKit
 import AVFoundation
 
-/// Synthesized audio feedback tones.
-/// Uses programmatic WAV generation — no external sound files needed.
+// MARK: - Start Sound Style
+
+/// User-selectable start sound options, persisted via @AppStorage("tf_startSound").
+enum StartSoundStyle: String, CaseIterable, Sendable {
+    case off       = "off"
+    case chime     = "chime"
+    case waterDrop1 = "waterDrop1"
+    case waterDrop2 = "waterDrop2"
+
+    var displayName: String {
+        switch self {
+        case .off:        return L("关闭", "Off")
+        case .chime:      return L("电子提示音", "Chime")
+        case .waterDrop1: return L("水滴 1", "Water Drop 1")
+        case .waterDrop2: return L("水滴 2", "Water Drop 2")
+        }
+    }
+}
+
+/// Synthesized and bundled audio feedback tones.
 enum SoundFeedback {
 
     private enum Delivery {
@@ -61,14 +79,32 @@ enum SoundFeedback {
             DebugFileLogger.log("sound warmUp")
             _ = try? soundFileURL(for: startSpec)
             preparePlayersIfNeeded()
+            // Pre-cache bundled sounds
+            for style in [StartSoundStyle.waterDrop1, .waterDrop2] {
+                if let url = bundledSoundURL(for: style) {
+                    _ = try? preparedPlayer(forURL: url, label: style.rawValue)
+                }
+            }
         }
     }
 
-    /// Softer ascending chime for recording start.
+    /// Play the start sound according to user preference.
     static func playStart() {
-        NSLog("[SoundFeedback] playStart")
-        DebugFileLogger.log("sound playStart invoked")
-        play(spec: startSpec, retryCount: 2)
+        let style = StartSoundStyle(
+            rawValue: UserDefaults.standard.string(forKey: "tf_startSound") ?? StartSoundStyle.chime.rawValue
+        ) ?? .chime
+
+        NSLog("[SoundFeedback] playStart style=%@", style.rawValue)
+        DebugFileLogger.log("sound playStart style=\(style.rawValue)")
+
+        switch style {
+        case .off:
+            return
+        case .chime:
+            play(spec: startSpec, retryCount: 2)
+        case .waterDrop1, .waterDrop2:
+            playBundled(style: style)
+        }
     }
 
     /// Crisper, more decisive double tone for recording stop.
@@ -85,7 +121,68 @@ enum SoundFeedback {
         play(spec: errorSpec)
     }
 
-    // MARK: - Synthesis
+    /// Preview a start sound style (for settings UI).
+    static func previewStartSound(_ style: StartSoundStyle) {
+        switch style {
+        case .off: return
+        case .chime: play(spec: startSpec, retryCount: 0)
+        case .waterDrop1, .waterDrop2: playBundled(style: style)
+        }
+    }
+
+    // MARK: - Bundled Sound Playback
+
+    private static func bundledSoundURL(for style: StartSoundStyle) -> URL? {
+        let filename: String
+        switch style {
+        case .waterDrop1: filename = "water-drop-1"
+        case .waterDrop2: filename = "water-drop-2"
+        default: return nil
+        }
+        // Look in app bundle Resources/Sounds
+        if let url = Bundle.main.url(forResource: filename, withExtension: "wav", subdirectory: "Sounds") {
+            return url
+        }
+        // Fallback: look in Application Support
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+            .appendingPathComponent("Type4Me", isDirectory: true)
+            .appendingPathComponent("Sounds", isDirectory: true)
+        let url = appSupport.appendingPathComponent("\(filename).wav")
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
+    private static func playBundled(style: StartSoundStyle) {
+        DispatchQueue.main.async {
+            guard let url = bundledSoundURL(for: style) else {
+                NSLog("[SoundFeedback] bundled sound not found for %@, falling back to chime", style.rawValue)
+                play(spec: startSpec, retryCount: 0)
+                return
+            }
+            do {
+                let player = try preparedPlayer(forURL: url, label: style.rawValue)
+                player.stop()
+                player.currentTime = 0
+                player.volume = 0.5
+                _ = player.play()
+                NSLog("[SoundFeedback] %@ played OK", style.rawValue)
+            } catch {
+                NSLog("[SoundFeedback] %@ play failed: %@", style.rawValue, String(describing: error))
+                play(spec: startSpec, retryCount: 0)
+            }
+        }
+    }
+
+    private static func preparedPlayer(forURL url: URL, label: String) throws -> AVAudioPlayer {
+        if let player = cachedPlayers[label] {
+            return player
+        }
+        let player = try AVAudioPlayer(contentsOf: url)
+        player.prepareToPlay()
+        cachedPlayers[label] = player
+        return player
+    }
+
+    // MARK: - Synthesized Sound Playback
 
     private static func play(
         spec: ToneSpec,

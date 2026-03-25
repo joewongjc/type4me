@@ -3,6 +3,8 @@ import Foundation
 // MARK: - Provider Enum
 
 enum ASRProvider: String, CaseIterable, Codable, Sendable {
+    // Local
+    case sherpa
     // International
     case openai
     case azure
@@ -19,6 +21,7 @@ enum ASRProvider: String, CaseIterable, Codable, Sendable {
 
     var displayName: String {
         switch self {
+        case .sherpa:   return L("本地识别 (Paraformer)", "Local (Paraformer)")
         case .openai:   return "OpenAI Whisper"
         case .azure:    return "Azure Speech"
         case .google:   return "Google Cloud STT"
@@ -31,6 +34,9 @@ enum ASRProvider: String, CaseIterable, Codable, Sendable {
         case .custom:   return L("自定义", "Custom")
         }
     }
+
+    /// Whether this provider runs entirely on-device (no network required).
+    var isLocal: Bool { self == .sherpa }
 }
 
 // MARK: - Credential Field Descriptor

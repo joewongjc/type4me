@@ -88,6 +88,10 @@ cat >"$INFO_PLIST" <<EOF
 </plist>
 EOF
 
+# Copy bundled sounds
+mkdir -p "$APP_PATH/Contents/Resources/Sounds"
+cp "$PROJECT_DIR/Type4Me/Resources/Sounds/"*.wav "$APP_PATH/Contents/Resources/Sounds/" 2>/dev/null || true
+
 echo "Signing with '${SIGNING_IDENTITY}'..."
 codesign -f -s "$SIGNING_IDENTITY" "$APP_PATH" 2>/dev/null && echo "Signed." || echo "Signing skipped (no identity available)."
 

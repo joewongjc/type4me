@@ -21,3 +21,7 @@ credentials.json
 # Internal docs
 docs/plans/
 .git-backup
+
+# SherpaOnnx binary (built locally via scripts/build-sherpa.sh)
+Frameworks/
+.build-sherpa/

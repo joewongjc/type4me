@@ -172,6 +172,14 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
     @State private var hasStoredASR = false
     @State private var testTask: Task<Void, Never>?
 
+    // Local model states
+    @State private var selectedStreamingModel: ModelManager.StreamingModel = ModelManager.selectedStreamingModel
+    @State private var modelDownloadStatus: [ModelManager.StreamingModel: Bool] = [:]
+    @State private var downloadingModel: ModelManager.StreamingModel? = nil
+    @State private var downloadProgress: Double = 0
+    @State private var downloadTask: Task<Void, Error>? = nil
+    @State private var confirmingDelete: ModelManager.StreamingModel? = nil
+
     private var currentASRFields: [CredentialField] {
         ASRProviderRegistry.configType(for: selectedASRProvider)?.credentialFields ?? []
     }
@@ -208,44 +216,49 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
             asrProviderPicker
             SettingsDivider()
 
-            if hasASRCredentials && !isEditingASR {
-                credentialSummaryCard(rows: asrSummaryRows)
+            if selectedASRProvider.isLocal {
+                localModelSection
             } else {
-                dynamicCredentialFields
-            }
-
-            HStack(spacing: 8) {
-                Spacer()
-                statusBadge(asrTestStatus)
-                Button(L("测试连接", "Test")) { testASRConnection() }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(TF.settingsTextSecondary)
-                    .disabled(!hasASRCredentials || !isASRProviderAvailable)
                 if hasASRCredentials && !isEditingASR {
-                    secondaryButton(L("修改", "Edit")) {
-                        testTask?.cancel()
-                        asrTestStatus = .idle
-                        asrCredentialValues = [:]
-                        editedFields = []
-                        isEditingASR = true
-                    }
+                    credentialSummaryCard(rows: asrSummaryRows)
                 } else {
-                    if hasASRCredentials && hasStoredASR {
-                        secondaryButton(L("取消", "Cancel")) {
+                    dynamicCredentialFields
+                }
+
+                HStack(spacing: 8) {
+                    Spacer()
+                    statusBadge(asrTestStatus)
+                    Button(L("测试连接", "Test")) { testASRConnection() }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(TF.settingsTextSecondary)
+                        .disabled(!hasASRCredentials || !isASRProviderAvailable)
+                    if hasASRCredentials && !isEditingASR {
+                        secondaryButton(L("修改", "Edit")) {
                             testTask?.cancel()
                             asrTestStatus = .idle
-                            loadASRCredentials()
+                            asrCredentialValues = [:]
+                            editedFields = []
+                            isEditingASR = true
                         }
+                    } else {
+                        if hasASRCredentials && hasStoredASR {
+                            secondaryButton(L("取消", "Cancel")) {
+                                testTask?.cancel()
+                                asrTestStatus = .idle
+                                loadASRCredentials()
+                            }
+                        }
+                        saveButton { saveASRCredentials() }
+                            .disabled(!hasASRCredentials)
                     }
-                    saveButton { saveASRCredentials() }
-                        .disabled(!hasASRCredentials)
                 }
+                .padding(.top, 10)
             }
-            .padding(.top, 10)
         }
         .task {
             loadASRCredentials()
+            refreshModelStatus()
         }
     }
 
@@ -265,14 +278,29 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
                 }
             }
             .labelsHidden()
+
+            if selectedASRProvider.isLocal && (modelDownloadStatus[selectedStreamingModel] ?? false) {
+                Spacer()
+                statusBadge(asrTestStatus)
+                Button(L("测试模型", "Test Model")) { testLocalModel() }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(TF.settingsTextSecondary)
+                    .disabled(asrTestStatus == .testing)
+            }
         }
         .frame(minHeight: 40)
         .padding(.vertical, 6)
         .onChange(of: selectedASRProvider) { _, newProvider in
             testTask?.cancel()
+            downloadTask?.cancel()
+            downloadTask = nil
+            downloadingModel = nil
+            downloadProgress = 0
             asrTestStatus = .idle
             isEditingASR = true
             loadASRCredentialsForProvider(newProvider)
+            refreshModelStatus()
         }
     }
 
@@ -308,6 +336,215 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
             rows.append((field.label, maskedSecret(val)))
         }
         return rows
+    }
+
+    // MARK: - Local Model Section
+
+    private var localModelSection: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(ModelManager.StreamingModel.allCases.enumerated()), id: \.element) { index, model in
+                if index > 0 { SettingsDivider() }
+                modelRow(model)
+            }
+        }
+    }
+
+    private func modelRow(_ model: ModelManager.StreamingModel) -> some View {
+        let isDownloaded = modelDownloadStatus[model] ?? false
+        let isSelected = selectedStreamingModel == model
+        let isDownloading = downloadingModel == model
+
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .top, spacing: 8) {
+                if isDownloaded || isDownloading {
+                    // Radio button — only for downloaded/downloading models
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 14))
+                        .foregroundStyle(isSelected ? TF.settingsAccentGreen : TF.settingsTextTertiary)
+                        .onTapGesture {
+                            guard isDownloaded else { return }
+                            selectedStreamingModel = model
+                            ModelManager.selectedStreamingModel = model
+                            asrTestStatus = .idle
+                            let defaults = ["modelDir": ModelManager.defaultModelsDir]
+                            try? KeychainService.saveASRCredentials(for: .sherpa, values: defaults)
+                            KeychainService.selectedASRProvider = .sherpa
+                        }
+                } else {
+                    // Not downloaded: download button on the left
+                    Button(L("下载", "Download")) { startDownload(model) }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 3)
+                        .background(RoundedRectangle(cornerRadius: 5).fill(TF.settingsAccentAmber))
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(model.displayName)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(isDownloaded ? TF.settingsText : TF.settingsTextTertiary)
+                        Text("~\(model.approximateSizeMB) MB")
+                            .font(.system(size: 10))
+                            .foregroundStyle(TF.settingsTextTertiary)
+                    }
+                    Text(model.description)
+                        .font(.system(size: 10))
+                        .foregroundStyle(TF.settingsTextSecondary)
+                        .lineLimit(2)
+                }
+
+                Spacer()
+
+                // Action area (only for downloaded models)
+                if isDownloaded {
+                    HStack(spacing: 6) {
+                        if confirmingDelete == model {
+                            Button(L("确认删除", "Confirm")) { deleteModel(model) }
+                                .buttonStyle(.plain)
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(RoundedRectangle(cornerRadius: 4).fill(TF.settingsAccentRed))
+                            Button(L("取消", "Cancel")) { confirmingDelete = nil }
+                                .buttonStyle(.plain)
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(TF.settingsTextSecondary)
+                        } else {
+                            Button {
+                                confirmingDelete = model
+                            } label: {
+                                Image(systemName: "ellipsis.circle")
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(TF.settingsTextTertiary)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+
+            // Download progress
+            if isDownloading {
+                HStack(spacing: 8) {
+                    ProgressView(value: downloadProgress)
+                        .tint(TF.settingsAccentAmber)
+                    Text("\(Int(downloadProgress * 100))%")
+                        .font(.system(size: 10, weight: .medium).monospacedDigit())
+                        .foregroundStyle(TF.settingsTextSecondary)
+                        .frame(width: 30, alignment: .trailing)
+                    Button(L("取消", "Cancel")) { cancelDownload() }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(TF.settingsTextSecondary)
+                }
+                .padding(.leading, 22)
+            }
+        }
+        .padding(.vertical, 8)
+    }
+
+    private func refreshModelStatus() {
+        for model in ModelManager.StreamingModel.allCases {
+            modelDownloadStatus[model] = ModelManager.shared.isModelAvailable(model)
+        }
+        selectedStreamingModel = ModelManager.selectedStreamingModel
+    }
+
+    private func startDownload(_ model: ModelManager.StreamingModel) {
+        // Cancel any existing download first
+        if downloadingModel != nil {
+            cancelDownload()
+        }
+        downloadingModel = model
+        downloadProgress = 0
+        asrTestStatus = .idle
+        downloadTask = Task {
+            do {
+                try await ModelManager.shared.downloadModel(model) { progress in
+                    Task { @MainActor in
+                        // Only update if this model is still the one being downloaded
+                        guard self.downloadingModel == model else { return }
+                        self.downloadProgress = progress
+                    }
+                }
+                await MainActor.run {
+                    guard downloadingModel == model else { return }
+                    downloadingModel = nil
+                    refreshModelStatus()
+                    // Auto-select if first download
+                    if modelDownloadStatus.values.filter({ $0 }).count == 1 {
+                        selectedStreamingModel = model
+                        ModelManager.selectedStreamingModel = model
+                        let defaults = ["modelDir": ModelManager.defaultModelsDir]
+                        try? KeychainService.saveASRCredentials(for: .sherpa, values: defaults)
+                        KeychainService.selectedASRProvider = .sherpa
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    guard downloadingModel == model else { return }
+                    downloadingModel = nil
+                    if !Task.isCancelled {
+                        asrTestStatus = .failed(L("下载失败", "Download failed"))
+                    }
+                }
+            }
+        }
+    }
+
+    private func cancelDownload() {
+        guard let model = downloadingModel else { return }
+        downloadTask?.cancel()
+        downloadTask = nil
+        downloadingModel = nil
+        Task { await ModelManager.shared.cancelDownload(model) }
+    }
+
+    private func deleteModel(_ model: ModelManager.StreamingModel) {
+        Task {
+            try? await ModelManager.shared.deleteModel(model)
+            await MainActor.run {
+                confirmingDelete = nil
+                modelDownloadStatus[model] = false
+                if selectedStreamingModel == model {
+                    // Select another downloaded model, or keep current
+                    if let alt = ModelManager.StreamingModel.allCases.first(where: {
+                        modelDownloadStatus[$0] == true
+                    }) {
+                        selectedStreamingModel = alt
+                        ModelManager.selectedStreamingModel = alt
+                    }
+                }
+                asrTestStatus = .idle
+            }
+        }
+    }
+
+    private func testLocalModel() {
+        testTask?.cancel()
+        asrTestStatus = .testing
+        testTask = Task {
+            do {
+                let config = SherpaASRConfig(credentials: ["modelDir": ModelManager.defaultModelsDir])
+                guard let config else {
+                    guard !Task.isCancelled else { return }
+                    asrTestStatus = .failed(L("配置错误", "Config error"))
+                    return
+                }
+                let client = SherpaASRClient()
+                try await client.connect(config: config, options: currentASRRequestOptions(enablePunc: false))
+                await client.disconnect()
+                guard !Task.isCancelled else { return }
+                asrTestStatus = .success
+            } catch {
+                guard !Task.isCancelled else { return }
+                asrTestStatus = .failed(L("加载失败", "Load failed"))
+            }
+        }
     }
 
     // MARK: - Data
@@ -630,7 +867,7 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
 
     // MARK: - Global
 
-    @AppStorage("tf_soundFeedback") private var soundFeedback = true
+    @AppStorage("tf_startSound") private var startSound = StartSoundStyle.chime.rawValue
     @AppStorage("tf_launchAtLogin") private var launchAtLogin = true
     @AppStorage("tf_visualStyle") private var visualStyle = "timeline"
     @AppStorage("tf_language") private var language = AppLanguage.systemDefault
@@ -657,7 +894,7 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
 
             twoColumnLayout {
                 settingsGroupCard(L("偏好", "Preferences")) {
-                    settingsToggleRow(L("提示音反馈", "Sound feedback"), isOn: $soundFeedback)
+                    startSoundRow
                     SettingsDivider()
                     settingsToggleRow(L("开机自动启动", "Launch at login"), isOn: $launchAtLogin)
                     SettingsDivider()
@@ -781,6 +1018,29 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
                 .labelsHidden()
                 .toggleStyle(.switch)
                 .controlSize(.small)
+        }
+        .frame(minHeight: 40)
+        .padding(.vertical, 6)
+    }
+
+    private var startSoundRow: some View {
+        HStack {
+            Text(L("提示音", "Start sound"))
+                .font(.system(size: 13))
+                .foregroundStyle(TF.settingsText)
+            Spacer()
+            Picker("", selection: $startSound) {
+                ForEach(StartSoundStyle.allCases, id: \.rawValue) { style in
+                    Text(style.displayName).tag(style.rawValue)
+                }
+            }
+            .labelsHidden()
+            .fixedSize()
+            .onChange(of: startSound) { _, newValue in
+                if let style = StartSoundStyle(rawValue: newValue) {
+                    SoundFeedback.previewStartSound(style)
+                }
+            }
         }
         .frame(minHeight: 40)
         .padding(.vertical, 6)

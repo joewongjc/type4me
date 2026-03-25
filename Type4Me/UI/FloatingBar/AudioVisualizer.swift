@@ -45,6 +45,7 @@ struct AudioVisualizer: View {
 
 // MARK: - Preview
 
+#if canImport(PreviewsMacros)
 #Preview("AudioVisualizer") {
     VStack(spacing: 20) {
         AudioVisualizer(level: 0.8)
@@ -54,3 +55,4 @@ struct AudioVisualizer: View {
     .padding()
     .frame(width: 100, height: 120)
 }
+#endif

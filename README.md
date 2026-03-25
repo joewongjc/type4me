@@ -1,11 +1,11 @@
 
-MacOS语音输入工具，实时识别、大模型文本优化、全本地存储
+MacOS语音输入工具，本地/云端双引擎语音识别、大模型文本优化、全本地存储
 
 <img width="420" height="78" alt="image" src="https://github.com/user-attachments/assets/dbc676e0-6128-4bed-89a2-553d2d1a197c" />
 
 [查看演示视频](#演示视频)
 
-**[下载 Type4Me v1.1.0](https://github.com/joewongjc/type4me/releases/download/v1.1.0/Type4Me-v1.1.0.dmg)** (macOS 14+)
+**[下载 Type4Me v1.2.0](https://github.com/joewongjc/type4me/releases/download/v1.2.0/Type4Me-v1.2.0.dmg)** (macOS 14+)
 
 > **首次打开提示安全警告？** 这是 macOS 对所有非 App Store 应用的正常行为，不影响使用。
 >
@@ -27,7 +27,13 @@ MacOS语音输入工具，实时识别、大模型文本优化、全本地存储
 
 ## 功能亮点
 
-### 流式语音识别，响应极快
+### 🆕 本地语音识别，零配置开箱即用
+
+基于 SherpaOnnx (Paraformer / Zipformer) 引擎，**所有推理完全在设备端完成**，无需申请 API Key、无需注册云服务账号、无网络依赖。省去了繁琐的云端 API 密钥申请和配置流程，特别适合在大内存 Apple Silicon (M1/M2/M3/M4) 机型上使用，推理效率更高。
+
+三种模型可选：极速轻量（~20 MB）、均衡推荐（~236 MB）、中英双语（~1 GB），在设置中一键下载即可使用。支持断点续传，大模型下载中断后自动恢复。
+
+### 云端流式识别
 
 接入火山引擎（豆包）大模型，边说边出字。性能模式下还支持双通道识别，实时识别结束后用完整录音优化结果。
 欢迎共建接入其他厂商的模型，目前已经接入火山引擎和 Deepgram。
@@ -35,7 +41,7 @@ MacOS语音输入工具，实时识别、大模型文本优化、全本地存储
 
 ### 自定义处理模式
 
-内置 4 种模式，也可以自定义任意多个：
+内置 5 种模式，也可以自定义任意多个：
 
 | 模式 | 说明 |
 |---|---|
@@ -43,9 +49,22 @@ MacOS语音输入工具，实时识别、大模型文本优化、全本地存储
 | **性能模式** | 双通道识别，实时展示的体验 + 录音识别的准确|
 | **英文翻译** | 说中文，输出英文翻译 |
 | **Prompt优化** | 说一句简单的原始prompt，帮你优化后直接粘贴 |
+| **命令模式** | 🆕 语音作为命令，结合选中文字和剪切板内容，让 LLM 执行操作 |
 | **自定义** | 自己写 prompt，用 LLM 做任何后处理 |
 
 每个模式可以绑定独立的全局快捷键，支持「按住说话」和「按一下开始/再按停止」两种方式。
+
+### 🆕 Prompt 上下文变量
+
+Prompt 模板支持三种变量，让语音输入从"听写"升级为"语音命令"：
+
+| 变量 | 含义 |
+|---|---|
+| `{text}` | 语音识别的文字 |
+| `{selected}` | 录音开始时光标选中的文字 |
+| `{clipboard}` | 录音开始时剪切板的内容 |
+
+**用法示例**：选中一段英文 → 按住快捷键说"翻译选中的文字" → LLM 收到选中内容 + 翻译指令，直接输出翻译结果。语音变成了 LLM 的命令，选中的文字和剪切板变成了上下文。
 
 ### 数据完全本地，支持导出
 
@@ -58,12 +77,16 @@ MacOS语音输入工具，实时识别、大模型文本优化、全本地存储
 - **ASR 热词**：添加专有名词（如 `Claude`、`Kubernetes`），提升识别准确率
 - **片段替换**：语音说「我的邮箱」，自动替换为实际邮箱地址
 
+### 提示音自定义
+
+录音开始提示音支持多种选择：电子提示音、Water Drop 音效（两种）、或关闭。
+
 ### 更多特性
 
 - 中英双语 UI，跟随系统语言自动切换
 - 浮窗实时显示识别文本，带录音动画
 - 首次使用有引导设置向导
-- Swift Package Manager 构建，无第三方依赖
+- Swift Package Manager 构建
 - 支持 macOS 14+
 
 ## 快速开始（其实最好的办法是把链接发给你的agent）
@@ -71,14 +94,19 @@ MacOS语音输入工具，实时识别、大模型文本优化、全本地存储
 ### 前置条件
 
 - macOS 14.0 (Sonoma) 或更高版本
-- Swift 6.0+
-- 火山引擎账号（获取 ASR 凭证）；如做了其他厂商可做完提交PR
+- Swift 6.0+、CMake（`brew install cmake`，仅本地 ASR 需要）
+- **本地识别**：无需额外账号，在设置中选择"本地识别 (Paraformer)"并下载模型即可
+- **云端识别**：火山引擎账号（获取 ASR 凭证）；如做了其他厂商可做完提交PR
 
 ### 构建
 
 ```bash
 git clone https://github.com/joewongjc/type4me.git
 cd type4me
+
+# 首次构建需要编译 SherpaOnnx（约 5 分钟，仅需一次）
+bash scripts/build-sherpa.sh
+
 swift build -c release
 ```
 
@@ -101,18 +129,22 @@ Type4Me/
 ├── ASR/                    # ASR 引擎抽象层
 │   ├── ASRProvider.swift          # Provider 枚举 + 协议
 │   ├── ASRProviderRegistry.swift  # 注册表
-│   ├── Providers/                 # 各厂商配置（10 家）
+│   ├── Providers/                 # 各厂商配置（含本地 Sherpa）
+│   ├── SherpaASRClient.swift      # 本地流式 ASR（Paraformer/Zipformer）
+│   ├── SherpaOfflineASRClient.swift # 本地离线 ASR（单次完整识别）
+│   ├── SherpaPunctuationProcessor.swift # 本地标点补全
 │   ├── VolcASRClient.swift        # 火山引擎流式 ASR
 │   ├── DeepgramASRClient.swift    # Deepgram 流式 ASR
 │   └── VolcFlashASRClient.swift   # 火山引擎 Flash ASR
+├── Bridge/                 # SherpaOnnx C API Swift 桥接
 ├── Audio/                  # 音频采集
 ├── Session/                # 核心状态机：录音 → ASR → 注入
 ├── Input/                  # 全局快捷键管理
-├── Services/               # 凭证存储、热词、片段替换
+├── Services/               # 凭证存储、热词、片段替换、模型管理
 ├── Protocol/               # 火山引擎 WebSocket 协议编解码
 └── UI/                     # SwiftUI 界面
     ├── FloatingBar/               # 浮窗
-    └── Settings/                  # 设置界面（5 个 Tab）
+    └── Settings/                  # 设置界面（含模型下载管理）
 ```
 
 ASR Provider 架构设计为可插拔：每个云厂商实现 `ASRProviderConfig`（定义凭证字段）和 `SpeechRecognizer`（实现识别逻辑），注册到 `ASRProviderRegistry` 即可。
@@ -161,10 +193,11 @@ bash scripts/deploy.sh
 **Key things to know:**
 
 - This is a Swift Package Manager project, no `.xcodeproj` needed
-- Zero third-party dependencies, everything is built on Apple frameworks (AVFoundation, SwiftUI, AppKit)
+- Depends on `sherpa-onnx.xcframework` (local binary, in `Frameworks/`) for on-device ASR
 - Credentials are stored locally at `~/Library/Application Support/Type4Me/credentials.json`, never in code or environment variables
+- Models are stored at `~/Library/Application Support/Type4Me/Models/`, managed by `ModelManager`
 - The ASR provider architecture is plugin-based: see `Type4Me/ASR/ASRProviderRegistry.swift` for the registry and `Type4Me/ASR/Providers/` for per-vendor configs
-- Currently only Volcengine (Doubao) ASR is implemented; other providers have config stubs but no client implementation yet
+- Two ASR engines implemented: Sherpa (local, Paraformer/Zipformer) and Volcengine (cloud, Doubao); other cloud providers have config stubs but no client implementation yet
 - To add a new ASR provider, implement `ASRProviderConfig` + `SpeechRecognizer` protocol and register in `ASRProviderRegistry.all`
 
 ## 演示视频
