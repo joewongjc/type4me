@@ -1,6 +1,11 @@
 {
-  "latest": "1.1.0",
+  "latest": "1.2.0",
   "releases": [
+    {
+      "version": "1.2.0",
+      "date": "2026-03-25",
+      "notes": "- 新增 Silero VAD 客户端语音活动检测，过滤录音前后的噪声和静音\n- ASR 断句容忍度从 1.5s 提升到 3s，减少思考停顿被截断的问题\n- 新增 ONNX Runtime 依赖用于本地 VAD 推理"
+    },
     {
       "version": "1.1.0",
       "date": "2026-03-24",

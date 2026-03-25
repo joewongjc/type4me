@@ -42,7 +42,7 @@ enum VolcProtocol: Sendable {
             "enable_nonstream": true,
             "show_utterances": showUtterances,
             "result_type": resultType,
-            "end_window_size": 1500,
+            "end_window_size": 3000,
             "force_to_speech_time": 1000,
         ]
 

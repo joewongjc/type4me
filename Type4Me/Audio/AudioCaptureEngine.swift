@@ -38,6 +38,18 @@ final class AudioCaptureEngine: NSObject, @unchecked Sendable, AVCaptureAudioDat
     var onAudioChunk: ((Data) -> Void)?
     var onAudioLevel: ((Float) -> Void)?
 
+    // MARK: - VAD
+
+    /// Set to `false` to bypass VAD filtering (A/B testing).
+    var vadEnabled: Bool = true
+
+    /// Called when VAD state changes (e.g. for UI indication).
+    var onVADStateChange: ((VADFilter.State) -> Void)?
+
+    private var sileroVAD: SileroVAD?
+    private let vadFilter = VADFilter()
+    private var vadRemainder = [Float]()  // leftover samples between VAD chunks
+
     // MARK: - Private
 
     private var captureSession: AVCaptureSession?
@@ -95,8 +107,21 @@ final class AudioCaptureEngine: NSObject, @unchecked Sendable, AVCaptureAudioDat
         bufferLock.lock()
         buffer = Data()
         accumulatedAudio = Data()
+        vadRemainder.removeAll()
         bufferLock.unlock()
         converter = nil
+
+        // Initialize VAD if enabled and not yet loaded
+        vadFilter.reset()
+        if vadEnabled && sileroVAD == nil {
+            do {
+                sileroVAD = try SileroVAD()
+                NSLog("[Audio] Silero VAD initialized")
+            } catch {
+                NSLog("[Audio] Silero VAD init failed: %@, proceeding without VAD", String(describing: error))
+            }
+        }
+        sileroVAD?.reset()
 
         try startWithAVCapture()
     }
@@ -133,6 +158,9 @@ final class AudioCaptureEngine: NSObject, @unchecked Sendable, AVCaptureAudioDat
         converter = nil
         levelCounter = 0
         flushRemaining()
+        bufferLock.lock()
+        vadRemainder.removeAll()
+        bufferLock.unlock()
         NSLog("[Audio] Capture session stopped")
     }
 
@@ -214,10 +242,57 @@ final class AudioCaptureEngine: NSObject, @unchecked Sendable, AVCaptureAudioDat
     /// Emit all complete chunks from the buffer. Must be called with bufferLock held.
     private func emitFullChunks() {
         while buffer.count >= Self.chunkByteSize {
-            let chunk = buffer.prefix(Self.chunkByteSize)
+            let chunk = Data(buffer.prefix(Self.chunkByteSize))
             buffer.removeFirst(Self.chunkByteSize)
-            onAudioChunk?(Data(chunk))
+
+            if vadEnabled, let vad = sileroVAD {
+                let shouldEmit = runVAD(on: chunk, vad: vad)
+                if shouldEmit {
+                    onAudioChunk?(chunk)
+                }
+            } else {
+                onAudioChunk?(chunk)
+            }
         }
+    }
+
+    /// Convert Int16 PCM chunk to Float32, split into 1536-sample VAD frames,
+    /// and return whether this chunk should be emitted to ASR.
+    /// Must be called with bufferLock held.
+    private func runVAD(on chunk: Data, vad: SileroVAD) -> Bool {
+        // Int16 → Float32 [-1, 1]
+        let sampleCount = chunk.count / MemoryLayout<Int16>.size
+        chunk.withUnsafeBytes { raw in
+            let int16s = raw.bindMemory(to: Int16.self)
+            vadRemainder.reserveCapacity(vadRemainder.count + sampleCount)
+            for i in 0..<sampleCount {
+                vadRemainder.append(Float(int16s[i]) / 32768.0)
+            }
+        }
+
+        // Process all complete 1536-sample VAD frames
+        let previousState = vadFilter.state
+        var shouldEmit = vadFilter.state != .waitingForSpeech
+
+        while vadRemainder.count >= SileroVAD.chunkSize {
+            let vadChunk = Array(vadRemainder.prefix(SileroVAD.chunkSize))
+            vadRemainder.removeFirst(SileroVAD.chunkSize)
+
+            do {
+                let probability = try vad.process(vadChunk)
+                shouldEmit = vadFilter.shouldEmit(probability: probability)
+            } catch {
+                shouldEmit = true  // fail open
+            }
+        }
+
+        // Notify UI on state change
+        if vadFilter.state != previousState, let callback = onVADStateChange {
+            let newState = vadFilter.state
+            DispatchQueue.main.async { callback(newState) }
+        }
+
+        return shouldEmit
     }
 
     /// RMS → normalized 0..1 level from float PCM buffer.
