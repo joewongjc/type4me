@@ -48,17 +48,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         KeychainService.migrateIfNeeded()
         HotwordStorage.seedIfNeeded()
 
-        // 历史记录字数迁移（异步执行，不阻塞启动）
-        Task {
-            await HistoryStore().migrateCharacterCounts()
-        }
-
         DebugFileLogger.startSession()
         DebugFileLogger.log("applicationDidFinishLaunching")
         floatingBarController = FloatingBarController(state: appState)
 
         // Bridge ASR events → AppState for floating bar display
         let session = self.session
+
+        // 历史记录字数迁移（用 session 自带的 historyStore，迁移后 UI 能刷新）
+        Task { await session.historyStore.migrateCharacterCounts() }
         let appState = self.appState
         let startSoundDelay = self.startSoundDelay
 

@@ -9,6 +9,7 @@ struct HotkeyRecorderView: View {
     @State private var isRecording = false
     @State private var eventMonitor: Any?
     @State private var pendingModifierCode: Int?
+    @State private var pendingModifierModifiers: UInt64 = 0
     @State private var modifierCaptureTask: Task<Void, Never>?
 
     var body: some View {
@@ -81,25 +82,27 @@ struct HotkeyRecorderView: View {
                 let pressed = isModifierPressed(keyCode: kc, flags: event.modifierFlags)
 
                 if pressed {
-                    // Modifier pressed: don't capture yet, wait for possible combo key
+                    // Modifier pressed: record co-modifiers, wait for possible combo key
                     pendingModifierCode = kc
+                    pendingModifierModifiers = modifierComboModifiers(for: kc, flags: event.modifierFlags)
                     modifierCaptureTask?.cancel()
                     modifierCaptureTask = Task {
                         try? await Task.sleep(for: .milliseconds(400))
                         guard !Task.isCancelled else { return }
                         await MainActor.run {
                             guard let pending = pendingModifierCode else { return }
-                            captureModifierOnlyKey(pending)
+                            captureModifierOnlyKey(pending, modifiers: pendingModifierModifiers)
                         }
                     }
                 } else {
-                    // Modifier released without any keyDown: capture as modifier-only
+                    // Modifier released: capture with co-modifiers
                     if let pending = pendingModifierCode {
                         modifierCaptureTask?.cancel()
                         modifierCaptureTask = nil
                         keyCode = pending
-                        modifiers = 0
+                        modifiers = pendingModifierModifiers
                         pendingModifierCode = nil
+                        pendingModifierModifiers = 0
                         stopRecording()
                     }
                 }
@@ -131,9 +134,9 @@ struct HotkeyRecorderView: View {
     }
 
     @MainActor
-    private func captureModifierOnlyKey(_ keyCode: Int) {
+    private func captureModifierOnlyKey(_ keyCode: Int, modifiers: UInt64 = 0) {
         self.keyCode = keyCode
-        modifiers = 0
+        self.modifiers = modifiers
         stopRecording()
     }
 
@@ -142,6 +145,7 @@ struct HotkeyRecorderView: View {
         modifierCaptureTask?.cancel()
         modifierCaptureTask = nil
         pendingModifierCode = nil
+        pendingModifierModifiers = 0
         if let monitor = eventMonitor {
             NSEvent.removeMonitor(monitor)
             eventMonitor = nil
@@ -161,6 +165,26 @@ struct HotkeyRecorderView: View {
         case 63: return flags.contains(.function)
         default: return false
         }
+    }
+
+    // MARK: - Modifier Combo Helpers
+
+    private func modifierFlag(for keyCode: Int) -> NSEvent.ModifierFlags? {
+        switch keyCode {
+        case 54, 55: return .command
+        case 56, 60: return .shift
+        case 58, 61: return .option
+        case 59, 62: return .control
+        default: return nil
+        }
+    }
+
+    private func modifierComboModifiers(for keyCode: Int, flags: NSEvent.ModifierFlags) -> UInt64 {
+        var clean = flags.intersection([.command, .shift, .option, .control])
+        if let own = modifierFlag(for: keyCode) {
+            clean.remove(own)
+        }
+        return clean.isEmpty ? 0 : UInt64(clean.rawValue)
     }
 
     // MARK: - Key Display Name

@@ -152,6 +152,9 @@ actor HistoryStore {
             updates.append((id: id, count: text.count))
         }
 
+        guard !updates.isEmpty else { return }
+
+        sqlite3_exec(db, "BEGIN TRANSACTION", nil, nil, nil)
         for update in updates {
             let updateSQL = "UPDATE recognition_history SET character_count = ? WHERE id = ?;"
             var updateStmt: OpaquePointer?
@@ -162,10 +165,8 @@ actor HistoryStore {
                 sqlite3_finalize(updateStmt)
             }
         }
-
-        if !updates.isEmpty {
-            NSLog("[HistoryStore] Migrated %d records with character counts", updates.count)
-        }
+        sqlite3_exec(db, "COMMIT", nil, nil, nil)
+        NSLog("[HistoryStore] Migrated %d records with character counts", updates.count)
     }
 
     // MARK: - Statistics
@@ -183,8 +184,13 @@ actor HistoryStore {
 
     /// 获取全部记录的统计信息（使用数据库聚合查询，高效）
     func getStatistics() async -> Statistics {
+        // Only sum duration for rows that have character_count, so averageSpeed
+        // is accurate even if some legacy rows haven't been migrated yet.
         let sql = """
-        SELECT COALESCE(SUM(duration_seconds), 0), COALESCE(SUM(character_count), 0), COUNT(*)
+        SELECT
+            COALESCE(SUM(CASE WHEN character_count IS NOT NULL THEN duration_seconds ELSE 0 END), 0),
+            COALESCE(SUM(character_count), 0),
+            COUNT(*)
         FROM recognition_history;
         """
         var stmt: OpaquePointer?
