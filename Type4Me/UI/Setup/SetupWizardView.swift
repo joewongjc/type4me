@@ -157,12 +157,16 @@ struct SetupWizardView: View {
     @State private var selectedProvider: ASRProvider = .volcano
     @State private var credentialValues: [String: String] = [:]
 
-    private var currentFields: [CredentialField] {
+    private var allFields: [CredentialField] {
         ASRProviderRegistry.configType(for: selectedProvider)?.credentialFields ?? []
     }
 
+    private var currentFields: [CredentialField] {
+        visibleASRFields(for: selectedProvider, fields: allFields)
+    }
+
     private var hasRequiredFields: Bool {
-        currentFields.filter { !$0.isOptional }.allSatisfy { field in
+        allFields.filter { !$0.isOptional }.allSatisfy { field in
             let val = credentialValues[field.key] ?? ""
             return !val.isEmpty
         }
@@ -251,6 +255,11 @@ struct SetupWizardView: View {
             .padding(.horizontal, 48)
             .padding(.bottom, 36)
         }
+    }
+
+    private func visibleASRFields(for provider: ASRProvider, fields: [CredentialField]) -> [CredentialField] {
+        guard provider == .baidu else { return fields }
+        return fields.filter { !["devPID", "cuid", "lmId"].contains($0.key) }
     }
 
     // MARK: - Step 5: Ready

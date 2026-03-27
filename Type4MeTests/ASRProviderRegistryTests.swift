@@ -10,7 +10,7 @@ final class ASRProviderRegistryTests: XCTestCase {
     }
 
     func testQuickOnlyProvidersOnlySupportQuickMode() {
-        for provider in [ASRProvider.bailian, .deepgram, .assemblyai] {
+        for provider in [ASRProvider.baidu, .bailian, .deepgram, .assemblyai] {
             XCTAssertTrue(ASRProviderRegistry.supports(.direct, for: provider))
             XCTAssertFalse(ASRProviderRegistry.supports(.performance, for: provider))
             XCTAssertEqual(
@@ -24,6 +24,10 @@ final class ASRProviderRegistryTests: XCTestCase {
     }
 
     func testResolvedModeFallsBackToDirectForUnsupportedPerformanceMode() {
+        XCTAssertEqual(
+            ASRProviderRegistry.resolvedMode(for: .performance, provider: .baidu).id,
+            ProcessingMode.directId
+        )
         XCTAssertEqual(
             ASRProviderRegistry.resolvedMode(for: .performance, provider: .bailian).id,
             ProcessingMode.directId
@@ -46,6 +50,9 @@ final class ASRProviderRegistryTests: XCTestCase {
             isBuiltin: false
         )
         let modes = [ProcessingMode.direct, ProcessingMode.performance, customMode]
+
+        let baiduModes = ASRProviderRegistry.supportedModes(from: modes, for: .baidu)
+        XCTAssertEqual(baiduModes.map(\.id), [ProcessingMode.directId, customMode.id])
 
         let bailianModes = ASRProviderRegistry.supportedModes(from: modes, for: .bailian)
         XCTAssertEqual(bailianModes.map(\.id), [ProcessingMode.directId, customMode.id])

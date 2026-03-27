@@ -17,6 +17,7 @@ enum ASRProvider: String, CaseIterable, Codable, Sendable {
     case aliyun
     case bailian
     case tencent
+    case baidu
     case iflytek
     // Fallback
     case custom
@@ -34,6 +35,7 @@ enum ASRProvider: String, CaseIterable, Codable, Sendable {
         case .aliyun:   return L("阿里云", "Alibaba Cloud")
         case .bailian:  return L("阿里云百炼", "Alibaba Cloud Bailian")
         case .tencent:  return L("腾讯云", "Tencent Cloud")
+        case .baidu:    return L("百度智能云", "Baidu AI Cloud")
         case .iflytek:  return L("讯飞", "iFLYTEK")
         case .custom:   return L("自定义", "Custom")
         }

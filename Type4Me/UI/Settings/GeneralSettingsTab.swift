@@ -180,8 +180,12 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
     @State private var downloadTask: Task<Void, Error>? = nil
     @State private var confirmingDelete: ModelManager.StreamingModel? = nil
 
-    private var currentASRFields: [CredentialField] {
+    private var allASRFields: [CredentialField] {
         ASRProviderRegistry.configType(for: selectedASRProvider)?.credentialFields ?? []
+    }
+
+    private var currentASRFields: [CredentialField] {
+        visibleASRFields(for: selectedASRProvider, fields: allASRFields)
     }
 
     /// Effective values: saved base + dirty edits overlaid (including clears).
@@ -194,7 +198,7 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
     }
 
     private var hasASRCredentials: Bool {
-        let required = currentASRFields.filter { !$0.isOptional }
+        let required = allASRFields.filter { !$0.isOptional }
         let effective = effectiveASRValues
         return required.allSatisfy { field in
             !(effective[field.key] ?? "").isEmpty
@@ -593,19 +597,21 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
     private func loadASRCredentialsForProvider(_ provider: ASRProvider) {
         testTask?.cancel()
         editedFields = []
+        var defaults: [String: String] = [:]
+        let fields = ASRProviderRegistry.configType(for: provider)?.credentialFields ?? []
+        for field in fields where !field.defaultValue.isEmpty {
+            defaults[field.key] = field.defaultValue
+        }
+
         if let values = KeychainService.loadASRCredentials(for: provider) {
-            asrCredentialValues = values
-            savedASRValues = values
+            let hydratedValues = defaults.merging(values) { _, new in new }
+            asrCredentialValues = hydratedValues
+            savedASRValues = hydratedValues
             hasStoredASR = true
             isEditingASR = !hasASRCredentials
         } else {
-            var defaults: [String: String] = [:]
-            let fields = ASRProviderRegistry.configType(for: provider)?.credentialFields ?? []
-            for field in fields where !field.defaultValue.isEmpty {
-                defaults[field.key] = field.defaultValue
-            }
             asrCredentialValues = defaults
-            savedASRValues = [:]
+            savedASRValues = defaults
             hasStoredASR = false
             isEditingASR = true
         }
@@ -660,6 +666,11 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
             hotwords: HotwordStorage.load(),
             boostingTableID: biasSettings.boostingTableID
         )
+    }
+
+    private func visibleASRFields(for provider: ASRProvider, fields: [CredentialField]) -> [CredentialField] {
+        guard provider == .baidu else { return fields }
+        return fields.filter { !["devPID", "cuid", "lmId"].contains($0.key) }
     }
 }
 
