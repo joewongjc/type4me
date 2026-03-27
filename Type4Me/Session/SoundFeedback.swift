@@ -9,6 +9,7 @@ enum StartSoundStyle: String, CaseIterable, Sendable {
     case chime     = "chime"
     case waterDrop1 = "waterDrop1"
     case waterDrop2 = "waterDrop2"
+    case keyboard  = "keyboard"
 
     var displayName: String {
         switch self {
@@ -16,6 +17,7 @@ enum StartSoundStyle: String, CaseIterable, Sendable {
         case .chime:      return L("电子提示音", "Chime")
         case .waterDrop1: return L("水滴 1", "Water Drop 1")
         case .waterDrop2: return L("水滴 2", "Water Drop 2")
+        case .keyboard:   return L("键盘", "Keyboard")
         }
     }
 }
@@ -80,7 +82,7 @@ enum SoundFeedback {
             _ = try? soundFileURL(for: startSpec)
             preparePlayersIfNeeded()
             // Pre-cache bundled sounds
-            for style in [StartSoundStyle.waterDrop1, .waterDrop2] {
+            for style in [StartSoundStyle.waterDrop1, .waterDrop2, .keyboard] {
                 if let url = bundledSoundURL(for: style) {
                     _ = try? preparedPlayer(forURL: url, label: style.rawValue)
                 }
@@ -102,7 +104,7 @@ enum SoundFeedback {
             return
         case .chime:
             play(spec: startSpec, retryCount: 2)
-        case .waterDrop1, .waterDrop2:
+        case .waterDrop1, .waterDrop2, .keyboard:
             playBundled(style: style)
         }
     }
@@ -111,7 +113,17 @@ enum SoundFeedback {
     static func playStop() {
         NSLog("[SoundFeedback] playStop")
         DebugFileLogger.log("sound playStop invoked")
-        play(spec: stopSpec)
+
+        // Check if keyboard style is selected - use keyboard-end.wav instead
+        let style = StartSoundStyle(
+            rawValue: UserDefaults.standard.string(forKey: "tf_startSound") ?? StartSoundStyle.chime.rawValue
+        ) ?? .chime
+
+        if style == .keyboard {
+            playBundledEnd(filename: "keyboard-end")
+        } else {
+            play(spec: stopSpec)
+        }
     }
 
     /// Low descending fifth (330→220 Hz). Unmistakable but not harsh.
@@ -126,7 +138,7 @@ enum SoundFeedback {
         switch style {
         case .off: return
         case .chime: play(spec: startSpec, retryCount: 0)
-        case .waterDrop1, .waterDrop2: playBundled(style: style)
+        case .waterDrop1, .waterDrop2, .keyboard: playBundled(style: style)
         }
     }
 
@@ -137,6 +149,7 @@ enum SoundFeedback {
         switch style {
         case .waterDrop1: filename = "water-drop-1"
         case .waterDrop2: filename = "water-drop-2"
+        case .keyboard: filename = "keyboard-start"
         default: return nil
         }
         // Look in app bundle Resources/Sounds
@@ -168,6 +181,36 @@ enum SoundFeedback {
             } catch {
                 NSLog("[SoundFeedback] %@ play failed: %@", style.rawValue, String(describing: error))
                 play(spec: startSpec, retryCount: 0)
+            }
+        }
+    }
+
+    /// Play a bundled end sound (keyboard-end) for stop feedback.
+    private static func playBundledEnd(filename: String) {
+        DispatchQueue.main.async {
+            // Look in app bundle Resources/Sounds
+            guard let url = Bundle.main.url(forResource: filename, withExtension: "wav", subdirectory: "Sounds") ?? {
+                // Fallback: look in Application Support
+                let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+                    .appendingPathComponent("Type4Me", isDirectory: true)
+                    .appendingPathComponent("Sounds", isDirectory: true)
+                let fallbackURL = appSupport.appendingPathComponent("\(filename).wav")
+                return FileManager.default.fileExists(atPath: fallbackURL.path) ? fallbackURL : nil
+            }() else {
+                NSLog("[SoundFeedback] bundled end sound not found: %@, falling back to stop", filename)
+                play(spec: stopSpec)
+                return
+            }
+            do {
+                let player = try preparedPlayer(forURL: url, label: filename)
+                player.stop()
+                player.currentTime = 0
+                player.volume = 0.5
+                _ = player.play()
+                NSLog("[SoundFeedback] %@ played OK", filename)
+            } catch {
+                NSLog("[SoundFeedback] %@ play failed: %@", filename, String(describing: error))
+                play(spec: stopSpec)
             }
         }
     }

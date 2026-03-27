@@ -489,6 +489,12 @@ actor RecognitionSession {
                 }
             }
 
+            // Check if session was aborted (ESC pressed during processing)
+            guard state == .postProcessing || state == .injecting || state == .finishing else {
+                DebugFileLogger.log("stop: session was aborted (state=\(state)), skipping injection")
+                return
+            }
+
             DebugFileLogger.log("stop: injecting +\(ContinuousClock.now - stopT0)")
             state = .injecting
             let injectionOutcome = injectionEngine.inject(finalText)
@@ -695,7 +701,8 @@ actor RecognitionSession {
     /// Aggressively tear down all resources and return to idle.
     /// Used when a new recording is requested but the session is stuck
     /// (e.g. stopRecording hung on a WebSocket timeout).
-    private func forceReset() async {
+    /// Also called when user presses ESC to abort recording.
+    func forceReset() async {
         NSLog("[Session] forceReset from state=%@", String(describing: state))
         DebugFileLogger.log("forceReset from state=\(state)")
 

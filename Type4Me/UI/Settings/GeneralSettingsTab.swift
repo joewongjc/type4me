@@ -35,6 +35,7 @@ extension SettingsCardHelpers {
     func settingsGroupCard<Content: View>(
         _ title: String,
         icon: String? = nil,
+        trailing: AnyView? = nil,
         @ViewBuilder content: () -> Content
     ) -> some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -48,6 +49,10 @@ extension SettingsCardHelpers {
                     .font(.system(size: 11, weight: .semibold))
                     .tracking(1.2)
                     .foregroundStyle(TF.settingsTextTertiary)
+                Spacer()
+                if let trailing {
+                    trailing
+                }
             }
             .padding(.bottom, 14)
 
@@ -1108,6 +1113,7 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
     @AppStorage("tf_volumeReduction") private var volumeReduction = -1
     @AppStorage("tf_visualStyle") private var visualStyle = "timeline"
     @AppStorage("tf_language") private var language = AppLanguage.systemDefault
+    @AppStorage("tf_escAbortEnabled") private var escAbortEnabled = true
 
     @State private var hasMic = false
     @State private var hasAccessibility = false
@@ -1147,12 +1153,28 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
                         .frame(maxWidth: .infinity)
                     volumeReductionRow
                         .frame(maxWidth: .infinity)
+                    escAbortRow
+                        .frame(maxWidth: .infinity)
                 }
             }
 
             Spacer().frame(height: 16)
 
-            settingsGroupCard(L("系统权限", "Permissions"), icon: "lock.shield.fill") {
+            settingsGroupCard(
+                L("系统权限", "Permissions"),
+                icon: "lock.shield.fill",
+                trailing: AnyView(
+                    Button {
+                        checkPermissions()
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 11))
+                            .foregroundStyle(TF.settingsTextTertiary)
+                    }
+                    .buttonStyle(.plain)
+                    .help(L("刷新权限状态", "Refresh permission status"))
+                )
+            ) {
                 HStack(spacing: 12) {
                     permissionBlock(
                         icon: "mic.fill", name: L("麦克风", "Microphone"), granted: hasMic
@@ -1338,6 +1360,26 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
                     ("20", "20%"),
                     ("10", "10%"),
                     ("0", L("静音", "Mute")),
+                ]
+            )
+        }
+        .padding(.vertical, 6)
+    }
+
+    private var escAbortRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(L("ESC 打断录音", "ESC to Abort").uppercased())
+                .font(.system(size: 10, weight: .semibold))
+                .tracking(0.8)
+                .foregroundStyle(TF.settingsTextTertiary)
+            settingsDropdown(
+                selection: Binding(
+                    get: { escAbortEnabled ? "on" : "off" },
+                    set: { escAbortEnabled = $0 == "on" }
+                ),
+                options: [
+                    ("on", L("开启", "On")),
+                    ("off", L("关闭", "Off")),
                 ]
             )
         }
