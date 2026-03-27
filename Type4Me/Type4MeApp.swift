@@ -411,6 +411,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return description
         }
 
+        if let localizedError = error as? LocalizedError,
+           let description = localizedError.errorDescription,
+           !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return description
+        }
+
         let nsError = error as NSError
         if let description = nsError.userInfo[NSLocalizedDescriptionKey] as? String,
            !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {

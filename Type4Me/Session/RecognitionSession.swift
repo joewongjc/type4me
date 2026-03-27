@@ -92,6 +92,8 @@ actor RecognitionSession {
     private var speculativeLLMTask: Task<String?, Never>?
     private var speculativeLLMText: String = ""
     private var speculativeDebounceTask: Task<Void, Never>?
+    /// Stores the last LLM error from the early/fresh LLM task, consumed once by stopRecording().
+    private var pendingLLMError: Error?
 
     // MARK: - Toggle
 
@@ -365,7 +367,7 @@ actor RecognitionSession {
                     let prompt = promptContext.expandContextVariables(currentMode.prompt)
                     let client = currentLLMClient()
                     state = .postProcessing
-                    DebugFileLogger.log("stop: fresh LLM firing with \(earlyText.count) chars +\(ContinuousClock.now - stopT0)")
+                    DebugFileLogger.log("stop: fresh LLM firing mode=\(currentMode.name) model=\(llmConfig.model) with \(earlyText.count) chars +\(ContinuousClock.now - stopT0)")
                     earlyLLMTask = Task {
                         do {
                             let result = try await client.process(
@@ -375,6 +377,7 @@ actor RecognitionSession {
                             return result
                         } catch {
                             DebugFileLogger.log("stop: fresh LLM FAILED +\(ContinuousClock.now - stopT0) error=\(error)")
+                            await self.setPendingLLMError(error)
                             return nil
                         }
                     }
@@ -454,38 +457,50 @@ actor RecognitionSession {
             if let earlyTask = earlyLLMTask {
                 state = .postProcessing
                 DebugFileLogger.log("stop: awaiting early LLM result +\(ContinuousClock.now - stopT0)")
-                if let result = await earlyTask.value, !result.isEmpty {
+                let earlyResult = await earlyTask.value
+                if let result = earlyResult, !result.isEmpty {
                     DebugFileLogger.log("stop: early LLM result received \(result.count) chars +\(ContinuousClock.now - stopT0)")
                     processedText = result
                     finalText = result
                     onASREvent?(.processingResult(text: result))
                 } else {
-                    DebugFileLogger.log("stop: early LLM returned nil/empty, using raw +\(ContinuousClock.now - stopT0)")
-                    onASREvent?(.processingResult(text: rawText))
+                    let err = pendingLLMError ?? LLMError.emptyResponse(nil)
+                    DebugFileLogger.log("stop: early LLM nil/empty/error, showing to user: \(err)")
+                    finishWithLLMError(err)
+                    return
                 }
             } else if needsLLM {
                 state = .postProcessing
                 if let llmConfig = KeychainService.loadLLMConfig() {
+                    DebugFileLogger.log("stop: sync LLM firing mode=\(currentMode.name) model=\(llmConfig.model) with \(finalText.count) chars")
                     do {
                         let client = currentLLMClient()
                         let result = try await client.process(
                             text: finalText, prompt: promptContext.expandContextVariables(currentMode.prompt), config: llmConfig
                         )
                         if result.isEmpty {
-                            logger.warning("LLM returned empty, using raw text")
-                            onASREvent?(.processingResult(text: rawText))
+                            // Shouldn't reach here since DoubaoChatClient throws emptyResponse,
+                            // but guard defensively for other LLM client implementations.
+                            DebugFileLogger.log("stop: sync LLM empty result")
+                            finishWithLLMError(LLMError.emptyResponse(nil))
+                            return
                         } else {
                             processedText = result
                             finalText = result
                             onASREvent?(.processingResult(text: result))
                         }
                     } catch {
-                        logger.error("LLM failed: \(error), using raw text")
-                        onASREvent?(.processingResult(text: rawText))
+                        logger.error("LLM failed: \(error)")
+                        DebugFileLogger.log("stop: sync LLM FAILED error=\(error)")
+                        finishWithLLMError(error)
+                        return
                     }
                 } else {
-                    logger.warning("No LLM credentials, skipping post-processing")
-                    onASREvent?(.processingResult(text: rawText))
+                    DebugFileLogger.log("stop: no LLM credentials")
+                    finishWithLLMError(NSError(domain: "Type4Me", code: -10, userInfo: [
+                        NSLocalizedDescriptionKey: L("未配置 LLM 凭证", "LLM credentials not configured")
+                    ]))
+                    return
                 }
             }
 
@@ -661,7 +676,7 @@ actor RecognitionSession {
         let prompt = promptContext.expandContextVariables(currentMode.prompt)
 
         let client = currentLLMClient()
-        DebugFileLogger.log("speculative LLM: firing with \(text.count) chars")
+        DebugFileLogger.log("speculative LLM: firing mode=\(currentMode.name) model=\(llmConfig.model) with \(text.count) chars")
         speculativeLLMTask = Task {
             do {
                 let result = try await client.process(
@@ -680,6 +695,23 @@ actor RecognitionSession {
         speculativeDebounceTask?.cancel()
         speculativeDebounceTask = nil
         // Don't cancel speculativeLLMTask here — stopRecording may reuse it
+    }
+
+    private func setPendingLLMError(_ error: Error) {
+        pendingLLMError = error
+    }
+
+    /// Emit an LLM error event and reset session state.
+    /// Call this from stopRecording() whenever LLM post-processing fails.
+    private func finishWithLLMError(_ error: Error) {
+        pendingLLMError = nil
+        onASREvent?(.error(error))
+        onASREvent?(.completed)
+        state = .idle
+        hasEmittedReadyForCurrentSession = false
+        currentTranscript = .empty
+        resetSpeculativeLLM()
+        SystemVolumeManager.restore()
     }
 
     private func resetSpeculativeLLM() {

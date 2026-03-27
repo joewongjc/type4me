@@ -58,20 +58,19 @@ actor DoubaoChatClient: LLMClient {
         }
         guard http.statusCode == 200 else {
             logger.error("LLM HTTP \(http.statusCode)")
+            DebugFileLogger.log("LLM[\(config.model)]: HTTP \(http.statusCode)")
             throw LLMError.requestFailed(http.statusCode)
         }
 
         // Parse SSE stream
         var result = ""
         var lineCount = 0
-        var firstNonSSELine: String?
+        var firstDataLine: String?
         for try await line in bytes.lines {
             lineCount += 1
-            guard line.hasPrefix("data: ") else {
-                if firstNonSSELine == nil && !line.isEmpty { firstNonSSELine = String(line.prefix(200)) }
-                continue
-            }
+            guard line.hasPrefix("data: ") else { continue }
             let payload = String(line.dropFirst(6))
+            if firstDataLine == nil { firstDataLine = String(payload.prefix(300)) }
             if payload == "[DONE]" { break }
             guard let data = payload.data(using: .utf8),
                   let chunk = try? JSONDecoder().decode(ChatStreamChunk.self, from: data),
@@ -81,7 +80,12 @@ actor DoubaoChatClient: LLMClient {
         }
 
         if result.isEmpty && lineCount > 0 {
-            logger.warning("LLM returned \(lineCount) lines but 0 content chars, first non-SSE line: \(firstNonSSELine ?? "(none)")")
+            DebugFileLogger.log("LLM[\(config.model)]: \(lineCount) lines but 0 content chars; first data=\(firstDataLine ?? "(none)")")
+            throw LLMError.emptyResponse(firstDataLine)
+        }
+        if result.isEmpty {
+            DebugFileLogger.log("LLM[\(config.model)]: 0 lines received (connection closed immediately)")
+            throw LLMError.emptyResponse(nil)
         }
         logger.info("LLM result: \(result.count) chars")
 
@@ -123,7 +127,27 @@ struct ChunkDelta: Decodable, Sendable {
     let content: String?
 }
 
-enum LLMError: Error {
+enum LLMError: Error, LocalizedError {
     case invalidURL
     case requestFailed(Int)
+    case emptyResponse(String?)
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidURL:
+            return L("LLM 地址无效", "Invalid LLM URL")
+        case .requestFailed(let code):
+            switch code {
+            case 401: return L("LLM 鉴权失败，请检查 API Key", "LLM auth failed, check API Key")
+            case 429: return L("LLM 请求超限或余额不足", "LLM rate limit or insufficient balance")
+            case 500, 502, 503: return L("LLM 服务异常 (\(code))", "LLM service error (\(code))")
+            default:  return L("LLM 请求失败 (\(code))", "LLM request failed (\(code))")
+            }
+        case .emptyResponse(let raw):
+            if let raw {
+                return L("LLM 未返回内容: \(raw)", "LLM returned no content: \(raw)")
+            }
+            return L("LLM 未返回内容", "LLM returned no content")
+        }
+    }
 }

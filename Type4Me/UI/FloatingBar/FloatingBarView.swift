@@ -42,7 +42,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
         case .done:
             return feedbackWidth(for: state.feedbackMessage)
         case .error:
-            return feedbackWidth(for: state.feedbackMessage)
+            return TF.barWidth
         case .hidden:
             return TF.barHeight
         }
@@ -87,13 +87,18 @@ struct FloatingBarView<S: FloatingBarState>: View {
     // MARK: - Capsule Container
 
     private var capsuleBar: some View {
-        barContent
+        let cornerRadius: CGFloat = TF.barHeight / 2
+        return barContent
             .animation(TF.springSnappy, value: state.barPhase)
-            .frame(width: capsuleWidth, height: TF.barHeight)
-            .clipShape(Capsule())
+            .frame(
+                width: capsuleWidth,
+                height: state.barPhase == .error ? nil : TF.barHeight
+            )
+            .padding(.vertical, state.barPhase == .error ? 14 : 0)
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .background {
                 capsuleBackground
-                    .clipShape(Capsule())
+                    .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             }
             .shadow(color: Color(white: 0.08, opacity: 0.5), radius: 5, x: 0, y: 0)
             .animation(TF.springSnappy, value: state.barPhase)
@@ -205,14 +210,18 @@ struct FloatingBarView<S: FloatingBarState>: View {
     }
 
     private var errorContent: some View {
-        HStack(spacing: 10) {
+        HStack(alignment: .top, spacing: 10) {
             ErrorDot()
+                .padding(.top, 1)
 
             Text(state.feedbackMessage)
-                .font(.system(size: 14, weight: .medium))
+                .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(.white)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, 16)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Background & Border
