@@ -21,8 +21,6 @@ struct AboutTab: View {
             SettingsDivider()
             SettingsRow(label: L("平台", "Platform"), value: "macOS 14+")
             SettingsDivider()
-            SettingsRow(label: L("引擎", "Engine"), value: L("火山引擎 Doubao Bigmodel", "Volcano Doubao Bigmodel"))
-            SettingsDivider()
             SettingsRow(label: L("许可证", "License"), value: "MIT")
 
             Spacer().frame(height: 24)
