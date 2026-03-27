@@ -6,7 +6,20 @@ import ApplicationServices
 // MARK: - Shared Types
 
 enum SettingsTestStatus: Equatable {
-    case idle, testing, success, failed(String)
+    case idle, testing, saved, success, failed(String)
+
+    var badgeText: String? {
+        switch self {
+        case .idle, .testing:
+            return nil
+        case .saved:
+            return L("已保存", "Saved")
+        case .success:
+            return L("连接成功", "Connected")
+        case .failed(let msg):
+            return msg
+        }
+    }
 }
 
 // MARK: - Shared UI Helpers
@@ -137,10 +150,19 @@ extension SettingsCardHelpers {
             ProgressView()
                 .scaleEffect(0.6)
                 .frame(width: 16, height: 16)
+        case .saved:
+            HStack(spacing: 4) {
+                Circle().fill(TF.settingsAccentGreen).frame(width: 6, height: 6)
+                Text(status.badgeText ?? "")
+                    .font(.system(size: 10))
+                    .foregroundStyle(TF.settingsAccentGreen)
+            }
         case .success:
             HStack(spacing: 4) {
                 Circle().fill(TF.settingsAccentGreen).frame(width: 6, height: 6)
-                Text(L("成功", "OK")).font(.system(size: 10)).foregroundStyle(TF.settingsAccentGreen)
+                Text(status.badgeText ?? "")
+                    .font(.system(size: 10))
+                    .foregroundStyle(TF.settingsAccentGreen)
             }
         case .failed(let msg):
             HStack(spacing: 4) {
@@ -638,7 +660,7 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
             editedFields = []
             hasStoredASR = true
             isEditingASR = false
-            asrTestStatus = .success
+            asrTestStatus = .saved
         } catch {
             asrTestStatus = .failed(L("保存失败", "Save failed"))
         }
@@ -890,7 +912,7 @@ struct LLMSettingsCard: View, SettingsCardHelpers {
             editedFields = []
             hasStoredLLM = true
             isEditingLLM = false
-            llmTestStatus = .success
+            llmTestStatus = .saved
         } catch {
             llmTestStatus = .failed(L("保存失败", "Save failed"))
         }
