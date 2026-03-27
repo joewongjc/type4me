@@ -83,7 +83,7 @@ if [ -f "$INSTALL_LIB/libonnxruntime.a" ]; then
     rm -rf "$BUILD_DIR/sherpa-onnx/build-swift-macos/sherpa-onnx.xcframework"
     xcodebuild -create-xcframework \
         -library "$INSTALL_LIB/libsherpa-onnx.a" \
-        -headers "$INSTALL_LIB/../install/include" \
+        -headers "$INSTALL_LIB/../include" \
         -output "$BUILD_DIR/sherpa-onnx/build-swift-macos/sherpa-onnx.xcframework"
     echo "→ xcframework rebuilt with onnxruntime"
 fi
