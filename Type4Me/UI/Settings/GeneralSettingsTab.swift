@@ -344,6 +344,11 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
                 (L("可用模型", "Models"), L("查看", "view"), URL(string: "https://www.assemblyai.com/docs/getting-started/models")!),
                 (L("API Key", "API Key"), L("获取", "get"), URL(string: "https://www.assemblyai.com/docs/faq/how-to-get-your-api-key")!),
             ]
+        case .soniox:
+            return [
+                (L("可用模型", "Models"), L("查看", "view"), URL(string: "https://soniox.com/docs/stt/models")!),
+                (L("API Key", "API Key"), L("获取", "get"), URL(string: "https://console.soniox.com")!),
+            ]
         case .bailian:
             return [
                 (L("可用模型", "Models"), L("查看", "view"), URL(string: "https://help.aliyun.com/zh/model-studio/fun-asr-realtime-websocket-api")!),

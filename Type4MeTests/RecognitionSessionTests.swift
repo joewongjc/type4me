@@ -40,4 +40,14 @@ final class RecognitionSessionTests: XCTestCase {
         let mode = await session.currentModeForTesting()
         XCTAssertEqual(mode.id, ProcessingMode.directId)
     }
+
+    func testSwitchModeDirectWorksForSoniox() async {
+        KeychainService.selectedASRProvider = .soniox
+        let session = RecognitionSession()
+
+        await session.switchMode(to: .direct)
+
+        let mode = await session.currentModeForTesting()
+        XCTAssertEqual(mode.id, ProcessingMode.directId)
+    }
 }

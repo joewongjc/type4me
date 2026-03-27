@@ -47,6 +47,11 @@ enum ASRProviderRegistry {
                 createClient: { AssemblyAIASRClient() },
                 capabilities: .streaming
             ),
+            .soniox: ProviderEntry(
+                configType: SonioxASRConfig.self,
+                createClient: { SonioxASRClient() },
+                capabilities: .streaming
+            ),
             .bailian: ProviderEntry(
                 configType: BailianASRConfig.self,
                 createClient: { BailianASRClient() },
