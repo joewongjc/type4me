@@ -12,6 +12,7 @@ protocol FloatingBarState: AnyObject, Observable {
     var processingFinishTime: Date? { get }
     var transcriptionText: String { get }
     var recordingStartDate: Date? { get }
+    var onCancelRecording: (() -> Void)? { get }
 }
 
 /// Dark-themed floating transcription bar with smooth morphing between states.
@@ -36,7 +37,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
         case .preparing:
             return TF.barHeight
         case .recording:
-            return state.segments.isEmpty ? TF.barHeight : recordingPeakWidth
+            return state.segments.isEmpty ? 88.0 : recordingPeakWidth
         case .processing:
             return measureText(state.currentMode.processingLabel) + 66.0
         case .done:
@@ -67,7 +68,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
             guard state.barPhase == .recording else { return }
             let text = newSegments.map(\.text).joined()
             let textWidth = measureText(text)
-            let needed = min(TF.barWidth, max(TF.barHeight, textWidth + 66.0))
+            let needed = min(TF.barWidth, max(TF.barHeight, textWidth + 98.0))
             if needed > recordingPeakWidth {
                 // Growing: fixed velocity 250pt/s
                 let distance = needed - recordingPeakWidth
@@ -87,14 +88,13 @@ struct FloatingBarView<S: FloatingBarState>: View {
     // MARK: - Capsule Container
 
     private var capsuleBar: some View {
-        let cornerRadius: CGFloat = TF.barHeight / 2
+        let cornerRadius: CGFloat = 14
         return barContent
             .animation(TF.springSnappy, value: state.barPhase)
             .frame(
                 width: capsuleWidth,
                 height: state.barPhase == .error ? nil : TF.barHeight
             )
-            .padding(.vertical, state.barPhase == .error ? 14 : 0)
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .background {
                 capsuleBackground
@@ -153,7 +153,11 @@ struct FloatingBarView<S: FloatingBarState>: View {
 
     private var recordingContent: some View {
         HStack(spacing: 10) {
-            // Module 1: dot (fixed position, 14pt from left edge)
+            // Cancel button (left side, inside bar)
+            CancelButton { state.onCancelRecording?() }
+                .transition(.scale(scale: 0.6).combined(with: .opacity))
+
+            // Module 1: dot (fixed position)
             RecordingDot(meter: state.audioLevel)
 
             // Module 2: text container (fills remaining space, grows with frame)
@@ -183,10 +187,11 @@ struct FloatingBarView<S: FloatingBarState>: View {
                         }
                     }
                     .padding(.trailing, 4)
+                    .allowsHitTesting(false)
                     .transition(.opacity)
             }
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, 12)
     }
 
     private var processingContent: some View {
@@ -210,9 +215,8 @@ struct FloatingBarView<S: FloatingBarState>: View {
     }
 
     private var errorContent: some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .center, spacing: 10) {
             ErrorDot()
-                .padding(.top, 1)
 
             Text(state.feedbackMessage)
                 .font(.system(size: 13, weight: .medium))
@@ -221,6 +225,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, 16)
+        .padding(.vertical, 14)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
@@ -293,7 +298,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
                 breathe = true
             }
         case .recording:
-            recordingPeakWidth = TF.barHeight
+            recordingPeakWidth = 88.0
             breathe = false
             withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) {
                 breathe = true
@@ -487,6 +492,31 @@ struct ErrorDot: View {
                 .offset(y: -0.5)
         }
         .frame(width: 24, height: 24)
+    }
+}
+
+// MARK: - Cancel Button
+
+struct CancelButton: View {
+
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                Circle()
+                    .fill(Color(white: 0.15, opacity: isHovered ? 0.95 : 0.85))
+                    .frame(width: 22, height: 22)
+
+                Image(systemName: "xmark")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.white.opacity(isHovered ? 1.0 : 0.7))
+            }
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+        .animation(.easeInOut(duration: 0.12), value: isHovered)
     }
 }
 

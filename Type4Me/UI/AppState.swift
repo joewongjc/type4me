@@ -210,6 +210,7 @@ final class AppState {
 
     @ObservationIgnored var onShowPanel: (() -> Void)?
     @ObservationIgnored var onHidePanel: (() -> Void)?
+    @ObservationIgnored var onCancelRecording: (() -> Void)?
 
     // MARK: Update Check
 
@@ -314,6 +315,14 @@ final class AppState {
         segments = []
         audioLevel.current = 0
         onHidePanel?()
+    }
+
+    func showCancelled() {
+        feedbackMessage = L("已取消", "Cancelled")
+        audioLevel.current = 0
+        recordingStartDate = nil
+        barPhase = .done
+        scheduleAutoHide(for: .done, delay: .seconds(0.8))
     }
 
     // MARK: Computed

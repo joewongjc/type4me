@@ -324,6 +324,17 @@ actor RecognitionSession {
 
     // MARK: - Stop
 
+    /// Cancel an in-progress recording: tear down all resources without injecting any text.
+    func cancelRecording() async {
+        guard state == .recording || state == .starting else {
+            logger.warning("cancelRecording called but state is \(String(describing: self.state))")
+            return
+        }
+        DebugFileLogger.log("cancelRecording: discarding session from state=\(state)")
+        SystemVolumeManager.restore()
+        await forceReset()
+    }
+
     func stopRecording() async {
         guard state == .recording else {
             logger.warning("stopRecording called but state is \(String(describing: self.state))")
@@ -686,6 +697,7 @@ actor RecognitionSession {
                 return result
             } catch {
                 DebugFileLogger.log("speculative LLM: failed \(error)")
+                await self.setPendingLLMError(error)
                 return nil
             }
         }
@@ -741,7 +753,7 @@ actor RecognitionSession {
         await finishAudioChunkPipeline(timeout: .milliseconds(100))
 
         if let client = asrClient {
-            await client.disconnect()
+            Task { await client.disconnect() }  // fire-and-forget: don't block reset on WebSocket teardown
         }
         asrClient = nil
 

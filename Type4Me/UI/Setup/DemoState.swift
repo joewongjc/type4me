@@ -129,4 +129,6 @@ final class DemoState {
 
 // MARK: - FloatingBarState Conformance
 
-extension DemoState: FloatingBarState {}
+extension DemoState: FloatingBarState {
+    var onCancelRecording: (() -> Void)? { nil }
+}
