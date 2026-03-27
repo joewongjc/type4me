@@ -139,6 +139,12 @@ bash scripts/deploy.sh
 
 脚本会自动完成：编译 → 打包为 `.app` → 签名 → 安装到 `/Applications/` → 启动。
 
+如果需要生成可分发的 DMG 安装包，可执行：
+
+```bash
+bash scripts/build-dmg.sh
+```
+
 #### 第四步：下载识别模型
 
 本地识别需要下载模型文件。三种模型可选：
