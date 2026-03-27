@@ -72,6 +72,21 @@ enum SonioxProtocol {
         Data()
     }
 
+    static func finalizeMessage(trailingSilenceMs: Int? = nil) -> String {
+        var payload: [String: Any] = ["type": "finalize"]
+        if let trailingSilenceMs {
+            payload["trailing_silence_ms"] = trailingSilenceMs
+        }
+
+        guard let data = try? JSONSerialization.data(withJSONObject: payload, options: []),
+              let message = String(data: data, encoding: .utf8)
+        else {
+            return #"{"type":"finalize"}"#
+        }
+
+        return message
+    }
+
     static func parseServerEvent(from data: Data) throws -> SonioxServerEvent? {
         let decoder = JSONDecoder()
         let response = try decoder.decode(Response.self, from: data)

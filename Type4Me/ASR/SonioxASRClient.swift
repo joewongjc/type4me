@@ -84,14 +84,13 @@ actor SonioxASRClient: SpeechRecognizer {
 
         startReceiveLoop()
 
-        try await gate.waitUntilOpen(timeout: .seconds(5))
-        try await task.send(
-            .string(
-                SonioxProtocol.buildStartMessage(
-                    config: sonioxConfig,
-                    options: options
-                )
-            )
+        try await sendStartMessage(
+            SonioxProtocol.buildStartMessage(
+                config: sonioxConfig,
+                options: options
+            ),
+            over: task,
+            timeout: .seconds(5)
         )
         try await gate.waitForValidationWindow(timeout: .milliseconds(500))
         logger.info("Soniox WebSocket connected")
@@ -106,7 +105,8 @@ actor SonioxASRClient: SpeechRecognizer {
     func endAudio() async throws {
         guard let task = webSocketTask else { return }
         didRequestEnd = true
-        try await task.send(.data(SonioxProtocol.endOfStreamFrame()))
+        try await task.send(.string(SonioxProtocol.finalizeMessage(trailingSilenceMs: 300)))
+        try await task.send(.string(""))
     }
 
     func disconnect() {
@@ -142,6 +142,8 @@ actor SonioxASRClient: SpeechRecognizer {
                         break
                     case .finished:
                         await self.markFinished()
+                        await self.emitEvent(.completed)
+                        return
                     case .fatal(let error):
                         await self.connectionGate?.markFailure(error)
                         await self.emitEvent(.error(error))
@@ -224,6 +226,26 @@ actor SonioxASRClient: SpeechRecognizer {
 
     private func markFinished() {
         didReceiveFinished = true
+    }
+
+    private func sendStartMessage(
+        _ message: String,
+        over task: URLSessionWebSocketTask,
+        timeout: Duration
+    ) async throws {
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            group.addTask {
+                try await task.send(.string(message))
+            }
+            group.addTask {
+                try? await Task.sleep(for: timeout)
+                throw SonioxASRError.handshakeTimedOut
+            }
+
+            let result: Void? = try await group.next()
+            group.cancelAll()
+            return result ?? ()
+        }
     }
 }
 

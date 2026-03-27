@@ -40,6 +40,16 @@ final class SonioxProtocolTests: XCTestCase {
         XCTAssertEqual(terms, ["Type4Me", "soniox"])
     }
 
+    func testFinalizeMessage_canIncludeTrailingSilence() throws {
+        let message = SonioxProtocol.finalizeMessage(trailingSilenceMs: 300)
+        let payload = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: Data(message.utf8)) as? [String: Any]
+        )
+
+        XCTAssertEqual(payload["type"] as? String, "finalize")
+        XCTAssertEqual(payload["trailing_silence_ms"] as? Int, 300)
+    }
+
     func testParseServerEvent_buildsTranscriptUpdateAndIgnoresMarkers() throws {
         let message = """
         {
@@ -78,6 +88,20 @@ final class SonioxProtocolTests: XCTestCase {
 
         let event = try XCTUnwrap(SonioxProtocol.parseServerEvent(from: Data(message.utf8)))
         XCTAssertEqual(event, .finished)
+    }
+
+    func testParseServerEvent_prefersTranscriptOverFinishedWhenFinalTokensPresent() throws {
+        let message = """
+        {
+          "tokens": [
+            { "text": "done", "is_final": true }
+          ],
+          "finished": true
+        }
+        """
+
+        let event = try XCTUnwrap(SonioxProtocol.parseServerEvent(from: Data(message.utf8)))
+        XCTAssertEqual(event, .transcript(.init(finalizedText: "done", partialText: "")))
     }
 
     func testParseServerEvent_parsesErrorResponse() throws {
