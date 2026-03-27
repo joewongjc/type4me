@@ -13,6 +13,14 @@ enum SettingsTestStatus: Equatable {
 
 fileprivate protocol SettingsCardHelpers {}
 
+private struct ProviderGuideLink: Identifiable {
+    let prefix: String?
+    let label: String
+    let url: URL
+
+    var id: String { "\(prefix ?? "")-\(label)-\(url.absoluteString)" }
+}
+
 @MainActor
 extension SettingsCardHelpers {
 
@@ -209,6 +217,60 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
         ASRProviderRegistry.supportedModesSummary(for: selectedASRProvider)
     }
 
+    private var currentASRGuideLinks: [ProviderGuideLink] {
+        switch selectedASRProvider {
+        case .volcano:
+            return [
+                ProviderGuideLink(
+                    prefix: L("查看", "View"),
+                    label: L("配置指南", "setup guide"),
+                    url: URL(string: "https://my.feishu.cn/wiki/QdEnwBMfUi0mN4k3ucMcNYhUnXr")!
+                )
+            ]
+        case .deepgram:
+            return [
+                ProviderGuideLink(
+                    prefix: L("查看可用模型", "View available models"),
+                    label: L("点击这里", "here"),
+                    url: URL(string: "https://developers.deepgram.com/docs/models-languages-overview/")!
+                ),
+                ProviderGuideLink(
+                    prefix: L("获取 API Key", "Get your API key"),
+                    label: L("点击这里", "here"),
+                    url: URL(string: "https://developers.deepgram.com/docs/create-additional-api-keys")!
+                ),
+            ]
+        case .assemblyai:
+            return [
+                ProviderGuideLink(
+                    prefix: L("查看可用模型", "View available models"),
+                    label: L("点击这里", "here"),
+                    url: URL(string: "https://www.assemblyai.com/docs/getting-started/models")!
+                ),
+                ProviderGuideLink(
+                    prefix: L("获取 API Key", "Get your API key"),
+                    label: L("点击这里", "here"),
+                    url: URL(string: "https://www.assemblyai.com/docs/faq/how-to-get-your-api-key")!
+                ),
+            ]
+        case .bailian:
+            return [
+                ProviderGuideLink(
+                    prefix: L("查看可用模型", "View available models"),
+                    label: L("点击这里", "here"),
+                    url: URL(string: "https://help.aliyun.com/zh/model-studio/fun-asr-realtime-websocket-api")!
+                ),
+                ProviderGuideLink(
+                    prefix: L("获取 API Key", "Get your API key"),
+                    label: L("点击这里", "here"),
+                    url: URL(string: "https://help.aliyun.com/zh/model-studio/get-api-key")!
+                ),
+            ]
+        default:
+            return []
+        }
+    }
+
     // MARK: Body
 
     var body: some View {
@@ -224,6 +286,9 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
                     .foregroundStyle(TF.settingsTextTertiary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.top, 2)
+            }
+            if !currentASRGuideLinks.isEmpty {
+                asrSetupGuideRow
             }
             SettingsDivider()
 
@@ -315,6 +380,29 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
             loadASRCredentialsForProvider(newProvider)
             refreshModelStatus()
         }
+    }
+
+    private var asrSetupGuideRow: some View {
+        HStack(spacing: 4) {
+            ForEach(Array(currentASRGuideLinks.enumerated()), id: \.element.id) { index, link in
+                if index > 0 {
+                    Text("·")
+                        .font(.system(size: 12))
+                        .foregroundStyle(TF.settingsTextTertiary)
+                }
+
+                if let prefix = link.prefix {
+                    Text(prefix)
+                        .font(.system(size: 12))
+                        .foregroundStyle(TF.settingsTextSecondary)
+                }
+
+                Link(link.label, destination: link.url)
+                    .font(.system(size: 12, weight: .medium))
+            }
+        }
+        .padding(.top, 4)
+        .padding(.bottom, 8)
     }
 
     // MARK: - Credential Fields
