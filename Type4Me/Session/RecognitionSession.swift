@@ -695,7 +695,8 @@ actor RecognitionSession {
     /// Aggressively tear down all resources and return to idle.
     /// Used when a new recording is requested but the session is stuck
     /// (e.g. stopRecording hung on a WebSocket timeout).
-    private func forceReset() async {
+    /// Also called when user presses ESC to abort recording.
+    func forceReset() async {
         NSLog("[Session] forceReset from state=%@", String(describing: state))
         DebugFileLogger.log("forceReset from state=\(state)")
 

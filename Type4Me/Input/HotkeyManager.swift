@@ -31,9 +31,18 @@ final class HotkeyManager: NSObject {
     /// When true, all hotkey events pass through unhandled (used during hotkey recording).
     var isSuppressed = false
 
+    /// When true, ESC key aborts active recording.
+    var isESCAbortEnabled = true
+
+    /// When true, LLM post-processing is in progress (ESC can also abort this).
+    var isProcessing = false
+
     /// Called when recording is stopped by a different mode's hotkey.
     /// The UUID is the new mode's ID that should be used for processing.
     var onCrossModeStop: ((UUID) -> Void)?
+
+    /// Called when ESC is pressed during active recording or processing (abort).
+    var onESCAbort: (() -> Void)?
 
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
@@ -178,6 +187,18 @@ final class HotkeyManager: NSObject {
                     }
                 }
                 return nil  // Swallow matched regular key events
+            }
+        }
+
+        // ESC key (keyCode 53) - abort active recording or processing
+        if isESCAbortEnabled && type == .keyDown && keyCode == 53 {
+            let isRecording = activeToggleModeId != nil || holdState.values.contains(true)
+            let shouldAbort = isRecording || isProcessing
+            if shouldAbort {
+                NSLog("[HotkeyManager] ESC pressed, triggering abort (recording=%@, processing=%@)",
+                      isRecording ? "true" : "false", isProcessing ? "true" : "false")
+                onESCAbort?()
+                return nil  // Swallow ESC
             }
         }
 

@@ -257,6 +257,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 await self.session.stopRecording()
             }
         }
+
+        // ESC abort: user pressed ESC during recording to cancel.
+        hotkeyManager.onESCAbort = { [weak self] in
+            guard let self else { return }
+            NSLog("[Type4Me] >>> HOTKEY: ESC abort")
+            DebugFileLogger.log("hotkey ESC abort")
+            SoundFeedback.playError()
+            Task { @MainActor in self.appState.cancel() }
+            Task { await self.session.forceReset() }
+        }
+
+        // Sync ESC abort enabled setting to HotkeyManager
+        syncESCAbortSetting()
+        NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { [weak self] in
+                self?.syncESCAbortSetting()
+            }
+        }
+
+        // Sync processing state to HotkeyManager (for ESC abort during LLM processing)
+        Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { [weak self] in
+                self?.syncProcessingState()
+            }
+        }
+    }
+
+    private func syncESCAbortSetting() {
+        // Default to true if not set (key doesn't exist)
+        if UserDefaults.standard.object(forKey: "tf_escAbortEnabled") == nil {
+            hotkeyManager.isESCAbortEnabled = true
+        } else {
+            hotkeyManager.isESCAbortEnabled = UserDefaults.standard.bool(forKey: "tf_escAbortEnabled")
+        }
+    }
+
+    private func syncProcessingState() {
+        hotkeyManager.isProcessing = (appState.barPhase == .processing || appState.barPhase == .preparing)
     }
 
     private var retryTimer: Timer?
