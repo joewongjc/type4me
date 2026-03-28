@@ -123,16 +123,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Start periodic update checking
         UpdateChecker.shared.startPeriodicChecking(appState: appState)
 
-        // Wire up cancel-recording action from floating bar cancel button
-        appState.onCancelRecording = { [weak self] in
-            guard let self else { return }
-            DebugFileLogger.log("hotkey cancel recording (from UI button)")
-            Task {
-                await session.cancelRecording()
-                await MainActor.run { appState.showCancelled() }
-            }
-        }
-
         // Reconcile current mode against the active provider before hotkeys are registered.
         refreshModeAvailability()
 

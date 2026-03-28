@@ -210,7 +210,6 @@ final class AppState {
 
     @ObservationIgnored var onShowPanel: (() -> Void)?
     @ObservationIgnored var onHidePanel: (() -> Void)?
-    @ObservationIgnored var onCancelRecording: (() -> Void)?
 
     // MARK: Update Check
 
