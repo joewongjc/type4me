@@ -50,4 +50,24 @@ final class RecognitionSessionTests: XCTestCase {
         let mode = await session.currentModeForTesting()
         XCTAssertEqual(mode.id, ProcessingMode.directId)
     }
+
+    func testStaleASREventDoesNotPolluteNewSession() async {
+        let session = RecognitionSession()
+        let staleEpoch = await session.advanceSessionEpochForTesting()
+        let activeEpoch = await session.advanceSessionEpochForTesting()
+        let transcript = RecognitionTranscript(
+            confirmedSegments: ["上一次"],
+            partialText: "尾巴",
+            authoritativeText: "上一次尾巴",
+            isFinal: false
+        )
+
+        await session.handleASREventForTesting(.transcript(transcript), sessionEpoch: staleEpoch)
+        let ignoredTranscript = await session.currentTranscriptForTesting()
+        XCTAssertEqual(ignoredTranscript, .empty)
+
+        await session.handleASREventForTesting(.transcript(transcript), sessionEpoch: activeEpoch)
+        let acceptedTranscript = await session.currentTranscriptForTesting()
+        XCTAssertEqual(acceptedTranscript, transcript)
+    }
 }
