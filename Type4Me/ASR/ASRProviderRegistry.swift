@@ -79,7 +79,7 @@ enum ASRProviderRegistry {
         dict[.sherpa] = ProviderEntry(
             configType: SherpaASRConfig.self,
             createClient: { SenseVoiceWSClient() },
-            capabilities: .streaming
+            capabilities: .batch  // full_inference at end takes 3-5s, needs longer timeout
         )
         #else
         dict[.sherpa] = ProviderEntry(configType: SherpaASRConfig.self, createClient: nil)
