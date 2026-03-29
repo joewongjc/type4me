@@ -28,6 +28,21 @@ actor RecognitionSession {
         currentMode
     }
 
+    /// Exposed for testing so stale-event behavior can be verified deterministically.
+    func currentTranscriptForTesting() -> RecognitionTranscript {
+        currentTranscript
+    }
+
+    /// Exposed for testing; production code should not advance epochs directly.
+    func advanceSessionEpochForTesting() -> UInt64 {
+        advanceSessionEpoch()
+    }
+
+    /// Exposed for testing so stale ASR events can be replayed against a known epoch.
+    func handleASREventForTesting(_ event: RecognitionEvent, sessionEpoch: UInt64) {
+        handleASREvent(event, sessionEpoch: sessionEpoch)
+    }
+
     // MARK: - Dependencies
 
     private let audioEngine = AudioCaptureEngine()
@@ -86,6 +101,7 @@ actor RecognitionSession {
     private var hasEmittedReadyForCurrentSession = false
     private var audioChunkContinuation: AsyncStream<Data>.Continuation?
     private var audioChunkSenderTask: Task<Void, Never>?
+    private var activeSessionEpoch: UInt64 = 0
 
     // MARK: - Prompt context (selected text + clipboard captured at recording start)
 
@@ -122,6 +138,7 @@ actor RecognitionSession {
             DebugFileLogger.log("session forcing reset from state=\(state)")
             await forceReset()
         }
+        let sessionEpoch = advanceSessionEpoch()
 
         let provider = KeychainService.selectedASRProvider
         let effectiveMode = ASRProviderRegistry.resolvedMode(for: mode, provider: provider)
@@ -300,7 +317,7 @@ actor RecognitionSession {
         eventConsumptionTask = Task { [weak self] in
             for await event in events {
                 guard let self else { break }
-                await self.handleASREvent(event)
+                await self.handleASREvent(event, sessionEpoch: sessionEpoch)
                 if case .completed = event { break }
             }
         }
@@ -605,7 +622,11 @@ actor RecognitionSession {
 
     // MARK: - ASR Events
 
-    private func handleASREvent(_ event: RecognitionEvent) {
+    private func handleASREvent(_ event: RecognitionEvent, sessionEpoch: UInt64) {
+        guard sessionEpoch == activeSessionEpoch else {
+            DebugFileLogger.log("ignoring stale ASR event for epoch=\(sessionEpoch), active=\(activeSessionEpoch)")
+            return
+        }
         switch event {
         case .ready:
             // Deduplicate: ASR clients may emit .ready, but we also emit it
@@ -790,6 +811,7 @@ actor RecognitionSession {
     /// Used when a new recording is requested but the session is stuck
     /// (e.g. stopRecording hung on a WebSocket timeout).
     private func forceReset() async {
+        _ = advanceSessionEpoch()
         NSLog("[Session] forceReset from state=%@", String(describing: state))
         DebugFileLogger.log("forceReset from state=\(state)")
 
@@ -813,6 +835,11 @@ actor RecognitionSession {
         hasEmittedReadyForCurrentSession = false
         currentConfig = nil
         SystemVolumeManager.restore()
+    }
+
+    private func advanceSessionEpoch() -> UInt64 {
+        activeSessionEpoch &+= 1
+        return activeSessionEpoch
     }
 
 }
