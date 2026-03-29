@@ -111,6 +111,7 @@ WRAPPER
     # Sign all binaries in the server dist for Gatekeeper
     find "$APP_PATH/Contents/MacOS/sensevoice-server-dist" -type f \( -name "*.dylib" -o -name "*.so" -o -perm +111 \) \
         -exec codesign --force --sign "${SIGNING_IDENTITY}" {} \; 2>/dev/null || true
+    codesign --force --sign "${SIGNING_IDENTITY}" "$APP_PATH/Contents/MacOS/sensevoice-server" 2>/dev/null || true
     echo "sensevoice-server bundled and signed."
 fi
 
@@ -118,6 +119,19 @@ fi
 cp "$PROJECT_DIR/Type4Me/Resources/THIRD_PARTY_LICENSES.txt" "$APP_PATH/Contents/Resources/" 2>/dev/null || true
 
 echo "Signing with '${SIGNING_IDENTITY}'..."
+# Temporarily move out sensevoice-server-dist before signing — its PyInstaller
+# internals (.dist-info, .dylibs dirs) cause codesign to fail with
+# "bundle format unrecognized". The binaries inside are already signed above.
+SERVER_DIST="$APP_PATH/Contents/MacOS/sensevoice-server-dist"
+SERVER_DIST_TMP="/tmp/sensevoice-server-dist-codesign-$$"
+if [ -d "$SERVER_DIST" ]; then
+    mv "$SERVER_DIST" "$SERVER_DIST_TMP"
+fi
+
 codesign -f -s "$SIGNING_IDENTITY" "$APP_PATH" 2>/dev/null && echo "Signed." || echo "Signing skipped (no identity available)."
+
+if [ -d "$SERVER_DIST_TMP" ]; then
+    mv "$SERVER_DIST_TMP" "$SERVER_DIST"
+fi
 
 echo "App bundle ready at $APP_PATH"
