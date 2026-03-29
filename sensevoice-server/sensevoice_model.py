@@ -1061,22 +1061,36 @@ class StreamingSenseVoice:
         self.all_probs = []  # accumulate CTC probs for final re-decode
 
     def full_inference(self, samples) -> str:
-        """Re-decode accumulated CTC probs for higher accuracy final result.
+        """Non-streaming inference on complete audio for highest accuracy.
 
-        Instead of re-running the entire model on full audio (~0.5-3s),
-        this concatenates the CTC probs already computed during streaming
-        and runs a single global greedy decode (~0ms). The result is better
-        than per-chunk streaming decode because greedy over the full prob
-        sequence avoids chunk boundary artifacts (e.g. "codinging").
+        Runs the encoder on the full audio at once (not chunked), giving full
+        context for each frame. Fixes chunk-boundary artifacts like "codinging".
+        Uses the already-loaded model (no FunASR overhead, no cold start).
+        ~0.5s for 8s audio on CPU.
         """
-        if not self.all_probs:
+        if not samples:
             return ""
 
-        # Concatenate all chunk probs into one sequence
-        full_probs = torch.cat(self.all_probs, dim=0)
+        # Extract full fbank features from raw audio
+        fbank = OnlineFbank(window_type="hamming")
+        fbank.accept_waveform(samples, is_last=True)
+        features = fbank.get_lfr_frames(
+            neg_mean=self.neg_mean, inv_stddev=self.inv_stddev
+        )
+        if len(features) == 0:
+            return ""
 
-        # Global greedy decode: argmax over full sequence, remove blanks + dedup
-        token_ids = full_probs.argmax(dim=-1).tolist()
+        speech = torch.tensor(features).unsqueeze(0).to(self.device)
+        speech_lengths = torch.tensor([speech.shape[1]]).to(self.device)
+        speech = torch.cat((self.query, speech), dim=1)
+        speech_lengths += 4
+
+        with torch.no_grad():
+            encoder_out, _ = self.model.encoder(speech, speech_lengths)
+        logits = self.model.ctc.log_softmax(encoder_out)[0, 4:]
+
+        # Greedy decode on full sequence
+        token_ids = logits.argmax(dim=-1).tolist()
         prev = -1
         filtered = []
         for t in token_ids:
@@ -1086,7 +1100,6 @@ class StreamingSenseVoice:
 
         if not filtered:
             return ""
-
         return self.tokenizer.decode(filtered)
 
     def get_size(self):
