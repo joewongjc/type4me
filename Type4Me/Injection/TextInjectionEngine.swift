@@ -14,6 +14,9 @@ final class TextInjectionEngine: @unchecked Sendable {
         let role: String?
         let value: String?
         let isEditable: Bool
+        /// true when AX successfully found a focused UI element; false when
+        /// no element was found (e.g. desktop, no focused window).
+        let hasFocusedElement: Bool
     }
 
     private struct ClipboardSnapshot {
@@ -162,7 +165,8 @@ final class TextInjectionEngine: @unchecked Sendable {
                 bundleIdentifier: frontmostBundleID,
                 role: nil,
                 value: nil,
-                isEditable: false
+                isEditable: false,
+                hasFocusedElement: false
             )
         }
 
@@ -178,7 +182,8 @@ final class TextInjectionEngine: @unchecked Sendable {
                 bundleIdentifier: frontmostBundleID,
                 role: nil,
                 value: nil,
-                isEditable: false
+                isEditable: false,
+                hasFocusedElement: false
             )
         }
 
@@ -199,7 +204,8 @@ final class TextInjectionEngine: @unchecked Sendable {
             bundleIdentifier: frontmostBundleID,
             role: role,
             value: value,
-            isEditable: isEditable
+            isEditable: isEditable,
+            hasFocusedElement: true
         )
     }
 
@@ -228,6 +234,12 @@ final class TextInjectionEngine: @unchecked Sendable {
 
         // No frontmost app → nothing to paste into
         if before.bundleIdentifier == nil && after.bundleIdentifier == nil {
+            return .copiedToClipboard
+        }
+
+        // No focused UI element found (desktop, no focused window, etc.)
+        // Distinct from Electron where an element IS found but has nil role.
+        if !before.hasFocusedElement && !after.hasFocusedElement {
             return .copiedToClipboard
         }
 
