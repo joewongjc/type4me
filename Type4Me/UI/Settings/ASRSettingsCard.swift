@@ -253,23 +253,29 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
 
     // MARK: - Local Model Section
 
-    /// Display name for the local ASR model based on chip architecture.
+    /// Detect which local ASR model is actually configured by checking server directories.
+    private var isQwen3ASR: Bool {
+        // Qwen3-ASR server exists (dev or bundled)
+        let home = NSHomeDirectory()
+        let devQwen3 = (home as NSString).appendingPathComponent("projects/type4me/qwen3-asr-server/server.py")
+        if FileManager.default.fileExists(atPath: devQwen3) { return true }
+        if let bundled = Bundle.main.executableURL?
+            .deletingLastPathComponent()
+            .appendingPathComponent("qwen3-asr-server").path,
+           FileManager.default.fileExists(atPath: bundled) { return true }
+        return false
+    }
+
     private var localASRModelName: String {
-        #if arch(arm64)
-        return "Qwen3-ASR (MLX)"
-        #else
-        return "SenseVoice (ONNX)"
-        #endif
+        isQwen3ASR ? "Qwen3-ASR (MLX)" : "SenseVoice (ONNX)"
     }
 
     private var localASRModelDescription: String {
-        #if arch(arm64)
-        return L("阿里 Qwen3 语音模型，Metal GPU 加速，支持中英",
+        isQwen3ASR
+            ? L("阿里 Qwen3 语音模型，Metal GPU 加速，支持中英",
                  "Alibaba Qwen3 ASR, Metal GPU accelerated, zh/en")
-        #else
-        return L("阿里开源语音模型，支持中英粤日韩，自动标点，流式识别",
+            : L("阿里开源语音模型，支持中英粤日韩，自动标点，流式识别",
                  "Alibaba open-source ASR, zh/en/yue/ja/ko, auto punctuation, streaming")
-        #endif
     }
 
     private var localModelSection: some View {
