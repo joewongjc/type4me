@@ -2,6 +2,8 @@ import AppKit
 import os
 
 actor RecognitionSession {
+    private static let stopCaptureGracePeriod: Duration = .milliseconds(350)
+    private static let stopSoundRestoreDelay: Duration = .milliseconds(50)
 
     // MARK: - State
 
@@ -30,15 +32,25 @@ actor RecognitionSession {
 
     // MARK: - Dependencies
 
-    private let audioEngine = AudioCaptureEngine()
-    private let injectionEngine = TextInjectionEngine()
-    let historyStore = HistoryStore()
+    private let audioEngine: any AudioCapturing
+    private let injectionEngine: TextInjectionEngine
+    let historyStore: HistoryStore
     private var asrClient: (any SpeechRecognizer)?
 
     private let logger = Logger(
         subsystem: "com.type4me.session",
         category: "RecognitionSession"
     )
+
+    init(
+        audioEngine: any AudioCapturing = AudioCaptureEngine(),
+        injectionEngine: TextInjectionEngine = TextInjectionEngine(),
+        historyStore: HistoryStore = HistoryStore()
+    ) {
+        self.audioEngine = audioEngine
+        self.injectionEngine = injectionEngine
+        self.historyStore = historyStore
+    }
 
     /// Return the appropriate LLM client for the currently selected provider.
     private func currentLLMClient() -> any LLMClient {
@@ -368,15 +380,23 @@ actor RecognitionSession {
         }
 
         let stopT0 = ContinuousClock.now
-        SystemVolumeManager.restore()  // Restore before stop sound plays
-        try? await Task.sleep(for: .milliseconds(50))  // Let OS apply volume change
-        SoundFeedback.playStop()
         state = .finishing
+
+        // Give CoreAudio a brief grace window to deliver frames that were spoken
+        // just before the stop hotkey event but have not yet surfaced as callbacks.
+        try? await Task.sleep(for: Self.stopCaptureGracePeriod)
 
         // Stop capture first so flushRemaining() can emit the tail audio chunk.
         audioEngine.stop()
-        audioEngine.onAudioChunk = nil
         await finishAudioChunkPipeline()
+        audioEngine.onAudioChunk = nil
+        audioEngine.onAudioLevel = nil
+
+        // Stop feedback should play only after the microphone is fully stopped,
+        // otherwise the end sound itself can mask the user's trailing syllables.
+        SystemVolumeManager.restore()
+        try? await Task.sleep(for: Self.stopSoundRestoreDelay)
+        SoundFeedback.playStop()
         DebugFileLogger.log("stop: audio stopped +\(ContinuousClock.now - stopT0)")
         guard sessionGeneration == myGeneration else {
             DebugFileLogger.log("stopRecording: zombie after audio pipeline, bailing")
@@ -391,12 +411,14 @@ actor RecognitionSession {
         let provider = KeychainService.selectedASRProvider
         let canEarlyLLM = ASRProviderRegistry.capabilities(for: provider).isStreaming
         var earlyLLMTask: Task<String?, Never>?
+        var earlyLLMInputText: String?
         if needsLLM && canEarlyLLM {
             var earlyText = currentTranscript.composedText
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             earlyText = SnippetStorage.applyEffective(to: earlyText)
             DebugFileLogger.log("stop: needsLLM=true mode=\(currentMode.name) text=\(earlyText.count)chars specMatch=\(earlyText == speculativeLLMText)")
             if !earlyText.isEmpty {
+                earlyLLMInputText = earlyText
                 if earlyText == speculativeLLMText, let specTask = speculativeLLMTask {
                     // Speculative LLM matches — reuse (may already be done!)
                     earlyLLMTask = specTask
@@ -426,55 +448,50 @@ actor RecognitionSession {
             }
         }
 
-        // ASR teardown: streaming providers can skip endAudio in LLM modes since
-        // we already have text. Batch providers (e.g. OpenAI REST) MUST await endAudio
-        // because that's where the actual recognition happens.
+        // ASR teardown: correctness matters more than latency here. Always await
+        // final ASR teardown so trailing words that were captured before the stop
+        // hotkey still have a chance to become part of the final transcript.
+        // Batch providers (e.g. OpenAI REST) MUST await endAudio because that's
+        // where the actual recognition happens.
         let providerIsStreaming = ASRProviderRegistry.capabilities(for: provider).isStreaming
         if let client = asrClient {
-            if needsLLM && earlyLLMTask != nil && providerIsStreaming {
-                // Fast path (streaming only): just disconnect, skip the 2-3s finalization.
-                eventConsumptionTask?.cancel()
-                await client.disconnect()
-                DebugFileLogger.log("stop: ASR fast-disconnect +\(ContinuousClock.now - stopT0)")
-            } else {
-                // Full teardown: batch providers get a longer timeout for the HTTP round-trip.
-                let endAudioTimeout: Duration = providerIsStreaming ? .seconds(3) : .seconds(60)
-                do {
-                    try await withThrowingTaskGroup(of: Void.self) { group in
-                        group.addTask { try await client.endAudio() }
-                        group.addTask {
-                            try await Task.sleep(for: endAudioTimeout)
-                            throw CancellationError()
-                        }
-                        try await group.next()
-                        group.cancelAll()
+            // Full teardown: batch providers get a longer timeout for the HTTP round-trip.
+            let endAudioTimeout: Duration = providerIsStreaming ? .seconds(3) : .seconds(60)
+            do {
+                try await withThrowingTaskGroup(of: Void.self) { group in
+                    group.addTask { try await client.endAudio() }
+                    group.addTask {
+                        try await Task.sleep(for: endAudioTimeout)
+                        throw CancellationError()
                     }
-                } catch {
-                    NSLog("[Session] endAudio timed out or failed: %@", String(describing: error))
-                    DebugFileLogger.log("endAudio timeout/error: \(error)")
+                    try await group.next()
+                    group.cancelAll()
                 }
-                let drainTimeout: Duration = providerIsStreaming ? .seconds(2) : .seconds(5)
-                if let task = eventConsumptionTask {
-                    let streamDrained = await withTaskGroup(of: Bool.self) { group in
-                        group.addTask {
-                            await task.value
-                            return true
-                        }
-                        group.addTask {
-                            try? await Task.sleep(for: drainTimeout)
-                            return false
-                        }
-                        let first = await group.next() ?? true
-                        group.cancelAll()
-                        return first
-                    }
-                    if !streamDrained {
-                        task.cancel()
-                        DebugFileLogger.log("event stream drain timeout; eventConsumptionTask cancelled")
-                    }
-                }
-                await client.disconnect()
+            } catch {
+                NSLog("[Session] endAudio timed out or failed: %@", String(describing: error))
+                DebugFileLogger.log("endAudio timeout/error: \(error)")
             }
+            let drainTimeout: Duration = providerIsStreaming ? .seconds(2) : .seconds(5)
+            if let task = eventConsumptionTask {
+                let streamDrained = await withTaskGroup(of: Bool.self) { group in
+                    group.addTask {
+                        await task.value
+                        return true
+                    }
+                    group.addTask {
+                        try? await Task.sleep(for: drainTimeout)
+                        return false
+                    }
+                    let first = await group.next() ?? true
+                    group.cancelAll()
+                    return first
+                }
+                if !streamDrained {
+                    task.cancel()
+                    DebugFileLogger.log("event stream drain timeout; eventConsumptionTask cancelled")
+                }
+            }
+            await client.disconnect()
         }
         eventConsumptionTask = nil
         asrClient = nil
@@ -500,7 +517,8 @@ actor RecognitionSession {
             // LLM post-processing: prefer early result (fired at stop time),
             // fall back to synchronous call for very short recordings where
             // no streaming text was available yet.
-            if let earlyTask = earlyLLMTask {
+            if let earlyTask = earlyLLMTask,
+               earlyLLMInputText == finalText {
                 state = .postProcessing
                 DebugFileLogger.log("stop: awaiting early LLM result +\(ContinuousClock.now - stopT0)")
                 let earlyResult = await earlyTask.value
@@ -518,6 +536,9 @@ actor RecognitionSession {
                 }
             } else if needsLLM {
                 state = .postProcessing
+                if let earlyLLMInputText, earlyLLMInputText != finalText {
+                    DebugFileLogger.log("stop: final transcript changed after stop, discarding stale early LLM result")
+                }
                 if let llmConfig = KeychainService.loadLLMConfig() {
                     DebugFileLogger.log("stop: sync LLM firing mode=\(currentMode.name) model=\(llmConfig.model) with \(finalText.count) chars")
                     do {
@@ -716,6 +737,22 @@ actor RecognitionSession {
         audioChunkSenderTask = nil
     }
 
+    func prepareForStopTesting(
+        client: any SpeechRecognizer,
+        mode: ProcessingMode = .direct,
+        transcript: RecognitionTranscript = .empty
+    ) {
+        asrClient = client
+        currentMode = mode
+        currentTranscript = transcript
+        state = .recording
+
+        let chunkContinuation = setupAudioChunkPipeline()
+        audioEngine.onAudioChunk = { data in
+            chunkContinuation.yield(data)
+        }
+    }
+
     private func markReadyIfNeeded() {
         guard !hasEmittedReadyForCurrentSession else { return }
         hasEmittedReadyForCurrentSession = true
@@ -804,9 +841,9 @@ actor RecognitionSession {
         resetSpeculativeLLM()
 
         audioEngine.stop()
+        await finishAudioChunkPipeline(timeout: .milliseconds(100))
         audioEngine.onAudioChunk = nil
         audioEngine.onAudioLevel = nil
-        await finishAudioChunkPipeline(timeout: .milliseconds(100))
 
         if let client = asrClient {
             Task { await client.disconnect() }  // fire-and-forget: don't block reset on WebSocket teardown

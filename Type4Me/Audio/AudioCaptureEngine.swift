@@ -1,5 +1,14 @@
 @preconcurrency import AVFoundation
 
+protocol AudioCapturing: AnyObject, Sendable {
+    var onAudioChunk: ((Data) -> Void)? { get set }
+    var onAudioLevel: ((Float) -> Void)? { get set }
+
+    func warmUp()
+    func start() throws
+    func stop()
+}
+
 enum AudioCaptureError: Error, LocalizedError {
     case converterCreationFailed
     case microphonePermissionDenied
@@ -17,7 +26,7 @@ enum AudioCaptureError: Error, LocalizedError {
     }
 }
 
-final class AudioCaptureEngine: NSObject, @unchecked Sendable, AVCaptureAudioDataOutputSampleBufferDelegate {
+final class AudioCaptureEngine: NSObject, @unchecked Sendable, AVCaptureAudioDataOutputSampleBufferDelegate, AudioCapturing {
 
     // MARK: - Static properties
 
@@ -128,11 +137,16 @@ final class AudioCaptureEngine: NSObject, @unchecked Sendable, AVCaptureAudioDat
     }
 
     func stop() {
-        captureSession?.stopRunning()
-        captureSession = nil
-        converter = nil
-        levelCounter = 0
-        flushRemaining()
+        outputQueue.sync {
+            // Drain any pending AVCapture callbacks on the delegate queue before
+            // flushing the tail buffer, otherwise the last spoken frames can be
+            // stranded behind stop() and never reach the session pipeline.
+            captureSession?.stopRunning()
+            captureSession = nil
+            converter = nil
+            levelCounter = 0
+            flushRemaining()
+        }
         NSLog("[Audio] Capture session stopped")
     }
 
