@@ -2,6 +2,8 @@ import Foundation
 
 enum KeychainService {
 
+    private static let lock = NSLock()
+
     private static var credentialsURL: URL {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
             .appendingPathComponent("Type4Me", isDirectory: true)
@@ -30,6 +32,8 @@ enum KeychainService {
     // MARK: - Scalar key-value (for LLM keys and misc)
 
     static func save(key: String, value: String) throws {
+        lock.lock()
+        defer { lock.unlock() }
         var dict = loadAll()
         dict[key] = value
         try saveAll(dict)
@@ -41,6 +45,8 @@ enum KeychainService {
 
     @discardableResult
     static func delete(key: String) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
         var dict = loadAll()
         guard dict.removeValue(forKey: key) != nil else { return false }
         return (try? saveAll(dict)) != nil
@@ -72,6 +78,8 @@ enum KeychainService {
     }
 
     static func saveASRCredentials(for provider: ASRProvider, values: [String: String]) throws {
+        lock.lock()
+        defer { lock.unlock() }
         var dict = loadAll()
         dict[asrStorageKey(for: provider)] = values
         try saveAll(dict)
@@ -148,6 +156,8 @@ enum KeychainService {
     }
 
     static func saveLLMCredentials(for provider: LLMProvider, values: [String: String]) throws {
+        lock.lock()
+        defer { lock.unlock() }
         var dict = loadAll()
         dict[llmStorageKey(for: provider)] = values
         try saveAll(dict)
@@ -197,6 +207,8 @@ enum KeychainService {
     static func migrateIfNeeded() {
         migrateAppSupportDirectory()
         migrateUserDefaults()
+        lock.lock()
+        defer { lock.unlock() }
         let dict = loadAll()
 
         var migrated = false
