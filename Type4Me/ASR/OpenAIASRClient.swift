@@ -66,9 +66,10 @@ actor OpenAIASRClient: SpeechRecognizer {
     func endAudio() async throws {
         guard let config else { return }
         guard !audioBuffer.isEmpty else {
+            eventContinuation?.yield(.error(OpenAIASRError.emptyAudio))
             eventContinuation?.yield(.completed)
             eventContinuation?.finish()
-            throw OpenAIASRError.emptyAudio
+            return
         }
 
         let wavData = Self.wavFromPCM(audioBuffer)
