@@ -5,6 +5,7 @@ import Foundation
 enum ASRProvider: String, CaseIterable, Codable, Sendable {
     // Local
     case sherpa
+    case apple
     // International
     case openai
     case azure
@@ -26,6 +27,7 @@ enum ASRProvider: String, CaseIterable, Codable, Sendable {
     var displayName: String {
         switch self {
         case .sherpa:   return L("本地识别", "Local ASR")
+        case .apple:    return "Apple Speech"
         case .openai:   return "OpenAI"
         case .azure:    return "Azure Speech"
         case .google:   return "Google Cloud STT"

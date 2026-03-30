@@ -11,6 +11,7 @@ APP_VERSION="${APP_VERSION:-1.5.1}"
 APP_BUILD="${APP_BUILD:-1}"
 MIN_SYSTEM_VERSION="${MIN_SYSTEM_VERSION:-14.0}"
 MICROPHONE_USAGE_DESCRIPTION="${MICROPHONE_USAGE_DESCRIPTION:-Type4Me 需要访问麦克风以录制语音并将其转换为文本。}"
+SPEECH_RECOGNITION_USAGE_DESCRIPTION="${SPEECH_RECOGNITION_USAGE_DESCRIPTION:-Type4Me 需要语音识别权限以将你的语音转写为文字。}"
 APPLE_EVENTS_USAGE_DESCRIPTION="${APPLE_EVENTS_USAGE_DESCRIPTION:-Type4Me 需要辅助功能权限来注入转写文字到其他应用}"
 INFO_PLIST="$APP_PATH/Contents/Info.plist"
 
@@ -118,6 +119,8 @@ cat >"$INFO_PLIST" <<EOF
     <string>${MIN_SYSTEM_VERSION}</string>
     <key>NSMicrophoneUsageDescription</key>
     <string>${MICROPHONE_USAGE_DESCRIPTION}</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>${SPEECH_RECOGNITION_USAGE_DESCRIPTION}</string>
     <key>NSAppleEventsUsageDescription</key>
     <string>${APPLE_EVENTS_USAGE_DESCRIPTION}</string>
     <key>LSUIElement</key>

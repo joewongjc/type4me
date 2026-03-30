@@ -1,5 +1,6 @@
 import AVFoundation
 import Cocoa
+import Speech
 
 // The actual value of kAXTrustedCheckOptionPrompt.
 // Accessed as a literal to avoid Swift 6 concurrency errors
@@ -19,6 +20,26 @@ enum PermissionManager {
             return true
         case .notDetermined:
             return await AVCaptureDevice.requestAccess(for: .audio)
+        default:
+            return false
+        }
+    }
+
+    static var hasSpeechRecognitionPermission: Bool {
+        SFSpeechRecognizer.authorizationStatus() == .authorized
+    }
+
+    static func requestSpeechRecognitionPermission() async -> Bool {
+        let status = SFSpeechRecognizer.authorizationStatus()
+        switch status {
+        case .authorized:
+            return true
+        case .notDetermined:
+            return await withCheckedContinuation { continuation in
+                SFSpeechRecognizer.requestAuthorization { newStatus in
+                    continuation.resume(returning: newStatus == .authorized)
+                }
+            }
         default:
             return false
         }
@@ -46,6 +67,7 @@ enum PermissionManager {
 
     static func printPermissionStatus() {
         print("[Permissions] Microphone: \(hasMicrophonePermission ? "granted" : "NOT granted")")
+        print("[Permissions] Speech Recognition: \(hasSpeechRecognitionPermission ? "granted" : "NOT granted")")
         print("[Permissions] Accessibility: \(hasAccessibilityPermission ? "granted" : "NOT granted")")
     }
 }

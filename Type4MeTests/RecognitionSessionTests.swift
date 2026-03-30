@@ -50,4 +50,14 @@ final class RecognitionSessionTests: XCTestCase {
         let mode = await session.currentModeForTesting()
         XCTAssertEqual(mode.id, ProcessingMode.directId)
     }
+
+    func testSwitchModeDirectWorksForApple() async {
+        KeychainService.selectedASRProvider = .apple
+        let session = RecognitionSession()
+
+        await session.switchMode(to: .direct)
+
+        let mode = await session.currentModeForTesting()
+        XCTAssertEqual(mode.id, ProcessingMode.directId)
+    }
 }

@@ -22,6 +22,8 @@
     <true/>
     <key>NSMicrophoneUsageDescription</key>
     <string>Type4Me needs microphone access to capture your voice for transcription.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>Type4Me needs speech recognition access to transcribe your voice into text.</string>
     <key>NSHumanReadableCopyright</key>
     <string>Copyright © 2024 Type4Me. All rights reserved.</string>
 </dict>

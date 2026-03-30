@@ -33,6 +33,24 @@ final class AudioCaptureEngine: NSObject, @unchecked Sendable, AVCaptureAudioDat
         interleaved: true
     )!
 
+    static func makePCMBuffer(from pcmData: Data) -> AVAudioPCMBuffer? {
+        guard pcmData.count.isMultiple(of: MemoryLayout<Int16>.size) else { return nil }
+
+        let frameCount = AVAudioFrameCount(pcmData.count / MemoryLayout<Int16>.size)
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: frameCount) else {
+            return nil
+        }
+
+        buffer.frameLength = frameCount
+        guard let mData = buffer.mutableAudioBufferList.pointee.mBuffers.mData else {
+            return nil
+        }
+
+        pcmData.copyBytes(to: mData.assumingMemoryBound(to: UInt8.self), count: pcmData.count)
+        buffer.mutableAudioBufferList.pointee.mBuffers.mDataByteSize = UInt32(pcmData.count)
+        return buffer
+    }
+
     // MARK: - Public
 
     var onAudioChunk: ((Data) -> Void)?

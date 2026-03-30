@@ -4,7 +4,7 @@ import XCTest
 final class ASRProviderRegistryTests: XCTestCase {
 
     func testAvailableProvidersSupportDirectMode() {
-        for provider in [ASRProvider.volcano, .baidu, .bailian, .deepgram, .assemblyai, .soniox, .openai] {
+        for provider in [ASRProvider.volcano, .baidu, .bailian, .deepgram, .assemblyai, .soniox, .openai, .apple] {
             XCTAssertTrue(ASRProviderRegistry.supports(.direct, for: provider))
         }
     }

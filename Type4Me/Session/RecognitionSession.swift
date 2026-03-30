@@ -55,6 +55,7 @@ actor RecognitionSession {
     // MARK: - Mode & Timing
 
     private var currentMode: ProcessingMode = .direct
+    private var currentProvider: ASRProvider?
     private var recordingStartTime: Date?
     private var currentConfig: (any ASRProviderConfig)?
 
@@ -129,6 +130,7 @@ actor RecognitionSession {
         let myGeneration = sessionGeneration
 
         self.currentMode = effectiveMode
+        self.currentProvider = provider
         self.recordingStartTime = nil
         hasEmittedReadyForCurrentSession = false
         injectionAborted = false
@@ -487,6 +489,7 @@ actor RecognitionSession {
         // Combine confirmed segments + any trailing unconfirmed partial.
         let effectiveText = currentTranscript.displayText
         currentConfig = nil
+        currentProvider = nil
 
         if !effectiveText.isEmpty {
             let rawText = effectiveText
@@ -658,7 +661,14 @@ actor RecognitionSession {
     private func sendAudioToASR(_ data: Data) async throws {
         guard let client = asrClient else { return }
         let t0 = ContinuousClock.now
-        try await client.sendAudio(data)
+        let audioInput = currentProvider.map { ASRProviderRegistry.capabilities(for: $0).audioInput } ?? .pcmData
+        switch audioInput {
+        case .pcmData:
+            try await client.sendAudio(data)
+        case .pcmBuffer:
+            guard let buffer = AudioCaptureEngine.makePCMBuffer(from: data) else { return }
+            try await client.sendAudioBuffer(buffer)
+        }
         let elapsed = ContinuousClock.now - t0
         chunkSendCount += 1
         // Log every 50 chunks (~10s) or if send took >200ms
@@ -818,6 +828,7 @@ actor RecognitionSession {
         currentTranscript = .empty
         hasEmittedReadyForCurrentSession = false
         currentConfig = nil
+        currentProvider = nil
         SystemVolumeManager.restore()
     }
 

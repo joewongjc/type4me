@@ -1,13 +1,29 @@
 import Foundation
 
+enum ASRAudioInputKind: Sendable, Equatable {
+    case pcmData
+    case pcmBuffer
+}
+
 struct ASRProviderCapabilities: Sendable, Equatable {
     let isAvailable: Bool
     /// False for batch/REST providers that only produce results in endAudio().
     let isStreaming: Bool
+    let audioInput: ASRAudioInputKind
 
-    static let streaming = ASRProviderCapabilities(isAvailable: true, isStreaming: true)
-    static let batch = ASRProviderCapabilities(isAvailable: true, isStreaming: false)
-    static let unavailable = ASRProviderCapabilities(isAvailable: false, isStreaming: true)
+    static func streaming(audioInput: ASRAudioInputKind = .pcmData) -> ASRProviderCapabilities {
+        ASRProviderCapabilities(isAvailable: true, isStreaming: true, audioInput: audioInput)
+    }
+
+    static func batch(audioInput: ASRAudioInputKind = .pcmData) -> ASRProviderCapabilities {
+        ASRProviderCapabilities(isAvailable: true, isStreaming: false, audioInput: audioInput)
+    }
+
+    static let unavailable = ASRProviderCapabilities(
+        isAvailable: false,
+        isStreaming: true,
+        audioInput: .pcmData
+    )
 }
 
 enum ASRProviderRegistry {
@@ -32,40 +48,45 @@ enum ASRProviderRegistry {
 
     static let all: [ASRProvider: ProviderEntry] = {
         var dict: [ASRProvider: ProviderEntry] = [
+            .apple: ProviderEntry(
+                configType: AppleASRConfig.self,
+                createClient: { AppleASRClient() },
+                capabilities: .streaming(audioInput: .pcmBuffer)
+            ),
             .volcano: ProviderEntry(
                 configType: VolcanoASRConfig.self,
                 createClient: { VolcASRClient() },
-                capabilities: .streaming
+                capabilities: .streaming()
             ),
             .deepgram: ProviderEntry(
                 configType: DeepgramASRConfig.self,
                 createClient: { DeepgramASRClient() },
-                capabilities: .streaming
+                capabilities: .streaming()
             ),
             .assemblyai: ProviderEntry(
                 configType: AssemblyAIASRConfig.self,
                 createClient: { AssemblyAIASRClient() },
-                capabilities: .streaming
+                capabilities: .streaming()
             ),
             .soniox: ProviderEntry(
                 configType: SonioxASRConfig.self,
                 createClient: { SonioxASRClient() },
-                capabilities: .streaming
+                capabilities: .streaming()
             ),
             .bailian: ProviderEntry(
                 configType: BailianASRConfig.self,
                 createClient: { BailianASRClient() },
-                capabilities: .streaming
+                capabilities: .streaming()
             ),
             .baidu: ProviderEntry(
                 configType: BaiduASRConfig.self,
                 createClient: { BaiduASRClient() },
-                capabilities: .streaming
+                capabilities: .streaming()
             ),
             .openai: ProviderEntry(
                 configType: OpenAIASRConfig.self,
                 createClient: { OpenAIASRClient() },
-                capabilities: .batch
+                capabilities: .batch()
             ),
             .azure:   ProviderEntry(configType: AzureASRConfig.self,   createClient: nil),
             .google:  ProviderEntry(configType: GoogleASRConfig.self,  createClient: nil),
@@ -79,7 +100,7 @@ enum ASRProviderRegistry {
         dict[.sherpa] = ProviderEntry(
             configType: SherpaASRConfig.self,
             createClient: { SenseVoiceWSClient() },
-            capabilities: .batch  // full_inference at end takes 3-5s, needs longer timeout
+            capabilities: .batch()  // full_inference at end takes 3-5s, needs longer timeout
         )
         #else
         dict[.sherpa] = ProviderEntry(configType: SherpaASRConfig.self, createClient: nil)

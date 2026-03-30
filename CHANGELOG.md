@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### ✨ 新功能
+
+- 新增 Apple ASR Provider，可在设置页中作为正式识别引擎直接选择
+- Apple ASR 走统一 `ASRProviderRegistry -> RecognitionSession` 链路，兼容 direct mode、自定义模式、LLM 后处理、历史记录与文本注入
+- 无需 API Key，首次使用时会请求系统语音识别权限
+
+### 🔧 改进
+
+- `SpeechRecognizer` 协议新增 PCM buffer 输入通道，支持原生 `SFSpeechRecognizer`
+- `KeychainService.loadASRConfig` 支持从 provider 默认字段构造配置，减少 Apple ASR 这类低配置 provider 的初始化样板
+- Apple ASR 在设置页支持直接选择识别语言，并保留统一的连接测试入口
+
 ## v1.5.1 — Bug 修复 + 稳定性改进 (2026-03-30)
 
 - 修复片段替换链式叠加 bug：正则缺少 word boundary，导致前一条替换的产物被后续规则二次匹配（如 "Cloud Code" → "Claudee Code"）

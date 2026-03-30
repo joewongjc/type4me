@@ -1,4 +1,5 @@
 import Foundation
+@preconcurrency import AVFoundation
 
 struct ASRRequestOptions: Sendable, Equatable {
     var enablePunc: Bool = true
@@ -68,7 +69,14 @@ struct LLMConfig: Sendable {
 protocol SpeechRecognizer: Sendable {
     func connect(config: any ASRProviderConfig, options: ASRRequestOptions) async throws
     func sendAudio(_ data: Data) async throws
+    func sendAudioBuffer(_ buffer: AVAudioPCMBuffer) async throws
     func endAudio() async throws
     func disconnect() async
     var events: AsyncStream<RecognitionEvent> { get async }
+}
+
+extension SpeechRecognizer {
+    func sendAudioBuffer(_ buffer: AVAudioPCMBuffer) async throws {
+        _ = buffer
+    }
 }

@@ -79,4 +79,23 @@ final class KeychainServiceTests: XCTestCase {
 
         wait(for: [expectation], timeout: 1.0)
     }
+
+    func testLoadASRConfig_buildsAppleProviderFromDefaultFieldValuesWithoutSavedValues() {
+        let originalApple = KeychainService.loadASRCredentials(for: .apple)
+        defer {
+            if let originalApple {
+                try? KeychainService.saveASRCredentials(for: .apple, values: originalApple)
+            } else {
+                _ = KeychainService.delete(key: "tf_asr_apple")
+            }
+        }
+
+        _ = KeychainService.delete(key: "tf_asr_apple")
+
+        let config = KeychainService.loadASRConfig(for: .apple)
+
+        XCTAssertNotNil(config)
+        let appleConfig = try? XCTUnwrap(config as? AppleASRConfig)
+        XCTAssertEqual(appleConfig?.localeIdentifier, AppleASRConfig.defaultLocaleIdentifier)
+    }
 }
