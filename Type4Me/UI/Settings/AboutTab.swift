@@ -93,13 +93,15 @@ struct AboutTab: View {
             }
 
             if appState.availableUpdates.isEmpty && !appState.isCheckingUpdate {
-                HStack(spacing: 6) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
-                        .font(.system(size: 12))
-                    Text(L("已是最新版本", "You're up to date"))
-                        .font(.system(size: 12))
-                        .foregroundStyle(TF.settingsTextSecondary)
+                if appState.lastUpdateCheck != nil {
+                    HStack(spacing: 6) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                            .font(.system(size: 12))
+                        Text(L("已是最新版本", "You're up to date"))
+                            .font(.system(size: 12))
+                            .foregroundStyle(TF.settingsTextSecondary)
+                    }
                 }
             } else if !appState.availableUpdates.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
