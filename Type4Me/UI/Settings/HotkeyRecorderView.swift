@@ -11,6 +11,7 @@ struct HotkeyRecorderView: View {
     @State private var pendingModifierCode: Int?
     @State private var pendingModifierModifiers: UInt64 = 0
     @State private var modifierCaptureTask: Task<Void, Never>?
+    @State private var recordingTimeoutTask: Task<Void, Never>?
 
     var body: some View {
         HStack(spacing: 6) {
@@ -74,6 +75,14 @@ struct HotkeyRecorderView: View {
         pendingModifierCode = nil
         modifierCaptureTask?.cancel()
         modifierCaptureTask = nil
+
+        // Safety timeout: auto-stop recording after 10s (covers opacity-hidden tabs where onDisappear won't fire)
+        recordingTimeoutTask?.cancel()
+        recordingTimeoutTask = Task {
+            try? await Task.sleep(for: .seconds(10))
+            guard !Task.isCancelled else { return }
+            await MainActor.run { stopRecording() }
+        }
 
         eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged, .keyDown]) { event in
             if event.type == .flagsChanged {
@@ -142,6 +151,8 @@ struct HotkeyRecorderView: View {
 
     private func stopRecording() {
         isRecording = false
+        recordingTimeoutTask?.cancel()
+        recordingTimeoutTask = nil
         modifierCaptureTask?.cancel()
         modifierCaptureTask = nil
         pendingModifierCode = nil
