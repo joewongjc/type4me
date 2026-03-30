@@ -7,7 +7,7 @@
 - **历史记录**：存储所有历史识别记录，包括原始文本和处理后文本，支持导出CSV；
 - **配套Skill：精准提高识别准确率**，[点这里安装Skill](https://github.com/joewongjc/type4me-vocab-skill)后跟你的agent说"Qwen3.5 不要识别成 Queen 3.5"，他就能自动帮你管理热词和映射词，同类错误不再犯。
 
-![Xnip2026-03-30_21-01-47](https://github.com/user-attachments/assets/13ea4119-67af-4836-9c5f-9c7ee059fff3)
+![Xnip2026-03-30_21-41-09](https://github.com/user-attachments/assets/3a830341-5a10-4123-89ee-d107c6ff39dd)
 
 
 ## 界面预览
