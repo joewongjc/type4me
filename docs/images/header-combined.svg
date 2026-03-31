@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 840 400" width="840" height="400">
+  <defs>
+    <style>
+      /* ====== Brush stroke draw (Zen) ====== */
+      @keyframes brush-1 { 0%{stroke-dashoffset:340} 100%{stroke-dashoffset:0} }
+      @keyframes brush-2 { 0%{stroke-dashoffset:320} 100%{stroke-dashoffset:0} }
+
+      /* ====== Amber dot breathe ====== */
+      @keyframes amber-b { 0%,100%{opacity:0.65} 50%{opacity:1} }
+
+      /* ====== Base ====== */
+      .bg { fill: #F5F0EB; }
+      .title { fill: #1C1917; font-family: Georgia, 'Playfair Display', 'Times New Roman', 'Songti SC', serif; font-weight: 700; font-size: 54px; letter-spacing: -1px; }
+      .title-i { fill: #1C1917; font-family: Georgia, 'Playfair Display', 'Times New Roman', serif; font-weight: 400; font-style: italic; font-size: 54px; letter-spacing: -1px; }
+      .slogan { fill: #7A756E; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif; font-weight: 300; font-size: 15px; letter-spacing: 0.5px; }
+      .brush-a { stroke: #B45309; fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-dasharray: 340; animation: brush-1 2.5s ease-out forwards; }
+      .brush-b { stroke: #B45309; fill: none; stroke-width: 1.5; stroke-linecap: round; opacity: 0.4; stroke-dasharray: 320; animation: brush-2 3s ease-out 0.4s forwards; }
+      .divider { stroke: #D6D3CD; stroke-width: 0.5; }
+      .lbl { fill: #A8A29E; font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-weight: 300; font-size: 11px; letter-spacing: 3px; }
+      .lbl-r { fill: #A8A29E; font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-weight: 300; font-size: 11.5px; }
+      .tag { fill: #1C1917; font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-weight: 500; font-size: 11.5px; letter-spacing: 1px; }
+
+      /* Cards */
+      .card-bg { fill: #EDE8E3; }
+      .card-t { fill: #1C1917; font-family: Georgia, 'Times New Roman', serif; font-weight: 400; font-size: 15px; }
+      .card-d { fill: #A8A29E; font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-weight: 300; font-size: 11.5px; }
+      .a-dot { fill: #B45309; animation: amber-b 3s ease-in-out infinite; }
+      .a-d1 { animation-delay: 0.6s; }
+      .a-d2 { animation-delay: 1.2s; }
+      .a-d3 { animation-delay: 1.8s; }
+    </style>
+  </defs>
+
+  <!-- Background -->
+  <rect class="bg" width="840" height="400" rx="8"/>
+
+  <!-- Top rule -->
+  <line class="divider" x1="48" y1="36" x2="792" y2="36"/>
+  <text class="lbl" x="48" y="28">MACOS VOICE INPUT</text>
+  <text class="lbl-r" x="792" y="28" text-anchor="end">Free &amp; Open Source</text>
+
+  <!-- ====== Title ====== -->
+  <text class="title" x="256" y="140">Type</text>
+  <text class="title-i" x="390" y="140">4</text>
+  <text class="title" x="418" y="140">Me</text>
+
+  <!-- Brush strokes -->
+  <path class="brush-a" d="M 254 148 C 290 144, 340 142, 380 144 C 410 146, 440 150, 470 147 C 500 144, 530 142, 560 146 C 575 148, 585 147, 594 146"/>
+  <path class="brush-b" d="M 258 154 C 298 150, 348 147, 390 150 C 420 152, 448 156, 478 152 C 508 149, 536 148, 564 151 C 578 153, 588 152, 596 151"/>
+
+  <!-- Slogan -->
+  <text class="slogan" x="420" y="180" text-anchor="middle">macOS 语音输入法，边说边出字，说完无需等待</text>
+
+  <!-- ====== Divider ====== -->
+  <line class="divider" x1="48" y1="206" x2="792" y2="206"/>
+
+  <!-- ====== Feature cards: 2 rows x 2 cols ====== -->
+  <g transform="translate(48, 224)">
+    <!-- Row 1 -->
+    <!-- Card 1: 语音识别 -->
+    <rect class="card-bg" x="0" y="0" width="360" height="58" rx="5"/>
+    <circle class="a-dot" cx="18" cy="18" r="4"/>
+    <text class="card-t" x="30" y="22">语音识别</text>
+    <text class="card-d" x="30" y="42">支持主流本地/云端流式识别</text>
+
+    <!-- Card 2: 文本处理 -->
+    <rect class="card-bg" x="376" y="0" width="360" height="58" rx="5"/>
+    <circle class="a-dot a-d1" cx="394" cy="18" r="4"/>
+    <text class="card-t" x="406" y="22">文本处理</text>
+    <text class="card-d" x="406" y="42">LLM优化文本，内置润色、翻译、Prompt优化</text>
+
+    <!-- Row 2 -->
+    <!-- Card 3: 词汇管理 -->
+    <rect class="card-bg" x="0" y="72" width="360" height="58" rx="5"/>
+    <circle class="a-dot a-d2" cx="18" cy="90" r="4"/>
+    <text class="card-t" x="30" y="94">词汇管理</text>
+    <text class="card-d" x="30" y="114">词汇管理及配套Skill，打造属于你的100%准确率输入法</text>
+
+    <!-- Card 4: 历史记录 -->
+    <rect class="card-bg" x="376" y="72" width="360" height="58" rx="5"/>
+    <circle class="a-dot a-d3" cx="394" cy="90" r="4"/>
+    <text class="card-t" x="406" y="94">历史记录</text>
+    <text class="card-d" x="406" y="114">识别记录全本地保存，支持导出</text>
+  </g>
+
+  <!-- ====== Bottom rule ====== -->
+  <line class="divider" x1="48" y1="368" x2="792" y2="368"/>
+  <text class="lbl" x="48" y="388">GITHUB.COM/JOEWONGJC/TYPE4ME</text>
+  <text class="lbl-r" x="792" y="388" text-anchor="end">macOS 14+ (Sonoma)</text>
+</svg>
