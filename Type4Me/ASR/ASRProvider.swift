@@ -3,6 +3,8 @@ import Foundation
 // MARK: - Provider Enum
 
 enum ASRProvider: String, CaseIterable, Codable, Sendable {
+    // Cloud (proxy)
+    case cloud
     // Local
     case sherpa
     case apple
@@ -26,6 +28,7 @@ enum ASRProvider: String, CaseIterable, Codable, Sendable {
 
     var displayName: String {
         switch self {
+        case .cloud:    return "Type4Me Cloud"
         case .sherpa:   return L("本地识别", "Local ASR")
         case .apple:    return "Apple Speech"
         case .openai:   return "OpenAI"

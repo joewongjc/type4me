@@ -48,6 +48,11 @@ enum ASRProviderRegistry {
 
     static let all: [ASRProvider: ProviderEntry] = {
         var dict: [ASRProvider: ProviderEntry] = [
+            .cloud: ProviderEntry(
+                configType: CloudASRConfig.self,
+                createClient: { CloudASRClient() },
+                capabilities: .streaming()
+            ),
             .apple: ProviderEntry(
                 configType: AppleASRConfig.self,
                 createClient: { AppleASRClient() },
