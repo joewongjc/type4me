@@ -20,8 +20,8 @@
 
 | 版本                                                         | 说明                                                         | 安装包大小   |
 | ------------------------------------------------------------ | ------------------------------------------------------------ | ------ |
-| ✨推荐：**[云端版本（点击下载）](https://github.com/joewongjc/type4me/releases/download/v1.6.2/Type4Me-v1.6.2-cloud.dmg)** | 支持云端识别，需配置语音、大模型API Key。语音识别推荐火山-豆包语音/Soinox、体验最好。火山注册有送额度，单价都十分便宜。[配置指引](https://my.feishu.cn/wiki/QdEnwBMfUi0mN4k3ucMcNYhUnXr) | ~4MB  |
-| **[本地版本（点击下载）](https://github.com/joewongjc/type4me/releases/download/v1.6.2/Type4Me-v1.6.2-local.dmg)** | 内嵌本地语音识别引擎（普通电脑配置慎用。约占用8GB内存，建议电脑内存32GB以上再用），大模型依旧需要配置API Key或Ollama本地服务。 | ~700+MB |
+| ✨推荐：**[云端版本（点击下载）](https://github.com/joewongjc/type4me/releases/download/v1.6.2/Type4Me-v1.6.2-cloud.dmg)** | 支持云端识别 (Intel + Apple Silicon)，需配置语音、大模型API Key。语音识别推荐火山-豆包语音/Soniox、体验最好。火山注册有送额度，单价都十分便宜。[配置指引](https://my.feishu.cn/wiki/QdEnwBMfUi0mN4k3ucMcNYhUnXr) | ~4MB  |
+| **[本地版本（点击下载）](https://github.com/joewongjc/type4me/releases/download/v1.6.2/Type4Me-v1.6.2-local-apple-silicon.dmg)** | 内嵌 SenseVoice + Qwen3-ASR 本地识别引擎 (Apple Silicon only，约占用8GB内存，建议32GB以上)，大模型依旧需要配置API Key或Ollama本地服务。 | ~725MB |
 
 系统要求：macOS 14+ (Sonoma)
 

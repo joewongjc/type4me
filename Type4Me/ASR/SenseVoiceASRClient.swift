@@ -1,3 +1,5 @@
+#if HAS_SHERPA_ONNX
+
 import Foundation
 import os
 
@@ -470,3 +472,5 @@ actor SenseVoiceASRClient: SpeechRecognizer {
         }
     }
 }
+
+#endif

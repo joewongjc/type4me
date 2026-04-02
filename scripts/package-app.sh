@@ -10,6 +10,8 @@ APP_BUNDLE_ID="${APP_BUNDLE_ID:-com.type4me.app}"
 APP_VERSION="${APP_VERSION:-1.6.2}"
 APP_BUILD="${APP_BUILD:-1}"
 MIN_SYSTEM_VERSION="${MIN_SYSTEM_VERSION:-14.0}"
+VARIANT="${VARIANT:-cloud}"    # cloud or local
+ARCH="${ARCH:-universal}"      # arm64 or universal
 MICROPHONE_USAGE_DESCRIPTION="${MICROPHONE_USAGE_DESCRIPTION:-Type4Me 需要访问麦克风以录制语音并将其转换为文本。}"
 SPEECH_RECOGNITION_USAGE_DESCRIPTION="${SPEECH_RECOGNITION_USAGE_DESCRIPTION:-Type4Me 需要语音识别权限以将你的语音转写为文字。}"
 APPLE_EVENTS_USAGE_DESCRIPTION="${APPLE_EVENTS_USAGE_DESCRIPTION:-Type4Me 需要辅助功能权限来注入转写文字到其他应用}"
@@ -69,8 +71,13 @@ CERTEOF
     SIGNING_IDENTITY="$CERT_NAME"
 fi
 
-echo "Building universal release (arm64 + x86_64)..."
-swift build -c release --package-path "$PROJECT_DIR" --arch arm64 --arch x86_64 2>&1 | grep -E "Build complete|Build succeeded|error:|warning:" || true
+if [ "$ARCH" = "arm64" ]; then
+    echo "Building arm64 release..."
+    swift build -c release --package-path "$PROJECT_DIR" --arch arm64 2>&1 | grep -E "Build complete|Build succeeded|error:|warning:" || true
+else
+    echo "Building universal release (arm64 + x86_64)..."
+    swift build -c release --package-path "$PROJECT_DIR" --arch arm64 --arch x86_64 2>&1 | grep -E "Build complete|Build succeeded|error:|warning:" || true
+fi
 
 if [ -f "$PROJECT_DIR/.build/apple/Products/Release/Type4Me" ]; then
     BINARY="$PROJECT_DIR/.build/apple/Products/Release/Type4Me"
@@ -147,60 +154,74 @@ EOF
 mkdir -p "$APP_PATH/Contents/Resources/Sounds"
 cp "$PROJECT_DIR/Type4Me/Resources/Sounds/"*.wav "$APP_PATH/Contents/Resources/Sounds/" 2>/dev/null || true
 
-# Copy sherpa-onnx SenseVoice int8 model (always bundled, ~229MB)
-SHERPA_SV_MODEL="$HOME/Library/Application Support/Type4Me/models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17"
-if [ -d "$SHERPA_SV_MODEL" ]; then
-    echo "Bundling sherpa-onnx SenseVoice int8 model..."
-    mkdir -p "$APP_PATH/Contents/Resources/Models"
-    cp -R "$SHERPA_SV_MODEL" "$APP_PATH/Contents/Resources/Models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17"
-    echo "SenseVoice model bundled."
-else
-    echo "Warning: sherpa-onnx SenseVoice model not found at $SHERPA_SV_MODEL"
-fi
+# --- Models and local ASR server (local variant only) ---
+if [ "$VARIANT" = "local" ]; then
+    MODELS_DIR="$APP_PATH/Contents/Resources/Models"
+    mkdir -p "$MODELS_DIR"
 
-# Copy Silero VAD model (always bundled, ~0.6MB)
-SILERO_VAD_MODEL="$HOME/Library/Application Support/Type4Me/models/silero_vad"
-if [ -d "$SILERO_VAD_MODEL" ]; then
-    echo "Bundling Silero VAD model..."
-    mkdir -p "$APP_PATH/Contents/Resources/Models"
-    cp -R "$SILERO_VAD_MODEL" "$APP_PATH/Contents/Resources/Models/silero_vad"
-    echo "Silero VAD model bundled."
-else
-    echo "Warning: Silero VAD model not found at $SILERO_VAD_MODEL"
-fi
+    # SenseVoice int8 model (~229MB)
+    SHERPA_SV_MODEL="$HOME/Library/Application Support/Type4Me/models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17"
+    if [ -d "$SHERPA_SV_MODEL" ]; then
+        echo "Bundling sherpa-onnx SenseVoice int8 model..."
+        cp -R "$SHERPA_SV_MODEL" "$MODELS_DIR/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17"
+        echo "SenseVoice model bundled."
+    else
+        echo "ERROR: SenseVoice model not found at $SHERPA_SV_MODEL"
+        exit 1
+    fi
 
-# Copy Qwen3-ASR model (8-bit quantized) if available
-QWEN3_MODEL_CACHE="${QWEN3_MODEL_PATH:-$HOME/.cache/modelscope/hub/models/Qwen/Qwen3-ASR-0.6B-8bit}"
-if [ -d "$QWEN3_MODEL_CACHE" ]; then
-    echo "Bundling Qwen3-ASR model (8-bit)..."
-    mkdir -p "$APP_PATH/Contents/Resources/Models/Qwen3-ASR"
-    cp "$QWEN3_MODEL_CACHE"/model.safetensors "$APP_PATH/Contents/Resources/Models/Qwen3-ASR/"
-    cp "$QWEN3_MODEL_CACHE"/config.json "$APP_PATH/Contents/Resources/Models/Qwen3-ASR/"
-    cp "$QWEN3_MODEL_CACHE"/tokenizer_config.json "$APP_PATH/Contents/Resources/Models/Qwen3-ASR/" 2>/dev/null || true
-    cp "$QWEN3_MODEL_CACHE"/vocab.json "$APP_PATH/Contents/Resources/Models/Qwen3-ASR/" 2>/dev/null || true
-    cp "$QWEN3_MODEL_CACHE"/merges.txt "$APP_PATH/Contents/Resources/Models/Qwen3-ASR/" 2>/dev/null || true
-    cp "$QWEN3_MODEL_CACHE"/generation_config.json "$APP_PATH/Contents/Resources/Models/Qwen3-ASR/" 2>/dev/null || true
-    cp "$QWEN3_MODEL_CACHE"/preprocessor_config.json "$APP_PATH/Contents/Resources/Models/Qwen3-ASR/" 2>/dev/null || true
-    echo "Qwen3-ASR model bundled."
-fi
+    # Silero VAD model (~0.6MB)
+    SILERO_VAD_MODEL="$HOME/Library/Application Support/Type4Me/models/silero_vad"
+    if [ -d "$SILERO_VAD_MODEL" ]; then
+        echo "Bundling Silero VAD model..."
+        cp -R "$SILERO_VAD_MODEL" "$MODELS_DIR/silero_vad"
+        echo "Silero VAD model bundled."
+    else
+        echo "ERROR: Silero VAD model not found at $SILERO_VAD_MODEL"
+        exit 1
+    fi
 
-# Copy qwen3-asr-server if built and BUNDLE_LOCAL_ASR is set
-QWEN3_DIST="$PROJECT_DIR/qwen3-asr-server/dist/qwen3-asr-server"
-if [ "${BUNDLE_LOCAL_ASR:-0}" = "1" ] && [ -d "$QWEN3_DIST" ]; then
-    echo "Bundling qwen3-asr-server..."
-    rm -rf "$APP_PATH/Contents/MacOS/qwen3-asr-server-dist" "$APP_PATH/Contents/MacOS/qwen3-asr-server"
-    cp -R "$QWEN3_DIST" "$APP_PATH/Contents/MacOS/qwen3-asr-server-dist"
-    # Create a wrapper script at the expected path
-    cat > "$APP_PATH/Contents/MacOS/qwen3-asr-server" << 'WRAPPER'
+    # Qwen3-ASR model (4-bit quantized, ~510MB)
+    QWEN3_MODEL="${QWEN3_MODEL_PATH:-$HOME/.cache/modelscope/hub/models/Qwen/Qwen3-ASR-0.6B-4bit}"
+    if [ -d "$QWEN3_MODEL" ]; then
+        echo "Bundling Qwen3-ASR model (8-bit)..."
+        mkdir -p "$MODELS_DIR/Qwen3-ASR"
+        # Copy model weights (may be single file or sharded)
+        cp "$QWEN3_MODEL"/model*.safetensors "$MODELS_DIR/Qwen3-ASR/" 2>/dev/null || true
+        cp "$QWEN3_MODEL"/model.safetensors.index.json "$MODELS_DIR/Qwen3-ASR/" 2>/dev/null || true
+        # Copy config and tokenizer files
+        for f in config.json tokenizer_config.json vocab.json merges.txt \
+                 generation_config.json preprocessor_config.json chat_template.json; do
+            cp "$QWEN3_MODEL/$f" "$MODELS_DIR/Qwen3-ASR/" 2>/dev/null || true
+        done
+        echo "Qwen3-ASR model bundled."
+    else
+        echo "ERROR: Qwen3-ASR model not found at $QWEN3_MODEL"
+        exit 1
+    fi
+
+    # qwen3-asr-server (PyInstaller dist, ~230MB)
+    QWEN3_DIST="$PROJECT_DIR/qwen3-asr-server/dist/qwen3-asr-server"
+    if [ -d "$QWEN3_DIST" ]; then
+        echo "Bundling qwen3-asr-server..."
+        rm -rf "$APP_PATH/Contents/MacOS/qwen3-asr-server-dist" "$APP_PATH/Contents/MacOS/qwen3-asr-server"
+        cp -R "$QWEN3_DIST" "$APP_PATH/Contents/MacOS/qwen3-asr-server-dist"
+        cat > "$APP_PATH/Contents/MacOS/qwen3-asr-server" << 'WRAPPER'
 #!/bin/bash
 DIR="$(cd "$(dirname "$0")" && pwd)"
 exec "$DIR/qwen3-asr-server-dist/qwen3-asr-server" "$@"
 WRAPPER
-    chmod +x "$APP_PATH/Contents/MacOS/qwen3-asr-server"
-    # Sign all binaries in the server dist for Gatekeeper
-    find "$APP_PATH/Contents/MacOS/qwen3-asr-server-dist" -type f \( -name "*.dylib" -o -name "*.so" -o -name "*.metallib" -o -perm +111 \) \
-        -exec codesign --force --sign "${SIGNING_IDENTITY}" {} \; 2>/dev/null || true
-    echo "qwen3-asr-server bundled and signed."
+        chmod +x "$APP_PATH/Contents/MacOS/qwen3-asr-server"
+        find "$APP_PATH/Contents/MacOS/qwen3-asr-server-dist" -type f \( -name "*.dylib" -o -name "*.so" -o -name "*.metallib" -o -perm +111 \) \
+            -exec codesign --force --sign "${SIGNING_IDENTITY}" {} \; 2>/dev/null || true
+        echo "qwen3-asr-server bundled and signed."
+    else
+        echo "WARNING: qwen3-asr-server dist not found at $QWEN3_DIST (Qwen3 calibration will be unavailable)"
+    fi
+
+    echo "Local variant: all models bundled."
+else
+    echo "Cloud variant: skipping model bundling."
 fi
 
 # Copy third-party licenses
@@ -223,6 +244,8 @@ if [ -n "$SERVER_TEMP" ]; then
     [ -f "$SERVER_TEMP/qwen3-asr-server" ] && mv "$SERVER_TEMP/qwen3-asr-server" "$Q3_WRAPPER"
     rm -rf "$SERVER_TEMP"
 fi
+
+echo "Variant: $VARIANT | Arch: $ARCH"
 
 # Remove quarantine flag that macOS adds to downloaded apps.
 # This flag can silently prevent Accessibility permission from working.
