@@ -75,6 +75,10 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
                 (L("可用模型", "Models"), L("查看", "view"), URL(string: "https://www.assemblyai.com/docs/getting-started/models")!),
                 ("API Key", L("获取", "get"), URL(string: "https://www.assemblyai.com/docs/faq/how-to-get-your-api-key")!),
             ]
+        case .elevenlabs:
+            return [
+                ("API Key", L("获取", "get"), URL(string: "https://elevenlabs.io/app/settings/api-keys")!),
+            ]
         case .soniox:
             return [
                 ("API Key", L("获取", "get"), URL(string: "https://console.soniox.com")!),

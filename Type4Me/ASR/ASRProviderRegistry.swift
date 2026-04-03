@@ -68,6 +68,11 @@ enum ASRProviderRegistry {
                 createClient: { AssemblyAIASRClient() },
                 capabilities: .streaming()
             ),
+            .elevenlabs: ProviderEntry(
+                configType: ElevenLabsASRConfig.self,
+                createClient: { ElevenLabsASRClient() },
+                capabilities: .streaming()
+            ),
             .soniox: ProviderEntry(
                 configType: SonioxASRConfig.self,
                 createClient: { SonioxASRClient() },
