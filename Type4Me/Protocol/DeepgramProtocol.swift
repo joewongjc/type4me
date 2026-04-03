@@ -41,6 +41,10 @@ enum DeepgramProtocol {
             URLQueryItem(name: "smart_format", value: "true"),
         ]
 
+        if config.numerals {
+            queryItems.append(URLQueryItem(name: "numerals", value: "true"))
+        }
+
         let hotwords = options.hotwords
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }

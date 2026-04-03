@@ -27,11 +27,14 @@ struct DeepgramASRConfig: ASRProviderConfig, Sendable {
             options: supportedModels.map { FieldOption(value: $0, label: $0) }),
         CredentialField(key: "language", label: "Language", placeholder: defaultLanguage, isSecure: false, isOptional: false, defaultValue: defaultLanguage,
             options: supportedLanguages.map { FieldOption(value: $0, label: $0) }),
+        CredentialField(key: "numerals", label: L("数字转换", "Numerals"), placeholder: "false", isSecure: false, isOptional: true, defaultValue: "false",
+            options: [FieldOption(value: "true", label: "On"), FieldOption(value: "false", label: "Off")]),
     ]}
 
     let apiKey: String
     let model: String
     let language: String
+    let numerals: Bool
 
     init?(credentials: [String: String]) {
         guard let apiKey = credentials["apiKey"]?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -44,6 +47,7 @@ struct DeepgramASRConfig: ASRProviderConfig, Sendable {
         self.apiKey = apiKey
         self.model = model?.isEmpty == false ? model! : Self.defaultModel
         self.language = language?.isEmpty == false ? language! : Self.defaultLanguage
+        self.numerals = credentials["numerals"] == "true"
     }
 
     func toCredentials() -> [String: String] {
@@ -51,6 +55,7 @@ struct DeepgramASRConfig: ASRProviderConfig, Sendable {
             "apiKey": apiKey,
             "model": model,
             "language": language,
+            "numerals": numerals ? "true" : "false",
         ]
     }
 
