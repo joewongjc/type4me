@@ -12,6 +12,7 @@ struct HistoryRecord: Identifiable, Hashable {
     let finalText: String
     let status: String
     let characterCount: Int?
+    let asrProvider: String?
 }
 
 // MARK: - View
@@ -382,6 +383,9 @@ struct HistoryTab: View {
                 }
                 if let mode = record.processingMode {
                     Label(mode, systemImage: "text.bubble")
+                }
+                if let provider = record.asrProvider {
+                    Label(provider, systemImage: "mic")
                 }
                 Spacer()
             }

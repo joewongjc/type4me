@@ -32,7 +32,8 @@ actor HistoryStore {
                 processed_text TEXT,
                 final_text TEXT NOT NULL,
                 status TEXT NOT NULL,
-                character_count INTEGER
+                character_count INTEGER,
+                asr_provider TEXT
             );
             """
             sqlite3_exec(db, sql, nil, nil, nil)
@@ -40,6 +41,10 @@ actor HistoryStore {
             // Migration: add character_count column if it doesn't exist (for existing databases)
             let alterSQL = "ALTER TABLE recognition_history ADD COLUMN character_count INTEGER;"
             sqlite3_exec(db, alterSQL, nil, nil, nil)
+
+            // Migration: add asr_provider column if it doesn't exist
+            let alterASRSQL = "ALTER TABLE recognition_history ADD COLUMN asr_provider TEXT;"
+            sqlite3_exec(db, alterASRSQL, nil, nil, nil)
         }
     }
 
@@ -48,8 +53,8 @@ actor HistoryStore {
     func insert(_ record: HistoryRecord) {
         let sql = """
         INSERT OR REPLACE INTO recognition_history
-        (id, created_at, duration_seconds, raw_text, processing_mode, processed_text, final_text, status, character_count)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+        (id, created_at, duration_seconds, raw_text, processing_mode, processed_text, final_text, status, character_count, asr_provider)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
         """
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
@@ -69,6 +74,7 @@ actor HistoryStore {
         } else {
             sqlite3_bind_null(stmt, 9)
         }
+        bindOptional(stmt, 10, record.asrProvider)
         if sqlite3_step(stmt) == SQLITE_DONE {
             postDidChangeNotification()
         }
@@ -97,7 +103,8 @@ actor HistoryStore {
                 processedText: optionalColumn(stmt, 5),
                 finalText: column(stmt, 6),
                 status: column(stmt, 7),
-                characterCount: sqlite3_column_type(stmt, 8) == SQLITE_NULL ? nil : Int(sqlite3_column_int(stmt, 8))
+                characterCount: sqlite3_column_type(stmt, 8) == SQLITE_NULL ? nil : Int(sqlite3_column_int(stmt, 8)),
+                asrProvider: optionalColumn(stmt, 9)
             ))
         }
         return records
