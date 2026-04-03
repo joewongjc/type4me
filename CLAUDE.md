@@ -4,7 +4,7 @@
 
 macOS menu bar voice input tool with dual-engine local ASR, multi-provider cloud ASR, and LLM post-processing.
 Local ASR: SenseVoice via native sherpa-onnx (streaming) + Qwen3-ASR (final calibration, Python WebSocket service managed by `SenseVoiceServerManager`).
-Cloud ASR: 7 providers implemented (Volcano, OpenAI, Deepgram, AssemblyAI, Soniox, Bailian, Baidu).
+Cloud ASR: 8 providers implemented (Volcano, OpenAI, Deepgram, AssemblyAI, ElevenLabs, Soniox, Bailian, Baidu).
 Swift Package Manager project, no Xcode project file. Optional `sherpa-onnx.xcframework` for punctuation restoration.
 
 ## Build & Run
@@ -25,10 +25,10 @@ The built binary is at `.build/release/Type4Me`. To package it as a `.app` bundl
 
 Multi-provider ASR support via `ASRProvider` enum + `ASRProviderConfig` protocol + `ASRProviderRegistry`.
 
-- `ASRProvider` enum: 14 cases (sherpa/openai/azure/google/aws/deepgram/assemblyai/volcano/aliyun/bailian/tencent/baidu/iflytek/custom)
+- `ASRProvider` enum: 15 cases (sherpa/openai/azure/google/aws/deepgram/assemblyai/elevenlabs/volcano/aliyun/bailian/tencent/baidu/iflytek/custom)
 - Each provider has its own Config type (e.g., `SherpaASRConfig`, `VolcanoASRConfig`) defining `credentialFields` for dynamic UI rendering
 - `ASRProviderRegistry`: maps provider to config type + client factory; `capabilities` indicates availability and streaming support
-- **Fully implemented**: sherpa (local, batch), volcano (streaming), deepgram (streaming), assemblyai (streaming), soniox (streaming), bailian (streaming), baidu (streaming), openai (batch)
+- **Fully implemented**: sherpa (local, batch), volcano (streaming), deepgram (streaming), assemblyai (streaming), elevenlabs (streaming), soniox (streaming), bailian (streaming), baidu (streaming), openai (batch)
 - **Config only (no client)**: azure, google, aws, aliyun, tencent, iflytek, custom
 
 ### Adding a New Provider
@@ -70,21 +70,25 @@ Multi-provider ASR support via `ASRProvider` enum + `ASRProviderConfig` protocol
 
 ## Credential Storage
 
-Credentials are stored at `~/Library/Application Support/Type4Me/credentials.json` (file permissions 0600).
+Credentials use a hybrid storage model:
+- **Secure fields** (`isSecure: true` in CredentialField, e.g. API keys): stored in macOS Keychain (`com.type4me.grouped` / `com.type4me.scalar` services)
+- **Non-secure fields** (model, language, etc.): stored in `~/Library/Application Support/Type4Me/credentials.json` (file permissions 0600)
+- Auto-migration on first launch moves existing secure fields from JSON to Keychain
 
 **Do not rely on environment variables** for credentials in production. GUI-launched apps cannot read shell env vars from `~/.zshrc`. Credentials must be configured through the Settings UI.
 
-### credentials.json Structure
+### credentials.json Structure (non-secure fields only)
 
 ```json
 {
-    "tf_asr_volcano": { "appKey": "...", "accessKey": "...", "resourceId": "..." },
-    "tf_asr_openai": { "apiKey": "sk-..." },
-    "tf_llmApiKey": "...",
+    "tf_asr_volcano": { "appKey": "...", "resourceId": "..." },
+    "tf_asr_openai": {},
     "tf_llmModel": "...",
     "tf_llmBaseURL": "..."
 }
 ```
+
+API keys and other secure values are stored in Keychain, not in this file.
 
 ## Permissions Required
 
@@ -104,6 +108,7 @@ Credentials are stored at `~/Library/Application Support/Type4Me/credentials.jso
 | `Type4Me/ASR/SenseVoiceWSClient.swift` | Local ASR client (WebSocket to Python servers, dual-engine) |
 | `Type4Me/ASR/VolcASRClient.swift` | Cloud streaming ASR (Volcano, WebSocket) |
 | `Type4Me/ASR/DeepgramASRClient.swift` | Cloud streaming ASR (Deepgram, WebSocket) |
+| `Type4Me/ASR/ElevenLabsASRClient.swift` | Cloud streaming ASR (ElevenLabs Scribe v2, WebSocket) |
 | `Type4Me/ASR/OpenAIASRClient.swift` | Cloud batch ASR (OpenAI, REST) |
 | `Type4Me/ASR/SherpaPunctuationProcessor.swift` | Optional punctuation restoration (SherpaOnnx) |
 | `Type4Me/Bridge/SherpaOnnxBridge.swift` | SherpaOnnx C API Swift bridge (conditional) |
