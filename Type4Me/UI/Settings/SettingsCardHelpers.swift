@@ -77,6 +77,53 @@ extension SettingsCardHelpers {
         .padding(.vertical, 6)
     }
 
+    func settingsTextAreaField(_ label: String, text: Binding<String>, prompt: String, note: String? = nil, onReset: (() -> Void)? = nil, wordLimit: Int? = nil) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label.uppercased())
+                .font(.system(size: 10, weight: .semibold))
+                .tracking(0.8)
+                .foregroundStyle(TF.settingsTextTertiary)
+            if note != nil || onReset != nil {
+                HStack(spacing: 4) {
+                    if let note {
+                        Text(note)
+                            .font(.system(size: 10))
+                            .foregroundStyle(TF.settingsTextTertiary)
+                    }
+                    if let onReset {
+                        Button(L("从词汇表重新加载", "reload hotwords from vocabulary")) { onReset() }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(TF.settingsAccentBlue)
+                    }
+                }
+            }
+            ZStack(alignment: .topLeading) {
+                if text.wrappedValue.isEmpty {
+                    Text(prompt)
+                        .font(.system(size: 12))
+                        .foregroundStyle(TF.settingsTextTertiary.opacity(0.6))
+                        .padding(.horizontal, 13)
+                        .padding(.vertical, 9)
+                }
+                TextEditor(text: text)
+                    .font(.system(size: 12))
+                    .scrollContentBackground(.hidden)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+            }
+            .frame(minHeight: 72)
+            .background(RoundedRectangle(cornerRadius: 8).fill(TF.settingsCardAlt))
+
+            if let hint = textAreaWordHint(text.wrappedValue, limit: wordLimit) {
+                Text(hint)
+                    .font(.system(size: 10))
+                    .foregroundStyle(TF.settingsTextTertiary)
+            }
+        }
+        .padding(.vertical, 6)
+    }
+
     func settingsPickerField(_ label: String, selection: Binding<String>, options: [FieldOption]) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(label.uppercased())
@@ -281,5 +328,22 @@ extension SettingsCardHelpers {
         let prefix = value.prefix(4)
         let suffix = value.suffix(4)
         return "\(prefix)••••\(suffix)"
+    }
+
+    func textAreaWordHint(_ text: String, limit: Int? = nil) -> String? {
+        let words = text
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard !words.isEmpty else { return nil }
+        if let limit, words.count > limit {
+            let effectiveWord = words[limit - 1]
+            return L("共 \(words.count) 个词，仅发送前 \(limit) 个，第 \(limit) 个词：\(effectiveWord)",
+                     "Currently \(words.count) words, only first \(limit) will be sent, last effective word is \(effectiveWord)")
+        } else if let last = words.last {
+            return L("共 \(words.count) 个词，最后一个有效词：\(last)",
+                     "Currently \(words.count) words, last effective word is \(last)")
+        }
+        return nil
     }
 }

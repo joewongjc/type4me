@@ -68,13 +68,19 @@ struct CredentialField: Sendable, Identifiable {
     /// When true (and options is non-empty), the picker includes a "Custom" entry
     /// that reveals a text field for free-form input.
     let allowCustomInput: Bool
+    /// When true, renders a multi-line TextEditor instead of a single-line TextField.
+    let isTextArea: Bool
+    /// Optional note shown between the field label and the input control.
+    let note: String?
+    /// For text area fields: cap used in the word-count hint (nil = no cap).
+    let wordLimit: Int?
 
     /// Sentinel value used in the picker to represent "custom input" mode.
     static let customValue = "_custom"
 
     var id: String { key }
 
-    init(key: String, label: String, placeholder: String, isSecure: Bool, isOptional: Bool, defaultValue: String, options: [FieldOption] = [], allowCustomInput: Bool = false) {
+    init(key: String, label: String, placeholder: String, isSecure: Bool, isOptional: Bool, defaultValue: String, options: [FieldOption] = [], allowCustomInput: Bool = false, isTextArea: Bool = false, note: String? = nil, wordLimit: Int? = nil) {
         self.key = key
         self.label = label
         self.placeholder = placeholder
@@ -83,6 +89,9 @@ struct CredentialField: Sendable, Identifiable {
         self.defaultValue = defaultValue
         self.options = options
         self.allowCustomInput = allowCustomInput
+        self.isTextArea = isTextArea
+        self.note = note
+        self.wordLimit = wordLimit
     }
 }
 

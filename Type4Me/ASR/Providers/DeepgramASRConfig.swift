@@ -29,12 +29,16 @@ struct DeepgramASRConfig: ASRProviderConfig, Sendable {
             options: supportedLanguages.map { FieldOption(value: $0, label: $0) }),
         CredentialField(key: "numerals", label: L("数字转换", "Numerals"), placeholder: "false", isSecure: false, isOptional: true, defaultValue: "false",
             options: [FieldOption(value: "true", label: "On"), FieldOption(value: "false", label: "Off")]),
+        CredentialField(key: "hotwords", label: L("热词", "Hotwords"), placeholder: L("word1, word2（逗号分隔）", "word1, word2 — comma separated"), isSecure: false, isOptional: true, defaultValue: "", isTextArea: true,
+            note: L("受接口限制，热词仅取前 30 个", "Due to API limits, only the first 30 hotwords are used"),
+            wordLimit: 30),
     ]}
 
     let apiKey: String
     let model: String
     let language: String
     let numerals: Bool
+    let hotwords: [String]
 
     init?(credentials: [String: String]) {
         guard let apiKey = credentials["apiKey"]?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -48,6 +52,10 @@ struct DeepgramASRConfig: ASRProviderConfig, Sendable {
         self.model = model?.isEmpty == false ? model! : Self.defaultModel
         self.language = language?.isEmpty == false ? language! : Self.defaultLanguage
         self.numerals = credentials["numerals"] == "true"
+        self.hotwords = (credentials["hotwords"] ?? "")
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
     }
 
     func toCredentials() -> [String: String] {
@@ -56,6 +64,7 @@ struct DeepgramASRConfig: ASRProviderConfig, Sendable {
             "model": model,
             "language": language,
             "numerals": numerals ? "true" : "false",
+            "hotwords": hotwords.joined(separator: ", "),
         ]
     }
 
