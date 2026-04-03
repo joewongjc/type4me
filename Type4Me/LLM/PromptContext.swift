@@ -8,6 +8,7 @@ import os
 struct PromptContext: Sendable {
     let selectedText: String
     let clipboardText: String
+    static let empty = PromptContext(selectedText: "", clipboardText: "")
 
     /// Capture the current selected text (via Accessibility) and clipboard content.
     /// Clipboard is read on MainActor (AppKit requirement).
@@ -44,6 +45,10 @@ struct PromptContext: Sendable {
         }
         result += remaining
         return result
+    }
+
+    static func referencesSensitiveVariables(in prompt: String) -> Bool {
+        prompt.contains("{selected}") || prompt.contains("{clipboard}")
     }
 
     // MARK: - Private

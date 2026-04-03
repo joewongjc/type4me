@@ -82,12 +82,10 @@ actor DoubaoChatClient: LLMClient {
 
         var result = ""
         var lineCount = 0
-        var firstDataLine: String?
         for try await line in bytes.lines {
             lineCount += 1
             guard line.hasPrefix("data: ") else { continue }
             let payload = String(line.dropFirst(6))
-            if firstDataLine == nil { firstDataLine = String(payload.prefix(300)) }
             if payload == "[DONE]" { break }
             guard let data = payload.data(using: .utf8),
                   let chunk = try? JSONDecoder().decode(ChatStreamChunk.self, from: data),
@@ -97,8 +95,8 @@ actor DoubaoChatClient: LLMClient {
         }
 
         if result.isEmpty && lineCount > 0 {
-            DebugFileLogger.log("LLM[\(model)]: \(lineCount) lines but 0 content chars; first data=\(firstDataLine ?? "(none)")")
-            throw LLMError.emptyResponse(firstDataLine)
+            DebugFileLogger.log("LLM[\(model)]: \(lineCount) lines but 0 content chars")
+            throw LLMError.emptyResponse("stream contained no text")
         }
         if result.isEmpty {
             DebugFileLogger.log("LLM[\(model)]: 0 lines received (connection closed immediately)")
@@ -123,9 +121,8 @@ actor DoubaoChatClient: LLMClient {
         guard let json = try? JSONDecoder().decode(ChatCompletionResponse.self, from: data),
               let content = json.choices.first?.message.content, !content.isEmpty
         else {
-            let raw = String(data: data.prefix(300), encoding: .utf8)
-            DebugFileLogger.log("LLM[\(model)]: non-streaming empty; raw=\(raw ?? "(nil)")")
-            throw LLMError.emptyResponse(raw)
+            DebugFileLogger.log("LLM[\(model)]: non-streaming empty response")
+            throw LLMError.emptyResponse("empty response body")
         }
         return content
     }
