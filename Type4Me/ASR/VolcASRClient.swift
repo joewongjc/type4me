@@ -272,7 +272,7 @@ actor VolcASRClient: SpeechRecognizer {
                 emitEvent(.transcript(transcript))
 
                 if transcript.isFinal, !transcript.authoritativeText.isEmpty {
-                    NSLog("[ASR] Final transcript: '%@'", transcript.authoritativeText)
+                    NSLog("[ASR] Final transcript received (%d chars)", transcript.authoritativeText.count)
                 }
             } catch {
                 NSLog("[ASR] Decode error: %@", String(describing: error))

@@ -3,6 +3,11 @@ import XCTest
 
 final class PromptContextTests: XCTestCase {
 
+    override func tearDown() {
+        UserDefaults.standard.removeObject(forKey: PrivacyPreferences.allowSensitivePromptContextKey)
+        super.tearDown()
+    }
+
     func testExpandContextVariables_replacesSelected() {
         let ctx = PromptContext(selectedText: "hello world", clipboardText: "")
         let result = ctx.expandContextVariables("Fix: {selected}")
@@ -44,5 +49,40 @@ final class PromptContextTests: XCTestCase {
         let ctx = PromptContext(selectedText: "sel", clipboardText: "clip")
         let result = ctx.expandContextVariables("修正以下文本：{text}")
         XCTAssertEqual(result, "修正以下文本：{text}")
+    }
+
+    func testReferencesSensitiveVariables_detectsSelectedAndClipboard() {
+        XCTAssertTrue(PromptContext.referencesSensitiveVariables(in: "A={selected}"))
+        XCTAssertTrue(PromptContext.referencesSensitiveVariables(in: "B={clipboard}"))
+        XCTAssertFalse(PromptContext.referencesSensitiveVariables(in: "Only {text}"))
+    }
+
+    func testShouldCapturePromptContext_disablesCloudContextByDefault() {
+        XCTAssertFalse(
+            PrivacyPreferences.shouldCapturePromptContext(
+                for: "Use {selected}",
+                llmProvider: .openai
+            )
+        )
+    }
+
+    func testShouldCapturePromptContext_allowsCloudContextWhenEnabled() {
+        UserDefaults.standard.set(true, forKey: PrivacyPreferences.allowSensitivePromptContextKey)
+
+        XCTAssertTrue(
+            PrivacyPreferences.shouldCapturePromptContext(
+                for: "Use {clipboard}",
+                llmProvider: .claude
+            )
+        )
+    }
+
+    func testShouldCapturePromptContext_allowsLocalLLMWithoutGlobalToggle() {
+        XCTAssertTrue(
+            PrivacyPreferences.shouldCapturePromptContext(
+                for: "Use {selected}",
+                llmProvider: .ollama
+            )
+        )
     }
 }

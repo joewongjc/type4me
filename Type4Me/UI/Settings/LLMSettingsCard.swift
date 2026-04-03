@@ -308,7 +308,7 @@ struct LLMSettingsCard: View, SettingsCardHelpers {
                 let reply = try await client.process(text: "hi", prompt: "{text}", config: llmConfig)
                 guard !Task.isCancelled else { return }
                 llmTestStatus = .success
-                NSLog("[Settings] LLM test OK (%@): %@", provider.rawValue, reply)
+                NSLog("[Settings] LLM test OK (%@): %d chars", provider.rawValue, reply.count)
             } catch {
                 guard !Task.isCancelled else { return }
                 NSLog("[Settings] LLM test failed (%@): %@", provider.rawValue, String(describing: error))

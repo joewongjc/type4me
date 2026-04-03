@@ -223,8 +223,13 @@ actor RecognitionSession {
             bypassProxy: ProxyBypassMode.current.bypassASR
         )
 
-        // Capture prompt context while the user's selection is still active.
-        promptContext = await PromptContext.capture()
+        // Capture prompt context only when the current prompt actually needs it.
+        let llmProvider = needsLLM ? KeychainService.selectedLLMProvider : nil
+        if PrivacyPreferences.shouldCapturePromptContext(for: effectiveMode.prompt, llmProvider: llmProvider) {
+            promptContext = await PromptContext.capture()
+        } else {
+            promptContext = .empty
+        }
         guard sessionGeneration == myGeneration else {
             DebugFileLogger.log("startRecording: zombie detected after capture, bailing")
             return
@@ -414,7 +419,7 @@ actor RecognitionSession {
         // Kick off Soniox async calibration EARLY, in parallel with RT teardown.
         // Grab audio now before audioEngine.stop() clears it.
         let sonioxAsyncEnabled = provider == .soniox
-            && UserDefaults.standard.bool(forKey: "tf_sonioxAsyncCalibration")
+            && PrivacyPreferences.sonioxAsyncCalibrationEnabled
         var sonioxAsyncTask: Task<SonioxAsyncClient.TranscriptionResult?, Never>?
         if sonioxAsyncEnabled, let sonioxConfig = currentConfig as? SonioxASRConfig {
             let fullAudio = audioEngine.getRecordedAudio()
@@ -675,7 +680,7 @@ actor RecognitionSession {
             // still emitted only after injection completes, preserving ordering.
             let engine = injectionEngine
             let aborted = injectionAborted
-            let injectLog = "stop: injecting method=clipboard text=[\(finalText.prefix(50))] len=\(finalText.count) +\(ContinuousClock.now - stopT0)"
+            let injectLog = "stop: injecting method=clipboard len=\(finalText.count) +\(ContinuousClock.now - stopT0)"
             let injectionOutcome: InjectionOutcome = await withCheckedContinuation { continuation in
                 Task.detached {
                     let outcome: InjectionOutcome

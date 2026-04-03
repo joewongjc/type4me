@@ -20,6 +20,8 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
     @AppStorage("tf_preserveClipboard") private var preserveClipboard = true
     @AppStorage("tf_showDockIcon") private var showDockIcon = true
     @AppStorage("tf_bypassProxy") private var bypassProxy = "off"
+    @AppStorage("tf_allowSensitivePromptContext") private var allowSensitivePromptContext = false
+    @AppStorage("tf_sonioxAsyncCalibration") private var sonioxAsyncCalibration = false
 
     @State private var hasMic = false
     @State private var hasAccessibility = false
@@ -139,25 +141,13 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
             // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
             settingsGroupCard(L("高级设置", "Advanced"), icon: "wrench.and.screwdriver") {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(L("绕过系统代理", "Bypass System Proxy").uppercased())
-                        .font(.system(size: 10, weight: .semibold))
-                        .tracking(0.8)
-                        .foregroundStyle(TF.settingsTextTertiary)
-                    settingsDropdown(
-                        selection: $bypassProxy,
-                        options: [
-                            ("off", L("关闭", "Off")),
-                            ("all", L("全局绕过", "All Connections")),
-                            ("asr", L("语音识别绕过", "ASR Only")),
-                            ("llm", L("文本处理 LLM 绕过", "LLM Only")),
-                        ]
-                    )
-                    Text(L("不经过代理软件，直连对应服务器", "Connect directly to servers, bypassing proxy"))
-                        .font(.system(size: 10))
-                        .foregroundStyle(TF.settingsTextTertiary)
+                VStack(alignment: .leading, spacing: 0) {
+                    bypassProxyRow
+                    SettingsDivider()
+                    sensitivePromptContextRow
+                    SettingsDivider()
+                    sonioxCalibrationRow
                 }
-                .padding(.vertical, 6)
             }
 
         }
@@ -401,6 +391,74 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
                 options: AppLanguage.allCases.map { ($0.rawValue, $0.displayName) },
                 icon: "globe"
             )
+        }
+        .padding(.vertical, 6)
+    }
+
+    private var bypassProxyRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(L("绕过系统代理", "Bypass System Proxy").uppercased())
+                .font(.system(size: 10, weight: .semibold))
+                .tracking(0.8)
+                .foregroundStyle(TF.settingsTextTertiary)
+            settingsDropdown(
+                selection: $bypassProxy,
+                options: [
+                    ("off", L("关闭", "Off")),
+                    ("all", L("全局绕过", "All Connections")),
+                    ("asr", L("语音识别绕过", "ASR Only")),
+                    ("llm", L("文本处理 LLM 绕过", "LLM Only")),
+                ]
+            )
+            Text(L("不经过代理软件，直连对应服务器", "Connect directly to servers, bypassing proxy"))
+                .font(.system(size: 10))
+                .foregroundStyle(TF.settingsTextTertiary)
+        }
+        .padding(.vertical, 6)
+    }
+
+    private var sensitivePromptContextRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(L("云端上下文共享", "Cloud Context Sharing").uppercased())
+                .font(.system(size: 10, weight: .semibold))
+                .tracking(0.8)
+                .foregroundStyle(TF.settingsTextTertiary)
+            settingsDropdown(
+                selection: Binding(
+                    get: { allowSensitivePromptContext ? "on" : "off" },
+                    set: { allowSensitivePromptContext = $0 == "on" }
+                ),
+                options: [
+                    ("off", L("关闭", "Off")),
+                    ("on", L("开启", "On")),
+                ]
+            )
+            Text(L("仅当模式 prompt 使用 {selected} 或 {clipboard} 时，允许把选中文本和剪贴板发送给云端 LLM。本地 Ollama 不受此开关限制。", "Allow selected text and clipboard content to be sent to cloud LLMs only when a mode prompt uses {selected} or {clipboard}. Local Ollama is unaffected by this switch."))
+                .font(.system(size: 10))
+                .foregroundStyle(TF.settingsTextTertiary)
+        }
+        .padding(.vertical, 6)
+    }
+
+    private var sonioxCalibrationRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(L("SONIOX 二次云端校准", "Soniox Secondary Cloud Pass").uppercased())
+                .font(.system(size: 10, weight: .semibold))
+                .tracking(0.8)
+                .foregroundStyle(TF.settingsTextTertiary)
+            settingsDropdown(
+                selection: Binding(
+                    get: { sonioxAsyncCalibration ? "on" : "off" },
+                    set: { sonioxAsyncCalibration = $0 == "on" }
+                ),
+                options: [
+                    ("off", L("关闭", "Off")),
+                    ("on", L("开启", "On")),
+                ]
+            )
+            Text(L("录音结束后把完整音频再上传一次到 Soniox 做异步校准，可提高准确率，但会额外发送整段录音并产生额外计费。", "Upload the full recording to Soniox for an async second pass after stop. This can improve accuracy, but sends the entire recording again and may incur extra billing."))
+                .font(.system(size: 10))
+                .foregroundStyle(TF.settingsTextTertiary)
         }
         .padding(.vertical, 6)
     }

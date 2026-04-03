@@ -4,6 +4,11 @@ import XCTest
 final class KeychainServiceTests: XCTestCase {
 
     private var originalProvider: ASRProvider!
+    private let appSupportDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        .appendingPathComponent("Type4Me", isDirectory: true)
+    private var credentialsURL: URL {
+        appSupportDir.appendingPathComponent("credentials.json")
+    }
 
     override func setUp() {
         super.setUp()
@@ -12,6 +17,7 @@ final class KeychainServiceTests: XCTestCase {
 
     override func tearDown() {
         KeychainService.delete(key: "test_key")
+        try? KeychainService.saveASRCredentials(for: .volcano, values: [:])
         KeychainService.selectedASRProvider = originalProvider
         super.tearDown()
     }
@@ -60,6 +66,23 @@ final class KeychainServiceTests: XCTestCase {
         XCTAssertEqual(config?.appKey, "myAppKey")
         XCTAssertEqual(config?.accessKey, "myAccessKey")
         XCTAssertEqual(config?.resourceId, "myResource")
+    }
+
+    func testSaveASRCredentials_storesSecureFieldsOutsideCredentialsFile() throws {
+        try KeychainService.saveASRCredentials(for: .volcano, values: [
+            "appKey": "myAppKey",
+            "accessKey": "myAccessKey",
+            "resourceId": "myResource",
+        ])
+
+        let fileData = try Data(contentsOf: credentialsURL)
+        let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: fileData) as? [String: Any])
+        let stored = try XCTUnwrap(json["tf_asr_volcano"] as? [String: String])
+
+        XCTAssertEqual(stored["appKey"], "myAppKey")
+        XCTAssertEqual(stored["resourceId"], "myResource")
+        XCTAssertNil(stored["accessKey"])
+        XCTAssertEqual(KeychainService.loadASRCredentials(for: .volcano)?["accessKey"], "myAccessKey")
     }
 
     func testSelectedASRProviderPostsNotificationOnChange() {
