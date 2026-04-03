@@ -717,24 +717,9 @@ actor RecognitionSession {
             // No separate .error emission here to avoid green→red UI flash.
 
         } else {
-            // No text recognized: save to history as failed, then exit.
+            // No text recognized: skip history entry (don't save empty records)
             let duration = recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0
-            if duration > 1.0 {
-                // Only save if recording lasted more than 1 second (skip accidental taps)
-                let status = streamingFailed ? "stream_failed" : "empty"
-                await historyStore.insert(HistoryRecord(
-                    id: UUID().uuidString,
-                    createdAt: Date(),
-                    durationSeconds: duration,
-                    rawText: "",
-                    processingMode: currentMode == .direct ? nil : currentMode.name,
-                    processedText: nil,
-                    finalText: "",
-                    status: status,
-                    characterCount: 0
-                ))
-                DebugFileLogger.log("stop: no text recognized, saved to history as \(status)")
-            }
+            DebugFileLogger.log("stop: no text recognized (duration=\(duration)s), skipping history entry")
             onASREvent?(.processingResult(text: ""))
             onASREvent?(.completed)
         }

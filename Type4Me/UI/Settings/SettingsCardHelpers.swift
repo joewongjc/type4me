@@ -204,6 +204,7 @@ extension SettingsCardHelpers {
                             RoundedRectangle(cornerRadius: 8)
                                 .fill(isSelected ? TF.settingsNavActive : .clear)
                         )
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
@@ -223,6 +224,7 @@ extension SettingsCardHelpers {
             .padding(.horizontal, 16)
             .padding(.vertical, 7)
             .background(RoundedRectangle(cornerRadius: 8).fill(TF.settingsAccentAmber))
+            .contentShape(Rectangle())
     }
 
     func secondaryButton(_ title: String, action: @escaping () -> Void) -> some View {
@@ -233,6 +235,7 @@ extension SettingsCardHelpers {
             .padding(.horizontal, 16)
             .padding(.vertical, 7)
             .background(RoundedRectangle(cornerRadius: 8).fill(TF.settingsCardAlt))
+            .contentShape(Rectangle())
     }
 
     func saveButton(action: @escaping () -> Void) -> some View {
@@ -270,6 +273,7 @@ extension SettingsCardHelpers {
             .padding(.horizontal, 16)
             .padding(.vertical, 7)
             .background(RoundedRectangle(cornerRadius: 8).fill(status.buttonBackground))
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(status == .testing)

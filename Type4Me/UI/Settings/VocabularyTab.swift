@@ -6,6 +6,8 @@ struct VocabularyTab: View {
     @State private var hotwords: [String] = HotwordStorage.load()
     @State private var newHotword: String = ""
     @State private var builtinHotwordCount: Int = HotwordStorage.builtinCount()
+    @State private var showBulkHotwordsSheet = false
+    @State private var bulkHotwordsText = ""
 
     // Snippets (user file)
     @State private var snippets: [(trigger: String, value: String)] = SnippetStorage.load()
@@ -104,6 +106,19 @@ struct VocabularyTab: View {
                             .stroke(TF.settingsTextTertiary.opacity(0.3), style: StrokeStyle(lineWidth: 1, dash: [4]))
                     )
                     .onSubmit { addHotword() }
+
+                Button {
+                    showBulkHotwordsSheet = true
+                } label: {
+                    Label(L("批量", "Bulk"), systemImage: "list.bullet.rectangle")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(TF.settingsTextSecondary)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(RoundedRectangle(cornerRadius: 6).fill(TF.settingsBg))
             }
 
             Text(L("回车添加，点 × 移除", "Press Enter to add, click x to remove"))
@@ -245,6 +260,12 @@ struct VocabularyTab: View {
             snippets = SnippetStorage.load()
             builtinHotwordCount = HotwordStorage.builtinCount()
             builtinSnippetCount = SnippetStorage.builtinCount()
+        }
+        .sheet(isPresented: $showBulkHotwordsSheet) {
+            bulkHotwordsSheet
+                .onAppear {
+                    bulkHotwordsText = hotwords.joined(separator: "\n")
+                }
         }
     }
 
@@ -504,6 +525,100 @@ struct VocabularyTab: View {
         SnippetStorage.save(snippets)
         newTrigger = ""
         newValue = ""
+    }
+
+    // MARK: - Bulk Hotwords Sheet
+
+    private var bulkHotwordsSheet: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // Header
+            HStack {
+                Text(L("批量管理热词", "Bulk Edit Hotwords"))
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(TF.settingsText)
+                Spacer()
+                Button {
+                    showBulkHotwordsSheet = false
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 18))
+                        .foregroundStyle(TF.settingsTextTertiary)
+                }
+                .buttonStyle(.plain)
+            }
+
+            // Description
+            Text(L("每行一个热词，保存后将覆盖所有自定义热词。", "One hotword per line. Saving will replace all custom hotwords."))
+                .font(.system(size: 12))
+                .foregroundStyle(TF.settingsTextTertiary)
+
+            // Text editor
+            TextEditor(text: $bulkHotwordsText)
+                .font(.system(size: 13))
+                .foregroundStyle(TF.settingsText)
+                .padding(8)
+                .background(RoundedRectangle(cornerRadius: 8).fill(TF.settingsBg))
+                .frame(minHeight: 300, maxHeight: 400)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(TF.settingsTextTertiary.opacity(0.3), lineWidth: 1)
+                )
+
+            // Stats
+            HStack {
+                Text(L("\(bulkHotwordsLines.count) 条热词", "\(bulkHotwordsLines.count) hotwords"))
+                    .font(.system(size: 11))
+                    .foregroundStyle(TF.settingsTextTertiary)
+                Spacer()
+            }
+
+            // Actions
+            HStack(spacing: 12) {
+                Spacer()
+                Button {
+                    showBulkHotwordsSheet = false
+                } label: {
+                    Text(L("取消", "Cancel"))
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(TF.settingsTextSecondary)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 7)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    saveBulkHotwords()
+                } label: {
+                    Text(L("保存", "Save"))
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 7)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(TF.settingsAccentAmber))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(bulkHotwordsLines.isEmpty && hotwords.isEmpty)
+            }
+        }
+        .padding(20)
+        .frame(width: 480)
+        .background(TF.settingsCardAlt)
+    }
+
+    private var bulkHotwordsLines: [String] {
+        bulkHotwordsText
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+    }
+
+    private func saveBulkHotwords() {
+        let newWords = bulkHotwordsLines
+        hotwords = newWords
+        HotwordStorage.save(newWords)
+        showBulkHotwordsSheet = false
     }
 
 }

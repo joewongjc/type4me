@@ -426,6 +426,7 @@ struct HistoryTab: View {
                     )
                     .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(copiedId == record.id ? TF.settingsAccentGreen : TF.settingsTextSecondary)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
 
@@ -438,6 +439,7 @@ struct HistoryTab: View {
                     Label(L("删除", "Delete"), systemImage: "trash")
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(TF.settingsAccentRed.opacity(0.7))
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
