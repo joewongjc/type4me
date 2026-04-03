@@ -438,29 +438,6 @@ actor RecognitionSession {
         let needsLLM = !currentMode.prompt.isEmpty
         let provider = activeProvider
 
-        // Kick off Soniox async calibration EARLY, in parallel with RT teardown.
-        // Grab audio now before audioEngine.stop() clears it.
-        let sonioxAsyncEnabled = provider == .soniox
-            && PrivacyPreferences.sonioxAsyncCalibrationEnabled
-        var sonioxAsyncTask: Task<SonioxAsyncClient.TranscriptionResult?, Never>?
-        if sonioxAsyncEnabled, let sonioxConfig = currentConfig as? SonioxASRConfig {
-            let fullAudio = audioEngine.getRecordedAudio()
-            if !fullAudio.isEmpty {
-                let hotwords = HotwordStorage.loadEffective()
-                let bypass = ProxyBypassMode.current.bypassASR
-                let apiKey = sonioxConfig.apiKey
-                DebugFileLogger.log("stop: Soniox async kicked off early (\(fullAudio.count) bytes)")
-                sonioxAsyncTask = Task.detached {
-                    await SonioxAsyncClient.transcribe(
-                        audioData: fullAudio,
-                        apiKey: apiKey,
-                        hotwords: hotwords,
-                        bypassProxy: bypass
-                    )
-                }
-            }
-        }
-
         // ASR teardown: send endAudio and drain event stream with hard deadlines.
         // Uses detached tasks + continuation so a stuck client can't block stopRecording.
         let providerIsStreaming = ASRProviderRegistry.capabilities(for: provider).isStreaming
@@ -572,27 +549,6 @@ actor RecognitionSession {
             }
         }
         uploadFailureFlag = nil
-
-        // Await Soniox async calibration result (kicked off earlier, in parallel with RT teardown).
-        if let asyncTask = sonioxAsyncTask {
-            let rtText = currentTranscript.composedText
-            onASREvent?(.processingResult(text: rtText))
-            if let result = await asyncTask.value, !result.text.isEmpty {
-                let changed = result.text != rtText
-                DebugFileLogger.log("stop: Soniox async done, \(result.text.count) chars, changed=\(changed)")
-                if changed {
-                    NSLog("[Session] Soniox async calibration changed result")
-                }
-                currentTranscript = RecognitionTranscript(
-                    confirmedSegments: [result.text],
-                    partialText: "",
-                    authoritativeText: result.text,
-                    isFinal: true
-                )
-            } else {
-                DebugFileLogger.log("stop: Soniox async failed, using RT result")
-            }
-        }
 
         // Combine confirmed segments + any trailing unconfirmed partial.
         let effectiveText = currentTranscript.displayText
