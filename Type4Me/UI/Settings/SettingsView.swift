@@ -53,6 +53,7 @@ struct SettingsView: View {
 
     @Environment(AppState.self) private var appState
     @State private var selectedTab: SettingsTab = .general
+    @State private var showDeviceConflict = false
     @AppStorage("tf_language") private var language = AppLanguage.systemDefault
     @AppStorage("tf_app_edition") private var editionRaw: String?
 
@@ -87,6 +88,24 @@ struct SettingsView: View {
             if let modeId = note.object as? UUID {
                 NotificationCenter.default.post(name: .selectMode, object: modeId)
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .cloudDeviceConflict)) { _ in
+            showDeviceConflict = true
+        }
+        .alert(
+            L("设备冲突", "Device Conflict"),
+            isPresented: $showDeviceConflict
+        ) {
+            Button("OK") {
+                if edition == .member {
+                    selectedTab = .account
+                }
+            }
+        } message: {
+            Text(L(
+                "你的账户已在其他设备登录，当前设备已自动登出。",
+                "Your account has been logged in on another device. This device has been signed out."
+            ))
         }
     }
 
