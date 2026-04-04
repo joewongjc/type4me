@@ -211,12 +211,14 @@ struct SettingsView: View {
 
     /// Scrollable tab page (most tabs).
     private func tabPage<V: View>(_ tab: SettingsTab, @ViewBuilder content: () -> V) -> some View {
-        ScrollView {
+        ScrollView(.vertical, showsIndicators: true) {
             VStack(alignment: .leading, spacing: 0) {
                 content()
             }
             .padding(28)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .scrollBounceBehavior(.basedOnSize)
         .opacity(selectedTab == tab ? 1 : 0)
         .allowsHitTesting(selectedTab == tab)
     }
