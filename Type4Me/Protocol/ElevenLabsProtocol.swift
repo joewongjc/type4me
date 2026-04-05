@@ -98,7 +98,11 @@ enum ElevenLabsProtocol {
         case "partial_transcript":
             guard let text = message.text,
                   !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
-            let normalized = normalize(segment: text, after: confirmedSegments.joined())
+            let confirmed = confirmedSegments.joined()
+            // ElevenLabs sends cumulative text — strip the already-confirmed prefix to avoid duplication
+            let partialOnly = stripConfirmedPrefix(from: text, confirmed: confirmed)
+            guard !partialOnly.isEmpty else { return nil }
+            let normalized = normalize(segment: partialOnly, after: confirmed)
             let transcript = RecognitionTranscript(
                 confirmedSegments: confirmedSegments,
                 partialText: normalized,
@@ -109,10 +113,13 @@ enum ElevenLabsProtocol {
 
         case "committed_transcript":
             let trimmed = message.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let confirmed = confirmedSegments.joined()
             var next = confirmedSegments
             if !trimmed.isEmpty {
-                let normalized = normalize(segment: trimmed, after: confirmedSegments.joined())
-                next.append(normalized)
+                let newOnly = stripConfirmedPrefix(from: trimmed, confirmed: confirmed)
+                if !newOnly.isEmpty {
+                    next.append(normalize(segment: newOnly, after: confirmed))
+                }
             }
             // Mid-stream auto-commits (VAD) use isFinal: false so the session keeps recording.
             // Only the explicit endAudio() commit uses isFinal: true to trigger injection.
@@ -155,6 +162,17 @@ enum ElevenLabsProtocol {
     private static func jsonString(_ payload: [String: Any]) -> String {
         (try? JSONSerialization.data(withJSONObject: payload))
             .flatMap { String(data: $0, encoding: .utf8) } ?? ""
+    }
+
+    /// Strips the already-confirmed text prefix from `text` if ElevenLabs sends cumulative partials.
+    private static func stripConfirmedPrefix(from text: String, confirmed: String) -> String {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !confirmed.isEmpty else { return t }
+        let c = confirmed.trimmingCharacters(in: .whitespacesAndNewlines)
+        if t.hasPrefix(c) {
+            return String(t.dropFirst(c.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return t
     }
 
     private static func normalize(segment: String, after existingText: String) -> String {
