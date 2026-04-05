@@ -163,6 +163,12 @@ actor ElevenLabsASRClient: SpeechRecognizer {
                 lastTranscript = update.transcript
                 logger.info("ElevenLabs transcript confirmed=\(update.transcript.confirmedSegments.count) partial=\(update.transcript.partialText.count) final=\(update.transcript.isFinal)")
                 emitEvent(.transcript(update.transcript))
+                // Bug A fix: after the final commit is acknowledged, end the stream
+                // immediately so the session doesn't wait for the 5s drain timeout.
+                if update.transcript.isFinal && pendingFinalCommit {
+                    emitEvent(.completed)
+                    eventContinuation?.finish()
+                }
             }
         } catch {
             logger.error("ElevenLabs decode error: \(String(describing: error), privacy: .public)")
