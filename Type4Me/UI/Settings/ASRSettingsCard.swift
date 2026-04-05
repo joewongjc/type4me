@@ -6,6 +6,7 @@ import SwiftUI
 
 struct ASRSettingsCard: View, SettingsCardHelpers {
 
+    @AppStorage(DoubaoIntegrationController.enabledKey) private var doubaoIntegrationEnabled = false
     @State private var selectedASRProvider: ASRProvider = .volcano
     @State private var asrCredentialValues: [String: String] = [:]
     @State private var savedASRValues: [String: String] = [:]
@@ -115,6 +116,9 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
 
     var body: some View {
         settingsGroupCard(L("语音识别引擎", "ASR Provider"), icon: "mic.fill") {
+            doubaoIntegrationToggle
+            SettingsDivider()
+            if !doubaoIntegrationEnabled {
             asrProviderPicker
             if !currentASRGuideLinks.isEmpty {
                 HStack(spacing: 6) {
@@ -195,11 +199,45 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
 
 
             }
+            } // end if !doubaoIntegrationEnabled
         }
         .task {
             loadASRCredentials()
             refreshModelStatus()
         }
+        .onChange(of: doubaoIntegrationEnabled) { _, enabled in
+            // Notify the app to start/stop the observer
+            NotificationCenter.default.post(name: .doubaoIntegrationDidChange, object: enabled)
+        }
+    }
+
+    // MARK: - DoubaoIme Integration
+
+    private var doubaoIntegrationToggle: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle(isOn: $doubaoIntegrationEnabled) {
+                HStack(spacing: 6) {
+                    Text(L("豆包输入法语音识别", "DoubaoIme Voice Input"))
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(TF.settingsText)
+                }
+            }
+            .toggleStyle(.switch)
+            .tint(TF.settingsAccentBlue)
+
+            if doubaoIntegrationEnabled {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(L(
+                        "使用豆包输入法的语音识别，Type4Me 自动执行 Snippet 替换和历史记录。按模式快捷键可预设 LLM 处理。",
+                        "Uses DoubaoIme for voice recognition. Type4Me auto-applies snippet replacement and history. Press a mode hotkey to arm LLM processing."
+                    ))
+                    .font(.system(size: 11))
+                    .foregroundStyle(TF.settingsTextSecondary)
+                    .lineSpacing(2)
+                }
+            }
+        }
+        .padding(.vertical, 6)
     }
 
     // MARK: - Provider Picker

@@ -42,6 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     let appState = AppState()
     let appUpdater = AppUpdater()
+    let doubaoController = DoubaoIntegrationController()
     private let startSoundDelay: Duration = .milliseconds(200)
     private var floatingBarController: FloatingBarController?
     private let hotkeyManager = HotkeyManager()
@@ -212,6 +213,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
+        // Start DoubaoIme integration observer if enabled
+        doubaoController.hotkeyManager = hotkeyManager
+        doubaoController.startIfEnabled()
+
+        // Listen for DoubaoIme integration toggle changes from Settings
+        NotificationCenter.default.addObserver(
+            forName: .doubaoIntegrationDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            MainActor.assumeIsolated { [weak self] in
+                guard let self else { return }
+                if let enabled = notification.object as? Bool, enabled {
+                    self.doubaoController.start()
+                } else {
+                    self.doubaoController.stop()
+                }
+                // Re-register hotkeys so they pick up the new mode
+                self.refreshModeAvailability()
+            }
+        }
+
         // Check if menu bar icon is hidden by macOS 26+ "Allow in Menu Bar" setting
         checkMenuBarVisibility()
 
@@ -245,6 +268,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 onStart: { [weak self] in
                     guard let self else { return }
 
+                    // DoubaoIme integration: arm LLM mode + double-tap to start DoubaoIme ASR
+                    if MainActor.assumeIsolated({ self.doubaoController.isEnabled }) {
+                        MainActor.assumeIsolated {
+                            self.doubaoController.armLLMMode(capturedMode)
+                            self.doubaoController.triggerDoubaoASR()
+                        }
+                        return
+                    }
+
                     // Safety: if already recording, the toggle state is out of sync.
                     // Redirect to stop so we don't discard accumulated text.
                     let alreadyRecording = MainActor.assumeIsolated {
@@ -272,6 +304,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 },
                 onStop: { [weak self] in
                     guard let self else { return }
+
+                    // DoubaoIme integration: double-tap to stop DoubaoIme ASR
+                    if MainActor.assumeIsolated({ self.doubaoController.isEnabled }) {
+                        MainActor.assumeIsolated {
+                            self.doubaoController.stopDoubaoASR()
+                        }
+                        return
+                    }
+
                     NSLog("[Type4Me] >>> HOTKEY: Record STOP")
                     DebugFileLogger.log("hotkey record stop")
                     MainActor.assumeIsolated { self.appState.stopRecording() }
@@ -302,11 +343,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // ESC abort: skip injection but let recognition/clipboard/history proceed.
+        // Returns true if the abort was actually handled (ESC should be swallowed).
         hotkeyManager.onESCAbort = { [weak self] in
-            guard let self else { return }
+            guard let self else { return false }
             let phase = appState.barPhase
             guard phase == .recording || phase == .processing || phase == .preparing else {
-                return  // Not in an active session, ignore ESC
+                return false  // Not in an active session, let ESC pass through
             }
             NSLog("[Type4Me] >>> HOTKEY: ESC abort injection (phase=%@)", String(describing: phase))
             DebugFileLogger.log("hotkey ESC abort injection phase=\(phase)")
@@ -315,6 +357,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 await self.session.abortInjection()
                 await self.session.stopRecording()
             }
+            return true
         }
 
         // Sync ESC abort enabled setting to HotkeyManager
