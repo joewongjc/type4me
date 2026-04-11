@@ -113,6 +113,13 @@ enum ASRProviderRegistry {
             createClient: nil
         )
         #endif
+        #if HAS_CLOUD_SUBSCRIPTION
+        dict[.cloud] = ProviderEntry(
+            configType: CloudASRConfig.self,
+            createClient: { CloudASRClient() },
+            capabilities: .streaming()
+        )
+        #endif
         return dict
     }()
 

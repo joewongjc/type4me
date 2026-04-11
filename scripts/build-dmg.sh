@@ -5,11 +5,18 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && /bin/pwd -P)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && /bin/pwd -P)"
 APP_NAME="Type4Me"
 APP_VERSION="${APP_VERSION:-1.9.0}"
-VARIANT="${VARIANT:-cloud}"    # cloud or local
-ARCH="${ARCH:-}"               # arm64 or universal (default: universal for cloud, arm64 for local)
+VARIANT="${VARIANT:-pure}"     # pure, official, or local
+ARCH="${ARCH:-}"               # arm64 or universal (default: universal for pure/official, arm64 for local)
 DIST_DIR="${DIST_DIR:-$PROJECT_DIR/dist}"
 VOLUME_NAME="${VOLUME_NAME:-$APP_NAME}"
 STAGING_DIR="$(mktemp -d "${TMPDIR:-/tmp}/type4me-dmg.XXXXXX")"
+
+# Variant validation
+case "$VARIANT" in
+    pure|official|local) ;;
+    cloud) VARIANT="pure" ;; # backwards compat
+    *) echo "ERROR: Unknown VARIANT=$VARIANT (expected pure, official, or local)"; exit 1 ;;
+esac
 
 # Default ARCH based on variant
 if [ -z "$ARCH" ]; then
@@ -32,40 +39,62 @@ echo "=== Building ${VARIANT} DMG (${ARCH}) ==="
 
 cleanup() {
     rm -rf "$STAGING_DIR"
-    # Restore sherpa-onnx framework if it was hidden for cloud build
+    # Restore sherpa-onnx framework if it was hidden
     if [ -f "$PROJECT_DIR/Frameworks/sherpa-onnx.xcframework/Info.plist.cloud-hidden" ]; then
         mv "$PROJECT_DIR/Frameworks/sherpa-onnx.xcframework/Info.plist.cloud-hidden" \
            "$PROJECT_DIR/Frameworks/sherpa-onnx.xcframework/Info.plist"
+    fi
+    # Restore CloudSubscription marker if it was hidden
+    if [ -f "$PROJECT_DIR/Type4Me/CloudSubscription/marker.hidden" ]; then
+        mv "$PROJECT_DIR/Type4Me/CloudSubscription/marker.hidden" \
+           "$PROJECT_DIR/Type4Me/CloudSubscription/marker"
     fi
 }
 trap cleanup EXIT
 
 mkdir -p "$DIST_DIR"
 
-# Clean build cache when sherpa-onnx availability doesn't match last build.
-# Package.swift conditionally defines HAS_SHERPA_ONNX based on framework presence,
-# but swift build won't re-evaluate this if source files haven't changed.
+# Determine feature flags for this variant
+#   pure:     no sherpa, no subscription
+#   official: no sherpa, has subscription
+#   local:    has sherpa, no subscription
+NEEDS_SHERPA=0
+NEEDS_SUBSCRIPTION=0
+if [ "$VARIANT" = "local" ]; then NEEDS_SHERPA=1; fi
+if [ "$VARIANT" = "official" ]; then NEEDS_SUBSCRIPTION=1; fi
+
+# Clean build cache when feature flag state doesn't match last build.
 SHERPA_AVAILABLE="no"
 [ -f "$PROJECT_DIR/Frameworks/sherpa-onnx.xcframework/Info.plist" ] && SHERPA_AVAILABLE="yes"
-LAST_SHERPA_STATE="$PROJECT_DIR/.build/.sherpa-state"
-if [ -f "$LAST_SHERPA_STATE" ] && [ "$(cat "$LAST_SHERPA_STATE")" != "${VARIANT}-${SHERPA_AVAILABLE}" ]; then
-    echo "Variant/sherpa state changed, cleaning build cache..."
+SUB_AVAILABLE="no"
+[ -f "$PROJECT_DIR/Type4Me/CloudSubscription/marker" ] && SUB_AVAILABLE="yes"
+BUILD_STATE="${VARIANT}-sherpa:${SHERPA_AVAILABLE}-sub:${SUB_AVAILABLE}"
+LAST_STATE_FILE="$PROJECT_DIR/.build/.variant-state"
+if [ -f "$LAST_STATE_FILE" ] && [ "$(cat "$LAST_STATE_FILE")" != "$BUILD_STATE" ]; then
+    echo "Build state changed, cleaning build cache..."
     swift package clean 2>/dev/null || true
 fi
 
-# For cloud builds, temporarily hide sherpa-onnx so Package.swift excludes it
-if [ "$VARIANT" = "cloud" ] && [ -f "$PROJECT_DIR/Frameworks/sherpa-onnx.xcframework/Info.plist" ]; then
-    echo "Hiding sherpa-onnx framework for cloud build..."
+# Hide sherpa-onnx for non-local builds
+if [ "$NEEDS_SHERPA" = "0" ] && [ -f "$PROJECT_DIR/Frameworks/sherpa-onnx.xcframework/Info.plist" ]; then
+    echo "Hiding sherpa-onnx framework for ${VARIANT} build..."
     mv "$PROJECT_DIR/Frameworks/sherpa-onnx.xcframework/Info.plist" \
        "$PROJECT_DIR/Frameworks/sherpa-onnx.xcframework/Info.plist.cloud-hidden"
+fi
+
+# Hide CloudSubscription marker for non-official builds
+if [ "$NEEDS_SUBSCRIPTION" = "0" ] && [ -f "$PROJECT_DIR/Type4Me/CloudSubscription/marker" ]; then
+    echo "Hiding CloudSubscription for ${VARIANT} build..."
+    mv "$PROJECT_DIR/Type4Me/CloudSubscription/marker" \
+       "$PROJECT_DIR/Type4Me/CloudSubscription/marker.hidden"
 fi
 
 VARIANT="$VARIANT" ARCH="$ARCH" APP_VERSION="$APP_VERSION" \
     APP_PATH="$STAGING_DIR/${APP_NAME}.app" bash "$SCRIPT_DIR/package-app.sh"
 
-# Record variant/sherpa state for next build's cache invalidation
+# Record build state for next build's cache invalidation
 mkdir -p "$PROJECT_DIR/.build"
-echo "${VARIANT}-${SHERPA_AVAILABLE}" > "$PROJECT_DIR/.build/.sherpa-state"
+echo "$BUILD_STATE" > "$LAST_STATE_FILE"
 ln -s /Applications "$STAGING_DIR/Applications"
 
 # Check signing identity before staging dir might get cleaned up

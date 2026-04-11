@@ -220,7 +220,13 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
             HStack(spacing: 10) {
                 let localSet = Set(Self.localProviders)
                 let availableSet = Set(ASRProvider.allCases
-                    .filter { localSet.contains($0) || (ASRProviderRegistry.entry(for: $0)?.isAvailable ?? false) })
+                    .filter { p in
+                        guard localSet.contains(p) || (ASRProviderRegistry.entry(for: p)?.isAvailable ?? false) else { return false }
+                        #if HAS_CLOUD_SUBSCRIPTION
+                        if p == .cloud { return false }
+                        #endif
+                        return true
+                    })
                 let recommended = Self.recommendedProviders.filter { availableSet.contains($0) }
                 let local = Self.localProviders.filter { availableSet.contains($0) }
                 let others = ASRProvider.allCases.filter { availableSet.contains($0) && !Self.recommendedProviders.contains($0) && !Self.localProviders.contains($0) }

@@ -30,6 +30,10 @@ enum GenerationError: LocalizedError {
     case noLLMConfigured
     case llmFailed(String)
     case parseFailed
+    #if HAS_CLOUD_SUBSCRIPTION
+    case paidOnly
+    #endif
+
     var errorDescription: String? {
         switch self {
         case .noLLMConfigured:
@@ -38,6 +42,10 @@ enum GenerationError: LocalizedError {
             return L("LLM 调用失败: \(detail)", "LLM call failed: \(detail)")
         case .parseFailed:
             return L("无法解析 LLM 返回结果", "Failed to parse LLM response")
+        #if HAS_CLOUD_SUBSCRIPTION
+        case .paidOnly:
+            return L("此功能需要 Type4Me Cloud 付费订阅", "This feature requires a paid Type4Me Cloud subscription")
+        #endif
         }
     }
 }
@@ -51,6 +59,21 @@ actor ASRVariantGenerator {
     // MARK: - Main entry
 
     func generate(wrong: String, correct: String) async throws -> GenerationResult {
+        #if HAS_CLOUD_SUBSCRIPTION
+        if let token = await CloudAuthManager.shared.accessToken() {
+            do {
+                let result = try await generateViaCloud(wrong: wrong, correct: correct, token: token)
+                let deduped = deduplicate(result)
+                logger.info("Cloud: \(deduped.snippets.count) snippets, \(deduped.hotwords.count) hotwords")
+                return deduped
+            } catch GenerationError.paidOnly {
+                logger.info("Cloud returned paid-only, trying local LLM")
+            } catch {
+                logger.warning("Cloud failed: \(error.localizedDescription), trying local LLM")
+            }
+        }
+        #endif
+
         guard let config = KeychainService.loadLLMConfig() else {
             throw GenerationError.noLLMConfigured
         }
@@ -80,6 +103,70 @@ actor ASRVariantGenerator {
         logger.info("Local: \(deduped.snippets.count) snippets, \(deduped.hotwords.count) hotwords")
         return deduped
     }
+
+    #if HAS_CLOUD_SUBSCRIPTION
+    // MARK: - Cloud Generation
+
+    private func generateViaCloud(wrong: String, correct: String, token: String) async throws -> GenerationResult {
+        let endpoint = CloudConfig.apiEndpoint + "/api/vocab-suggest"
+
+        var request = URLRequest(url: URL(string: endpoint)!)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.timeoutInterval = 45
+
+        struct VocabRequest: Encodable {
+            let correct: String
+            let wrong: String
+        }
+        request.httpBody = try JSONEncoder().encode(VocabRequest(correct: correct, wrong: wrong))
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let http = response as? HTTPURLResponse else {
+            throw GenerationError.llmFailed("network error")
+        }
+
+        if http.statusCode == 403 {
+            throw GenerationError.paidOnly
+        }
+        guard http.statusCode == 200 else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            throw GenerationError.llmFailed("server \(http.statusCode): \(body)")
+        }
+
+        struct CloudVocabResponse: Decodable {
+            let snippets: [CloudSnippet]?
+            let hotwords: [String]?
+            let hotword_reason: String?
+            let error: String?
+        }
+        struct CloudSnippet: Decodable {
+            let trigger: String
+            let replacement: String
+        }
+
+        let resp = try JSONDecoder().decode(CloudVocabResponse.self, from: data)
+        if let error = resp.error, !error.isEmpty {
+            throw GenerationError.llmFailed(error)
+        }
+
+        let snippets = (resp.snippets ?? [])
+            .filter { !$0.trigger.isEmpty && $0.trigger.lowercased() != correct.lowercased() }
+            .map { VariantSuggestion(trigger: $0.trigger, replacement: $0.replacement) }
+
+        let hotwords = (resp.hotwords ?? [])
+            .filter { !$0.isEmpty }
+            .map { HotwordSuggestion(word: $0) }
+
+        return GenerationResult(
+            snippets: snippets,
+            hotwords: hotwords,
+            hotwordReason: resp.hotword_reason ?? ""
+        )
+    }
+    #endif
 
     // MARK: - LLM Prompt
 

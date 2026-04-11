@@ -49,6 +49,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSLog("[Type4Me] applicationDidFinishLaunching")
+        #if HAS_CLOUD_SUBSCRIPTION
+        AppEditionMigration.migrateIfNeeded()
+        #endif
         // Show or hide Dock icon based on user preference
         let showDock = UserDefaults.standard.object(forKey: "tf_showDockIcon") as? Bool ?? true
         NSApp.setActivationPolicy(showDock ? .regular : .accessory)
@@ -186,7 +189,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // Show setup wizard on first launch
-        if !appState.hasCompletedSetup {
+        #if HAS_CLOUD_SUBSCRIPTION
+        let needsSetup = !appState.hasCompletedSetup || appState.appEdition == nil
+        #else
+        let needsSetup = !appState.hasCompletedSetup
+        #endif
+        if needsSetup {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 MainActor.assumeIsolated {
                     _ = NSApp.sendAction(Selector(("showSetupWindow:")), to: nil, from: nil)

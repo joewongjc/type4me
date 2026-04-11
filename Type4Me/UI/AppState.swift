@@ -401,6 +401,10 @@ final class AppState {
         set { UserDefaults.standard.set(newValue, forKey: "tf_hasCompletedSetup") }
     }
 
+    #if HAS_CLOUD_SUBSCRIPTION
+    var appEdition: AppEdition? { AppEditionMigration.current }
+    #endif
+
     init() {
         let modes = ModeStorage().load()
         availableModes = modes

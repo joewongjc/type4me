@@ -49,8 +49,15 @@ actor RecognitionSession {
         category: "RecognitionSession"
     )
 
+    #if HAS_CLOUD_SUBSCRIPTION
+    private var isCloudMode: Bool { activeProvider == .cloud }
+    #endif
+
     /// Return the appropriate LLM client for the currently selected provider.
     private func currentLLMClient() -> any LLMClient {
+        #if HAS_CLOUD_SUBSCRIPTION
+        if isCloudMode { return CloudLLMClient() }
+        #endif
         let provider = KeychainService.selectedLLMProvider
         if provider == .claude {
             return ClaudeChatClient()
@@ -60,6 +67,9 @@ actor RecognitionSession {
 
     /// Load LLM credentials from KeychainService.
     private func loadEffectiveLLMConfig() -> LLMConfig? {
+        #if HAS_CLOUD_SUBSCRIPTION
+        if isCloudMode { return LLMConfig(apiKey: "", model: "cloud") }
+        #endif
         return KeychainService.loadLLMConfig()
     }
 
@@ -150,6 +160,22 @@ actor RecognitionSession {
 
         let provider = KeychainService.selectedASRProvider
         activeProvider = provider
+
+        #if HAS_CLOUD_SUBSCRIPTION
+        if provider == .cloud {
+            let canUse = await CloudQuotaManager.shared.canUse()
+            if !canUse {
+                SoundFeedback.playError()
+                state = .idle
+                onASREvent?(.error(NSError(
+                    domain: "Type4Me", code: -10,
+                    userInfo: [NSLocalizedDescriptionKey: L("免费额度已用完", "Free quota exhausted")]
+                )))
+                onASREvent?(.completed)
+                return
+            }
+        }
+        #endif
 
         let effectiveMode = ASRProviderRegistry.resolvedMode(for: mode, provider: provider)
         sessionGeneration &+= 1
@@ -733,6 +759,12 @@ actor RecognitionSession {
                 }
             }
 
+            #if HAS_CLOUD_SUBSCRIPTION
+            if isCloudMode {
+                Task { await CloudQuotaManager.shared.refresh(force: true) }
+            }
+            #endif
+
             // Save to history
             let recordId = UUID().uuidString
             let duration = recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0
@@ -951,6 +983,9 @@ actor RecognitionSession {
     /// speculatively sending current text to LLM. If the user is still
     /// speaking, the timer resets.
     private func scheduleSpeculativeLLM() {
+        #if HAS_CLOUD_SUBSCRIPTION
+        if isCloudMode { return }
+        #endif
         speculativeDebounceTask?.cancel()
         speculativeDebounceTask = Task {
             try? await Task.sleep(for: .milliseconds(800))
