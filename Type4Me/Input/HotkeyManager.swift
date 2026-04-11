@@ -9,6 +9,30 @@ struct ModeBinding {
     let style: HotkeyStyle
     let onStart: @Sendable () -> Void
     let onStop: @Sendable () -> Void
+
+    /// Whether this binding is for a mouse button (encoded with high-bit keyCode).
+    var isMouseButton: Bool { ModeBinding.isMouseKeyCode(Int(keyCode)) }
+
+    /// The mouse button number (2=middle, 3+=side buttons). Only valid when isMouseButton is true.
+    var mouseButtonNumber: Int { ModeBinding.mouseButtonNumber(from: Int(keyCode)) }
+
+    // MARK: - Mouse Button Encoding
+    //
+    // Convention: keyCode = 0x8000 + buttonNumber.
+    // Middle button (2) → 0x8002, Side button 3 → 0x8003, etc.
+    // Keyboard keyCodes are 0–127, so no collision.
+    // The encoded value fits in both Int and UInt16 (CGKeyCode).
+
+    private static let mouseKeyCodeBase = 0x8000
+
+    /// Encode a mouse button number as a keyCode (for storage in ProcessingMode.hotkeyCode).
+    static func mouseKeyCode(for buttonNumber: Int) -> Int { mouseKeyCodeBase + buttonNumber }
+
+    /// Decode a mouse keyCode back to a button number.
+    static func mouseButtonNumber(from keyCode: Int) -> Int { keyCode - mouseKeyCodeBase }
+
+    /// Check if a keyCode represents a mouse button.
+    static func isMouseKeyCode(_ keyCode: Int) -> Bool { keyCode >= mouseKeyCodeBase }
 }
 
 final class HotkeyManager: NSObject {
@@ -80,6 +104,8 @@ final class HotkeyManager: NSObject {
             (1 << CGEventType.keyDown.rawValue)
             | (1 << CGEventType.keyUp.rawValue)
             | (1 << CGEventType.flagsChanged.rawValue)
+            | (1 << CGEventType.otherMouseDown.rawValue)
+            | (1 << CGEventType.otherMouseUp.rawValue)
 
         let userInfo = Unmanaged.passUnretained(self).toOpaque()
 
@@ -179,9 +205,52 @@ final class HotkeyManager: NSObject {
             return Unmanaged.passUnretained(event)
         }
 
+        // MARK: Mouse button events (otherMouseDown/Up = middle + side buttons)
+        if type == .otherMouseDown || type == .otherMouseUp {
+            let buttonNumber = Int(event.getIntegerValueField(.mouseEventButtonNumber))
+
+            for binding in bindings {
+                guard binding.isMouseButton, binding.mouseButtonNumber == buttonNumber else { continue }
+
+                switch binding.style {
+                case .hold:
+                    if type == .otherMouseDown {
+                        handleBindingEvent(binding: binding, pressed: true)
+                    } else {
+                        handleBindingEvent(binding: binding, pressed: false)
+                    }
+                case .toggle:
+                    if type == .otherMouseDown {
+                        let id = binding.modeId
+                        if let activeId = activeToggleModeId, activeId != id {
+                            toggleState[activeId] = false
+                            activeToggleModeId = nil
+                            onCrossModeStop?(id)
+                        } else {
+                            let isOn = toggleState[id] ?? false
+                            toggleState[id] = !isOn
+                            if !isOn {
+                                activeToggleModeId = id
+                                binding.onStart()
+                            } else {
+                                activeToggleModeId = nil
+                                binding.onStop()
+                            }
+                        }
+                    }
+                }
+                return nil  // Swallow matched mouse button events
+            }
+
+            return Unmanaged.passUnretained(event)
+        }
+
+        // MARK: Keyboard events
         let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
 
         for binding in bindings {
+            // Skip mouse button bindings in the keyboard path
+            guard !binding.isMouseButton else { continue }
             guard binding.keyCode == keyCode else { continue }
 
             if isModifierKeyCode(keyCode) {
@@ -348,6 +417,10 @@ final class HotkeyManager: NSObject {
         for binding in bindings where binding.style == .hold {
             let id = binding.modeId
             guard holdState[id] == true else { continue }
+
+            // Mouse buttons: no API to query current state, rely on mouseUp events instead.
+            // Safety timer will catch truly stuck mouse holds.
+            if binding.isMouseButton { continue }
 
             let stillDown: Bool
             if isModifierKeyCode(binding.keyCode) {

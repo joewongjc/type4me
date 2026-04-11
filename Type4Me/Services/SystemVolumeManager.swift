@@ -68,7 +68,56 @@ enum SystemVolumeManager {
         logger.info("Crash recovery: volume restored to \(saved, format: .fixed(precision: 2))")
     }
 
+    // MARK: - Start Sound Delay
+
+    /// Compute the optimal delay between recording start and alert sound playback,
+    /// based on whether the input and output are the same physical Bluetooth device.
+    /// Mirrors the Typeless approach: same BT device → 1200ms, AirPods → 300ms,
+    /// separate BT speaker → 100ms (codec wake-up), wired/built-in → 0.
+    static func startSoundDelay() -> Int {
+        guard let outputID = defaultOutputDevice() else { return 0 }
+
+        let outTransport = transportType(device: outputID)
+        let isBTOutput = outTransport == kAudioDeviceTransportTypeBluetooth
+            || outTransport == kAudioDeviceTransportTypeBluetoothLE
+
+        guard isBTOutput else { return 0 }
+
+        // BT output. Check if input is the same physical device.
+        guard let inputID = defaultInputDevice() else { return 100 }
+
+        let outName = deviceName(outputID)?.lowercased() ?? ""
+        let inName = deviceName(inputID)?.lowercased() ?? ""
+
+        let isSameDevice = !outName.isEmpty && !inName.isEmpty
+            && (outName == inName || outName.contains(inName) || inName.contains(outName))
+
+        if isSameDevice {
+            if inName.contains("airpods") { return 300 }
+            return 1200
+        }
+
+        // Separate BT speaker + different mic: BT amplifier needs wake-up time.
+        return 200
+    }
+
     // MARK: - CoreAudio
+
+    private static func defaultInputDevice() -> AudioDeviceID? {
+        var deviceID = AudioDeviceID(0)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        let status = AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &address, 0, nil, &size, &deviceID
+        )
+        guard status == noErr, deviceID != kAudioObjectUnknown else { return nil }
+        return deviceID
+    }
 
     private static func defaultOutputDevice() -> AudioDeviceID? {
         var deviceID = AudioDeviceID(0)
@@ -107,5 +156,32 @@ enum SystemVolumeManager {
             mElement: kAudioObjectPropertyElementMain
         )
         AudioObjectSetPropertyData(device, &address, 0, nil, UInt32(MemoryLayout<Float32>.size), &vol)
+    }
+
+    private static func deviceName(_ deviceID: AudioDeviceID) -> String? {
+        var name = "" as CFString
+        var size = UInt32(MemoryLayout<CFString>.size)
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioObjectPropertyName,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        let status = withUnsafeMutablePointer(to: &name) { ptr in
+            AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, ptr)
+        }
+        guard status == noErr else { return nil }
+        return name as String
+    }
+
+    private static func transportType(device: AudioDeviceID) -> UInt32 {
+        var transport: UInt32 = 0
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyTransportType,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        AudioObjectGetPropertyData(device, &address, 0, nil, &size, &transport)
+        return transport
     }
 }

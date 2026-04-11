@@ -15,6 +15,7 @@ APP_PATH="$APP_PATH" bash "$SCRIPT_DIR/package-app.sh"
 # Update Keychain partition lists so Type4Me can access its stored credentials
 # without prompting after re-sign. Asks for Keychain password once.
 NEW_CDHASH=$(codesign -dvvv "$APP_PATH" 2>&1 | grep "^CDHash=" | cut -d= -f2)
+TEAM_ID=$(codesign -dvvv "$APP_PATH" 2>&1 | grep "^TeamIdentifier=" | cut -d= -f2)
 if [ -n "$NEW_CDHASH" ]; then
     # Collect all Type4Me keychain accounts: parse acct+svce pairs from dump.
     # Entry format: label (0x00000007) appears first, then acct, then svce.
@@ -51,7 +52,7 @@ if [ -n "$NEW_CDHASH" ]; then
                 acct="${item#*|}"
                 if security set-generic-password-partition-list \
                     -s "$svc" -a "$acct" \
-                    -S "apple-tool:,apple:,cdhash:$NEW_CDHASH" \
+                    -S "apple-tool:,apple:,teamid:${TEAM_ID},cdhash:$NEW_CDHASH" \
                     -k "$KC_PASS" \
                     ~/Library/Keychains/login.keychain-db >/dev/null 2>&1; then
                     UPDATED=$((UPDATED + 1))

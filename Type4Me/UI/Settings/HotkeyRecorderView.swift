@@ -63,7 +63,7 @@ struct HotkeyRecorderView: View {
     // MARK: - Display
 
     private var displayText: String {
-        if isRecording { return L("按下快捷键...", "Press a key...") }
+        if isRecording { return L("按下快捷键或鼠标按键...", "Press a key or mouse button...") }
         guard let kc = keyCode else { return L("未设置", "Not set") }
         return Self.keyDisplayName(keyCode: kc, modifiers: modifiers)
     }
@@ -84,7 +84,21 @@ struct HotkeyRecorderView: View {
             await MainActor.run { stopRecording() }
         }
 
-        eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged, .keyDown]) { event in
+        eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged, .keyDown, .otherMouseDown]) { event in
+            // Mouse button pressed (middle click, side buttons)
+            if event.type == .otherMouseDown {
+                let buttonNumber = event.buttonNumber
+                // Cancel any pending modifier-only capture
+                modifierCaptureTask?.cancel()
+                modifierCaptureTask = nil
+                pendingModifierCode = nil
+
+                keyCode = ModeBinding.mouseKeyCode(for: buttonNumber)
+                modifiers = 0
+                stopRecording()
+                return nil  // Swallow the mouse event
+            }
+
             if event.type == .flagsChanged {
                 let kc = Int(event.keyCode)
                 guard Self.modifierKeyCodes.contains(kc) else { return event }
@@ -201,6 +215,11 @@ struct HotkeyRecorderView: View {
     // MARK: - Key Display Name
 
     static func keyDisplayName(keyCode: Int, modifiers: UInt64?) -> String {
+        // Mouse buttons: no modifier combos, just the button name
+        if ModeBinding.isMouseKeyCode(keyCode) {
+            return singleKeyName(keyCode)
+        }
+
         let mods = modifiers ?? 0
         var parts: [String] = []
         if mods != 0 {
@@ -215,6 +234,15 @@ struct HotkeyRecorderView: View {
     }
 
     static func singleKeyName(_ keyCode: Int) -> String {
+        // Mouse buttons (high-bit keyCode convention: 0x8000 + buttonNumber)
+        if ModeBinding.isMouseKeyCode(keyCode) {
+            let btn = ModeBinding.mouseButtonNumber(from: keyCode)
+            switch btn {
+            case 2: return L("鼠标中键", "Mouse Middle")
+            default: return L("鼠标 \(btn + 1)", "Mouse \(btn + 1)")  // button 3 → "Mouse 4", etc.
+            }
+        }
+
         switch keyCode {
         // Modifier keys
         case 54: return "Right Command"

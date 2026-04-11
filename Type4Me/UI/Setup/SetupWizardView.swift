@@ -7,10 +7,8 @@ struct SetupWizardView: View {
     @Environment(AppState.self) private var appState
     @State private var step = 0
     @AppStorage("tf_language") private var language = AppLanguage.systemDefault
-    @State private var selectedEdition: AppEdition = .member
 
-    private var isMember: Bool { selectedEdition == .member }
-    private let totalSteps = 5
+    private let totalSteps = 4
 
     var body: some View {
         VStack(spacing: 0) {
@@ -48,14 +46,8 @@ struct SetupWizardView: View {
     private var stepContent: some View {
         switch step {
         case 0: welcomeStep
-        case 1: pathSelectionStep
-        case 2:
-            if isMember {
-                loginStep
-            } else {
-                providerStep
-            }
-        case 3: permissionsStep
+        case 1: providerStep
+        case 2: permissionsStep
         default: readyStep
         }
     }
@@ -107,240 +99,7 @@ struct SetupWizardView: View {
         }
     }
 
-    // MARK: - Step 1: Path Selection
-
-    private var pathSelectionStep: some View {
-        VStack(spacing: 28) {
-            Spacer()
-
-            VStack(spacing: 8) {
-                Text(L("选择你的方式", "Choose your path"))
-                    .font(.system(size: 18, weight: .semibold))
-                Text(L("随时可以在设置里切换。", "You can switch anytime in Settings."))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            HStack(spacing: 16) {
-                pathCard(
-                    icon: "person.crop.circle.badge.checkmark",
-                    title: L("官方会员", "Official Member"),
-                    detail: L(
-                        "无需配置，2000 字免费体验",
-                        "No setup needed, 2000 chars free"
-                    ),
-                    isSelected: isMember
-                ) {
-                    selectedEdition = .member
-                }
-
-                pathCard(
-                    icon: "key.fill",
-                    title: L("自带 API", "Bring Your Own API"),
-                    detail: L(
-                        "使用你自己的 API Key",
-                        "Use your own API keys"
-                    ),
-                    isSelected: !isMember
-                ) {
-                    selectedEdition = .byoKey
-                }
-            }
-            .frame(width: 500)
-
-            Spacer()
-
-            Button(L("下一步", "Next")) { step = 2 }
-                .buttonStyle(.borderedProminent)
-                .tint(TF.amber)
-                .controlSize(.large)
-                .padding(.bottom, 36)
-        }
-    }
-
-    private func pathCard(
-        icon: String,
-        title: String,
-        detail: String,
-        isSelected: Bool,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            VStack(spacing: 12) {
-                Image(systemName: icon)
-                    .font(.system(size: 28))
-                    .foregroundStyle(isSelected ? TF.amber : .secondary)
-
-                Text(title)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(isSelected ? .primary : .secondary)
-
-                Text(detail)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 180)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 24)
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(isSelected ? TF.amber.opacity(0.08) : Color.secondary.opacity(0.06))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(isSelected ? TF.amber : .clear, lineWidth: 1.5)
-            )
-        }
-        .buttonStyle(.plain)
-    }
-
-    // MARK: - Step 2 (Member): Login
-
-    @State private var email = ""
-    @State private var codeSent = false
-    @State private var verificationCode = ""
-    @State private var isLoading = false
-    @State private var loginError: String?
-    @State private var loginSuccess = false
-
-    private var loginStep: some View {
-        VStack(spacing: 24) {
-            Spacer()
-
-            if loginSuccess {
-                // Success state
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 48))
-                    .foregroundStyle(TF.success)
-
-                Text(L("2000 字免费额度已激活", "2000 free characters activated"))
-                    .font(.system(size: 16, weight: .medium))
-
-                Spacer()
-
-                navigationFooter { step = 3 }
-            } else if codeSent {
-                // Verification code input
-                VStack(spacing: 8) {
-                    Text(L("输入验证码", "Enter Verification Code"))
-                        .font(.system(size: 18, weight: .semibold))
-                    Text(L("验证码已发送到 \(email)", "Code sent to \(email)"))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                VStack(spacing: 12) {
-                    TextField(L("验证码", "Verification Code"), text: $verificationCode)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 280)
-                        .multilineTextAlignment(.center)
-
-                    if let error = loginError {
-                        Text(error)
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                    }
-
-                    Button {
-                        verifyCode()
-                    } label: {
-                        if isLoading {
-                            ProgressView()
-                                .controlSize(.small)
-                                .frame(width: 280)
-                        } else {
-                            Text(L("验证", "Verify"))
-                                .frame(width: 280)
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(TF.amber)
-                    .disabled(verificationCode.isEmpty || isLoading)
-
-                    Button(L("重新发送", "Resend Code")) {
-                        sendCode()
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(TF.amber)
-                    .font(.caption)
-                    .disabled(isLoading)
-                }
-
-                Spacer()
-            } else {
-                // Email input
-                VStack(spacing: 8) {
-                    Text(L("登录", "Sign In"))
-                        .font(.system(size: 18, weight: .semibold))
-                    Text(L("输入邮箱，获取验证码", "Enter your email to get a verification code"))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                VStack(spacing: 12) {
-                    TextField(L("邮箱地址", "Email Address"), text: $email)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 280)
-                        .multilineTextAlignment(.center)
-
-                    if let error = loginError {
-                        Text(error)
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                    }
-
-                    Button {
-                        sendCode()
-                    } label: {
-                        if isLoading {
-                            ProgressView()
-                                .controlSize(.small)
-                                .frame(width: 280)
-                        } else {
-                            Text(L("发送验证码", "Send Code"))
-                                .frame(width: 280)
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(TF.amber)
-                    .disabled(email.isEmpty || isLoading)
-                }
-
-                Spacer()
-            }
-        }
-    }
-
-    private func sendCode() {
-        isLoading = true
-        loginError = nil
-        Task {
-            do {
-                try await CloudAuthManager.shared.sendCode(email: email)
-                codeSent = true
-            } catch {
-                loginError = error.localizedDescription
-            }
-            isLoading = false
-        }
-    }
-
-    private func verifyCode() {
-        isLoading = true
-        loginError = nil
-        Task {
-            do {
-                try await CloudAuthManager.shared.verify(email: email, code: verificationCode)
-                loginSuccess = true
-            } catch {
-                loginError = error.localizedDescription
-            }
-            isLoading = false
-        }
-    }
-
-    // MARK: - Step 3: Permissions
+    // MARK: - Step 2: Permissions
 
     @State private var hasMic = false
     @State private var hasAccessibility = false
@@ -388,7 +147,7 @@ struct SetupWizardView: View {
 
             Spacer()
 
-            navigationFooter { step = 4 }
+            navigationFooter { step = 3 }
         }
         .onAppear { refreshPermissions() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
@@ -401,7 +160,7 @@ struct SetupWizardView: View {
         hasAccessibility = AXIsProcessTrusted()
     }
 
-    // MARK: - Step 2 (BYOK): Provider + Credentials
+    // MARK: - Step 1: Provider + Credentials
 
     @State private var selectedProvider: ASRProvider = .volcano
     @State private var credentialValues: [String: String] = [:]
@@ -480,7 +239,7 @@ struct SetupWizardView: View {
             Spacer()
 
             HStack {
-                Button(L("跳过", "Skip")) { step = 3 }
+                Button(L("跳过", "Skip")) { step = 2 }
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -491,7 +250,7 @@ struct SetupWizardView: View {
                         )
                         KeychainService.selectedASRProvider = selectedProvider
                     }
-                    step = 3
+                    step = 2
                 }
                     .buttonStyle(.borderedProminent)
                     .tint(TF.amber)
@@ -501,7 +260,7 @@ struct SetupWizardView: View {
         }
     }
 
-    // MARK: - Step 4: Ready
+    // MARK: - Step 3: Ready
 
     private var readyStep: some View {
         VStack(spacing: 28) {
@@ -523,7 +282,6 @@ struct SetupWizardView: View {
             Spacer()
 
             Button(L("开始使用", "Start Using")) {
-                AppEditionMigration.switchTo(selectedEdition)
                 appState.hasCompletedSetup = true
                 NSApp.keyWindow?.close()
             }

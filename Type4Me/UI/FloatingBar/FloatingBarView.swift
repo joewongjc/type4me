@@ -17,6 +17,7 @@ protocol FloatingBarState: AnyObject, Observable {
     var recordingStartDate: Date? { get }
     /// True when recording without SenseVoice streaming (Qwen3-only).
     var isQwen3OnlyMode: Bool { get }
+    var effectiveProcessingLabel: String { get }
 }
 
 /// Dark-themed floating transcription bar with smooth morphing between states.
@@ -47,7 +48,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
             }
             return recordingPeakWidth
         case .processing:
-            return measureText(state.currentMode.processingLabel) + 66.0
+            return measureText(state.effectiveProcessingLabel) + 66.0
         case .done:
             return feedbackWidth(for: state.feedbackMessage)
         case .error:
@@ -200,7 +201,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
 
     private var processingContent: some View {
         ZStack {
-            Text(state.currentMode.processingLabel)
+            Text(state.effectiveProcessingLabel)
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(.white)
         }
@@ -482,9 +483,11 @@ struct RecordingTimer: View {
 
 // MARK: - Processing Progress
 
-/// Particle progress bar: fills left→right to 90% in 1.5s, then waits.
+/// Particle progress bar with two-phase fill:
+/// - Fast phase: 0% → 70% in 1.5s (ease-out)
+/// - Slow cruise: 70% → 95% asymptotically (never stalls, always creeping)
 /// When processingFinishTime is set, sprints toward 100% in 0.3s.
-/// When doneStartDate is set, fills remaining gap to 100% in 0.3s.
+/// When doneStartDate is set, fills remaining gap to 100% in 0.15s.
 /// All timing comes from parent — no @State, so view recreation is harmless.
 struct ProcessingProgress: View {
 
@@ -499,23 +502,31 @@ struct ProcessingProgress: View {
                 let startRef = processingStartDate?.timeIntervalSinceReferenceDate ?? time
                 let elapsed = time - startRef
 
-                // Cruise: 0% → 90% in 1.5s (ease-out)
                 var progress: CGFloat
-                if let finishTime {
-                    let finishElapsed = time - finishTime.timeIntervalSinceReferenceDate
-                    let sprintProgress = min(1.0, CGFloat(finishElapsed / 0.3))
-                    let baseProgress = min(0.9, CGFloat(elapsed / 1.5) * 0.9)
-                    progress = baseProgress + (1.0 - baseProgress) * sprintProgress
-                } else {
+                let cruiseProgress: CGFloat
+                if elapsed <= 1.5 {
+                    // Fast phase: ease-out to 70%
                     let t = min(1.0, CGFloat(elapsed / 1.5))
-                    progress = t * 0.9 * (2.0 - t)
+                    cruiseProgress = t * 0.7 * (2.0 - t)
+                } else {
+                    // Slow cruise: 70% → 95%, exponential approach (τ=6s)
+                    let slowT = 1.0 - exp(-(elapsed - 1.5) / 6.0)
+                    cruiseProgress = 0.7 + CGFloat(slowT) * 0.25
                 }
 
-                // Done: floor at 90% (processing end), fill to 100% in 0.15s
+                if let finishTime {
+                    let finishElapsed = time - finishTime.timeIntervalSinceReferenceDate
+                    let sprintT = min(1.0, CGFloat(finishElapsed / 0.3))
+                    progress = cruiseProgress + (1.0 - cruiseProgress) * sprintT
+                } else {
+                    progress = cruiseProgress
+                }
+
+                // Done: fill remaining gap to 100% in 0.15s
                 if let doneStartDate {
                     let doneElapsed = time - doneStartDate.timeIntervalSinceReferenceDate
                     let doneT = min(1.0, CGFloat(doneElapsed / 0.15))
-                    let base = max(progress, 0.9)
+                    let base = max(progress, 0.7)
                     progress = base + (1.0 - base) * doneT
                 }
 

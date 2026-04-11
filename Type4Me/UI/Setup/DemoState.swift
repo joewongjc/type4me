@@ -20,6 +20,9 @@ final class DemoState {
     var transcriptionText: String {
         segments.map(\.text).joined()
     }
+    var effectiveProcessingLabel: String {
+        currentMode.processingLabel
+    }
 
     // MARK: Private
 

@@ -114,8 +114,8 @@ final class TextInjectionEngine: @unchecked Sendable {
     private func injectViaClipboard(_ text: String) -> InjectionOutcome {
         let savedClipboard = preserveClipboard ? ClipboardSnapshot.capture() : nil
 
-        // Check if there's a frontmost app to paste into (lightweight, no AX)
-        let hasFrontmostApp = NSWorkspace.shared.frontmostApplication != nil
+        // Snapshot focused element BEFORE paste for outcome detection
+        let before = captureFocusedElementSnapshot()
 
         copyToClipboard(text)
         let postWriteChangeCount = NSPasteboard.general.changeCount
@@ -123,7 +123,9 @@ final class TextInjectionEngine: @unchecked Sendable {
         simulatePaste()
         usleep(100_000)
 
-        let outcome: InjectionOutcome = hasFrontmostApp ? .inserted : .copiedToClipboard
+        // Snapshot AFTER paste and compare to detect if text landed
+        let after = captureFocusedElementSnapshot()
+        let outcome = inferInjectionOutcome(before: before, after: after, pastedText: text)
 
         // Defer clipboard restore so .finalized can be emitted sooner
         if outcome == .inserted, let savedClipboard {
@@ -151,8 +153,28 @@ final class TextInjectionEngine: @unchecked Sendable {
         keyUp.post(tap: .cghidEventTap)
     }
 
+    /// Set kAXEnhancedUserInterface on the frontmost app's focused window.
+    /// This makes Electron/Chromium apps expose their full AX tree.
+    private func enableEnhancedAX(for app: NSRunningApplication) {
+        let appElement = AXUIElementCreateApplication(app.processIdentifier)
+        AXUIElementSetMessagingTimeout(appElement, 0.3)
+        var windowValue: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(
+            appElement,
+            kAXFocusedWindowAttribute as CFString,
+            &windowValue
+        ) == .success, let windowValue else { return }
+        let window = unsafeDowncast(windowValue, to: AXUIElement.self)
+        AXUIElementSetAttributeValue(
+            window,
+            "AXEnhancedUserInterface" as CFString,
+            true as CFTypeRef
+        )
+    }
+
     private func captureFocusedElementSnapshot() -> FocusedElementSnapshot? {
-        let frontmostBundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        let frontmostApp = NSWorkspace.shared.frontmostApplication
+        let frontmostBundleID = frontmostApp?.bundleIdentifier
 
         guard AXIsProcessTrusted() else {
             return FocusedElementSnapshot(
@@ -165,14 +187,31 @@ final class TextInjectionEngine: @unchecked Sendable {
         }
 
         let systemWide = AXUIElementCreateSystemWide()
-        AXUIElementSetMessagingTimeout(systemWide, 0.5)  // 500ms cap to prevent hangs
+        AXUIElementSetMessagingTimeout(systemWide, 0.5)
         var focusedValue: CFTypeRef?
-        let status = AXUIElementCopyAttributeValue(
+        var status = AXUIElementCopyAttributeValue(
             systemWide,
             kAXFocusedUIElementAttribute as CFString,
             &focusedValue
         )
-        guard status == .success, let focusedValue else {
+
+        // AX blind (common with Electron apps). Enable enhanced AX and retry.
+        if status != .success || focusedValue == nil, let frontmostApp {
+            enableEnhancedAX(for: frontmostApp)
+            usleep(30_000) // 30ms for Chromium to build AX tree
+            status = AXUIElementCopyAttributeValue(
+                systemWide,
+                kAXFocusedUIElementAttribute as CFString,
+                &focusedValue
+            )
+        }
+
+        // System-wide query still failed — try traversing the app's window tree
+        // to find an editable element. Common for WeChat, Feishu, etc.
+        if status != .success || focusedValue == nil, let frontmostApp {
+            if let found = findEditableElementInApp(frontmostApp) {
+                return snapshotFromElement(found, bundleIdentifier: frontmostBundleID)
+            }
             return FocusedElementSnapshot(
                 bundleIdentifier: frontmostBundleID,
                 role: nil,
@@ -182,7 +221,11 @@ final class TextInjectionEngine: @unchecked Sendable {
             )
         }
 
-        let element = unsafeDowncast(focusedValue, to: AXUIElement.self)
+        let element = unsafeDowncast(focusedValue!, to: AXUIElement.self)
+        return snapshotFromElement(element, bundleIdentifier: frontmostBundleID)
+    }
+
+    private func snapshotFromElement(_ element: AXUIElement, bundleIdentifier: String?) -> FocusedElementSnapshot {
         AXUIElementSetMessagingTimeout(element, 0.5)
         let role = copyStringAttribute(kAXRoleAttribute as CFString, from: element)
         let value = copyStringAttribute(kAXValueAttribute as CFString, from: element)
@@ -197,12 +240,61 @@ final class TextInjectionEngine: @unchecked Sendable {
         ].contains(role)
 
         return FocusedElementSnapshot(
-            bundleIdentifier: frontmostBundleID,
+            bundleIdentifier: bundleIdentifier,
             role: role,
             value: value,
             isEditable: isEditable,
             hasFocusedElement: true
         )
+    }
+
+    /// Traverse the app's focused window tree to find the first editable element.
+    /// Used as fallback when system-wide kAXFocusedUIElementAttribute fails.
+    private func findEditableElementInApp(_ app: NSRunningApplication) -> AXUIElement? {
+        let appElement = AXUIElementCreateApplication(app.processIdentifier)
+        AXUIElementSetMessagingTimeout(appElement, 0.5)
+
+        var windowValue: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(
+            appElement,
+            kAXFocusedWindowAttribute as CFString,
+            &windowValue
+        ) == .success, let windowValue else { return nil }
+
+        let window = unsafeDowncast(windowValue, to: AXUIElement.self)
+        return findEditableChild(in: window, maxDepth: 8)
+    }
+
+    private func findEditableChild(in element: AXUIElement, depth: Int = 0, maxDepth: Int) -> AXUIElement? {
+        if depth > maxDepth { return nil }
+
+        let role = copyStringAttribute(kAXRoleAttribute as CFString, from: element)
+        let editableRoles: Set<String> = [
+            kAXTextFieldRole as String,
+            kAXTextAreaRole as String,
+            kAXComboBoxRole as String,
+            "AXSearchField",
+        ]
+        if editableRoles.contains(role ?? "") {
+            return element
+        }
+        if isAttributeSettable(kAXSelectedTextRangeAttribute as CFString, on: element)
+            || isAttributeSettable(kAXValueAttribute as CFString, on: element) {
+            return element
+        }
+
+        var childrenValue: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(
+            element, kAXChildrenAttribute as CFString, &childrenValue
+        ) == .success, let children = childrenValue as? [AXUIElement] else {
+            return nil
+        }
+        for child in children {
+            if let found = findEditableChild(in: child, depth: depth + 1, maxDepth: maxDepth) {
+                return found
+            }
+        }
+        return nil
     }
 
     private func isAttributeSettable(_ attribute: CFString, on element: AXUIElement) -> Bool {
@@ -224,6 +316,9 @@ final class TextInjectionEngine: @unchecked Sendable {
         after: FocusedElementSnapshot?,
         pastedText: String
     ) -> InjectionOutcome {
+        DebugFileLogger.log("injection detect: before=\(before.map { "bundle=\($0.bundleIdentifier ?? "nil") role=\($0.role ?? "nil") editable=\($0.isEditable) hasFocus=\($0.hasFocusedElement) value=\($0.value.map { String($0.prefix(30)) } ?? "nil")" } ?? "nil")")
+        DebugFileLogger.log("injection detect: after=\(after.map { "bundle=\($0.bundleIdentifier ?? "nil") role=\($0.role ?? "nil") editable=\($0.isEditable) hasFocus=\($0.hasFocusedElement) value=\($0.value.map { String($0.prefix(30)) } ?? "nil")" } ?? "nil")")
+
         guard let before, let after else {
             return .inserted
         }
@@ -233,10 +328,8 @@ final class TextInjectionEngine: @unchecked Sendable {
             return .copiedToClipboard
         }
 
-        // If there's a frontmost app but AX couldn't find a focused element
-        // (common with Electron apps like WeChat, Feishu/Lark, or AX timeout),
-        // assume paste worked. Cmd+V is a system shortcut and almost always
-        // reaches the active app regardless of AX visibility.
+        // AX completely blind (common with WeChat, Feishu/Lark and other
+        // Electron apps). Cmd+V still works in these apps, so assume success.
         if !before.hasFocusedElement || !after.hasFocusedElement {
             return .inserted
         }
@@ -251,43 +344,8 @@ final class TextInjectionEngine: @unchecked Sendable {
             return .inserted
         }
 
-        // Known non-editable roles with no value change → paste failed
-        let nonEditableRoles: Set<String> = [
-            kAXStaticTextRole as String,
-            kAXImageRole as String,
-            kAXGroupRole as String,
-            kAXWindowRole as String,
-            kAXButtonRole as String,
-            kAXCheckBoxRole as String,
-            kAXToolbarRole as String,
-            kAXMenuBarRole as String,
-            kAXMenuItemRole as String,
-            kAXScrollBarRole as String,
-            kAXSliderRole as String,
-            kAXProgressIndicatorRole as String,
-            kAXIncrementorRole as String,
-            kAXBusyIndicatorRole as String,
-            kAXRadioButtonRole as String,
-            kAXPopUpButtonRole as String,
-            kAXColorWellRole as String,
-            kAXRelevanceIndicatorRole as String,
-            kAXLevelIndicatorRole as String,
-            kAXCellRole as String,
-            kAXLayoutAreaRole as String,
-            kAXRowRole as String,
-            kAXColumnRole as String,
-            kAXOutlineRole as String,
-            kAXTableRole as String,
-            kAXBrowserRole as String,
-            kAXSplitGroupRole as String,
-        ]
-        if let role = after.role, nonEditableRoles.contains(role),
-           before.value == after.value {
-            return .copiedToClipboard
-        }
-
-        // Default: assume success (covers Electron/Gecko/CEF with nil/unknown roles)
-        return .inserted
+        // Not editable and value didn't change → paste had nowhere to go
+        return .copiedToClipboard
     }
 
 

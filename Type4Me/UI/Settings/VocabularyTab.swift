@@ -152,6 +152,12 @@ struct VocabularyTab: View {
             snippets = SnippetStorage.load()
             seedExampleIfNeeded()
         }
+        .onReceive(NotificationCenter.default.publisher(for: SnippetStorage.didChangeNotification)) { _ in
+            snippets = SnippetStorage.load()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: HotwordStorage.didChangeNotification)) { _ in
+            hotwords = HotwordStorage.load()
+        }
         .sheet(isPresented: $showBulkHotwordsSheet) {
             bulkHotwordsSheet
                 .onAppear {

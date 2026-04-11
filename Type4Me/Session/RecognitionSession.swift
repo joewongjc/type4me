@@ -49,12 +49,8 @@ actor RecognitionSession {
         category: "RecognitionSession"
     )
 
-    /// Whether the active session is using the Cloud provider (ASR + LLM proxied).
-    private var isCloudMode: Bool { activeProvider == .cloud }
-
     /// Return the appropriate LLM client for the currently selected provider.
     private func currentLLMClient() -> any LLMClient {
-        if isCloudMode { return CloudLLMClient() }
         let provider = KeychainService.selectedLLMProvider
         if provider == .claude {
             return ClaudeChatClient()
@@ -62,10 +58,8 @@ actor RecognitionSession {
         return DoubaoChatClient(provider: provider)
     }
 
-    /// LLM config: Cloud mode uses a dummy config (CloudLLMClient ignores it);
-    /// BYOK mode loads real credentials from KeychainService.
+    /// Load LLM credentials from KeychainService.
     private func loadEffectiveLLMConfig() -> LLMConfig? {
-        if isCloudMode { return LLMConfig(apiKey: "", model: "cloud") }
         return KeychainService.loadLLMConfig()
     }
 
@@ -124,6 +118,8 @@ actor RecognitionSession {
     private var pendingLLMError: Error?
     /// When true, skip text injection (paste) but still save to clipboard & history.
     private var injectionAborted = false
+    /// Continuation resumed when a final (isFinal) transcript arrives during stop.
+    private var finalTranscriptCont: CheckedContinuation<String?, Never>?
 
     // MARK: - Toggle
 
@@ -141,6 +137,11 @@ actor RecognitionSession {
     // MARK: - Start
 
     func startRecording(mode: ProcessingMode = .direct) async {
+        if state == .finishing || state == .injecting || state == .postProcessing {
+            NSLog("[Session] startRecording: blocked, current session still processing (state=%@)", String(describing: state))
+            DebugFileLogger.log("startRecording blocked: still processing state=\(state)")
+            return
+        }
         if state != .idle {
             NSLog("[Session] startRecording: forcing reset from state=%@", String(describing: state))
             DebugFileLogger.log("session forcing reset from state=\(state)")
@@ -149,21 +150,6 @@ actor RecognitionSession {
 
         let provider = KeychainService.selectedASRProvider
         activeProvider = provider
-
-        // Cloud quota gate: refuse to start if free quota is exhausted
-        if provider == .cloud {
-            let canUse = await CloudQuotaManager.shared.canUse()
-            if !canUse {
-                SoundFeedback.playError()
-                state = .idle
-                onASREvent?(.error(NSError(
-                    domain: "Type4Me", code: -10,
-                    userInfo: [NSLocalizedDescriptionKey: L("免费额度已用完", "Free quota exhausted")]
-                )))
-                onASREvent?(.completed)
-                return
-            }
-        }
 
         let effectiveMode = ASRProviderRegistry.resolvedMode(for: mode, provider: provider)
         sessionGeneration &+= 1
@@ -282,6 +268,7 @@ actor RecognitionSession {
         }
 
         do {
+            audioEngine.selectedDeviceUID = UserDefaults.standard.string(forKey: "tf_selectedMicrophoneUID")
             try audioEngine.start()
             NSLog("[Session] Audio engine started OK")
             DebugFileLogger.log("audio engine started OK")
@@ -301,7 +288,7 @@ actor RecognitionSession {
         markReadyIfNeeded()
         DebugFileLogger.log("session entered recording state (buffering, ASR connecting)")
 
-        // Volume is lowered after start sound plays (handled in Type4MeApp)
+        // Volume lowered in Type4MeApp .ready handler
 
         // ── Phase 2: Connect ASR (audio is already recording) ──
 
@@ -438,8 +425,23 @@ actor RecognitionSession {
         var needsLLM = !currentMode.prompt.isEmpty
         let provider = activeProvider
 
-        // ASR teardown: send endAudio and drain event stream with hard deadlines.
-        // Uses detached tasks + continuation so a stuck client can't block stopRecording.
+        // Early label override for short text exemption (语音润色 only).
+        // Use streaming transcript to update UI immediately, before ASR teardown,
+        // so the floating bar doesn't flash "润色中" → "校准中".
+        if needsLLM && currentMode.id == ProcessingMode.formalWritingId {
+            let exemptionThreshold = Int(UserDefaults.standard.string(forKey: "tf_shortTextExemption") ?? "0") ?? 0
+            if exemptionThreshold > 0 {
+                let streamingText = currentTranscript.composedText
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if streamingText.count < exemptionThreshold {
+                    onASREvent?(.processingLabelOverride(L("校准中", "Calibrating")))
+                }
+            }
+        }
+
+        // ASR teardown: send endAudio, then wait for the final transcript.
+        // For streaming providers we wait for the precise isFinal signal rather than
+        // draining the entire event stream, so we can fire LLM sooner.
         let providerIsStreaming = ASRProviderRegistry.capabilities(for: provider).isStreaming
         var asrTeardownClean = true
         if let client = asrClient {
@@ -452,22 +454,37 @@ actor RecognitionSession {
                 asrTeardownClean = false
             }
 
-            // Always try to drain events — even if endAudio failed, the server
-            // may have already queued transcript events before the connection broke.
-            if let evtTask = eventConsumptionTask {
-                let drainTimeout: Duration = providerIsStreaming ? .seconds(5) : .seconds(5)
-                let drained = await withTimeout(drainTimeout) {
-                    await evtTask.value
+            if providerIsStreaming, await awaitFinalTranscript(timeout: .seconds(2)) != nil {
+                // Fast path: isFinal arrived, text is confirmed complete.
+                // Run drain + disconnect in background so LLM can start immediately.
+                DebugFileLogger.log("stop: isFinal received +\(ContinuousClock.now - stopT0)")
+                let evtTask = eventConsumptionTask
+                Task {
+                    if let evtTask {
+                        _ = await withTimeout(.seconds(3)) { await evtTask.value }
+                    }
+                    await client.disconnect()
+                    DebugFileLogger.log("stop: ASR background cleanup done")
                 }
-                if !drained {
-                    DebugFileLogger.log("event stream drain timeout")
-                    asrTeardownClean = false
+            } else {
+                // Non-streaming or isFinal timeout: fall back to full drain.
+                if providerIsStreaming {
+                    DebugFileLogger.log("stop: isFinal timeout, full drain +\(ContinuousClock.now - stopT0)")
                 }
+                if let evtTask = eventConsumptionTask {
+                    let drainTimeout: Duration = providerIsStreaming ? .seconds(5) : .seconds(5)
+                    let drained = await withTimeout(drainTimeout) {
+                        await evtTask.value
+                    }
+                    if !drained {
+                        DebugFileLogger.log("event stream drain timeout")
+                        asrTeardownClean = false
+                    }
+                }
+                await client.disconnect()
+                eventConsumptionTask?.cancel()
+                DebugFileLogger.log("stop: ASR teardown complete (clean=\(asrTeardownClean)) +\(ContinuousClock.now - stopT0)")
             }
-
-            await client.disconnect()
-            eventConsumptionTask?.cancel()
-            DebugFileLogger.log("stop: ASR teardown complete (clean=\(asrTeardownClean)) +\(ContinuousClock.now - stopT0)")
         }
 
         // Now that we have the final transcript, decide whether to reuse
@@ -486,6 +503,7 @@ actor RecognitionSession {
             if exemptionThreshold > 0 && finalASRText.count < exemptionThreshold {
                 DebugFileLogger.log("stop: short text exemption (\(finalASRText.count) < \(exemptionThreshold) chars), skipping LLM")
                 needsLLM = false
+                onASREvent?(.processingLabelOverride(L("校准中", "Calibrating")))
             }
 
             DebugFileLogger.log("stop: needsLLM=\(needsLLM) mode=\(currentMode.name) text=\(finalASRText.count)chars specMatch=\(finalASRText == speculativeLLMText)")
@@ -579,6 +597,7 @@ actor RecognitionSession {
                 if exemptionThreshold > 0 && finalText.count < exemptionThreshold {
                     DebugFileLogger.log("stop: short text exemption (\(finalText.count) < \(exemptionThreshold) chars), skipping LLM (sync path)")
                     needsLLM = false
+                    onASREvent?(.processingLabelOverride(L("校准中", "Calibrating")))
                 }
             }
 
@@ -704,15 +723,14 @@ actor RecognitionSession {
                     // Notify UI immediately from this thread, before actor resumes
                     onEvent?(.finalized(text: finalText, injection: outcome))
                     DebugFileLogger.log("stop: finalized emitted from injection task")
-                    // Clipboard restore can happen after UI is notified
-                    engine.finishClipboardRestore()
+                    // Only restore clipboard when text was successfully inserted.
+                    // When outcome is .copiedToClipboard (injection failed or ESC abort),
+                    // keep the text in clipboard so user can manually paste.
+                    if outcome == .inserted {
+                        engine.finishClipboardRestore()
+                    }
                     continuation.resume(returning: outcome)
                 }
-            }
-
-            // Cloud quota: refresh from server after LLM completes
-            if isCloudMode {
-                await CloudQuotaManager.shared.refresh(force: true)
             }
 
             // Save to history
@@ -787,6 +805,10 @@ actor RecognitionSession {
 
         case .transcript(let transcript):
             currentTranscript = transcript
+            if let cont = finalTranscriptCont, isTranscriptEffectivelyFinal {
+                finalTranscriptCont = nil
+                cont.resume(returning: transcript.displayText)
+            }
             logger.info("Transcript updated: \(transcript.displayText)")
             if state == .recording && !currentMode.prompt.isEmpty {
                 scheduleSpeculativeLLM()
@@ -803,7 +825,7 @@ actor RecognitionSession {
                 Task { await self.stopRecording() }
             }
 
-        case .processingResult, .finalized:
+        case .processingResult, .processingLabelOverride, .finalized:
             break
         }
     }
@@ -1017,6 +1039,32 @@ actor RecognitionSession {
         }
     }
 
+    /// Wait for the ASR to emit a finalized transcript, with timeout.
+    /// "Finalized" means either isFinal flag is set, or confirmed segments exist
+    /// with no remaining partial text (Volcano via proxy doesn't send asyncFinal).
+    private func awaitFinalTranscript(timeout: Duration) async -> String? {
+        if isTranscriptEffectivelyFinal {
+            return currentTranscript.displayText
+        }
+        return await withCheckedContinuation { continuation in
+            self.finalTranscriptCont = continuation
+            Task {
+                try? await Task.sleep(for: timeout)
+                if let cont = self.finalTranscriptCont {
+                    self.finalTranscriptCont = nil
+                    cont.resume(returning: nil)
+                }
+            }
+        }
+    }
+
+    /// Whether the current transcript is effectively final:
+    /// either the isFinal flag is set, or we have confirmed text with no pending partial.
+    private var isTranscriptEffectivelyFinal: Bool {
+        currentTranscript.isFinal ||
+        (state == .finishing && !currentTranscript.confirmedSegments.isEmpty && currentTranscript.partialText.isEmpty)
+    }
+
     // MARK: - Batch Fallback
 
     /// Try to transcribe full audio via the same provider.
@@ -1122,6 +1170,10 @@ actor RecognitionSession {
         NSLog("[Session] forceReset from state=%@", String(describing: state))
         DebugFileLogger.log("forceReset from state=\(state)")
 
+        if let cont = finalTranscriptCont {
+            finalTranscriptCont = nil
+            cont.resume(returning: nil)
+        }
         eventConsumptionTask?.cancel()
         eventConsumptionTask = nil
         resetSpeculativeLLM()
@@ -1156,20 +1208,17 @@ private extension String {
     }
 
     /// Remove unwanted spaces around CJK characters.
-    /// Strips spaces at CJK ↔ Latin/digit boundaries and between CJK characters.
-    /// ASR engines often insert spaces at segment boundaries; LLMs add them
-    /// between Chinese and English text. This cleans both while keeping
-    /// inter-word English spaces intact.
+    /// Chinese text never uses inter-word spaces, so any space adjacent to a
+    /// CJK character is noise from ASR token boundaries or LLM formatting.
+    /// Two rules cover all 5 CJK-involving combinations (中↔中, 中↔英, 英↔中,
+    /// 中↔符, 符↔中) while leaving pure English "hello world" intact.
     var removingCJKLatinSpaces: String {
         let cjk = "[\\u3400-\\u4DBF\\u4E00-\\u9FFF\\uF900-\\uFAFF]"
-        let latin = "[A-Za-z0-9]"
         var s = self
-        // CJK + space + CJK:  "那个 强制" → "那个强制"
-        s = s.replacingOccurrences(of: "(\(cjk)) +(\(cjk))", with: "$1$2", options: .regularExpression)
-        // CJK + space + Latin:  "中 E" → "中E"
-        s = s.replacingOccurrences(of: "(\(cjk)) (\(latin))", with: "$1$2", options: .regularExpression)
-        // Latin + space + CJK:  "E 中" → "E中"
-        s = s.replacingOccurrences(of: "(\(latin)) (\(cjk))", with: "$1$2", options: .regularExpression)
+        // Space after CJK, before any non-whitespace: "你 好" / "你 ," → "你好" / "你,"
+        s = s.replacingOccurrences(of: "(?<=\(cjk)) +(?=\\S)", with: "", options: .regularExpression)
+        // Space before CJK, after any non-whitespace: ", 你" / "Max 你" → ",你" / "Max你"
+        s = s.replacingOccurrences(of: "(?<=\\S) +(?=\(cjk))", with: "", options: .regularExpression)
         return s
     }
 

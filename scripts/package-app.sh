@@ -7,7 +7,7 @@ APP_NAME="Type4Me"
 APP_EXECUTABLE="Type4Me"
 APP_ICON_NAME="AppIcon"
 APP_BUNDLE_ID="${APP_BUNDLE_ID:-com.type4me.app}"
-APP_VERSION="${APP_VERSION:-1.8.1}"
+APP_VERSION="${APP_VERSION:-1.9.0}"
 APP_BUILD="${APP_BUILD:-1}"
 MIN_SYSTEM_VERSION="${MIN_SYSTEM_VERSION:-14.0}"
 VARIANT="${VARIANT:-cloud}"    # cloud or local
@@ -17,58 +17,17 @@ SPEECH_RECOGNITION_USAGE_DESCRIPTION="${SPEECH_RECOGNITION_USAGE_DESCRIPTION:-Ty
 APPLE_EVENTS_USAGE_DESCRIPTION="${APPLE_EVENTS_USAGE_DESCRIPTION:-Type4Me 需要辅助功能权限来注入转写文字到其他应用}"
 INFO_PLIST="$APP_PATH/Contents/Info.plist"
 
+ENTITLEMENTS="$PROJECT_DIR/entitlements.plist"
+
 if [ -n "${CODESIGN_IDENTITY:-}" ]; then
     SIGNING_IDENTITY="$CODESIGN_IDENTITY"
+elif security find-identity -v -p codesigning 2>/dev/null | grep -q "Developer ID Application"; then
+    SIGNING_IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)"/\1/')
+    echo "Using Developer ID: $SIGNING_IDENTITY"
 elif security find-identity -v -p codesigning 2>/dev/null | grep -q "Type4Me Dev"; then
     SIGNING_IDENTITY="Type4Me Dev"
-elif [ -d "$APP_PATH" ] && codesign -dv "$APP_PATH" 2>/dev/null; then
-    # Existing app is already signed -- reuse its identity to preserve Accessibility permission.
-    # Changing signing identity invalidates macOS TCC entries (Accessibility, etc).
-    EXISTING_AUTHORITY=$(codesign -dvvv "$APP_PATH" 2>&1 | grep "^Authority=" | head -1 | cut -d= -f2)
-    if [ -n "$EXISTING_AUTHORITY" ] && security find-identity -v -p codesigning 2>/dev/null | grep -q "$EXISTING_AUTHORITY"; then
-        SIGNING_IDENTITY="$EXISTING_AUTHORITY"
-        echo "Reusing existing signing identity: $SIGNING_IDENTITY"
-    else
-        # Existing app was ad-hoc signed or cert is gone -- keep ad-hoc to not break permission
-        SIGNING_IDENTITY="-"
-    fi
 else
-    # Fresh install, no existing app. Create a persistent self-signed certificate
-    # instead of ad-hoc. Ad-hoc signing generates a new CDHash every build, causing
-    # macOS to revoke Accessibility permission on each rebuild.
-    CERT_NAME="Type4Me Local"
-    if ! security find-identity -v -p codesigning 2>/dev/null | grep -q "$CERT_NAME"; then
-        echo "Creating self-signed certificate '$CERT_NAME' for consistent code signing..."
-        echo "This is a one-time operation to keep Accessibility permissions across rebuilds."
-        CERT_TEMP=$(mktemp -d)
-        cat > "$CERT_TEMP/cert.cfg" <<CERTEOF
-[ req ]
-distinguished_name = req_dn
-[ req_dn ]
-CN = $CERT_NAME
-[ extensions ]
-keyUsage = digitalSignature
-extendedKeyUsage = codeSigning
-CERTEOF
-        openssl req -x509 -newkey rsa:2048 -nodes \
-            -keyout "$CERT_TEMP/key.pem" -out "$CERT_TEMP/cert.pem" \
-            -days 3650 -subj "/CN=$CERT_NAME" -extensions extensions \
-            -config "$CERT_TEMP/cert.cfg" 2>/dev/null
-        openssl pkcs12 -export -out "$CERT_TEMP/cert.p12" \
-            -inkey "$CERT_TEMP/key.pem" -in "$CERT_TEMP/cert.pem" \
-            -passout pass: 2>/dev/null
-        security import "$CERT_TEMP/cert.p12" -k ~/Library/Keychains/login.keychain-db \
-            -T /usr/bin/codesign -P "" 2>/dev/null || \
-        security import "$CERT_TEMP/cert.p12" -k ~/Library/Keychains/login.keychain \
-            -T /usr/bin/codesign -P "" 2>/dev/null || true
-        security add-trusted-cert -p codeSign -k ~/Library/Keychains/login.keychain-db \
-            "$CERT_TEMP/cert.pem" 2>/dev/null || \
-        security add-trusted-cert -p codeSign -k ~/Library/Keychains/login.keychain \
-            "$CERT_TEMP/cert.pem" 2>/dev/null || true
-        rm -rf "$CERT_TEMP"
-        echo "Certificate '$CERT_NAME' created and trusted."
-    fi
-    SIGNING_IDENTITY="$CERT_NAME"
+    SIGNING_IDENTITY="-"
 fi
 
 if [ "$ARCH" = "arm64" ]; then
@@ -219,7 +178,7 @@ exec "$DIR/qwen3-asr-server-dist/qwen3-asr-server" "$@"
 WRAPPER
         chmod +x "$APP_PATH/Contents/MacOS/qwen3-asr-server"
         find "$APP_PATH/Contents/MacOS/qwen3-asr-server-dist" -type f \( -name "*.dylib" -o -name "*.so" -o -name "*.metallib" -o -perm +111 \) \
-            -exec codesign --force --sign "${SIGNING_IDENTITY}" {} \; 2>/dev/null || true
+            -exec codesign --force --options runtime --timestamp --sign "${SIGNING_IDENTITY}" {} \; 2>/dev/null || true
         echo "qwen3-asr-server bundled and signed."
     else
         echo "WARNING: qwen3-asr-server dist not found at $QWEN3_DIST (Qwen3 calibration will be unavailable)"
@@ -256,11 +215,28 @@ if [ "$NEEDS_SIGN" = "1" ]; then
         [ -d "$Q3_DIST" ] && mv "$Q3_DIST" "$SERVER_TEMP/qwen3-asr-server-dist"
         [ -f "$Q3_WRAPPER" ] && mv "$Q3_WRAPPER" "$SERVER_TEMP/qwen3-asr-server"
     fi
-    codesign -f -s "$SIGNING_IDENTITY" "$APP_PATH" 2>/dev/null && echo "Signed." || echo "Signing skipped (no identity available)."
+
+    # Sign frameworks and dylibs first (inside-out signing)
+    find "$APP_PATH/Contents/Frameworks" "$APP_PATH/Contents/Resources" \
+        -type f \( -name "*.dylib" -o -name "*.so" -o -name "*.framework" \) \
+        -exec codesign --force --options runtime --timestamp --sign "$SIGNING_IDENTITY" {} \; 2>/dev/null || true
+
+    # Sign the main app bundle with hardened runtime + entitlements
+    CODESIGN_ARGS=(--force --options runtime --timestamp --sign "$SIGNING_IDENTITY")
+    if [ -f "$ENTITLEMENTS" ]; then
+        CODESIGN_ARGS+=(--entitlements "$ENTITLEMENTS")
+    fi
+    codesign "${CODESIGN_ARGS[@]}" "$APP_PATH" 2>/dev/null && echo "Signed." || echo "Signing skipped (no identity available)."
+
     if [ -n "$SERVER_TEMP" ]; then
         [ -d "$SERVER_TEMP/qwen3-asr-server-dist" ] && mv "$SERVER_TEMP/qwen3-asr-server-dist" "$Q3_DIST"
         [ -f "$SERVER_TEMP/qwen3-asr-server" ] && mv "$SERVER_TEMP/qwen3-asr-server" "$Q3_WRAPPER"
         rm -rf "$SERVER_TEMP"
+        # Re-sign qwen3-asr-server components
+        find "$Q3_DIST" -type f \( -name "*.dylib" -o -name "*.so" -o -perm +111 \) \
+            -exec codesign --force --options runtime --timestamp --sign "$SIGNING_IDENTITY" {} \; 2>/dev/null || true
+        # Re-sign the whole bundle after restoring server files
+        codesign "${CODESIGN_ARGS[@]}" "$APP_PATH" 2>/dev/null || true
     fi
 fi
 

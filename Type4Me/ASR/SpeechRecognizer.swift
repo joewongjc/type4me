@@ -8,7 +8,6 @@ struct ASRRequestOptions: Sendable, Equatable {
     var contextHistoryLength: Int = 20
     var bypassProxy: Bool = false
     /// When set, ASR clients connect to this URL instead of their default endpoint.
-    /// Used by CloudASRClient to route through the Type4Me Cloud proxy.
     var cloudProxyURL: String?
     var urlSessionConfiguration: URLSessionConfiguration {
         let config = URLSessionConfiguration.default
@@ -73,6 +72,7 @@ enum RecognitionEvent: Sendable {
     case error(Error)
     case completed
     case processingResult(text: String)
+    case processingLabelOverride(String)
     case finalized(text: String, injection: InjectionOutcome)
 }
 

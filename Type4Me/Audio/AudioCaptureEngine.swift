@@ -51,6 +51,30 @@ final class AudioCaptureEngine: NSObject, @unchecked Sendable, AVCaptureAudioDat
         return buffer
     }
 
+    // MARK: - Device Selection
+
+    /// Set before calling `start()`. Empty string or nil means system default.
+    var selectedDeviceUID: String?
+
+    /// Returns a list of available audio input devices (UID + display name).
+    static func availableAudioDevices() -> [(uid: String, name: String)] {
+        let discoverySession = AVCaptureDevice.DiscoverySession(
+            deviceTypes: [.builtInMicrophone, .externalUnknown],
+            mediaType: .audio,
+            position: .unspecified
+        )
+        return discoverySession.devices.map { (uid: $0.uniqueID, name: $0.localizedName) }
+    }
+
+    /// Resolve the capture device: use selectedDeviceUID if set and valid, otherwise system default.
+    private func resolveDevice() -> AVCaptureDevice? {
+        if let uid = selectedDeviceUID, !uid.isEmpty,
+           let device = AVCaptureDevice(uniqueID: uid) {
+            return device
+        }
+        return AVCaptureDevice.default(for: .audio)
+    }
+
     // MARK: - Public
 
     var onAudioChunk: ((Data) -> Void)?
@@ -90,7 +114,7 @@ final class AudioCaptureEngine: NSObject, @unchecked Sendable, AVCaptureAudioDat
         DispatchQueue.global(qos: .utility).async { [weak self] in
             guard let self else { return }
             do {
-                guard let device = AVCaptureDevice.default(for: .audio) else { return }
+                guard let device = self.resolveDevice() else { return }
                 let session = AVCaptureSession()
                 let input = try AVCaptureDeviceInput(device: device)
                 guard session.canAddInput(input) else { return }
@@ -103,7 +127,7 @@ final class AudioCaptureEngine: NSObject, @unchecked Sendable, AVCaptureAudioDat
                 Thread.sleep(forTimeInterval: 0.3)
                 session.stopRunning()
                 self.isWarmedUp = true
-                NSLog("[Audio] Warm-up complete")
+                NSLog("[Audio] Warm-up complete (device: %@)", device.localizedName)
             } catch {
                 NSLog("[Audio] Warm-up failed: %@", String(describing: error))
             }
@@ -131,7 +155,7 @@ final class AudioCaptureEngine: NSObject, @unchecked Sendable, AVCaptureAudioDat
     private func startWithAVCapture() throws {
         let session = AVCaptureSession()
 
-        guard let device = AVCaptureDevice.default(for: .audio) else {
+        guard let device = resolveDevice() else {
             throw AudioCaptureError.noInputDevice
         }
 

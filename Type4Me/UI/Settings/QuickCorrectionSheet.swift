@@ -14,6 +14,7 @@ struct QuickCorrectionSheet: View {
     @State private var dragStartIndex: Int? = nil
     @State private var dragSelectMode: Bool? = nil
     @State private var preDragSelection: Set<Int> = []
+    @State private var showSuccess = false
 
     private var selectedText: String {
         selectedChars.sorted().compactMap { idx in
@@ -146,6 +147,22 @@ struct QuickCorrectionSheet: View {
         .padding(20)
         .frame(minWidth: 460, maxWidth: 460, minHeight: 360, maxHeight: 480)
         .background(TF.settingsCardAlt)
+        .overlay {
+            if showSuccess {
+                VStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 28))
+                        .foregroundStyle(TF.settingsAccentGreen)
+                    Text(L("添加成功", "Added"))
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(TF.settingsText)
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 16)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+                .transition(.scale(scale: 0.8).combined(with: .opacity))
+            }
+        }
         .onAppear {
             characters = text
                 .map { String($0) }
@@ -194,7 +211,8 @@ struct QuickCorrectionSheet: View {
             SnippetStorage.save(current)
         }
         onComplete?()
-        dismiss()
+        withAnimation(.spring(duration: 0.3)) { showSuccess = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { dismiss() }
     }
 }
 

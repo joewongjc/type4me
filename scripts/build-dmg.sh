@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && /bin/pwd -P)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && /bin/pwd -P)"
 APP_NAME="Type4Me"
-APP_VERSION="${APP_VERSION:-1.8.1}"
+APP_VERSION="${APP_VERSION:-1.9.0}"
 VARIANT="${VARIANT:-cloud}"    # cloud or local
 ARCH="${ARCH:-}"               # arm64 or universal (default: universal for cloud, arm64 for local)
 DIST_DIR="${DIST_DIR:-$PROJECT_DIR/dist}"
@@ -68,6 +68,14 @@ mkdir -p "$PROJECT_DIR/.build"
 echo "${VARIANT}-${SHERPA_AVAILABLE}" > "$PROJECT_DIR/.build/.sherpa-state"
 ln -s /Applications "$STAGING_DIR/Applications"
 
+# Check signing identity before staging dir might get cleaned up
+SIGNED_WITH_DEVID=0
+CODESIGN_INFO=$(codesign -dvv "$STAGING_DIR/${APP_NAME}.app" 2>&1 || true)
+if echo "$CODESIGN_INFO" | grep -q "Developer ID"; then
+    SIGNED_WITH_DEVID=1
+    echo "Verified: signed with Developer ID"
+fi
+
 rm -f "$DMG_PATH"
 echo "Creating DMG at $DMG_PATH..."
 hdiutil create \
@@ -78,6 +86,23 @@ hdiutil create \
     "$DMG_PATH"
 
 DMG_SIZE=$(du -h "$DMG_PATH" | cut -f1)
+
+# Notarize and staple if Developer ID signing was used
+NOTARY_PROFILE="${NOTARY_PROFILE:-type4me-notary}"
+if [ "$SIGNED_WITH_DEVID" = "1" ]; then
+    echo ""
+    echo "=== Notarizing DMG ==="
+    xcrun notarytool submit "$DMG_PATH" \
+        --keychain-profile "$NOTARY_PROFILE" \
+        --wait
+
+    echo "Stapling notarization ticket..."
+    xcrun stapler staple "$DMG_PATH"
+    echo "Notarization complete."
+else
+    echo "(Skipping notarization: not signed with Developer ID)"
+fi
+
 echo ""
 echo "=== DMG ready ==="
 echo "  Path: $DMG_PATH"

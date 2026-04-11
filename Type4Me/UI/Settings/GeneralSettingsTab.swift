@@ -20,9 +20,15 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
     @AppStorage("tf_showDockIcon") private var showDockIcon = true
     @AppStorage("tf_bypassProxy") private var bypassProxy = "off"
     @AppStorage("tf_stripTrailingPunctuation") private var stripTrailingPunctuation = "off"
+    @AppStorage("tf_speakerKeepAlive") private var speakerKeepAlive = false
+    @AppStorage("tf_micKeepAlive") private var micKeepAlive = false
+    @AppStorage("tf_selectedMicrophoneUID") private var selectedMicrophoneUID = ""
+    @AppStorage("tf_selectedSpeakerUID") private var selectedSpeakerUID = ""
 
     @State private var hasMic = false
     @State private var hasAccessibility = false
+    @State private var availableMicrophones: [(uid: String, name: String)] = []
+    @State private var availableSpeakers: [(uid: String, name: String)] = []
 
     typealias TestStatus = SettingsTestStatus
 
@@ -59,6 +65,15 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
                         .frame(maxWidth: .infinity)
                 }
 
+                SettingsDivider()
+
+                // Row 3: 麦克风 / 提示音输出
+                HStack(alignment: .top, spacing: 16) {
+                    microphoneSelectionRow
+                        .frame(maxWidth: .infinity)
+                    speakerSelectionRow
+                        .frame(maxWidth: .infinity)
+                }
             }
 
             Spacer().frame(height: 16)
@@ -140,6 +155,17 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
             // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
             settingsGroupCard(L("高级设置", "Advanced"), icon: "wrench.and.screwdriver") {
+                // Row 1: 音箱保活 / 麦克风保活
+                HStack(alignment: .top, spacing: 16) {
+                    speakerKeepAliveRow
+                        .frame(maxWidth: .infinity)
+                    micKeepAliveRow
+                        .frame(maxWidth: .infinity)
+                }
+
+                SettingsDivider()
+
+                // Row 2: 绕过系统代理
                 VStack(alignment: .leading, spacing: 6) {
                     Text(L("绕过系统代理", "Bypass System Proxy").uppercased())
                         .font(.system(size: 10, weight: .semibold))
@@ -165,9 +191,21 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
         .task {
             checkPermissions()
             syncLoginItemState()
+            refreshMicrophones()
+            refreshSpeakers()
         }
         .onChange(of: launchAtLogin) { _, newValue in
             setLoginItem(enabled: newValue)
+        }
+        .onChange(of: speakerKeepAlive) { _, _ in
+            AudioKeepAliveManager.syncSpeakerState()
+        }
+        .onChange(of: micKeepAlive) { _, _ in
+            AudioKeepAliveManager.syncMicState()
+        }
+        .onChange(of: selectedSpeakerUID) { _, _ in
+            // Restart keep-alive on the new device if active
+            SoundFeedback.restartKeepAliveIfNeeded()
         }
     }
 
@@ -327,6 +365,144 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
                     ("off", L("不去掉", "Off")),
                     ("period", L("去掉句号", "Periods Only")),
                     ("all", L("去掉所有标点", "All Punctuation")),
+                ]
+            )
+        }
+        .padding(.vertical, 6)
+    }
+
+    private var microphoneSelectionRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 4) {
+                Text(L("麦克风", "Microphone").uppercased())
+                    .font(.system(size: 10, weight: .semibold))
+                    .tracking(0.8)
+                    .foregroundStyle(TF.settingsTextTertiary)
+                Text("|")
+                    .font(.system(size: 10))
+                    .foregroundStyle(TF.settingsTextTertiary.opacity(0.5))
+                Text(L("选择音频输入设备", "Select audio input device"))
+                    .font(.system(size: 10))
+                    .foregroundStyle(TF.settingsTextTertiary)
+                Spacer()
+                Button {
+                    refreshMicrophones()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 10))
+                        .foregroundStyle(TF.settingsTextTertiary)
+                }
+                .buttonStyle(.plain)
+                .help(L("刷新麦克风列表", "Refresh microphone list"))
+            }
+            settingsDropdown(
+                selection: $selectedMicrophoneUID,
+                options: [("", L("系统默认", "System Default"))] + availableMicrophones.map { ($0.uid, $0.name) },
+                icon: "mic.fill"
+            )
+        }
+        .padding(.vertical, 6)
+    }
+
+    private func refreshMicrophones() {
+        availableMicrophones = AudioCaptureEngine.availableAudioDevices()
+        if !selectedMicrophoneUID.isEmpty,
+           !availableMicrophones.contains(where: { $0.uid == selectedMicrophoneUID }) {
+            selectedMicrophoneUID = ""
+        }
+    }
+
+    private var speakerSelectionRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 4) {
+                Text(L("提示音输出", "Alert Output").uppercased())
+                    .font(.system(size: 10, weight: .semibold))
+                    .tracking(0.8)
+                    .foregroundStyle(TF.settingsTextTertiary)
+                Text("|")
+                    .font(.system(size: 10))
+                    .foregroundStyle(TF.settingsTextTertiary.opacity(0.5))
+                Text(L("选择提示音播放设备", "Select alert sound device"))
+                    .font(.system(size: 10))
+                    .foregroundStyle(TF.settingsTextTertiary)
+                Spacer()
+                Button {
+                    refreshSpeakers()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 10))
+                        .foregroundStyle(TF.settingsTextTertiary)
+                }
+                .buttonStyle(.plain)
+                .help(L("刷新输出设备列表", "Refresh output device list"))
+            }
+            settingsDropdown(
+                selection: $selectedSpeakerUID,
+                options: [("", L("系统默认", "System Default"))] + availableSpeakers.map { ($0.uid, $0.name) },
+                icon: "speaker.wave.2.fill"
+            )
+        }
+        .padding(.vertical, 6)
+    }
+
+    private func refreshSpeakers() {
+        availableSpeakers = SoundFeedback.availableOutputDevices()
+        if !selectedSpeakerUID.isEmpty,
+           !availableSpeakers.contains(where: { $0.uid == selectedSpeakerUID }) {
+            selectedSpeakerUID = ""
+        }
+    }
+
+    private var speakerKeepAliveRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 4) {
+                Text(L("音箱保活", "Speaker Keep-Alive").uppercased())
+                    .font(.system(size: 10, weight: .semibold))
+                    .tracking(0.8)
+                    .foregroundStyle(TF.settingsTextTertiary)
+                Text("|")
+                    .font(.system(size: 10))
+                    .foregroundStyle(TF.settingsTextTertiary.opacity(0.5))
+                Text(L("防止蓝牙音箱休眠断开", "Prevent BT speaker sleep"))
+                    .font(.system(size: 10))
+                    .foregroundStyle(TF.settingsTextTertiary)
+            }
+            settingsDropdown(
+                selection: Binding(
+                    get: { speakerKeepAlive ? "on" : "off" },
+                    set: { speakerKeepAlive = $0 == "on" }
+                ),
+                options: [
+                    ("on", L("开启", "On")),
+                    ("off", L("关闭", "Off")),
+                ]
+            )
+        }
+        .padding(.vertical, 6)
+    }
+
+    private var micKeepAliveRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 4) {
+                Text(L("麦克风保活", "Mic Keep-Alive").uppercased())
+                    .font(.system(size: 10, weight: .semibold))
+                    .tracking(0.8)
+                    .foregroundStyle(TF.settingsTextTertiary)
+                Text("|")
+                    .font(.system(size: 10))
+                    .foregroundStyle(TF.settingsTextTertiary.opacity(0.5))
+                Text(L("防止蓝牙麦克风断开", "Prevent BT mic disconnect"))
+                    .font(.system(size: 10))
+                    .foregroundStyle(TF.settingsTextTertiary)
+            }
+            settingsDropdown(
+                selection: Binding(
+                    get: { micKeepAlive ? "on" : "off" },
+                    set: { micKeepAlive = $0 == "on" }
+                ),
+                options: [
+                    ("on", L("开启", "On")),
+                    ("off", L("关闭", "Off")),
                 ]
             )
         }

@@ -206,7 +206,7 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
 
     private static let recommendedProviders: [ASRProvider] = [.volcano, .soniox]
     #if HAS_SHERPA_ONNX
-    private static let localProviders: [ASRProvider] = [.apple, .sherpa]
+    private static let localProviders: [ASRProvider] = ModelManager.isQwen3ASRBundled ? [.apple, .sherpa] : [.apple]
     #else
     private static let localProviders: [ASRProvider] = [.apple]
     #endif
@@ -220,7 +220,7 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
             HStack(spacing: 10) {
                 let localSet = Set(Self.localProviders)
                 let availableSet = Set(ASRProvider.allCases
-                    .filter { $0 != .cloud && (localSet.contains($0) || (ASRProviderRegistry.entry(for: $0)?.isAvailable ?? false)) })
+                    .filter { localSet.contains($0) || (ASRProviderRegistry.entry(for: $0)?.isAvailable ?? false) })
                 let recommended = Self.recommendedProviders.filter { availableSet.contains($0) }
                 let local = Self.localProviders.filter { availableSet.contains($0) }
                 let others = ASRProvider.allCases.filter { availableSet.contains($0) && !Self.recommendedProviders.contains($0) && !Self.localProviders.contains($0) }

@@ -240,9 +240,12 @@ enum SnippetStorage {
         return result
     }
 
+    static let didChangeNotification = Notification.Name("SnippetStorageDidChange")
+
     static func save(_ snippets: [(trigger: String, value: String)]) {
         writeFile(snippets, to: userFileURL)
         invalidateCache()
+        NotificationCenter.default.post(name: didChangeNotification, object: nil)
     }
 
     // MARK: - Built-in file (Finder editable)

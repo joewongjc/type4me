@@ -456,7 +456,7 @@ private struct HotkeyRecordingSheet: View {
                             .fill(TF.settingsAccentRed)
                             .frame(width: 8, height: 8)
                             .opacity(0.8)
-                        Text(L("按下快捷键...", "Press a key..."))
+                        Text(L("按下快捷键或鼠标按键...", "Press a key or mouse button..."))
                             .font(.system(size: 14))
                             .foregroundStyle(TF.settingsTextSecondary)
                     }
@@ -588,7 +588,21 @@ private struct HotkeyRecordingSheet: View {
         cleanup()
         isListening = true
 
-        eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged, .keyDown]) { event in
+        eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged, .keyDown, .otherMouseDown]) { event in
+            // Mouse button (middle click, side buttons)
+            if event.type == .otherMouseDown {
+                let buttonNumber = event.buttonNumber
+                modifierCaptureTask?.cancel()
+                modifierCaptureTask = nil
+                pendingModifierCode = nil
+
+                capturedKeyCode = ModeBinding.mouseKeyCode(for: buttonNumber)
+                capturedModifiers = 0
+                isListening = false
+                removeMonitor()
+                return nil
+            }
+
             if event.type == .flagsChanged {
                 let kc = Int(event.keyCode)
                 guard HotkeyRecorderView.modifierKeyCodes.contains(kc) else { return event }

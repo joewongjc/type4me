@@ -424,6 +424,20 @@ actor SenseVoiceASRClient: SpeechRecognizer {
             return
         }
 
+        // Guard: skip processing if audio is too short (< 0.3s).
+        // Prevents noise/silence from producing phantom transcriptions.
+        let minBytes = Int(0.3 * 16000) * 2  // 0.3s at 16kHz, 16-bit PCM
+        if allAudioData.count < minBytes {
+            DebugFileLogger.log("SenseVoice endAudio: audio too short (\(allAudioData.count) bytes < \(minBytes)), skipping")
+            allAudioData = Data()
+            confirmedSegments = []
+            speechBuffer = []
+            currentPartialText = ""
+            emitTranscript(isFinal: true)
+            eventContinuation?.yield(.completed)
+            return
+        }
+
         DebugFileLogger.log("SenseVoice endAudio: start, confirmed=\(confirmedSegments.count) buffer=\(speechBuffer.count) pending=\(pendingConfirmations)")
 
         // Wait for any in-flight segment confirmations to land (with timeout)

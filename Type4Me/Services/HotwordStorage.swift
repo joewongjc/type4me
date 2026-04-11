@@ -111,11 +111,14 @@ enum HotwordStorage {
         return result
     }
 
+    static let didChangeNotification = Notification.Name("HotwordStorageDidChange")
+
     static func save(_ words: [String]) {
         writeFile(words, to: userFileURL)
         cacheLock.lock()
         cachedUser = nil
         cacheLock.unlock()
+        NotificationCenter.default.post(name: didChangeNotification, object: nil)
         SenseVoiceServerManager.syncHotwordsAndRestart()
         // Sync to Volcengine cloud table if configured
         VolcHotwordSyncManager.syncAfterEdit()

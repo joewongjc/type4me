@@ -371,11 +371,15 @@ final class AppState {
     var recordingStartDate: Date?
     var availableModes: [ProcessingMode]
     var feedbackMessage: String = L("已完成", "Done")
+    var processingLabelOverride: String?
     var processingFinishTime: Date?
     var isQwen3OnlyMode: Bool {
         // SenseVoice (sherpa) provides real-time partials even when Qwen3 also runs for calibration
         guard KeychainService.selectedASRProvider != .sherpa else { return false }
         return SenseVoiceServerManager.currentQwen3Port != nil
+    }
+    var effectiveProcessingLabel: String {
+        processingLabelOverride ?? currentMode.processingLabel
     }
 
     // MARK: Panel Control (not observed by SwiftUI)
@@ -397,11 +401,6 @@ final class AppState {
         set { UserDefaults.standard.set(newValue, forKey: "tf_hasCompletedSetup") }
     }
 
-    /// Read-only; use AppEditionMigration.switchTo() to change edition.
-    var appEdition: AppEdition? {
-        AppEditionMigration.current
-    }
-
     init() {
         let modes = ModeStorage().load()
         availableModes = modes
@@ -417,6 +416,7 @@ final class AppState {
         audioLevel.current = 0
         recordingStartDate = nil
         feedbackMessage = L("已完成", "Done")
+        processingLabelOverride = nil
         barPhase = .preparing
         onShowPanel?()
     }
@@ -434,6 +434,9 @@ final class AppState {
             cancel()
         case .recording:
             processingFinishTime = nil
+            if currentMode.id == ProcessingMode.directId {
+                processingLabelOverride = L("校准中", "Calibrating")
+            }
             barPhase = .processing
         default:
             break
@@ -554,5 +557,6 @@ extension Notification.Name {
     static let hotkeyRecordingDidStart = Notification.Name("Type4MeHotkeyRecordingDidStart")
     static let hotkeyRecordingDidEnd = Notification.Name("Type4MeHotkeyRecordingDidEnd")
     static let navigateToMode = Notification.Name("Type4MeNavigateToMode")
+    static let navigateToHistory = Notification.Name("Type4MeNavigateToHistory")
     static let selectMode = Notification.Name("Type4MeSelectMode")
 }

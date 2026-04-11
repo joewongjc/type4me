@@ -170,6 +170,13 @@ def _transcribe_sync(sess, samples_i16: list[int], strip_punct: bool = False,
         if cancel_token and cancel_token.is_cancelled:
             return ""
         audio = np.array(samples_i16, dtype=np.float32) / 32768.0
+
+        # Guard: skip transcription if audio is too short or silent.
+        # Prevents Qwen3 from echoing the hotword list on empty input.
+        min_samples = int(0.3 * SAMPLE_RATE)  # 0.3s = 4800 samples at 16kHz
+        if len(audio) < min_samples or np.sqrt(np.mean(audio ** 2)) < 1e-4:
+            return ""
+
         result = sess.transcribe(audio, context=_hotword_context)
         text = result.text.strip() if result and result.text else ""
         if strip_punct and text:

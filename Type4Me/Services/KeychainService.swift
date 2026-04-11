@@ -77,22 +77,6 @@ enum KeychainService {
         }
     }
 
-    // MARK: - Last BYOK Provider (for edition switching)
-
-    private static let lastBYOKProviderKey = "tf_lastBYOKProvider"
-
-    static var lastBYOKProvider: ASRProvider {
-        get {
-            guard let raw = UserDefaults.standard.string(forKey: lastBYOKProviderKey),
-                  let provider = ASRProvider(rawValue: raw)
-            else { return .volcano }
-            return provider
-        }
-        set {
-            UserDefaults.standard.set(newValue.rawValue, forKey: lastBYOKProviderKey)
-        }
-    }
-
     // MARK: - ASR Credentials (provider-aware)
 
     private static func asrStorageKey(for provider: ASRProvider) -> String {

@@ -99,11 +99,6 @@ enum ASRProviderRegistry {
             .aliyun:  ProviderEntry(configType: AliyunASRConfig.self,  createClient: nil),
             .tencent: ProviderEntry(configType: TencentASRConfig.self, createClient: nil),
             .iflytek: ProviderEntry(configType: IflytekASRConfig.self, createClient: nil),
-            .cloud: ProviderEntry(
-                configType: CloudASRConfig.self,
-                createClient: { CloudASRClient() },
-                capabilities: .streaming()
-            ),
             .custom:  ProviderEntry(configType: CustomASRConfig.self,  createClient: nil),
         ]
         #if HAS_SHERPA_ONNX
