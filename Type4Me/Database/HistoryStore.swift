@@ -157,6 +157,41 @@ actor HistoryStore {
         }
     }
 
+    /// Deletes multiple rows in one transaction; posts a single change notification on success.
+    func delete(ids: [String]) {
+        guard !ids.isEmpty else { return }
+        let chunkSize = 500
+        guard sqlite3_exec(db, "BEGIN IMMEDIATE", nil, nil, nil) == SQLITE_OK else { return }
+        var ok = true
+        for chunkStart in stride(from: 0, to: ids.count, by: chunkSize) {
+            let chunk = Array(ids[chunkStart ..< min(chunkStart + chunkSize, ids.count)])
+            let placeholders = chunk.map { _ in "?" }.joined(separator: ",")
+            let sql = "DELETE FROM recognition_history WHERE id IN (\(placeholders));"
+            var stmt: OpaquePointer?
+            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+                ok = false
+                break
+            }
+            defer { sqlite3_finalize(stmt) }
+            for (idx, id) in chunk.enumerated() {
+                bind(stmt, Int32(idx + 1), id)
+            }
+            if sqlite3_step(stmt) != SQLITE_DONE {
+                ok = false
+                break
+            }
+        }
+        if ok {
+            if sqlite3_exec(db, "COMMIT", nil, nil, nil) == SQLITE_OK {
+                postDidChangeNotification()
+            } else {
+                sqlite3_exec(db, "ROLLBACK", nil, nil, nil)
+            }
+        } else {
+            sqlite3_exec(db, "ROLLBACK", nil, nil, nil)
+        }
+    }
+
     func deleteAll() {
         if sqlite3_exec(db, "DELETE FROM recognition_history;", nil, nil, nil) == SQLITE_OK {
             postDidChangeNotification()

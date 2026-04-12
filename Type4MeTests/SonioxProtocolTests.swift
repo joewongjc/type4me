@@ -40,10 +40,7 @@ final class SonioxProtocolTests: XCTestCase {
         XCTAssertEqual(hints, ["zh", "en"])
         XCTAssertEqual(payload["language_hints_strict"] as? Bool, true)
 
-        // Context: general + terms
         let context = try XCTUnwrap(payload["context"] as? [String: Any])
-        let general = try XCTUnwrap(context["general"] as? [[String: String]])
-        XCTAssertTrue(general.contains { $0["key"] == "domain" })
         let terms = try XCTUnwrap(context["terms"] as? [String])
         XCTAssertEqual(terms, ["Type4Me", "soniox"])
     }

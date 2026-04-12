@@ -42,12 +42,25 @@ struct HistoryTab: View {
     @State private var exportEnd = Date()
     @State private var exportRecordCount: Int = 0
 
+    // Batch selection
+    @State private var isSelectionMode = false
+    @State private var selectedIds: Set<String> = []
+    @State private var showBatchDeleteConfirm = false
+
     private var filtered: [HistoryRecord] {
         if searchText.isEmpty { return records }
         return records.filter {
             $0.finalText.localizedCaseInsensitiveContains(searchText)
             || $0.rawText.localizedCaseInsensitiveContains(searchText)
         }
+    }
+
+    /// True when every row in the current list (loaded + search filter) is selected.
+    private var isAllFilteredSelected: Bool {
+        HistorySelectionHelpers.isAllFilteredSelected(
+            filteredIds: Set(filtered.map(\.id)),
+            selectedIds: selectedIds
+        )
     }
 
     // MARK: - Date Grouping
@@ -120,6 +133,28 @@ struct HistoryTab: View {
                 )
 
                 Button {
+                    if isSelectionMode {
+                        isSelectionMode = false
+                        selectedIds.removeAll()
+                    } else {
+                        isSelectionMode = true
+                    }
+                } label: {
+                    Text(isSelectionMode ? L("完成", "Done") : L("选择", "Select"))
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(TF.settingsTextSecondary)
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(RoundedRectangle(cornerRadius: 6).fill(TF.settingsBg))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(TF.settingsTextTertiary.opacity(0.2), lineWidth: 1)
+                )
+                .disabled(records.isEmpty)
+
+                Button {
                     showExportPopover = true
                 } label: {
                     Label(L("导出", "Export"), systemImage: "square.and.arrow.up")
@@ -134,12 +169,17 @@ struct HistoryTab: View {
                     RoundedRectangle(cornerRadius: 6)
                         .stroke(TF.settingsTextTertiary.opacity(0.2), lineWidth: 1)
                 )
-                .disabled(records.isEmpty)
+                .disabled(records.isEmpty || isSelectionMode)
                 .popover(isPresented: $showExportPopover, arrowEdge: .bottom) {
                     exportPopover
                 }
             }
-            .padding(.bottom, 12)
+            .padding(.bottom, isSelectionMode ? 8 : 12)
+
+            if isSelectionMode && !records.isEmpty {
+                batchSelectionBar
+                    .padding(.bottom, 12)
+            }
 
             if records.isEmpty {
                 emptyState
@@ -179,11 +219,18 @@ struct HistoryTab: View {
             await loadStatistics()
         }
         .onChange(of: isActive) { _, newValue in
-            guard newValue else { return }
+            if !newValue {
+                isSelectionMode = false
+                selectedIds.removeAll()
+                return
+            }
             Task {
                 await loadRecords()
                 await loadStatistics()
             }
+        }
+        .onChange(of: searchText) { _, _ in
+            selectedIds.removeAll()
         }
         .onReceive(NotificationCenter.default.publisher(for: .historyStoreDidChange)) { _ in
             guard isActive else { return }
@@ -194,6 +241,85 @@ struct HistoryTab: View {
         }
         .sheet(item: $correctionRecord) { record in
             QuickCorrectionSheet(text: record.rawText)
+        }
+        .alert(L("删除所选记录", "Delete selected records"), isPresented: $showBatchDeleteConfirm) {
+            Button(L("取消", "Cancel"), role: .cancel) {}
+            Button(L("删除", "Delete"), role: .destructive) {
+                Task { await performBatchDelete() }
+            }
+        } message: {
+            Text(
+                L(
+                    "将永久删除 \(selectedIds.count) 条记录，且无法恢复。",
+                    "Permanently delete \(selectedIds.count) record(s)? This cannot be undone."
+                )
+            )
+        }
+    }
+
+    private var batchSelectionBar: some View {
+        HStack(spacing: 12) {
+            Text(L("已选 \(selectedIds.count) 条", "\(selectedIds.count) selected"))
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(TF.settingsTextSecondary)
+
+            Spacer()
+
+            Button {
+                selectedIds = HistorySelectionHelpers.togglingSelectAllInFiltered(
+                    filteredIds: Set(filtered.map(\.id)),
+                    selectedIds: selectedIds
+                )
+            } label: {
+                Text(
+                    isAllFilteredSelected
+                        ? L("取消全选", "Deselect All")
+                        : L("全选当前列表", "Select All in List")
+                )
+                .font(.system(size: 11, weight: .medium))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(TF.settingsNavActive)
+            .disabled(filtered.isEmpty)
+
+            Button {
+                showBatchDeleteConfirm = true
+            } label: {
+                Text(L("删除", "Delete"))
+                    .font(.system(size: 11, weight: .semibold))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(TF.settingsAccentRed)
+            .disabled(selectedIds.isEmpty)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(TF.settingsBg)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(TF.settingsTextTertiary.opacity(0.2), lineWidth: 1)
+                )
+        )
+    }
+
+    private func performBatchDelete() async {
+        let ids = Array(selectedIds)
+        guard !ids.isEmpty else { return }
+        await historyStore.delete(ids: ids)
+        await MainActor.run {
+            isSelectionMode = false
+            selectedIds.removeAll()
+            showBatchDeleteConfirm = false
+        }
+    }
+
+    private func toggleSelection(for id: String) {
+        if selectedIds.contains(id) {
+            selectedIds.remove(id)
+        } else {
+            selectedIds.insert(id)
         }
     }
 
@@ -252,7 +378,13 @@ struct HistoryTab: View {
                 .foregroundStyle(TF.settingsTextTertiary)
 
             ForEach(records) { record in
-                recordCard(record, showDate: group == .thisWeek || group == .earlier)
+                recordCard(
+                    record,
+                    showDate: group == .thisWeek || group == .earlier,
+                    isSelectionMode: isSelectionMode,
+                    isSelected: selectedIds.contains(record.id),
+                    onToggleSelection: { toggleSelection(for: record.id) }
+                )
             }
         }
     }
@@ -375,9 +507,14 @@ struct HistoryTab: View {
 
     // MARK: - Record Card
 
-    private func recordCard(_ record: HistoryRecord, showDate: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // Metadata row
+    private func recordCard(
+        _ record: HistoryRecord,
+        showDate: Bool,
+        isSelectionMode: Bool,
+        isSelected: Bool,
+        onToggleSelection: @escaping () -> Void
+    ) -> some View {
+        let metadataAndText = VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
                 let timeFormat: Date.FormatStyle = showDate
                     ? .dateTime.month().day().hour().minute()
@@ -398,14 +535,12 @@ struct HistoryTab: View {
             .font(.system(size: 10))
             .foregroundStyle(TF.settingsTextTertiary)
 
-            // Final text
             Text(record.finalText)
                 .font(.system(size: 12))
                 .foregroundStyle(TF.settingsText)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            // Raw text (only when LLM processed)
             if record.processedText != nil {
                 HStack(alignment: .top, spacing: 4) {
                     Text(L("原始:", "Raw:"))
@@ -418,50 +553,73 @@ struct HistoryTab: View {
                 }
             }
 
-            // Actions
-            HStack(spacing: 8) {
-                Spacer()
+            if !isSelectionMode {
+                HStack(spacing: 8) {
+                    Spacer()
 
-                Button {
-                    correctionRecord = record
-                } label: {
-                    Label(L("纠错", "Correct"), systemImage: "character.textbox")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(TF.settingsAccentAmber)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-
-                Button {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(record.finalText, forType: .string)
-                    copiedId = record.id
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                        if copiedId == record.id { copiedId = nil }
+                    Button {
+                        correctionRecord = record
+                    } label: {
+                        Label(L("纠错", "Correct"), systemImage: "character.textbox")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(TF.settingsAccentAmber)
+                            .contentShape(Rectangle())
                     }
-                } label: {
-                    Label(
-                        copiedId == record.id ? L("已复制", "Copied") : L("复制", "Copy"),
-                        systemImage: copiedId == record.id ? "checkmark" : "doc.on.doc"
-                    )
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(copiedId == record.id ? TF.settingsAccentGreen : TF.settingsTextSecondary)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
+                    .buttonStyle(.plain)
 
-                Button {
-                    Task {
-                        await historyStore.delete(id: record.id)
-                        records.removeAll { $0.id == record.id }
-                    }
-                } label: {
-                    Label(L("删除", "Delete"), systemImage: "trash")
+                    Button {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(record.finalText, forType: .string)
+                        copiedId = record.id
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                            if copiedId == record.id { copiedId = nil }
+                        }
+                    } label: {
+                        Label(
+                            copiedId == record.id ? L("已复制", "Copied") : L("复制", "Copy"),
+                            systemImage: copiedId == record.id ? "checkmark" : "doc.on.doc"
+                        )
                         .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(TF.settingsAccentRed.opacity(0.7))
+                        .foregroundStyle(copiedId == record.id ? TF.settingsAccentGreen : TF.settingsTextSecondary)
                         .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        Task {
+                            await historyStore.delete(id: record.id)
+                            records.removeAll { $0.id == record.id }
+                        }
+                    } label: {
+                        Label(L("删除", "Delete"), systemImage: "trash")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(TF.settingsAccentRed.opacity(0.7))
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
+            }
+        }
+
+        return Group {
+            if isSelectionMode {
+                HStack(alignment: .top, spacing: 10) {
+                    Toggle("", isOn: Binding(
+                        get: { isSelected },
+                        set: { new in
+                            if new != isSelected { onToggleSelection() }
+                        }
+                    ))
+                    .labelsHidden()
+                    .toggleStyle(.checkbox)
+
+                    metadataAndText
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                        .onTapGesture { onToggleSelection() }
+                }
+            } else {
+                metadataAndText
             }
         }
         .padding(12)
