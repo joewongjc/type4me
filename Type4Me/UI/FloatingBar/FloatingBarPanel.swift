@@ -1,6 +1,18 @@
 import AppKit
 import SwiftUI
 
+// MARK: - Layout change bridge (avoid capturing `self` in a block before init completes)
+
+private final class FloatingBarLayoutBridge: NSObject {
+    weak var controller: FloatingBarController?
+
+    @objc func handleLayoutChange(_ notification: Notification) {
+        MainActor.assumeIsolated {
+            controller?.applyLayoutToPanel()
+        }
+    }
+}
+
 // MARK: - NSPanel Subclass
 
 /// Non-activating floating panel that never steals focus from the target app.
@@ -50,13 +62,20 @@ final class FloatingBarController {
 
     private let panel: FloatingBarPanel
     private let state: AppState
-    private let panelSize: NSSize
+    private var panelSize: NSSize
+    private let layoutBridge = FloatingBarLayoutBridge()
 
     init(state: AppState) {
         self.state = state
 
         let inset: CGFloat = 16  // extra room for shadow/glow
-        let frame = NSRect(x: 0, y: 0, width: TF.barWidth + inset * 2, height: TF.barHeight + inset * 2)
+        let layout = FloatingBarLayoutMode.resolved(UserDefaults.standard.string(forKey: FloatingBarLayoutMode.storageKey))
+        let frame = NSRect(
+            x: 0,
+            y: 0,
+            width: layout.maxBarWidth + inset * 2,
+            height: layout.capsuleHeight + inset * 2
+        )
         panelSize = frame.size
         panel = FloatingBarPanel(contentRect: frame)
 
@@ -70,8 +89,35 @@ final class FloatingBarController {
         panel.setFrame(frame, display: false)
         panel.positionAtBottomCenter()
 
+        layoutBridge.controller = self
+        NotificationCenter.default.addObserver(
+            layoutBridge,
+            selector: #selector(FloatingBarLayoutBridge.handleLayoutChange),
+            name: .floatingBarLayoutDidChange,
+            object: nil
+        )
+
         state.onShowPanel = { [weak self] in self?.show() }
         state.onHidePanel = { [weak self] in self?.hide() }
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(layoutBridge)
+    }
+
+    fileprivate func applyLayoutToPanel() {
+        let inset: CGFloat = 16
+        let layout = FloatingBarLayoutMode.resolved(UserDefaults.standard.string(forKey: FloatingBarLayoutMode.storageKey))
+        let size = NSSize(width: layout.maxBarWidth + inset * 2, height: layout.capsuleHeight + inset * 2)
+        panelSize = size
+        panel.contentView?.frame = NSRect(origin: .zero, size: size)
+        panel.setContentSize(size)
+        if panel.isVisible {
+            var r = panel.frame
+            r.size = size
+            panel.setFrame(r, display: true)
+            panel.positionAtBottomCenter()
+        }
     }
 
     func show() {
@@ -79,6 +125,8 @@ final class FloatingBarController {
         // hide's completion could orderOut after we've shown again.
         panel.animator().alphaValue = 1
         panel.contentView?.layer?.removeAllAnimations()
+
+        applyLayoutToPanel()
 
         panel.setContentSize(panelSize)
         panel.setFrame(NSRect(origin: panel.frame.origin, size: panelSize), display: false)

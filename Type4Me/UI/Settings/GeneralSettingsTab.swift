@@ -15,6 +15,7 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
     @AppStorage("tf_launchAtLogin") private var launchAtLogin = true
     @AppStorage("tf_volumeReduction") private var volumeReduction = -1
     @AppStorage("tf_visualStyle") private var visualStyle = "timeline"
+    @AppStorage(FloatingBarLayoutMode.storageKey) private var floatingBarLayout = FloatingBarLayoutMode.standard.rawValue
     @AppStorage("tf_language") private var language = AppLanguage.systemDefault
     @AppStorage("tf_preserveClipboard") private var preserveClipboard = true
     @AppStorage("tf_showDockIcon") private var showDockIcon = true
@@ -54,6 +55,10 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
                     visualStyleRow
                         .frame(maxWidth: .infinity)
                 }
+
+                SettingsDivider()
+
+                floatingBarLayoutRow
 
                 SettingsDivider()
 
@@ -207,6 +212,9 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
             // Restart keep-alive on the new device if active
             SoundFeedback.restartKeepAliveIfNeeded()
         }
+        .onChange(of: floatingBarLayout) { _, _ in
+            NotificationCenter.default.post(name: .floatingBarLayoutDidChange, object: nil)
+        }
     }
 
     // MARK: - Layout Helpers
@@ -304,6 +312,30 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
                     ("timeline", L("电平", "Minimal")),
                 ]
             )
+        }
+        .padding(.vertical, 6)
+    }
+
+    private var floatingBarLayoutRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(L("识别悬浮条", "Transcription bar").uppercased())
+                .font(.system(size: 10, weight: .semibold))
+                .tracking(0.8)
+                .foregroundStyle(TF.settingsTextTertiary)
+            settingsDropdown(
+                selection: $floatingBarLayout,
+                options: FloatingBarLayoutMode.allCases.map { mode in
+                    (mode.rawValue, L(mode.settingsLabel.zh, mode.settingsLabel.en))
+                }
+            )
+            Text(
+                L(
+                    "录音时在屏幕底部显示识别文字；宽度与行数随选项变化，内容过长时可在条内滚动。",
+                    "Shows recognized text in a bar at the bottom while recording. Width and rows depend on the option; long text scrolls inside the bar."
+                )
+            )
+            .font(.system(size: 10))
+            .foregroundStyle(TF.settingsTextTertiary)
         }
         .padding(.vertical, 6)
     }
