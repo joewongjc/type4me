@@ -1,10 +1,11 @@
 import Foundation
 import os
 
-enum DeepgramASRError: Error, LocalizedError {
+enum DeepgramASRError: Error, LocalizedError, Equatable {
     case unsupportedProvider
     case handshakeTimedOut
     case closedBeforeHandshake(code: Int, reason: String?)
+    case closed(code: Int, reason: String?)
 
     var errorDescription: String? {
         switch self {
@@ -17,7 +18,44 @@ enum DeepgramASRError: Error, LocalizedError {
                 return "Deepgram WebSocket closed before handshake completed (\(code)): \(reason)"
             }
             return "Deepgram WebSocket closed before handshake completed (\(code))"
+        case .closed(let code, let reason):
+            if let reason, !reason.isEmpty {
+                return "Deepgram WebSocket closed unexpectedly (\(code)): \(reason)"
+            }
+            return "Deepgram WebSocket closed unexpectedly (\(code))"
         }
+    }
+
+    static func unexpectedClose(
+        code: URLSessionWebSocketTask.CloseCode,
+        reason: String?
+    ) -> DeepgramASRError? {
+        switch code {
+        case .normalClosure, .goingAway, .noStatusReceived:
+            return nil
+        default:
+            return .closed(code: Int(code.rawValue), reason: reason)
+        }
+    }
+}
+
+actor DeepgramCloseTracker {
+
+    private var closeError: DeepgramASRError?
+
+    func recordClose(
+        code: URLSessionWebSocketTask.CloseCode,
+        reason: String?
+    ) {
+        guard closeError == nil,
+              let error = DeepgramASRError.unexpectedClose(code: code, reason: reason)
+        else { return }
+        closeError = error
+    }
+
+    func consumeCloseError() -> DeepgramASRError? {
+        defer { closeError = nil }
+        return closeError
     }
 }
 
@@ -32,6 +70,7 @@ actor DeepgramASRClient: SpeechRecognizer {
     private var receiveTask: Task<Void, Never>?
     private var session: URLSession?
     private var sessionDelegate: DeepgramWebSocketDelegate?
+    private var closeTracker: DeepgramCloseTracker?
 
     private var eventContinuation: AsyncStream<RecognitionEvent>.Continuation?
     private var _events: AsyncStream<RecognitionEvent>?
@@ -69,12 +108,17 @@ actor DeepgramASRClient: SpeechRecognizer {
         request.setValue("Token \(deepgramConfig.apiKey)", forHTTPHeaderField: "Authorization")
 
         let connectionGate = DeepgramConnectionGate()
-        let delegate = DeepgramWebSocketDelegate(connectionGate: connectionGate)
+        let closeTracker = DeepgramCloseTracker()
+        let delegate = DeepgramWebSocketDelegate(
+            connectionGate: connectionGate,
+            closeTracker: closeTracker
+        )
         let session = URLSession(configuration: options.urlSessionConfiguration, delegate: delegate, delegateQueue: nil)
         let task = session.webSocketTask(with: request)
         task.resume()
 
         self.connectionGate = connectionGate
+        self.closeTracker = closeTracker
         sessionDelegate = delegate
         self.session = session
         webSocketTask = task
@@ -108,6 +152,7 @@ actor DeepgramASRClient: SpeechRecognizer {
         session?.invalidateAndCancel()
         session = nil
         sessionDelegate = nil
+        closeTracker = nil
         eventContinuation?.finish()
         eventContinuation = nil
         _events = nil
@@ -135,7 +180,10 @@ actor DeepgramASRClient: SpeechRecognizer {
                     logger.info("Deepgram receive loop ended: \(String(describing: error), privacy: .public)")
                     let didRequestClose = await self.didRequestClose
                     let audioPacketCount = await self.audioPacketCount
-                    if didRequestClose || audioPacketCount > 0 {
+                    if let closeError = await self.closeTracker?.consumeCloseError() {
+                        await self.emitEvent(.error(closeError))
+                        await self.emitEvent(.completed)
+                    } else if didRequestClose || audioPacketCount > 0 {
                         await self.emitEvent(.completed)
                     } else {
                         await self.emitEvent(.error(error))
@@ -188,9 +236,14 @@ actor DeepgramASRClient: SpeechRecognizer {
 final class DeepgramWebSocketDelegate: NSObject, URLSessionWebSocketDelegate, URLSessionTaskDelegate {
 
     private let connectionGate: DeepgramConnectionGate
+    private let closeTracker: DeepgramCloseTracker
 
-    init(connectionGate: DeepgramConnectionGate) {
+    init(
+        connectionGate: DeepgramConnectionGate,
+        closeTracker: DeepgramCloseTracker = DeepgramCloseTracker()
+    ) {
         self.connectionGate = connectionGate
+        self.closeTracker = closeTracker
     }
 
     func urlSession(
@@ -224,13 +277,17 @@ final class DeepgramWebSocketDelegate: NSObject, URLSessionWebSocketDelegate, UR
         // Post-handshake closes are normal session endings, not errors.
         let reasonText = reason.flatMap { String(data: $0, encoding: .utf8) }
         Task {
-            guard await !connectionGate.hasOpened else { return }
-            await connectionGate.markFailure(
-                DeepgramASRError.closedBeforeHandshake(
-                    code: Int(closeCode.rawValue),
-                    reason: reasonText
+            if await !connectionGate.hasOpened {
+                await connectionGate.markFailure(
+                    DeepgramASRError.closedBeforeHandshake(
+                        code: Int(closeCode.rawValue),
+                        reason: reasonText
+                    )
                 )
-            )
+                return
+            }
+
+            await closeTracker.recordClose(code: closeCode, reason: reasonText)
         }
     }
 }

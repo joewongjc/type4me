@@ -50,4 +50,14 @@ final class RecognitionSessionTests: XCTestCase {
         let mode = await session.currentModeForTesting()
         XCTAssertEqual(mode.id, ProcessingMode.directId)
     }
+
+    func testShouldAttemptBatchFallbackWhenStreamingErrorWasObserved() {
+        let shouldFallback = RecognitionSession.shouldAttemptBatchFallback(
+            uploadFailed: false,
+            asrTeardownClean: true,
+            streamingError: DeepgramASRError.closed(code: 1008, reason: "policy violation")
+        )
+
+        XCTAssertTrue(shouldFallback)
+    }
 }
