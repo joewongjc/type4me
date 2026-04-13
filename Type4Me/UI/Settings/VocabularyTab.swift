@@ -18,9 +18,16 @@ struct VocabularyTab: View {
     @State private var showBulkSnippetsSheet = false
     @State private var bulkSnippetsText = ""
 
+    // App-specific scope
+    @State private var registeredApps: [SnippetStorage.AppInfo] = []
+    @State private var selectedAppScope: String? = nil  // nil = global
+
     // Built-in example snippet
     private static let builtinExampleReplacement = "Type4Me"
     private static let builtinExampleTriggers = ["typeform me", "typefrom me", "type for me", "typeform"]
+
+    // Highlight & scroll
+    @State private var highlightedGroup: String? = nil
 
     // Sort
     @State private var hotwordSort: VocabSort = .byTime
@@ -32,6 +39,7 @@ struct VocabularyTab: View {
     }
 
     var body: some View {
+        ScrollViewReader { proxy in
         VStack(alignment: .leading, spacing: 0) {
             SettingsSectionHeader(
                 label: "VOCABULARY",
@@ -92,6 +100,8 @@ struct VocabularyTab: View {
             }
             .padding(.bottom, 4)
 
+            appScopeBar()
+
             Text(L("说到触发词时自动替换为对应内容。搭配官方 Skill 可快捷管理。", "Trigger words are auto-replaced with mapped content. Use with official Skill for easy management."))
                 .font(.system(size: 11))
                 .foregroundStyle(TF.settingsTextTertiary)
@@ -142,18 +152,49 @@ struct VocabularyTab: View {
             ForEach(Array(displaySnippets.enumerated()), id: \.element.id) { index, group in
                 SettingsDivider()
                 snippetGroupView(group: group)
+                    .id("snippet-\(group.id)")
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(TF.settingsAccentGreen.opacity(0.15))
+                            .opacity(highlightedGroup == group.replacement ? 1 : 0)
+                    )
+                    .padding(.horizontal, -8)
             }
 
 
             Spacer()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .navigateToVocabulary)) { note in
+            guard let replacement = note.object as? String else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                withAnimation(.easeInOut(duration: 0.4)) {
+                    proxy.scrollTo("snippet-\(replacement)", anchor: .center)
+                }
+                withAnimation(.easeIn(duration: 0.3).delay(0.2)) {
+                    highlightedGroup = replacement
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                    withAnimation(.easeOut(duration: 0.8)) {
+                        highlightedGroup = nil
+                    }
+                }
+            }
+        }
+        } // ScrollViewReader
         .onAppear {
             hotwords = HotwordStorage.load()
             snippets = SnippetStorage.load()
+            registeredApps = SnippetStorage.loadRegistry()
             seedExampleIfNeeded()
         }
         .onReceive(NotificationCenter.default.publisher(for: SnippetStorage.didChangeNotification)) { _ in
-            snippets = SnippetStorage.load()
+            if let bundleId = selectedAppScope {
+                snippets = SnippetStorage.loadAppSnippets(bundleId: bundleId)
+            } else {
+                snippets = SnippetStorage.load()
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: HotwordStorage.didChangeNotification)) { _ in
             hotwords = HotwordStorage.load()
@@ -375,6 +416,145 @@ struct VocabularyTab: View {
         )
     }
 
+    // MARK: - App Scope Bar
+
+    private func appScopeBar() -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                // Global tab
+                appScopeTab(
+                    label: L("全局", "Global"),
+                    bundleId: nil,
+                    icon: nil
+                )
+
+                // Per-app tabs
+                ForEach(registeredApps) { app in
+                    appScopeTab(
+                        label: app.name,
+                        bundleId: app.bundleId,
+                        icon: appIcon(for: app.bundleId)
+                    )
+                    .contextMenu {
+                        Button(role: .destructive) {
+                            removeAppScope(bundleId: app.bundleId)
+                        } label: {
+                            Label(L("移除", "Remove"), systemImage: "trash")
+                        }
+                    }
+                }
+
+                // Add app button
+                Button {
+                    pickApp()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 10, weight: .medium))
+                    }
+                    .foregroundStyle(TF.settingsTextTertiary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(TF.settingsTextTertiary.opacity(0.3), style: StrokeStyle(lineWidth: 1, dash: [4]))
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.bottom, 8)
+    }
+
+    private func appScopeTab(label: String, bundleId: String?, icon: NSImage?) -> some View {
+        let isSelected = selectedAppScope == bundleId
+        return Button {
+            switchScope(to: bundleId)
+        } label: {
+            HStack(spacing: 4) {
+                if let icon = icon {
+                    Image(nsImage: icon)
+                        .resizable()
+                        .frame(width: 14, height: 14)
+                }
+                Text(label)
+                    .font(.system(size: 12))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(isSelected ? TF.settingsAccentGreen : TF.settingsTextSecondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(isSelected ? TF.settingsAccentGreen.opacity(0.12) : Color.clear)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(isSelected ? TF.settingsAccentGreen.opacity(0.5) : TF.settingsTextTertiary.opacity(0.2), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func appIcon(for bundleId: String) -> NSImage? {
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) else { return nil }
+        let icon = NSWorkspace.shared.icon(forFile: url.path)
+        icon.size = NSSize(width: 14, height: 14)
+        return icon
+    }
+
+    private func switchScope(to bundleId: String?) {
+        selectedAppScope = bundleId
+        if let bundleId = bundleId {
+            snippets = SnippetStorage.loadAppSnippets(bundleId: bundleId)
+        } else {
+            snippets = SnippetStorage.load()
+        }
+    }
+
+    private func pickApp() {
+        let panel = NSOpenPanel()
+        panel.title = L("选择应用", "Select Application")
+        panel.allowedContentTypes = [.application]
+        panel.directoryURL = URL(fileURLWithPath: "/Applications")
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard let bundle = Bundle(url: url),
+              let bundleId = bundle.bundleIdentifier else { return }
+
+        let name = bundle.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
+            ?? bundle.object(forInfoDictionaryKey: "CFBundleName") as? String
+            ?? url.deletingPathExtension().lastPathComponent
+
+        let app = SnippetStorage.AppInfo(bundleId: bundleId, name: name)
+        guard !registeredApps.contains(app) else {
+            switchScope(to: bundleId)
+            return
+        }
+        SnippetStorage.addApp(app)
+        registeredApps = SnippetStorage.loadRegistry()
+        switchScope(to: bundleId)
+    }
+
+    private func removeAppScope(bundleId: String) {
+        SnippetStorage.removeApp(bundleId: bundleId)
+        registeredApps = SnippetStorage.loadRegistry()
+        if selectedAppScope == bundleId {
+            switchScope(to: nil)
+        }
+    }
+
+    private func saveCurrentSnippets() {
+        if let bundleId = selectedAppScope {
+            SnippetStorage.saveAppSnippets(snippets, bundleId: bundleId)
+        } else {
+            SnippetStorage.save(snippets)
+        }
+    }
+
     // MARK: - Example Seeding
 
     private static let seededKey = "tf_snippetExampleSeeded"
@@ -407,19 +587,19 @@ struct VocabularyTab: View {
                 snippets[i] = (trigger: snippets[i].trigger, value: newReplacement)
             }
         }
-        SnippetStorage.save(snippets)
+        saveCurrentSnippets()
         editingGroupReplacement = nil
     }
 
     private func removeGroup(replacement: String) {
         snippets.removeAll { $0.value == replacement }
-        SnippetStorage.save(snippets)
+        saveCurrentSnippets()
     }
 
     private func removeTrigger(trigger: String, replacement: String) {
         if let idx = snippets.firstIndex(where: { $0.trigger == trigger && $0.value == replacement }) {
             snippets.remove(at: idx)
-            SnippetStorage.save(snippets)
+            saveCurrentSnippets()
         }
     }
 
@@ -431,7 +611,7 @@ struct VocabularyTab: View {
             return
         }
         snippets.append((trigger: trigger, value: replacement))
-        SnippetStorage.save(snippets)
+        saveCurrentSnippets()
         newTriggerTexts[replacement] = ""
     }
 
@@ -459,7 +639,7 @@ struct VocabularyTab: View {
         guard !trigger.isEmpty, !value.isEmpty else { return }
         guard !snippets.contains(where: { $0.trigger == trigger }) else { return }
         snippets.append((trigger: trigger, value: value))
-        SnippetStorage.save(snippets)
+        saveCurrentSnippets()
         newTrigger = ""
         newValue = ""
     }
@@ -657,7 +837,7 @@ struct VocabularyTab: View {
                 Button {
                     let parsed = bulkTextToSnippets(bulkSnippetsText)
                     snippets = parsed
-                    SnippetStorage.save(parsed)
+                    saveCurrentSnippets()
                     showBulkSnippetsSheet = false
                 } label: {
                     Text(L("保存", "Save"))
