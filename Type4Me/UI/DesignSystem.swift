@@ -80,8 +80,6 @@ enum TF {
     static let barWidthCompact: CGFloat = 200
     static let barHeight: CGFloat = 52
     static let barBottomOffset: CGFloat = 48
-    /// Caps stadium-shaped ends on wide bars so corners don't clip text (floating bar uses this instead of full `Capsule()`).
-    static let floatingBarMaxCornerRadius: CGFloat = 18
 
     // MARK: Transcript Popup (hover preview above bar)
 

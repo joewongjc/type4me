@@ -112,6 +112,7 @@ final class VolcProtocolTests: XCTestCase {
     }
 
     func testClientRequestJSON_usesHotwordsAndBoostingCorpusFields() throws {
+        // With a cloud boosting table ID, inline hotwords are omitted (table takes precedence).
         let payload = VolcProtocol.buildClientRequest(
             uid: "test-user-123",
             options: ASRRequestOptions(
@@ -123,21 +124,32 @@ final class VolcProtocolTests: XCTestCase {
         )
         let json = try JSONSerialization.jsonObject(with: payload) as? [String: Any]
         let request = json?["request"] as? [String: Any]
-        XCTAssertEqual(request?["boosting_table_id"] as? String, nil)
         XCTAssertEqual(request?["context_history_length"] as? Int, 6)
+        XCTAssertNil(request?["context"])
 
-        let contextString = request?["context"] as? String
-        XCTAssertNotNil(contextString)
-        let contextData = try XCTUnwrap(contextString?.data(using: .utf8))
+        let corpus = try XCTUnwrap(request?["corpus"] as? [String: Any])
+        XCTAssertEqual(corpus["boosting_table_id"] as? String, "boost-123")
+    }
+
+    func testClientRequestJSON_usesInlineHotwordsWhenNoBoostingTable() throws {
+        let payload = VolcProtocol.buildClientRequest(
+            uid: "test-user-123",
+            options: ASRRequestOptions(
+                enablePunc: true,
+                hotwords: ["Type4Me", "DeepSeek"],
+                boostingTableID: nil,
+                contextHistoryLength: 6
+            )
+        )
+        let json = try JSONSerialization.jsonObject(with: payload) as? [String: Any]
+        let request = try XCTUnwrap(json?["request"] as? [String: Any])
+        let contextString = try XCTUnwrap(request["context"] as? String)
+        let contextData = try XCTUnwrap(contextString.data(using: .utf8))
         let context = try JSONSerialization.jsonObject(with: contextData) as? [String: Any]
-        let hotwords = context?["hotwords"] as? [[String: Any]]
-        XCTAssertEqual(hotwords?.count, 2)
-        XCTAssertEqual(hotwords?.first?["word"] as? String, "Type4Me")
-        XCTAssertNil(context?["correct_words"])
-
-        let corpus = request?["corpus"] as? [String: Any]
-        XCTAssertEqual(corpus?["boosting_table_id"] as? String, "boost-123")
-        XCTAssertNil(corpus?["correct_table_id"])
+        let hotwords = try XCTUnwrap(context?["hotwords"] as? [[String: Any]])
+        XCTAssertEqual(hotwords.count, 2)
+        XCTAssertEqual(hotwords.first?["word"] as? String, "Type4Me")
+        XCTAssertNil(request["corpus"])
     }
 
     // MARK: - Full Message Encoding

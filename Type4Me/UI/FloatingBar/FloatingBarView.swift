@@ -3,10 +3,6 @@ import SwiftUI
 /// Cached font for text measurement (module-level to avoid generic-type static restriction).
 private let floatingBarFont = NSFont.systemFont(ofSize: 14, weight: .medium)
 
-private enum FloatingBarScrollIDs {
-    static let transcriptionTail = "tf_fb_transcription_tail"
-}
-
 // MARK: - FloatingBarState Protocol
 
 @MainActor
@@ -34,7 +30,6 @@ struct FloatingBarView<S: FloatingBarState>: View {
 
     let state: S
 
-    @AppStorage(FloatingBarLayoutMode.storageKey) private var layoutRaw = FloatingBarLayoutMode.standard.rawValue
 
     @State private var breathe = false
     @State private var doneGlow = true
@@ -52,8 +47,6 @@ struct FloatingBarView<S: FloatingBarState>: View {
         let textWidth = measureText(state.transcriptionText)
         return textWidth + 66 > TF.barWidth
     }
-
-    private var layout: FloatingBarLayoutMode { FloatingBarLayoutMode.resolved(layoutRaw) }
 
     private var capsuleWidth: CGFloat {
         switch state.barPhase {
@@ -109,61 +102,35 @@ struct FloatingBarView<S: FloatingBarState>: View {
         }
         .onChange(of: state.segments) { _, newSegments in
             guard state.barPhase == .recording else { return }
-            updateRecordingWidth(for: newSegments)
-        }
-        .onChange(of: layoutRaw) { _, _ in
-            recordingPeakWidth = TF.barHeight
-        }
-    }
-
-    private func updateRecordingWidth(for newSegments: [TranscriptionSegment]) {
-        let maxW = layout.maxBarWidth
-        let minCircle = TF.barHeight
-        let text = newSegments.map(\.text).joined()
-        let textWidth = measureText(text)
-        // Single- and multi-line: grow with content; cap at maxBarWidth (multiline wraps inside).
-        let needed: CGFloat = newSegments.isEmpty
-            ? minCircle
-            : min(maxW, max(minCircle, textWidth + 66.0))
-        if needed > recordingPeakWidth {
-            let distance = needed - recordingPeakWidth
-            let duration = max(0.12, Double(distance / 250.0))
-            withAnimation(.linear(duration: duration)) {
-                recordingPeakWidth = needed
-            }
-        } else if recordingPeakWidth - needed > 30 {
-            withAnimation(.easeInOut(duration: 0.2)) {
-                recordingPeakWidth = needed
+            let text = newSegments.map(\.text).joined()
+            let textWidth = measureText(text)
+            let needed = min(TF.barWidth, max(TF.barHeight, textWidth + 66.0))
+            if needed > recordingPeakWidth {
+                // Growing: fixed velocity 250pt/s
+                let distance = needed - recordingPeakWidth
+                let duration = max(0.12, Double(distance / 250.0))
+                withAnimation(.linear(duration: duration)) {
+                    recordingPeakWidth = needed
+                }
+            } else if recordingPeakWidth - needed > 30 {
+                // Large correction (hotword etc.): allow shrink
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    recordingPeakWidth = needed
+                }
             }
         }
     }
 
     // MARK: - Capsule Container
 
-    /// Rounded rect: compact square states stay circular; wide/tall bars cap radius so text isn't clipped by stadium ends.
-    private var barCornerRadius: CGFloat {
-        let w = capsuleWidth
-        let h = layout.capsuleHeight
-        let half = min(w, h) / 2
-        let compactSquare = abs(w - h) < 2 && w <= TF.barHeight + 4
-        if compactSquare {
-            return half
-        }
-        return min(half, TF.floatingBarMaxCornerRadius)
-    }
-
-    private var barClipShape: RoundedRectangle {
-        RoundedRectangle(cornerRadius: barCornerRadius, style: .continuous)
-    }
-
     private var capsuleBar: some View {
         barContent
             .animation(TF.springSnappy, value: state.barPhase)
-            .frame(width: capsuleWidth, height: layout.capsuleHeight)
-            .clipShape(barClipShape)
+            .frame(width: capsuleWidth, height: TF.barHeight)
+            .clipShape(Capsule())
             .background {
                 capsuleBackground
-                    .clipShape(barClipShape)
+                    .clipShape(Capsule())
             }
             .shadow(color: Color(white: 0.08, opacity: 0.5), radius: 5, x: 0, y: 0)
             .animation(TF.springSnappy, value: state.barPhase)
@@ -217,95 +184,46 @@ struct FloatingBarView<S: FloatingBarState>: View {
     }
 
     private var recordingContent: some View {
-        HStack(alignment: .center, spacing: 10) {
+        HStack(spacing: 10) {
+            // Module 1: dot (fixed position, 14pt from left edge)
             RecordingDot(meter: state.audioLevel)
 
+            // Module 2: text container (fills remaining space, grows with frame)
+            // Uses overlay so text sizing never affects HStack layout
             if state.segments.isEmpty && state.isQwen3OnlyMode {
                 Text(L("录音中", "Recording"))
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(.white)
             } else if !state.segments.isEmpty {
-                if layout.isMultiline {
-                    multilineRecordingText
-                } else {
-                    singleLineRecordingText
-                }
-            }
-        }
-        .padding(.horizontal, 14)
-    }
-
-    private var singleLineRecordingText: some View {
-        Color.clear
-            .overlay(alignment: .trailing) {
-                Text(state.transcriptionText)
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
-            }
-            .mask { recordingTextMaskEdge }
-            .padding(.trailing, 4)
-            .allowsHitTesting(false)
-            .transition(.opacity)
-    }
-
-    private var multilineRecordingText: some View {
-        Color.clear
-            .overlay(alignment: .topLeading) {
-                ScrollViewReader { proxy in
-                    ScrollView {
+                Color.clear
+                    .overlay(alignment: .trailing) {
                         Text(state.transcriptionText)
                             .font(.system(size: 14, weight: .medium))
                             .foregroundStyle(.white)
-                            .multilineTextAlignment(.leading)
-                            .lineSpacing(3)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.vertical, 4)
-                            .id(FloatingBarScrollIDs.transcriptionTail)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
                     }
-                    .frame(maxHeight: layout.multilineScrollViewportHeight)
-                    .scrollIndicators(.hidden)
-                    .onChange(of: state.transcriptionText) { _, _ in
-                        scrollTranscriptionToEnd(proxy: proxy)
+                    .mask {
+                        if recordingPeakWidth >= TF.barWidth {
+                            HStack(spacing: 0) {
+                                LinearGradient(
+                                    colors: [.clear, .white],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                                .frame(width: 12)
+                                Rectangle()
+                            }
+                        } else {
+                            Rectangle()
+                        }
                     }
-                    .onAppear {
-                        scrollTranscriptionToEnd(proxy: proxy)
-                    }
-                }
-            }
-            .mask { recordingTextMaskEdge }
-            .padding(.trailing, 4)
-            .allowsHitTesting(false)
-            .transition(.opacity)
-    }
-
-    private func scrollTranscriptionToEnd(proxy: ScrollViewProxy) {
-        withAnimation(.easeOut(duration: 0.12)) {
-            proxy.scrollTo(FloatingBarScrollIDs.transcriptionTail, anchor: .bottom)
-        }
-    }
-
-    /// Single-line: fade the leading edge when width is capped (tail stays readable).
-    /// Multiline: no horizontal fade — text is leading-aligned and scrolls vertically.
-    private var recordingTextMaskEdge: some View {
-        Group {
-            if layout.isMultiline {
-                Rectangle()
-            } else if recordingPeakWidth >= layout.maxBarWidth - 0.5 {
-                HStack(spacing: 0) {
-                    LinearGradient(
-                        colors: [.clear, .white],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                    .frame(width: 12)
-                    Rectangle()
-                }
-            } else {
-                Rectangle()
+                    .padding(.trailing, 4)
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
             }
         }
+        .padding(.horizontal, 14)
     }
 
     private var processingContent: some View {
@@ -346,7 +264,6 @@ struct FloatingBarView<S: FloatingBarState>: View {
 
             if state.barPhase == .recording {
                 AudioRipple(meter: state.audioLevel)
-                    .opacity(layout.isMultiline ? 0.14 : 1.0)
                     .transition(.opacity)
             }
 
@@ -371,7 +288,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
     }
 
     private var capsuleBorder: some View {
-        barClipShape
+        Capsule()
             .stroke(borderColor, lineWidth: 1)
     }
 

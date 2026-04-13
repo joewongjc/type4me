@@ -108,7 +108,7 @@ final class ModeStorageTests: XCTestCase {
         let translate = loaded.first(where: { $0.id == ProcessingMode.translate.id })
 
         XCTAssertEqual(formalWriting?.prompt, ProcessingMode.formalWriting.prompt)
-        XCTAssertEqual(formalWriting?.processingLabel, "我的润色中")
+        XCTAssertEqual(formalWriting?.processingLabel, ProcessingMode.formalWriting.processingLabel)
         XCTAssertEqual(formalWriting?.hotkeyCode, 30)
 
         XCTAssertEqual(translate?.prompt, ProcessingMode.translate.prompt)

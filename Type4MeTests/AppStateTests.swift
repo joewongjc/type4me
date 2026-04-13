@@ -93,6 +93,7 @@ final class AppStateTests: XCTestCase {
 
     func testFinalizeShowsClipboardFallbackMessage() {
         let appState = AppState()
+        appState.barPhase = .processing
 
         appState.finalize(text: "测试文本", outcome: .copiedToClipboard)
 
