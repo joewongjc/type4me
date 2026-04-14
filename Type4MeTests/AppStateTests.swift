@@ -98,7 +98,7 @@ final class AppStateTests: XCTestCase {
         appState.finalize(text: "测试文本", outcome: .copiedToClipboard)
 
         XCTAssertEqual(appState.barPhase, .done)
-        XCTAssertEqual(appState.feedbackMessage, "已粘贴到剪贴板")
+        XCTAssertEqual(appState.feedbackMessage, InjectionOutcome.copiedToClipboard.completionMessage)
         XCTAssertEqual(appState.transcriptionText, "测试文本")
     }
 
