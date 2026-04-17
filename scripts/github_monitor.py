@@ -4,11 +4,26 @@ Type4Me GitHub Monitor
 每 2 小时检查新 Issue 和 PR，有动态就发飞书
 """
 import json
+import os
 import sys
 from datetime import datetime, timezone, timedelta
+from pathlib import Path
 from urllib.request import urlopen, Request
 
-import os
+
+def _load_secrets():
+    p = Path.home() / ".config" / "secrets.env"
+    if not p.exists():
+        return
+    for line in p.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+
+
+_load_secrets()
 
 GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
 REPO = "joewongjc/type4me"

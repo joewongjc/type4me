@@ -1047,7 +1047,7 @@ actor RecognitionSession {
                     cont.resume(returning: true)
                 }
             }
-            if let cont = finalTranscriptCont, currentTranscript.isFinal {
+            if let cont = finalTranscriptCont, isTranscriptEffectivelyFinal {
                 finalTranscriptCont = nil
                 cont.resume(returning: transcript.displayText)
             }
@@ -1062,6 +1062,15 @@ actor RecognitionSession {
 
         case .completed:
             logger.info("ASR stream completed")
+            // Server signaled end-of-stream (e.g. Volcano 0xF0). If we're waiting
+            // for a final transcript, resume now — currentTranscript contains the
+            // last update the server sent before closing.
+            if let cont = finalTranscriptCont {
+                finalTranscriptCont = nil
+                let text = currentTranscript.displayText
+                DebugFileLogger.log("stop: .completed resumed finalTranscriptCont (\(text.count) chars)")
+                cont.resume(returning: text.isEmpty ? nil : text)
+            }
             if state == .recording {
                 NSLog("[Session] Server closed ASR while recording, initiating stop")
                 DebugFileLogger.log("server-initiated stop from recording state")
@@ -1287,9 +1296,9 @@ actor RecognitionSession {
 
     /// Wait for the ASR to emit a finalized transcript, with timeout.
     /// "Finalized" means either isFinal flag is set, or confirmed segments exist
-    /// with no remaining partial text (Volcano via proxy doesn't send asyncFinal).
+    /// with no remaining partial text (Volcano bigmodel_async doesn't send asyncFinal).
     private func awaitFinalTranscript(timeout: Duration) async -> String? {
-        if currentTranscript.isFinal {
+        if isTranscriptEffectivelyFinal {
             return currentTranscript.displayText
         }
         return await withCheckedContinuation { continuation in
@@ -1302,6 +1311,17 @@ actor RecognitionSession {
                 }
             }
         }
+    }
+
+    /// Whether the current transcript is effectively final.
+    /// Only trust the explicit isFinal flag (asyncFinal from server).
+    /// The previous heuristic (partialText.isEmpty) caused premature triggers
+    /// when the server cleared partials during finalization before sending the
+    /// complete result, losing tail audio that was spoken but not yet transcribed.
+    /// For providers that never send asyncFinal, we fall through to the .completed
+    /// event handler which also resumes the finalTranscriptCont.
+    private var isTranscriptEffectivelyFinal: Bool {
+        currentTranscript.isFinal
     }
 
     /// Wait for the ASR to emit any non-empty streaming text, with timeout.

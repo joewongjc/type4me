@@ -9,6 +9,8 @@ private nonisolated(unsafe) let axTrustedCheckOptionPrompt = "AXTrustedCheckOpti
 
 enum PermissionManager {
 
+    // MARK: - Microphone
+
     static var hasMicrophonePermission: Bool {
         AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
     }
@@ -24,6 +26,8 @@ enum PermissionManager {
             return false
         }
     }
+
+    // MARK: - Speech Recognition
 
     static var hasSpeechRecognitionPermission: Bool {
         SFSpeechRecognizer.authorizationStatus() == .authorized
@@ -44,6 +48,8 @@ enum PermissionManager {
             return false
         }
     }
+
+    // MARK: - Accessibility
 
     static var hasAccessibilityPermission: Bool {
         AXIsProcessTrustedWithOptions(

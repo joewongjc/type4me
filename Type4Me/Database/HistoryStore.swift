@@ -45,6 +45,9 @@ actor HistoryStore {
             // Migration: add asr_provider column if it doesn't exist
             let alterASRSQL = "ALTER TABLE recognition_history ADD COLUMN asr_provider TEXT;"
             sqlite3_exec(db, alterASRSQL, nil, nil, nil)
+
+            // Index for ORDER BY created_at DESC pagination
+            sqlite3_exec(db, "CREATE INDEX IF NOT EXISTS idx_history_created_at ON recognition_history(created_at DESC);", nil, nil, nil)
         }
     }
 
@@ -87,10 +90,45 @@ actor HistoryStore {
         } else {
             sql = "SELECT * FROM recognition_history ORDER BY created_at DESC;"
         }
+        return executeQuery(sql)
+    }
+
+    /// Cursor-based pagination with optional date range filter.
+    /// Pass `cursor` for subsequent pages, `from`/`to` as ISO8601 strings for date filtering.
+    func fetchPage(limit: Int, before cursor: String? = nil, from: String? = nil, to: String? = nil) -> [HistoryRecord] {
+        var conditions: [String] = []
+        var params: [String] = []
+        if let cursor {
+            conditions.append("created_at < ?")
+            params.append(cursor)
+        }
+        if let from {
+            conditions.append("created_at >= ?")
+            params.append(from)
+        }
+        if let to {
+            conditions.append("created_at < ?")
+            params.append(to)
+        }
+        let whereClause = conditions.isEmpty ? "" : "WHERE " + conditions.joined(separator: " AND ")
+        let sql = "SELECT * FROM recognition_history \(whereClause) ORDER BY created_at DESC LIMIT \(limit);"
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
         defer { sqlite3_finalize(stmt) }
+        for (i, param) in params.enumerated() {
+            bind(stmt, Int32(i + 1), param)
+        }
+        return readRows(stmt)
+    }
 
+    private func executeQuery(_ sql: String) -> [HistoryRecord] {
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
+        defer { sqlite3_finalize(stmt) }
+        return readRows(stmt)
+    }
+
+    private func readRows(_ stmt: OpaquePointer?) -> [HistoryRecord] {
         let iso = ISO8601DateFormatter()
         var records: [HistoryRecord] = []
         while sqlite3_step(stmt) == SQLITE_ROW {
@@ -252,23 +290,34 @@ actor HistoryStore {
         }
     }
 
-    /// 获取全部记录的统计信息（使用数据库聚合查询，高效）
-    func getStatistics() async -> Statistics {
-        // Only sum duration for rows that have character_count, so averageSpeed
-        // is accurate even if some legacy rows haven't been migrated yet.
+    /// 获取统计信息，可选日期范围过滤（ISO8601 字符串）
+    func getStatistics(from: String? = nil, to: String? = nil) async -> Statistics {
+        var conditions: [String] = []
+        var params: [String] = []
+        if let from {
+            conditions.append("created_at >= ?")
+            params.append(from)
+        }
+        if let to {
+            conditions.append("created_at < ?")
+            params.append(to)
+        }
+        let whereClause = conditions.isEmpty ? "" : "WHERE " + conditions.joined(separator: " AND ")
         let sql = """
         SELECT
             COALESCE(SUM(CASE WHEN character_count IS NOT NULL THEN duration_seconds ELSE 0 END), 0),
             COALESCE(SUM(character_count), 0),
             COUNT(*)
-        FROM recognition_history;
+        FROM recognition_history \(whereClause);
         """
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
             return Statistics(totalDuration: 0, totalCharacters: 0, recordCount: 0)
         }
         defer { sqlite3_finalize(stmt) }
-
+        for (i, param) in params.enumerated() {
+            bind(stmt, Int32(i + 1), param)
+        }
         if sqlite3_step(stmt) == SQLITE_ROW {
             let duration = sqlite3_column_double(stmt, 0)
             let chars = Int(sqlite3_column_int(stmt, 1))

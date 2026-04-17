@@ -556,6 +556,12 @@ final class AppState {
     }
 
     func setLiveTranscript(_ transcript: RecognitionTranscript) {
+        let pipelineLatency = ContinuousClock.now - transcript.emitTime
+        let latencyMs = Int(pipelineLatency.components.seconds * 1000 + pipelineLatency.components.attoseconds / 1_000_000_000_000_000)
+        if latencyMs > 50 {
+            DebugFileLogger.log("⚠️ pipeline latency \(latencyMs)ms (ASR emit → UI setLiveTranscript)")
+        }
+
         if transcript.isFinal,
            !transcript.authoritativeText.isEmpty,
            transcript.authoritativeText != transcript.composedText {

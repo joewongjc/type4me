@@ -28,6 +28,15 @@ struct Type4MeApp: App {
             SetupWizardView()
                 .environment(appDelegate.appState)
                 .environment(appDelegate.appUpdater)
+                .environment(appDelegate.permissionGuideModel)
+        }
+        .windowResizability(.contentSize)
+        .defaultPosition(.center)
+        .windowStyle(.hiddenTitleBar)
+
+        Window(L("Type4Me 授权引导", "Type4Me Permissions"), id: "permission-guide") {
+            PermissionGuideView(model: appDelegate.permissionGuideModel)
+                .frame(minWidth: 520, idealWidth: 560, minHeight: 460, idealHeight: 480)
         }
         .windowResizability(.contentSize)
         .defaultPosition(.center)
@@ -42,6 +51,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     let appState = AppState()
     let appUpdater = AppUpdater()
+    let permissionGuideModel = PermissionGuideModel()
     /// Computed dynamically per recording based on audio device topology.
     private var floatingBarController: FloatingBarController?
     private let hotkeyManager = HotkeyManager()
@@ -401,8 +411,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        // Prompt for accessibility and poll until granted
-        PermissionManager.promptAccessibilityPermission()
+        // Surface the unified permission guide. Skip on first launch when
+        // the setup wizard will walk the user through permissions inline —
+        // otherwise we'd stack the guide on top of the wizard.
+        let showWizard: Bool = {
+            #if HAS_CLOUD_SUBSCRIPTION
+            return !appState.hasCompletedSetup || appState.appEdition == nil
+            #else
+            return !appState.hasCompletedSetup
+            #endif
+        }()
+        if !showWizard {
+            presentPermissionGuide()
+        }
+
         hotkeyRetryCount = 0
         retryTimer?.invalidate()
         retryTimer = Timer.scheduledTimer(
@@ -424,7 +446,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 timer.invalidate()
                 retryTimer = nil
                 hotkeyRetryCount = 0
-            } else if hotkeyRetryCount >= 5 {
+                } else if hotkeyRetryCount >= 5 {
                 // Permission granted but event tap still fails (macOS caches denial at kernel level).
                 // Suggest restart.
                 timer.invalidate()
@@ -542,6 +564,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Stored by MenuBarContent so AppDelegate can open the settings window.
     static var openSettingsAction: (() -> Void)?
+
+    /// Stored by MenuBarContent so AppDelegate can open the unified
+    /// permission guide window from anywhere (startup, hotkey failure path,
+    /// etc.). If the action isn't wired yet (e.g. very early in launch
+    /// before the first MenuBarExtra render), calls are retried on the next
+    /// runloop.
+    static var openPermissionGuideAction: (() -> Void)?
+
+    /// Present the permission guide window, activating the app and retrying
+    /// until the SwiftUI scene registers its open action.
+    func presentPermissionGuide() {
+        if let action = Self.openPermissionGuideAction {
+            action()
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+            self?.presentPermissionGuide()
+        }
+    }
 
     func applicationWillTerminate(_ notification: Notification) {
         SystemVolumeManager.restore()
@@ -681,6 +723,9 @@ struct MenuBarContent: View {
         let _ = {
             AppDelegate.openSettingsAction = { [openSettingsWindow] in
                 openSettingsWindow(id: "settings")
+            }
+            AppDelegate.openPermissionGuideAction = { [openSettingsWindow] in
+                openSettingsWindow(id: "permission-guide")
             }
         }()
     }

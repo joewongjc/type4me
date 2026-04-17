@@ -925,7 +925,13 @@ final class HoverTrackingNSView: NSView {
     override func mouseEntered(with event: NSEvent) {
         enterWorkItem?.cancel()
         let work = DispatchWorkItem { [weak self] in
-            self?.onHoverChanged?(true)
+            guard let self, let window = self.window else { return }
+            // Re-check mouse position at trigger time: updateTrackingAreas()
+            // sends synthetic mouseEntered when the tracking area is recreated
+            // with the cursor inside (e.g. bar grows during recording).
+            let mouseInView = self.convert(window.mouseLocationOutsideOfEventStream, from: nil)
+            guard self.bounds.contains(mouseInView) else { return }
+            self.onHoverChanged?(true)
         }
         enterWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)

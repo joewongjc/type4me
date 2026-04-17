@@ -15,6 +15,59 @@ struct HistoryRecord: Identifiable, Hashable {
     let asrProvider: String?
 }
 
+// MARK: - Date Filter
+
+enum DateFilter: Equatable, Hashable {
+    case all, today, yesterday, thisWeek, thisMonth
+    case custom(from: Date, to: Date)
+
+    /// Convert to ISO8601 start/end strings for SQL queries. nil means no filter.
+    var dateRange: (start: String, end: String)? {
+        let cal = Calendar.current
+        let now = Date()
+        let iso = ISO8601DateFormatter()
+        let pair: (Date, Date)?
+        switch self {
+        case .all:
+            return nil
+        case .today:
+            let s = cal.startOfDay(for: now)
+            pair = (s, cal.date(byAdding: .day, value: 1, to: s)!)
+        case .yesterday:
+            let todayStart = cal.startOfDay(for: now)
+            pair = (cal.date(byAdding: .day, value: -1, to: todayStart)!, todayStart)
+        case .thisWeek:
+            let weekStart = cal.dateInterval(of: .weekOfYear, for: now)!.start
+            pair = (weekStart, cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: now))!)
+        case .thisMonth:
+            let monthStart = cal.dateInterval(of: .month, for: now)!.start
+            pair = (monthStart, cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: now))!)
+        case .custom(let from, let to):
+            let s = cal.startOfDay(for: from)
+            pair = (s, cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: to))!)
+        }
+        guard let (s, e) = pair else { return nil }
+        return (iso.string(from: s), iso.string(from: e))
+    }
+
+    var label: String {
+        switch self {
+        case .all: return L("全部", "All")
+        case .today: return L("今天", "Today")
+        case .yesterday: return L("昨天", "Yesterday")
+        case .thisWeek: return L("本周", "This Week")
+        case .thisMonth: return L("本月", "This Month")
+        case .custom(let from, let to):
+            let df = DateFormatter()
+            df.dateFormat = "M/d"
+            if Calendar.current.isDate(from, inSameDayAs: to) {
+                return df.string(from: from)
+            }
+            return "\(df.string(from: from))-\(df.string(from: to))"
+        }
+    }
+}
+
 // MARK: - View
 
 struct HistoryTab: View {
@@ -30,7 +83,13 @@ struct HistoryTab: View {
     @State private var copiedId: String?
     @State private var statistics: HistoryStore.Statistics?
 
-    private static let pageSize = 20
+    private static let pageSize = 50
+
+    /// Fixed height for every control in the top toolbar row (search field
+    /// + date filter + selection + export). Locking all items to the same
+    /// height keeps type baselines aligned and prevents the buttons from
+    /// looking smaller than the search box.
+    private let toolbarHeight: CGFloat = 30
 
     // Correction
     @State private var correctionRecord: HistoryRecord? = nil
@@ -41,6 +100,12 @@ struct HistoryTab: View {
     @State private var exportStart = Calendar.current.date(byAdding: .month, value: -1, to: Date()) ?? Date()
     @State private var exportEnd = Date()
     @State private var exportRecordCount: Int = 0
+
+    // Date filter
+    @State private var dateFilter: DateFilter = .all
+    @State private var showCustomRange = false
+    @State private var customRangeStart = Calendar.current.date(byAdding: .month, value: -1, to: Date()) ?? Date()
+    @State private var customRangeEnd = Date()
 
     // Batch selection
     @State private var isSelectionMode = false
@@ -63,37 +128,39 @@ struct HistoryTab: View {
         )
     }
 
-    // MARK: - Date Grouping
+    // MARK: - Per-Day Grouping
 
-    private enum DateGroup: CaseIterable {
-        case today, yesterday, thisWeek, earlier
+    private struct DayGroup: Hashable {
+        let date: Date  // start of day
 
         var title: String {
-            switch self {
-            case .today: return L("今天", "Today")
-            case .yesterday: return L("昨天", "Yesterday")
-            case .thisWeek: return L("本周", "This Week")
-            case .earlier: return L("更早", "Earlier")
+            let cal = Calendar.current
+            let now = Date()
+            if cal.isDateInToday(date) { return L("今天", "Today") }
+            if cal.isDateInYesterday(date) { return L("昨天", "Yesterday") }
+
+            let df = DateFormatter()
+            let isZh = AppLanguage.current == .zh
+            df.locale = isZh ? Locale(identifier: "zh_CN") : Locale(identifier: "en_US")
+
+            if let weekAgo = cal.date(byAdding: .day, value: -7, to: now), date > weekAgo {
+                df.dateFormat = "EEEE"
+                return df.string(from: date)
             }
+            if cal.component(.year, from: date) == cal.component(.year, from: now) {
+                df.dateFormat = isZh ? "M月d日 (EEE)" : "MMM d (EEE)"
+            } else {
+                df.dateFormat = isZh ? "yyyy年M月d日 (EEE)" : "MMM d, yyyy (EEE)"
+            }
+            return df.string(from: date)
         }
     }
 
-    private func dateGroup(for date: Date) -> DateGroup {
+    private var groupedRecords: [(DayGroup, [HistoryRecord])] {
         let cal = Calendar.current
-        if cal.isDateInToday(date) { return .today }
-        if cal.isDateInYesterday(date) { return .yesterday }
-        if let weekAgo = cal.date(byAdding: .day, value: -7, to: Date()), date > weekAgo {
-            return .thisWeek
-        }
-        return .earlier
-    }
-
-    private var groupedRecords: [(DateGroup, [HistoryRecord])] {
-        let grouped = Dictionary(grouping: filtered) { dateGroup(for: $0.createdAt) }
-        return DateGroup.allCases.compactMap { group in
-            guard let records = grouped[group], !records.isEmpty else { return nil }
-            return (group, records)
-        }
+        let grouped = Dictionary(grouping: filtered) { DayGroup(date: cal.startOfDay(for: $0.createdAt)) }
+        return grouped.map { ($0.key, $0.value) }
+            .sorted { $0.0.date > $1.0.date }
     }
 
     // MARK: - Body
@@ -112,7 +179,14 @@ struct HistoryTab: View {
                     .padding(.bottom, TF.spacingMD)
             }
 
-            // Search + Export
+            // Search + date filter + selection + export.
+            //
+            // Visual baseline: every control in this row locks to
+            // `toolbarHeight` (30pt) and uses 12pt type so the search
+            // baseline and the button baselines sit on a single line. The
+            // previous layout mixed 12pt/11pt and 7pt/6pt vertical padding,
+            // which made button text read "smaller and floating" next to
+            // the search box.
             HStack(spacing: 8) {
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass")
@@ -123,7 +197,7 @@ struct HistoryTab: View {
                         .font(.system(size: 12))
                 }
                 .padding(.horizontal, 10)
-                .padding(.vertical, 7)
+                .frame(height: toolbarHeight)
                 .background(
                     RoundedRectangle(cornerRadius: 6).fill(TF.settingsBg)
                 )
@@ -131,6 +205,54 @@ struct HistoryTab: View {
                     RoundedRectangle(cornerRadius: 6)
                         .stroke(TF.settingsTextTertiary.opacity(0.2), lineWidth: 1)
                 )
+
+                // Date filter menu
+                Menu {
+                    let presets: [DateFilter] = [.all, .today, .yesterday, .thisWeek, .thisMonth]
+                    ForEach(presets, id: \.self) { filter in
+                        Button {
+                            dateFilter = filter
+                        } label: {
+                            if dateFilter == filter {
+                                Label(filter.label, systemImage: "checkmark")
+                            } else {
+                                Text(filter.label)
+                            }
+                        }
+                    }
+                    Divider()
+                    Button {
+                        showCustomRange = true
+                    } label: {
+                        if case .custom = dateFilter {
+                            Label(L("自定义范围...", "Custom range..."), systemImage: "checkmark")
+                        } else {
+                            Text(L("自定义范围...", "Custom range..."))
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "calendar").font(.system(size: 11))
+                        Text(dateFilter.label).font(.system(size: 12, weight: .medium))
+                    }
+                    .foregroundStyle(dateFilter == .all ? TF.settingsTextSecondary : TF.settingsNavActive)
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .padding(.horizontal, 10)
+                .frame(height: toolbarHeight)
+                .background(RoundedRectangle(cornerRadius: 6).fill(TF.settingsBg))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(dateFilter == .all
+                            ? TF.settingsTextTertiary.opacity(0.2)
+                            : TF.settingsNavActive.opacity(0.4),
+                        lineWidth: 1)
+                )
+                .popover(isPresented: $showCustomRange, arrowEdge: .bottom) {
+                    customRangePopover
+                }
 
                 Button {
                     if isSelectionMode {
@@ -141,12 +263,12 @@ struct HistoryTab: View {
                     }
                 } label: {
                     Text(isSelectionMode ? L("完成", "Done") : L("选择", "Select"))
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(TF.settingsTextSecondary)
                 }
                 .buttonStyle(.plain)
                 .padding(.horizontal, 10)
-                .padding(.vertical, 6)
+                .frame(height: toolbarHeight)
                 .background(RoundedRectangle(cornerRadius: 6).fill(TF.settingsBg))
                 .overlay(
                     RoundedRectangle(cornerRadius: 6)
@@ -157,13 +279,15 @@ struct HistoryTab: View {
                 Button {
                     showExportPopover = true
                 } label: {
-                    Label(L("导出", "Export"), systemImage: "square.and.arrow.up")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(TF.settingsTextSecondary)
+                    HStack(spacing: 5) {
+                        Image(systemName: "square.and.arrow.up").font(.system(size: 11))
+                        Text(L("导出", "Export")).font(.system(size: 12, weight: .medium))
+                    }
+                    .foregroundStyle(TF.settingsTextSecondary)
                 }
                 .buttonStyle(.plain)
                 .padding(.horizontal, 10)
-                .padding(.vertical, 6)
+                .frame(height: toolbarHeight)
                 .background(RoundedRectangle(cornerRadius: 6).fill(TF.settingsBg))
                 .overlay(
                     RoundedRectangle(cornerRadius: 6)
@@ -196,18 +320,14 @@ struct HistoryTab: View {
                         }
 
                         if hasMore && searchText.isEmpty {
-                            Color.clear
-                                .frame(height: 1)
+                            ProgressView()
+                                .controlSize(.small)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .id("load-more-\(records.count)")
                                 .onAppear {
                                     Task { await loadMore() }
                                 }
-
-                            if isLoadingMore {
-                                ProgressView()
-                                    .controlSize(.small)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 8)
-                            }
                         }
                     }
                     .padding(.bottom, 16)
@@ -224,6 +344,13 @@ struct HistoryTab: View {
                 selectedIds.removeAll()
                 return
             }
+            Task {
+                await loadRecords()
+                await loadStatistics()
+            }
+        }
+        .onChange(of: dateFilter) { _, _ in
+            selectedIds.removeAll()
             Task {
                 await loadRecords()
                 await loadStatistics()
@@ -260,7 +387,7 @@ struct HistoryTab: View {
     private var batchSelectionBar: some View {
         HStack(spacing: 12) {
             Text(L("已选 \(selectedIds.count) 条", "\(selectedIds.count) selected"))
-                .font(.system(size: 11, weight: .medium))
+                .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(TF.settingsTextSecondary)
 
             Spacer()
@@ -276,7 +403,7 @@ struct HistoryTab: View {
                         ? L("取消全选", "Deselect All")
                         : L("全选当前列表", "Select All in List")
                 )
-                .font(.system(size: 11, weight: .medium))
+                .font(.system(size: 12, weight: .medium))
             }
             .buttonStyle(.plain)
             .foregroundStyle(TF.settingsNavActive)
@@ -286,7 +413,7 @@ struct HistoryTab: View {
                 showBatchDeleteConfirm = true
             } label: {
                 Text(L("删除", "Delete"))
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
             }
             .buttonStyle(.plain)
             .foregroundStyle(TF.settingsAccentRed)
@@ -324,31 +451,68 @@ struct HistoryTab: View {
     }
 
     private func loadRecords() async {
-        let fetched = await historyStore.fetchAll(limit: Self.pageSize)
-        await MainActor.run {
-            records = fetched
-            hasMore = fetched.count >= Self.pageSize
-        }
+        let range = dateFilter.dateRange
+        let fetched = await historyStore.fetchPage(limit: Self.pageSize, from: range?.start, to: range?.end)
+        records = fetched
+        hasMore = fetched.count >= Self.pageSize
     }
 
     private func loadStatistics() async {
-        let stats = await historyStore.getStatistics()
-        await MainActor.run {
-            statistics = stats
-        }
+        let range = dateFilter.dateRange
+        let stats = await historyStore.getStatistics(from: range?.start, to: range?.end)
+        statistics = stats
     }
 
     private func loadMore() async {
-        guard !isLoadingMore else { return }
-        await MainActor.run { isLoadingMore = true }
-        let page = await historyStore.fetchAll(limit: Self.pageSize, offset: records.count)
-        await MainActor.run {
-            let existingIds = Set(records.map(\.id))
-            let newRecords = page.filter { !existingIds.contains($0.id) }
-            records.append(contentsOf: newRecords)
-            hasMore = page.count >= Self.pageSize
+        guard !isLoadingMore, hasMore else { return }
+        isLoadingMore = true
+        let cursor = records.last.map { ISO8601DateFormatter().string(from: $0.createdAt) } ?? ""
+        guard !cursor.isEmpty else {
             isLoadingMore = false
+            return
         }
+        let range = dateFilter.dateRange
+        let page = await historyStore.fetchPage(limit: Self.pageSize, before: cursor, from: range?.start)
+        records.append(contentsOf: page)
+        hasMore = page.count >= Self.pageSize
+        isLoadingMore = false
+    }
+
+    // MARK: - Empty State
+
+    // MARK: - Custom Date Range Popover
+
+    private var customRangePopover: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(L("自定义日期范围", "Custom Date Range"))
+                .font(.system(size: 13, weight: .semibold))
+
+            HStack(spacing: 8) {
+                DatePicker(L("从", "From"), selection: $customRangeStart, displayedComponents: .date)
+                DatePicker(L("到", "To"), selection: $customRangeEnd, displayedComponents: .date)
+            }
+            .font(.system(size: 12))
+
+            HStack {
+                Spacer()
+                Button(L("取消", "Cancel")) { showCustomRange = false }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                Button(L("应用", "Apply")) {
+                    dateFilter = .custom(from: customRangeStart, to: customRangeEnd)
+                    showCustomRange = false
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
+                .background(RoundedRectangle(cornerRadius: 6).fill(TF.settingsNavActive))
+            }
+        }
+        .padding(16)
+        .frame(width: 320)
     }
 
     // MARK: - Empty State
@@ -371,16 +535,31 @@ struct HistoryTab: View {
 
     // MARK: - Date Section
 
-    private func dateSectionView(_ group: DateGroup, records: [HistoryRecord]) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(group.title)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(TF.settingsTextTertiary)
+    private func dateSectionView(_ group: DayGroup, records: [HistoryRecord]) -> some View {
+        let totalDuration = records.reduce(0.0) { $0 + $1.durationSeconds }
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 4) {
+                Text(group.title)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(TF.settingsTextTertiary)
+                Text("·")
+                    .font(.system(size: 11))
+                    .foregroundStyle(TF.settingsTextTertiary.opacity(0.4))
+                Text(L("\(records.count) 条", "\(records.count)"))
+                    .font(.system(size: 10))
+                    .foregroundStyle(TF.settingsTextTertiary.opacity(0.6))
+                Text("·")
+                    .font(.system(size: 11))
+                    .foregroundStyle(TF.settingsTextTertiary.opacity(0.4))
+                Text(formatDuration(totalDuration))
+                    .font(.system(size: 10))
+                    .foregroundStyle(TF.settingsTextTertiary.opacity(0.6))
+            }
 
             ForEach(records) { record in
                 recordCard(
                     record,
-                    showDate: group == .thisWeek || group == .earlier,
+                    showDate: false,
                     isSelectionMode: isSelectionMode,
                     isSelected: selectedIds.contains(record.id),
                     onToggleSelection: { toggleSelection(for: record.id) }

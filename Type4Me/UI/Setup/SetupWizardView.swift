@@ -5,6 +5,7 @@ import ApplicationServices
 struct SetupWizardView: View {
 
     @Environment(AppState.self) private var appState
+    @Environment(PermissionGuideModel.self) private var permissionGuideModel
     @State private var step = 0
     @AppStorage("tf_language") private var language = AppLanguage.systemDefault
     #if HAS_CLOUD_SUBSCRIPTION
@@ -226,51 +227,9 @@ struct SetupWizardView: View {
 
     // MARK: - Step 2: Permissions
 
-    @State private var hasMic = false
-    @State private var hasAccessibility = false
-
     private var permissionsStep: some View {
-        VStack(spacing: 24) {
-            Spacer()
-
-            Text(L("授予权限", "Grant Permissions"))
-                .font(.system(size: 18, weight: .semibold))
-
-            VStack(spacing: 14) {
-                SetupPermissionCard(
-                    icon: "mic.fill",
-                    title: L("麦克风", "Microphone"),
-                    detail: L("录制语音进行转写", "Record voice for transcription"),
-                    granted: hasMic
-                ) {
-                    AVCaptureDevice.requestAccess(for: .audio) { granted in
-                        Task { @MainActor in hasMic = granted }
-                    }
-                }
-
-                SetupPermissionCard(
-                    icon: "accessibility",
-                    title: L("辅助功能", "Accessibility"),
-                    detail: L("全局快捷键 + 文字注入", "Global hotkeys + text injection"),
-                    granted: hasAccessibility
-                ) {
-                    PermissionManager.promptAccessibilityPermission()
-                    PermissionManager.openAccessibilitySettings()
-                }
-
-                if !hasAccessibility {
-                    Text(L(
-                        "请在系统设置中找到 Type4Me 并打开开关。如已开启但快捷键仍无效，请重启 App。",
-                        "Find Type4Me in System Settings and toggle it ON. If hotkeys still don't work after enabling, please restart the app."
-                    ))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 340)
-                }
-            }
-            .frame(width: 340)
-
-            Spacer()
+        VStack(spacing: 16) {
+            PermissionGuideView(model: permissionGuideModel, embedded: true)
 
             #if HAS_CLOUD_SUBSCRIPTION
             navigationFooter { step = 4 }
@@ -278,15 +237,7 @@ struct SetupWizardView: View {
             navigationFooter { step = 3 }
             #endif
         }
-        .onAppear { refreshPermissions() }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            refreshPermissions()
-        }
-    }
-
-    private func refreshPermissions() {
-        hasMic = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
-        hasAccessibility = AXIsProcessTrusted()
+        .onAppear { permissionGuideModel.refresh() }
     }
 
     // MARK: - Step 1: Provider + Credentials
@@ -430,39 +381,3 @@ struct SetupWizardView: View {
     }
 }
 
-// MARK: - Permission Card
-
-private struct SetupPermissionCard: View {
-
-    let icon: String
-    let title: String
-    let detail: String
-    let granted: Bool
-    let action: () -> Void
-
-    var body: some View {
-        HStack(spacing: TF.spacingMD) {
-            Image(systemName: icon)
-                .font(.system(size: 20))
-                .frame(width: 32)
-                .foregroundStyle(granted ? TF.success : TF.amber)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 13, weight: .medium))
-                Text(detail).font(.caption).foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            if granted {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(TF.success)
-            } else {
-                Button(L("授权", "Grant")) { action() }
-                    .controlSize(.small)
-            }
-        }
-        .padding(TF.spacingMD)
-        .background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: TF.cornerSM))
-    }
-}

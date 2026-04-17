@@ -50,6 +50,16 @@ struct RecognitionTranscript: Sendable, Equatable {
     let partialText: String
     let authoritativeText: String
     let isFinal: Bool
+    /// Monotonic timestamp when the ASR client emitted this transcript.
+    /// Used for pipeline latency diagnostics; excluded from Equatable.
+    var emitTime: ContinuousClock.Instant = .now
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.confirmedSegments == rhs.confirmedSegments
+            && lhs.partialText == rhs.partialText
+            && lhs.authoritativeText == rhs.authoritativeText
+            && lhs.isFinal == rhs.isFinal
+    }
 
     static let empty = RecognitionTranscript(
         confirmedSegments: [],
