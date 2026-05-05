@@ -1,3 +1,5 @@
+> 抱歉最近在忙着跨国搬家，更新频率有所下降，欢迎提 issue/PR，紧急问题会尽快修。Sorry, I've been busy with an international move lately, so updates have slowed down — issues and PRs welcome, urgent ones will be fixed ASAP.
+
 <p align="center">
   <a href="#中文">中文</a> | <a href="#english">English</a>
 </p>
