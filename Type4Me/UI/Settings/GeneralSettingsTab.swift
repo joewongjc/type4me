@@ -64,6 +64,11 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
                     micKeepAliveRow
                         .frame(maxWidth: .infinity)
                 }
+
+                SettingsDivider()
+
+                // Row 3: 外观主题
+                themeRow
             }
 
             Spacer().frame(height: 16)
@@ -295,13 +300,41 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
                 .font(.system(size: 10, weight: .semibold))
                 .tracking(0.8)
                 .foregroundStyle(TF.settingsTextTertiary)
+            if TF.showsTechwearChrome {
+                // The Evolution theme owns the recording visualizer (DNA helix).
+                Text(L("DNA 螺旋（随「进化」主题）", "DNA Helix (tied to Evolution theme)"))
+                    .font(.system(size: 12))
+                    .foregroundStyle(TF.settingsTextSecondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 7)
+            } else {
+                settingsSegmentedPicker(
+                    selection: $visualStyle,
+                    options: [
+                        ("classic", L("线条", "Lines")),
+                        ("dual", L("粒子云", "Blocks")),
+                        ("timeline", L("电平", "Minimal")),
+                    ]
+                )
+            }
+        }
+        .padding(.vertical, 6)
+    }
+
+    private var themeRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(L("外观主题", "Appearance").uppercased())
+                .font(.system(size: 10, weight: .semibold))
+                .tracking(0.8)
+                .foregroundStyle(TF.settingsTextTertiary)
             settingsSegmentedPicker(
-                selection: $visualStyle,
-                options: [
-                    ("classic", L("线条", "Lines")),
-                    ("dual", L("粒子云", "Blocks")),
-                    ("timeline", L("电平", "Minimal")),
-                ]
+                selection: Binding(
+                    get: { ThemeStore.shared.current.rawValue },
+                    set: { ThemeStore.shared.current = AppTheme(rawValue: $0) ?? .warm }
+                ),
+                options: AppTheme.allCases.map {
+                    ($0.rawValue, L($0.instance.displayNameZH, $0.instance.displayNameEN))
+                }
             )
         }
         .padding(.vertical, 6)

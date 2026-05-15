@@ -283,7 +283,7 @@ struct AccountTab: View, SettingsCardHelpers {
                     .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(.white)
                     .frame(width: 36, height: 36)
-                    .background(Circle().fill(TF.settingsNavActive))
+                    .background(Circle().fill(TF.settingsNavActiveBg))
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(auth.userEmail ?? auth.username ?? "—")

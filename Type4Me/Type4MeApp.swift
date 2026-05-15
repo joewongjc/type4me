@@ -68,6 +68,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Show or hide Dock icon based on user preference
         let showDock = UserDefaults.standard.object(forKey: "tf_showDockIcon") as? Bool ?? true
         NSApp.setActivationPolicy(showDock ? .regular : .accessory)
+        // Sync the Dock icon to the active theme (Evolution = techwear icon).
+        AppIconThemeSync.apply(ThemeStore.shared.current)
         KeychainService.migrateIfNeeded()
         HotwordStorage.migrateIfNeeded()
         SnippetStorage.migrateIfNeeded()

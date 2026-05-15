@@ -38,7 +38,7 @@ struct PermissionGuideView: View {
             } else {
                 content
                     .background(TF.settingsBg)
-                    .preferredColorScheme(.light)
+                    .preferredColorScheme(TF.colorScheme)
             }
         }
         .onAppear { model.refresh() }

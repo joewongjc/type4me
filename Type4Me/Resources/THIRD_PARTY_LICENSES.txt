@@ -47,4 +47,11 @@ Source: https://github.com/snakers4/silero-vad
 
 ---
 
+Courier Prime
+Copyright (c) 2013, Quote-Unquote Apps (https://quoteunquoteapps.com), with Reserved Font Name "Courier Prime"
+License: SIL Open Font License 1.1
+Source: https://quoteunquoteapps.com/courierprime
+
+---
+
 Full license texts are available at the respective source repositories.

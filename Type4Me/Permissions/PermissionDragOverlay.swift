@@ -90,7 +90,7 @@ private struct PermissionDragOverlayView: View {
             .padding(.vertical, 12)
         }
         .padding(Self.shadowInset)
-        .preferredColorScheme(.light)
+        .preferredColorScheme(TF.colorScheme)
     }
 
     /// Builds "拖 Type4Me 到上方列表以允许辅助功能" with the app and permission

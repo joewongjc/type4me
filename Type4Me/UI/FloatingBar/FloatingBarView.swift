@@ -30,6 +30,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
 
     let state: S
 
+    @ObservedObject private var themeStore = ThemeStore.shared
 
     @State private var breathe = false
     @State private var doneGlow = true
@@ -119,6 +120,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
                 }
             }
         }
+        .id(themeStore.current)
     }
 
     // MARK: - Capsule Container
@@ -127,10 +129,15 @@ struct FloatingBarView<S: FloatingBarState>: View {
         barContent
             .animation(TF.springSnappy, value: state.barPhase)
             .frame(width: capsuleWidth, height: TF.barHeight)
-            .clipShape(Capsule())
+            .clipShape(RoundedRectangle(cornerRadius: TF.floatingBarCornerRadius, style: .circular))
             .background {
                 capsuleBackground
-                    .clipShape(Capsule())
+                    .clipShape(RoundedRectangle(cornerRadius: TF.floatingBarCornerRadius, style: .circular))
+            }
+            .overlay {
+                if TF.showsTechwearChrome {
+                    TechwearChromeOverlay(state: state)
+                }
             }
             .shadow(color: Color(white: 0.08, opacity: 0.5), radius: 5, x: 0, y: 0)
             .animation(TF.springSnappy, value: state.barPhase)
@@ -288,7 +295,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
     }
 
     private var capsuleBorder: some View {
-        Capsule()
+        RoundedRectangle(cornerRadius: TF.floatingBarCornerRadius, style: .circular)
             .stroke(borderColor, lineWidth: 1)
     }
 
@@ -591,11 +598,16 @@ struct ProcessingProgress: View {
                 while xi <= size.width {
                     let nx = xi / size.width
 
-                    // Color: white (left) → blue (right)
+                    // Color: theme-driven gradient (left → right)
                     let t = min(1.0, max(0, nx))
-                    let cr = 0.82 - t * 0.42
-                    let cg = 0.85 - t * 0.25
-                    let coreColor = Color(red: cr, green: cg, blue: 1.0)
+                    let tt = Double(t)
+                    let cs = TF.processingParticleStart
+                    let ce = TF.processingParticleEnd
+                    let coreColor = Color(
+                        red:   cs.r + (ce.r - cs.r) * tt,
+                        green: cs.g + (ce.g - cs.g) * tt,
+                        blue:  cs.b + (ce.b - cs.b) * tt
+                    )
 
                     // Density: filled region is dense, edge has a soft falloff
                     let distToEdge = fillEdge - xi
@@ -653,16 +665,18 @@ struct ProcessingProgress: View {
 
 // MARK: - Audio Ripple
 
-/// Audio visualizer with three selectable styles:
+/// Audio visualizer with four selectable styles:
 /// - classic: two sine-wave stroke lines
 /// - dual: particles clustered around two sine-wave spines
 /// - timeline: scrolling level history, right = now
+/// - dna: rotating double-helix particle stream
 struct AudioRipple: View {
 
     let meter: AudioLevelMeter
     @AppStorage("tf_visualStyle") private var style = "timeline"
     @State private var smootherSlow = LevelSmoother(timeConstant: 0.8)
     @State private var smootherFast = LevelSmoother(timeConstant: 0)
+    @State private var smootherHelix = LevelSmoother(timeConstant: 0.12)
     @State private var startTime: Double = 0
     @State private var levelTimeline = LevelTimeline()
 
@@ -670,10 +684,15 @@ struct AudioRipple: View {
         TimelineView(.animation) { timeline in
             let time = timeline.date.timeIntervalSinceReferenceDate
             Canvas { context, size in
-                switch style {
-                case "classic": drawClassicWaves(context: &context, size: size, time: time)
-                case "dual": drawDualSpine(context: &context, size: size, time: time)
-                default: drawTimeline(context: &context, size: size, time: time)
+                if TF.showsTechwearChrome {
+                    // Evolution theme owns the recording visualizer: the DNA helix.
+                    drawHelix(context: &context, size: size, time: time)
+                } else {
+                    switch style {
+                    case "classic": drawClassicWaves(context: &context, size: size, time: time)
+                    case "dual": drawDualSpine(context: &context, size: size, time: time)
+                    default: drawTimeline(context: &context, size: size, time: time)
+                    }
                 }
             }
         }
@@ -826,6 +845,18 @@ struct AudioRipple: View {
                 context.fill(Circle().path(in: dotR), with: .color(coreColor.opacity(Double(min(1.0, baseOp)))))
             }
         }
+    }
+
+    // MARK: - DNA Helix (delegates to HelixGeometry)
+
+    private func drawHelix(context: inout GraphicsContext, size: CGSize, time: Double) {
+        let rawLevel = CGFloat(max(0.0, min(1.0, meter.current)))
+        // Snappier smoother (0.12s) than classic/dual (0.8s) so the helix
+        // visibly tracks the voice; lower ampScale widens the silence↔peak swing.
+        smootherHelix.target = max(0.012, rawLevel)
+        let level = smootherHelix.update(time: time)
+        let amp = min(1.0, pow(max(0, (level - 0.012) / 0.45), 0.7))
+        HelixGeometry.render(into: &context, size: size, time: time, audioLevel: Double(amp), ampScale: 0.2)
     }
 
     private func hash(_ a: Int, _ b: Int) -> CGFloat {

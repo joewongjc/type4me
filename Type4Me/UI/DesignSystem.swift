@@ -10,7 +10,7 @@ extension NSAppearance {
 
 // MARK: - Adaptive Color Helper
 
-private func adaptiveColor(
+func adaptiveColor(
     light: (r: CGFloat, g: CGFloat, b: CGFloat),
     dark: (r: CGFloat, g: CGFloat, b: CGFloat)
 ) -> Color {
@@ -26,39 +26,35 @@ private func adaptiveColor(
 
 enum TF {
 
-    // MARK: Colors
+    // MARK: Colors (theme-driven)
 
-    /// Warm amber accent: the signature "indicator light" color
-    static let amber = adaptiveColor(
-        light: (0.76, 0.49, 0.16),
-        dark:  (0.83, 0.57, 0.24)
-    )
+    private static var theme: Theme { ThemeStore.shared.current.instance }
 
-    /// Recording active: warm red-orange, urgent but not alarming
-    static let recording = adaptiveColor(
-        light: (0.84, 0.34, 0.27),
-        dark:  (0.87, 0.38, 0.30)
-    )
+    static var amber: Color { theme.amber }
+    static var recording: Color { theme.recording }
+    static var success: Color { theme.success }
 
-    /// Success: muted warm green
-    static let success = adaptiveColor(
-        light: (0.35, 0.65, 0.35),
-        dark:  (0.42, 0.70, 0.42)
-    )
+    // MARK: Settings Palette (theme-driven)
 
-    // MARK: Settings Palette
+    static var settingsBg: Color { theme.settingsBg }
+    static var settingsCard: Color { theme.settingsCard }
+    static var settingsCardAlt: Color { theme.settingsCardAlt }
+    static var settingsNavActiveBg: Color { theme.settingsNavActiveBg }
+    static var settingsNavActiveFg: Color { theme.settingsNavActiveFg }
+    static var settingsText: Color { theme.settingsText }
+    static var settingsTextSecondary: Color { theme.settingsTextSecondary }
+    static var settingsTextTertiary: Color { theme.settingsTextTertiary }
+    static var settingsAccentGreen: Color { theme.settingsAccentGreen }
+    static var settingsAccentAmber: Color { theme.settingsAccentAmber }
+    static var settingsAccentRed: Color { theme.settingsAccentRed }
+    static var settingsAccentBlue: Color { theme.settingsAccentBlue }
 
-    static let settingsBg = Color(red: 0.95, green: 0.92, blue: 0.88)
-    static let settingsCard = Color(red: 0.98, green: 0.96, blue: 0.93)
-    static let settingsCardAlt = Color(red: 0.91, green: 0.89, blue: 0.85)
-    static let settingsNavActive = Color(red: 0.10, green: 0.10, blue: 0.10)
-    static let settingsText = Color(red: 0.10, green: 0.10, blue: 0.10)
-    static let settingsTextSecondary = Color(red: 0.24, green: 0.24, blue: 0.24)
-    static let settingsTextTertiary = Color(red: 0.42, green: 0.42, blue: 0.42)
-    static let settingsAccentGreen = Color(red: 0.30, green: 0.62, blue: 0.35)
-    static let settingsAccentAmber = Color(red: 0.78, green: 0.55, blue: 0.15)
-    static let settingsAccentRed = Color(red: 0.80, green: 0.28, blue: 0.22)
-    static let settingsAccentBlue = Color(red: 0.20, green: 0.45, blue: 0.75)
+    // MARK: Color Scheme (theme-driven)
+
+    static var colorScheme: ColorScheme { theme.colorScheme }
+    static var processingParticleStart: (r: Double, g: Double, b: Double) { theme.processingParticleStart }
+    static var processingParticleEnd: (r: Double, g: Double, b: Double) { theme.processingParticleEnd }
+    static var showsTechwearChrome: Bool { theme.showsTechwearChrome }
 
     // MARK: Spacing
 
@@ -68,11 +64,12 @@ enum TF {
     static let spacingLG: CGFloat = 16
     static let spacingXL: CGFloat = 24
 
-    // MARK: Corner Radius
+    // MARK: Corner Radius (theme-driven)
 
-    static let cornerSM: CGFloat = 6
-    static let cornerMD: CGFloat = 10
-    static let cornerLG: CGFloat = 16
+    static var cornerSM: CGFloat { theme.cornerSM }
+    static var cornerMD: CGFloat { theme.cornerMD }
+    static var cornerLG: CGFloat { theme.cornerLG }
+    static var floatingBarCornerRadius: CGFloat { theme.floatingBarCornerRadius }
 
     // MARK: Floating Bar
 

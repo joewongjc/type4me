@@ -65,6 +65,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 struct SettingsView: View {
 
     @Environment(AppState.self) private var appState
+    @ObservedObject private var themeStore = ThemeStore.shared
     @State private var selectedTab: SettingsTab = .general
     @AppStorage("tf_language") private var language = AppLanguage.systemDefault
     #if HAS_CLOUD_SUBSCRIPTION
@@ -82,7 +83,7 @@ struct SettingsView: View {
         .id(language)
         .frame(minWidth: 700, minHeight: 480)
         .background(TF.settingsBg)
-        .preferredColorScheme(.light)
+        .preferredColorScheme(TF.colorScheme)
         #if HAS_CLOUD_SUBSCRIPTION
         .onAppear {
             if (selectedTab == .models && edition == .member) ||
@@ -118,6 +119,7 @@ struct SettingsView: View {
         .onReceive(NotificationCenter.default.publisher(for: .navigateToVocabulary)) { _ in
             selectedTab = .vocabulary
         }
+        .id(themeStore.current)
     }
 
     // MARK: - Sidebar
@@ -205,7 +207,7 @@ struct SettingsView: View {
             .contentShape(Rectangle())
             .background(
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(isActive ? TF.settingsNavActive : .clear)
+                    .fill(isActive ? TF.settingsNavActiveBg : .clear)
             )
         }
         .buttonStyle(.plain)

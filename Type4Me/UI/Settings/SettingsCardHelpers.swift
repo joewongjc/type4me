@@ -199,7 +199,7 @@ extension SettingsCardHelpers {
                         .padding(.vertical, 8)
                         .background(
                             RoundedRectangle(cornerRadius: 8)
-                                .fill(isSelected ? TF.settingsNavActive : .clear)
+                                .fill(isSelected ? TF.settingsNavActiveBg : .clear)
                         )
                         .contentShape(Rectangle())
                 }
