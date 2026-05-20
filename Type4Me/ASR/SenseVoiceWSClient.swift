@@ -21,6 +21,15 @@ actor SenseVoiceWSClient: SpeechRecognizer {
     private var qwen3LatestText: String?
     private var qwen3HasPendingAudio: Bool = false
 
+    private static let qwen3BytesPerSecond = 16000 * 2
+    private static let qwen3MaxHTTPAudioSeconds = 30 * 60
+    private static let qwen3MaxHTTPAudioBytes = qwen3MaxHTTPAudioSeconds * qwen3BytesPerSecond
+    private static let qwen3SpeculativeEnabledKey = "tf_qwen3SpeculativeEnabled"
+    private static let qwen3SpeculativeMinAudioBytes = 5 * qwen3BytesPerSecond
+    private static let qwen3SpeculativeMaxAudioBytes = 15 * qwen3BytesPerSecond
+    private static let qwen3SpeculativeDebounceMs = 8000
+    private static let qwen3SpeculativeTimeout: TimeInterval = 15
+
     var events: AsyncStream<RecognitionEvent> {
         if let existing = _events { return existing }
         let (stream, continuation) = AsyncStream<RecognitionEvent>.makeStream()
@@ -94,27 +103,16 @@ actor SenseVoiceWSClient: SpeechRecognizer {
         let port = SenseVoiceServerManager.currentQwen3Port
 
         if let port, allAudioData.count > 3200 {
-            let newAudioBytes = allAudioData.count - qwen3ConfirmedOffset
-            let hasQwen3Result = !qwen3ConfirmedSegments.isEmpty
-            let newAudioTrivial = newAudioBytes < 2 * 16000 * 2
-
-            let finalText: String
-            if hasQwen3Result && newAudioTrivial {
-                // Speculative covered most audio, just handle the tail
-                var assembled = qwen3ConfirmedSegments.joined()
-                if newAudioBytes > 3200 {
-                    if let tailText = await qwen3Transcribe(audio: Data(allAudioData.suffix(from: qwen3ConfirmedOffset)), port: port, timeout: 10) {
-                        assembled += tailText
-                    }
-                }
-                finalText = assembled
-                DebugFileLogger.log("Qwen3 final: incremental (\(qwen3ConfirmedSegments.count) segments + tail)")
-            } else {
-                // No speculative, send full audio
-                DebugFileLogger.log("Qwen3 full final: sending \(allAudioData.count) bytes")
-                finalText = await qwen3Transcribe(audio: Data(allAudioData), port: port, timeout: 30) ?? ""
-                DebugFileLogger.log("Qwen3 full final: \(finalText.count) chars")
+            guard allAudioData.count <= Self.qwen3MaxHTTPAudioBytes else {
+                DebugFileLogger.log("Qwen3 final: skipping oversized request \(allAudioData.count) bytes")
+                eventContinuation?.yield(.completed)
+                resetQwen3State()
+                return
             }
+
+            DebugFileLogger.log("Qwen3 full final: sending \(allAudioData.count) bytes")
+            let finalText = await qwen3Transcribe(audio: allAudioData, port: port, timeout: 30) ?? ""
+            DebugFileLogger.log("Qwen3 full final: \(finalText.count) chars")
 
             if !finalText.isEmpty {
                 confirmedSegments = [finalText]
@@ -140,6 +138,11 @@ actor SenseVoiceWSClient: SpeechRecognizer {
 
     /// POST audio to Qwen3 /transcribe and return text, or nil on failure.
     private func qwen3Transcribe(audio: Data, port: Int, timeout: TimeInterval) async -> String? {
+        guard audio.count <= Self.qwen3MaxHTTPAudioBytes else {
+            DebugFileLogger.log("Qwen3 transcribe: refusing oversized request \(audio.count) bytes")
+            return nil
+        }
+
         let url = URL(string: "http://127.0.0.1:\(port)/transcribe")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -155,16 +158,23 @@ actor SenseVoiceWSClient: SpeechRecognizer {
     // MARK: - Qwen3 Speculative
 
     private func scheduleSpeculativeQwen3() {
+        let speculativeEnabled = UserDefaults.standard.object(forKey: Self.qwen3SpeculativeEnabledKey) as? Bool ?? false
+        guard speculativeEnabled else { return }
+
         qwen3DebounceTask?.cancel()
         qwen3DebounceTask = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(1500))
+            try? await Task.sleep(for: .milliseconds(Self.qwen3SpeculativeDebounceMs))
             guard !Task.isCancelled else { return }
             guard let self else { return }
             guard await self.qwen3HasPendingAudio else { return }
             guard let port = SenseVoiceServerManager.currentQwen3Port else { return }
 
             let deltaAudio = await self.allAudioData.suffix(from: self.qwen3ConfirmedOffset)
-            guard deltaAudio.count > 3200 else { return }  // at least 100ms of audio
+            guard deltaAudio.count >= Self.qwen3SpeculativeMinAudioBytes else { return }
+            guard deltaAudio.count <= Self.qwen3SpeculativeMaxAudioBytes else {
+                DebugFileLogger.log("Qwen3 speculative: skipping oversized window \(deltaAudio.count) bytes")
+                return
+            }
 
             // Snapshot the offset before the HTTP round-trip so audio arriving
             // during the request doesn't get silently marked as processed.
@@ -175,7 +185,7 @@ actor SenseVoiceWSClient: SpeechRecognizer {
             request.httpMethod = "POST"
             request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
             request.httpBody = Data(deltaAudio)
-            request.timeoutInterval = 120  // 10 min audio needs ~60-90s on M1/M2
+            request.timeoutInterval = Self.qwen3SpeculativeTimeout
 
             DebugFileLogger.log("Qwen3 speculative: sending \(deltaAudio.count) bytes (offset \(await self.qwen3ConfirmedOffset))")
 

@@ -22,7 +22,7 @@ from pathlib import Path
 
 import numpy as np
 import uvicorn
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 
 import re
 import threading
@@ -88,6 +88,8 @@ SAMPLE_RATE = 16000
 PARTIAL_INTERVAL_SEC = 2.0  # Run partial transcribe every N seconds of new audio
 MAX_PARTIAL_AUDIO_SEC = 20  # Only use last N seconds for partial (full audio for final)
 BYTES_PER_SAMPLE = 2  # PCM16-LE
+MAX_HTTP_AUDIO_SEC = 30 * 60
+MAX_HTTP_AUDIO_BYTES = MAX_HTTP_AUDIO_SEC * SAMPLE_RATE * BYTES_PER_SAMPLE
 
 
 def get_session():
@@ -233,8 +235,18 @@ def _transcribe_sync(sess, audio: np.ndarray, strip_punct: bool = False,
 
 @app.post("/transcribe")
 async def transcribe_http(request: Request):
-    """HTTP endpoint for speculative transcription. Accepts raw PCM16-LE audio."""
+    """HTTP endpoint for bounded one-shot transcription. Accepts raw PCM16-LE audio."""
+    content_length = request.headers.get("content-length")
+    if content_length is not None:
+        try:
+            if int(content_length) > MAX_HTTP_AUDIO_BYTES:
+                raise HTTPException(status_code=413, detail="audio too large")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="invalid content-length")
+
     body = await request.body()
+    if len(body) > MAX_HTTP_AUDIO_BYTES:
+        raise HTTPException(status_code=413, detail="audio too large")
     if len(body) < 100:
         return {"text": ""}
 

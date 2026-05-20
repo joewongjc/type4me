@@ -166,6 +166,10 @@ actor RecognitionSession {
     private var currentTranscript: RecognitionTranscript = .empty
     private var eventConsumptionTask: Task<Void, Never>?
     private var maxDurationTask: Task<Void, Never>?
+    private var asrCleanupTask: Task<Void, Never>?
+    private var asrCleanupGeneration: Int?
+    private var finalTranscriptTimeoutTask: Task<Void, Never>?
+    private var firstStreamingTextTimeoutTask: Task<Void, Never>?
     private var hasEmittedReadyForCurrentSession = false
     private var audioChunkContinuation: AsyncStream<Data>.Continuation?
     private var audioChunkSenderTask: Task<Void, Never>?
@@ -485,6 +489,9 @@ actor RecognitionSession {
 
         // Safety: auto-stop after maxRecordingDuration to prevent unbounded memory use
         maxDurationTask?.cancel()
+        asrCleanupTask?.cancel()
+        asrCleanupTask = nil
+        asrCleanupGeneration = nil
         maxDurationTask = Task { [weak self, maxRecordingDuration] in
             try? await Task.sleep(for: .seconds(maxRecordingDuration))
             guard let self, !Task.isCancelled else { return }
@@ -498,6 +505,13 @@ actor RecognitionSession {
         DebugFileLogger.log("max recording duration reached (\(maxRecordingDuration)s), auto-stopping")
         stoppedByMaxDuration = true
         await stopRecording()
+    }
+
+    private func clearASRCleanupTask(generation: Int) {
+        if asrCleanupGeneration == generation {
+            asrCleanupTask = nil
+            asrCleanupGeneration = nil
+        }
     }
 
     /// Whether the current session was auto-stopped by max duration limit.
@@ -627,10 +641,14 @@ actor RecognitionSession {
                     // Drain events + disconnect in background so post-teardown can start
                     let evtTask = eventConsumptionTask
                     eventConsumptionTask = nil
-                    Task {
-                        if let evtTask { _ = await withTimeout(.seconds(3)) { await evtTask.value } }
+                    asrCleanupTask?.cancel()
+                    asrCleanupGeneration = myGeneration
+                    asrCleanupTask = Task { [weak self, myGeneration] in
+                        if let evtTask { _ = await self?.withTimeout(.seconds(3)) { await evtTask.value } }
+                        guard !Task.isCancelled else { return }
                         await client.disconnect()
                         DebugFileLogger.log("stop: phase 2 background cleanup done")
+                        await self?.clearASRCleanupTask(generation: myGeneration)
                     }
                     self.asrClient = nil
                 }
@@ -677,12 +695,16 @@ actor RecognitionSession {
                 // Run drain + disconnect in background so LLM can start immediately.
                 DebugFileLogger.log("stop: isFinal received +\(ContinuousClock.now - stopT0)")
                 let evtTask = eventConsumptionTask
-                Task {
+                asrCleanupTask?.cancel()
+                asrCleanupGeneration = myGeneration
+                asrCleanupTask = Task { [weak self, myGeneration] in
                     if let evtTask {
-                        _ = await withTimeout(.seconds(3)) { await evtTask.value }
+                        _ = await self?.withTimeout(.seconds(3)) { await evtTask.value }
                     }
+                    guard !Task.isCancelled else { return }
                     await client.disconnect()
                     DebugFileLogger.log("stop: ASR background cleanup done")
+                    await self?.clearASRCleanupTask(generation: myGeneration)
                 }
             } else {
                 // Non-streaming or isFinal timeout: fall back to full drain.
@@ -1044,11 +1066,15 @@ actor RecognitionSession {
                 speechDetected = true
                 if let cont = firstStreamingTextCont {
                     firstStreamingTextCont = nil
+                    firstStreamingTextTimeoutTask?.cancel()
+                    firstStreamingTextTimeoutTask = nil
                     cont.resume(returning: true)
                 }
             }
             if let cont = finalTranscriptCont, isTranscriptEffectivelyFinal {
                 finalTranscriptCont = nil
+                finalTranscriptTimeoutTask?.cancel()
+                finalTranscriptTimeoutTask = nil
                 cont.resume(returning: transcript.displayText)
             }
             logger.info("Transcript updated: \(transcript.displayText)")
@@ -1067,6 +1093,8 @@ actor RecognitionSession {
             // last update the server sent before closing.
             if let cont = finalTranscriptCont {
                 finalTranscriptCont = nil
+                finalTranscriptTimeoutTask?.cancel()
+                finalTranscriptTimeoutTask = nil
                 let text = currentTranscript.displayText
                 DebugFileLogger.log("stop: .completed resumed finalTranscriptCont (\(text.count) chars)")
                 cont.resume(returning: text.isEmpty ? nil : text)
@@ -1310,14 +1338,29 @@ actor RecognitionSession {
             return currentTranscript.displayText
         }
         return await withCheckedContinuation { continuation in
+            self.finalTranscriptTimeoutTask?.cancel()
             self.finalTranscriptCont = continuation
-            Task {
+            self.finalTranscriptTimeoutTask = Task { [weak self] in
                 try? await Task.sleep(for: timeout)
-                if let cont = self.finalTranscriptCont {
-                    self.finalTranscriptCont = nil
-                    cont.resume(returning: nil)
-                }
+                guard let self, !Task.isCancelled else { return }
+                await self.resumeFinalTranscriptOnTimeout()
             }
+        }
+    }
+
+    private func resumeFinalTranscriptOnTimeout() {
+        if let cont = finalTranscriptCont {
+            finalTranscriptCont = nil
+            finalTranscriptTimeoutTask = nil
+            cont.resume(returning: nil)
+        }
+    }
+
+    private func resumeFirstStreamingTextOnTimeout() {
+        if let cont = firstStreamingTextCont {
+            firstStreamingTextCont = nil
+            firstStreamingTextTimeoutTask = nil
+            cont.resume(returning: false)
         }
     }
 
@@ -1339,13 +1382,12 @@ actor RecognitionSession {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         if !text.isEmpty { return true }
         return await withCheckedContinuation { continuation in
+            self.firstStreamingTextTimeoutTask?.cancel()
             self.firstStreamingTextCont = continuation
-            Task {
+            self.firstStreamingTextTimeoutTask = Task { [weak self] in
                 try? await Task.sleep(for: timeout)
-                if let cont = self.firstStreamingTextCont {
-                    self.firstStreamingTextCont = nil
-                    cont.resume(returning: false)
-                }
+                guard let self, !Task.isCancelled else { return }
+                await self.resumeFirstStreamingTextOnTimeout()
             }
         }
     }
@@ -1465,16 +1507,23 @@ actor RecognitionSession {
 
         if let cont = firstStreamingTextCont {
             firstStreamingTextCont = nil
+            firstStreamingTextTimeoutTask?.cancel()
+            firstStreamingTextTimeoutTask = nil
             cont.resume(returning: false)
         }
         if let cont = finalTranscriptCont {
             finalTranscriptCont = nil
+            finalTranscriptTimeoutTask?.cancel()
+            finalTranscriptTimeoutTask = nil
             cont.resume(returning: nil)
         }
         eventConsumptionTask?.cancel()
         eventConsumptionTask = nil
         maxDurationTask?.cancel()
         maxDurationTask = nil
+        asrCleanupTask?.cancel()
+        asrCleanupTask = nil
+        asrCleanupGeneration = nil
         resetSpeculativeLLM()
 
         audioEngine.stop()

@@ -19,6 +19,25 @@ INFO_PLIST="$APP_PATH/Contents/Info.plist"
 
 ENTITLEMENTS="$PROJECT_DIR/entitlements.plist"
 
+codesign_file() {
+    local target="$1"
+    shift
+    if [ "$SIGNING_IDENTITY" = "-" ]; then
+        return 0
+    fi
+    codesign --force --options runtime --timestamp --sign "$SIGNING_IDENTITY" "$@" "$target"
+}
+
+codesign_macho_tree() {
+    local root="$1"
+    [ -d "$root" ] || return 0
+    while IFS= read -r f; do
+        if file "$f" | grep -q "Mach-O"; then
+            codesign_file "$f"
+        fi
+    done < <(find "$root" -type f \( -name "*.dylib" -o -name "*.so" -o -perm -111 \))
+}
+
 if [ -n "${CODESIGN_IDENTITY:-}" ]; then
     SIGNING_IDENTITY="$CODESIGN_IDENTITY"
 elif security find-identity -v -p codesigning 2>/dev/null | grep -q "Developer ID Application"; then
@@ -186,13 +205,28 @@ WRAPPER
         chmod +x "$APP_PATH/Contents/MacOS/qwen3-asr-server"
         # Remove .dist-info dirs that confuse codesign's bundle detection
         find "$APP_PATH/Contents/Resources/qwen3-asr-server-dist" -type d -name "*.dist-info" -exec rm -rf {} + 2>/dev/null || true
+        # MLX resolves mlx.metallib relative to libmlx.dylib in some frozen
+        # layouts. Keep a copy next to libmlx.dylib to avoid runtime discovery
+        # failures when PyInstaller places it under mlx/lib/.
+        MLX_METALLIB=$(find "$APP_PATH/Contents/Resources/qwen3-asr-server-dist" -name "mlx.metallib" -type f | head -1 || true)
+        MLX_INTERNAL="$APP_PATH/Contents/Resources/qwen3-asr-server-dist/_internal"
+        if [ -n "$MLX_METALLIB" ] && [ -f "$MLX_INTERNAL/libmlx.dylib" ] && [ ! -f "$MLX_INTERNAL/mlx.metallib" ]; then
+            cp "$MLX_METALLIB" "$MLX_INTERNAL/mlx.metallib"
+        fi
         # Keep mlx.metallib in the bundle.  Even in JIT mode (MLX_METAL_JIT=ON)
         # the small (~2-5MB) metallib is required for MLX initialization.
         # JIT mode ensures the metallib uses only core shaders compatible with
         # macOS 14+; additional kernels are compiled from embedded source at
         # runtime for the host's Metal version.
-        find "$APP_PATH/Contents/Resources/qwen3-asr-server-dist" -type f \( -name "*.dylib" -o -name "*.so" -o -name "*.metallib" -o -perm +111 \) \
-            -exec codesign --force --options runtime --timestamp --sign "${SIGNING_IDENTITY}" {} \; 2>/dev/null || true
+        codesign_macho_tree "$APP_PATH/Contents/Resources/qwen3-asr-server-dist"
+        QWEN3_FROZEN_EXE="$APP_PATH/Contents/Resources/qwen3-asr-server-dist/qwen3-asr-server"
+        if [ -f "$QWEN3_FROZEN_EXE" ]; then
+            QWEN3_EXE_SIGN_ARGS=()
+            if [ -f "$ENTITLEMENTS" ]; then
+                QWEN3_EXE_SIGN_ARGS+=(--entitlements "$ENTITLEMENTS")
+            fi
+            codesign_file "$QWEN3_FROZEN_EXE" "${QWEN3_EXE_SIGN_ARGS[@]}"
+        fi
         echo "qwen3-asr-server bundled and signed."
     else
         echo "WARNING: qwen3-asr-server dist not found at $QWEN3_DIST (Qwen3 calibration will be unavailable)"
@@ -224,11 +258,25 @@ if [ "$NEEDS_SIGN" = "1" ]; then
     find "$APP_PATH/Contents/Frameworks" \
         -type f \( -name "*.dylib" -o -name "*.so" -o -name "*.framework" \) \
         -exec codesign --force --options runtime --timestamp --sign "$SIGNING_IDENTITY" {} \; 2>/dev/null || true
+    codesign_macho_tree "$APP_PATH/Contents/Resources/qwen3-asr-server-dist"
 
     # Sign the wrapper script in Contents/MacOS
     Q3_WRAPPER="$APP_PATH/Contents/MacOS/qwen3-asr-server"
     if [ -f "$Q3_WRAPPER" ]; then
-        codesign --force --options runtime --timestamp --sign "$SIGNING_IDENTITY" "$Q3_WRAPPER"
+        Q3_WRAPPER_SIGN_ARGS=()
+        if [ -f "$ENTITLEMENTS" ]; then
+            Q3_WRAPPER_SIGN_ARGS+=(--entitlements "$ENTITLEMENTS")
+        fi
+        codesign_file "$Q3_WRAPPER" "${Q3_WRAPPER_SIGN_ARGS[@]}"
+    fi
+
+    Q3_FROZEN_EXE="$APP_PATH/Contents/Resources/qwen3-asr-server-dist/qwen3-asr-server"
+    if [ -f "$Q3_FROZEN_EXE" ]; then
+        Q3_FROZEN_SIGN_ARGS=()
+        if [ -f "$ENTITLEMENTS" ]; then
+            Q3_FROZEN_SIGN_ARGS+=(--entitlements "$ENTITLEMENTS")
+        fi
+        codesign_file "$Q3_FROZEN_EXE" "${Q3_FROZEN_SIGN_ARGS[@]}"
     fi
 
     # Sign the main app bundle with hardened runtime + entitlements
