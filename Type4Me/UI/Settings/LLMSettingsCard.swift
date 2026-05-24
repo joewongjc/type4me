@@ -16,6 +16,11 @@ struct LLMSettingsCard: View, SettingsCardHelpers {
     @State private var testTask: Task<Void, Never>?
     /// Tracks which credential fields are in "custom input" mode (value not in preset options).
     @State private var customModeFields: Set<String> = []
+    @State private var disableThinking: Bool = UserDefaults.standard.object(forKey: "tf_disableThinking") == nil
+        ? true
+        : UserDefaults.standard.bool(forKey: "tf_disableThinking")
+    @State private var fetchedModelOptions: [FieldOption] = []
+    @State private var isFetchingModels = false
 
     private var currentLLMFields: [CredentialField] {
         LLMProviderRegistry.configType(for: selectedLLMProvider)?.credentialFields ?? []
@@ -104,6 +109,7 @@ struct LLMSettingsCard: View, SettingsCardHelpers {
             testTask?.cancel()
             llmTestStatus = .idle
             isEditingLLM = true
+            fetchedModelOptions = []
             loadLLMCredentialsForProvider(newProvider)
 
             // Auto-save provider switch if target already has credentials
@@ -140,7 +146,10 @@ struct LLMSettingsCard: View, SettingsCardHelpers {
     private func credentialFieldRow(_ field: CredentialField) -> some View {
         if !field.options.isEmpty && field.allowCustomInput {
             // Combobox: preset dropdown + "Custom" entry that reveals a text field.
-            let allOptions = field.options + [FieldOption(value: CredentialField.customValue, label: L("自定义…", "Custom…"))]
+            let mergedOptions = field.key == "model" && !fetchedModelOptions.isEmpty
+                ? fetchedModelOptions
+                : field.options
+            let allOptions = mergedOptions + [FieldOption(value: CredentialField.customValue, label: L("自定义…", "Custom…"))]
             let pickerBinding = Binding<String>(
                 get: {
                     if customModeFields.contains(field.key) {
@@ -169,7 +178,25 @@ struct LLMSettingsCard: View, SettingsCardHelpers {
                 }
             )
             VStack(alignment: .leading, spacing: 4) {
-                settingsPickerField(field.label, selection: pickerBinding, options: allOptions)
+                HStack(spacing: 4) {
+                    settingsPickerField(field.label, selection: pickerBinding, options: allOptions)
+                    if field.key == "model" {
+                        Button {
+                            fetchModels()
+                        } label: {
+                            if isFetchingModels {
+                                ProgressView().controlSize(.mini)
+                            } else {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.system(size: 11))
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .help(L("从 API 获取模型列表", "Fetch models from API"))
+                        .disabled(isFetchingModels || !hasLLMCredentials)
+                        .padding(.top, 18)
+                    }
+                }
                 if customModeFields.contains(field.key) {
                     settingsField("", text: customBinding, prompt: field.placeholder)
                 }
@@ -316,4 +343,47 @@ struct LLMSettingsCard: View, SettingsCardHelpers {
             }
         }
     }
+
+    private func fetchModels() {
+        guard !isFetchingModels else { return }
+        isFetchingModels = true
+        let values = effectiveLLMValues
+        let provider = selectedLLMProvider
+        testTask = Task {
+            defer { isFetchingModels = false }
+            do {
+                guard let configType = LLMProviderRegistry.configType(for: provider),
+                      let config = configType.init(credentials: values)
+                else { return }
+                let llmConfig = config.toLLMConfig()
+                guard let url = URL(string: "\(llmConfig.baseURL)/models") else { return }
+                var request = URLRequest(url: url)
+                request.httpMethod = "GET"
+                request.setValue("Bearer \(llmConfig.apiKey)", forHTTPHeaderField: "Authorization")
+                request.timeoutInterval = 10
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
+                let decoded = try JSONDecoder().decode(ModelsResponse.self, from: data)
+                let models = decoded.data
+                    .map { FieldOption(value: $0.id, label: $0.id) }
+                    .sorted { $0.value < $1.value }
+                guard !Task.isCancelled else { return }
+                fetchedModelOptions = models
+                NSLog("[Settings] Fetched %d models for %@", models.count, provider.rawValue)
+            } catch {
+                guard !Task.isCancelled else { return }
+                NSLog("[Settings] Model fetch failed (%@): %@", provider.rawValue, String(describing: error))
+            }
+        }
+    }
+}
+
+// MARK: - /v1/models Response
+
+private struct ModelsResponse: Decodable {
+    let data: [ModelEntry]
+}
+
+private struct ModelEntry: Decodable {
+    let id: String
 }
