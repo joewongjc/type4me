@@ -194,6 +194,11 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
                         .padding(.top, 4)
                 }
 
+                if !selectedASRProvider.isLocal {
+                    SettingsDivider()
+                    asrUsageRow
+                }
+
 
 
             }
@@ -201,6 +206,34 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
         .task {
             loadASRCredentials()
             refreshModelStatus()
+        }
+    }
+
+    // MARK: - ASR Usage Row
+
+    private var asrUsageRow: some View {
+        let seconds = KeychainService.asrUsageSeconds
+        let hours = Int(seconds) / 3600
+        let mins = (Int(seconds) % 3600) / 60
+        let secs = Int(seconds) % 60
+        let display: String = {
+            if hours > 0 { return String(format: "%dh %02dm", hours, mins) }
+            if mins > 0 { return String(format: "%dm %02ds", mins, secs) }
+            return String(format: "%ds", secs)
+        }()
+        return HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(L("本地用量估算", "Local Usage Estimate"))
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(TF.settingsText)
+                Text(L("本次安装累计识别时长", "Total recognition time since install"))
+                    .font(.system(size: 10))
+                    .foregroundStyle(TF.settingsTextTertiary)
+            }
+            Spacer()
+            Text(display)
+                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                .foregroundStyle(TF.settingsAccentBlue)
         }
     }
 

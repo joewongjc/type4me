@@ -250,6 +250,21 @@ enum KeychainService {
         return config.toLLMConfig()
     }
 
+    // MARK: - ASR Usage Tracking (local)
+
+    private static let asrUsageKey = "tf_asrUsageSeconds"
+
+    /// Total ASR usage in seconds (local estimate).
+    static var asrUsageSeconds: Double {
+        get { UserDefaults.standard.double(forKey: asrUsageKey) }
+        set { UserDefaults.standard.set(newValue, forKey: asrUsageKey) }
+    }
+
+    /// Add seconds from a completed ASR session.
+    static func addASRUsage(seconds: Double) {
+        asrUsageSeconds += seconds
+    }
+
     // MARK: - Migration (call once at app launch)
 
     /// Migrate legacy flat keys to provider-grouped format,
