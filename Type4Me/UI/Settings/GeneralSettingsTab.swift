@@ -290,21 +290,52 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
     }
 
     private var visualStyleRow: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(L("录音动效", "Visual Style").uppercased())
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(L("录音动效", "Visual Style").uppercased())
+                    .font(.system(size: 10, weight: .semibold))
+                    .tracking(0.8)
+                    .foregroundStyle(TF.settingsTextTertiary)
+                settingsSegmentedPicker(
+                    selection: $visualStyle,
+                    options: [
+                        ("classic", L("线条", "Lines")),
+                        ("dual", L("粒子云", "Blocks")),
+                        ("timeline", L("电平", "Minimal")),
+                    ]
+                )
+            }
+            .padding(.vertical, 6)
+
+            SettingsDivider()
+
+            recordingPreview
+        }
+    }
+
+    // MARK: - Recording Preview
+
+    @State private var previewState = PreviewState()
+
+    private var recordingPreview: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(L("预览效果", "Preview").uppercased())
                 .font(.system(size: 10, weight: .semibold))
                 .tracking(0.8)
                 .foregroundStyle(TF.settingsTextTertiary)
-            settingsSegmentedPicker(
-                selection: $visualStyle,
-                options: [
-                    ("classic", L("线条", "Lines")),
-                    ("dual", L("粒子云", "Blocks")),
-                    ("timeline", L("电平", "Minimal")),
-                ]
-            )
+                .padding(.top, 8)
+
+            ZStack {
+                Color(white: 0.06, opacity: 0.5)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                FloatingBarView(state: previewState)
+                    .frame(width: TF.barWidth, height: TF.barHeight + 16)
+            }
+            .frame(height: 80)
         }
         .padding(.vertical, 6)
+        .onAppear { previewState.startSimulation() }
+        .onDisappear { previewState.stopSimulation() }
     }
 
     private var launchAtLoginRow: some View {
@@ -657,5 +688,77 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
         } else {
             launchAtLogin = status == .enabled
         }
+    }
+}
+
+// MARK: - Preview State
+
+@Observable
+@MainActor
+private final class PreviewState: FloatingBarState {
+
+    var barPhase: FloatingBarPhase = .recording
+    var segments: [TranscriptionSegment] = []
+    var currentMode = ProcessingMode(
+        id: UUID(), name: "Preview", prompt: "{text}", isBuiltin: true,
+        processingLabel: "Processing", hotkeyCode: nil, hotkeyModifiers: nil,
+        hotkeyStyle: .hold
+    )
+    let audioLevel = AudioLevelMeter()
+    var feedbackMessage = ""
+    var processingFinishTime: Date? = nil
+    var recordingStartDate: Date? = Date()
+    var isQwen3OnlyMode = false
+    var effectiveProcessingLabel = ""
+
+    private var timer: Timer?
+    private var textTimer: Timer?
+    private var textIndex = 0
+
+    private let sampleTexts = [
+        "这里是一个动向，这里是",
+        "这里是一个动向，这里是一",
+        "这里是一个动向，这里是两个动向，",
+        "这里是一个动向，这里是两个动向，这里是",
+        "这里是一个动向，这里是两个动向，这里是一个。",
+    ]
+
+    var transcriptionText: String {
+        segments.map(\.text).joined()
+    }
+
+    func startSimulation() {
+        stopSimulation()
+        barPhase = .recording
+        recordingStartDate = Date()
+        segments = [TranscriptionSegment(text: sampleTexts[0], isConfirmed: false)]
+        textIndex = 0
+
+        timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.tick() }
+        }
+
+        textTimer = Timer.scheduledTimer(withTimeInterval: 1.2, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.advanceText() }
+        }
+    }
+
+    func stopSimulation() {
+        timer?.invalidate()
+        timer = nil
+        textTimer?.invalidate()
+        textTimer = nil
+    }
+
+    private func tick() {
+        let t = Date().timeIntervalSinceReferenceDate
+        let base = Float(sin(t * 0.9) * 0.5 + 0.5)
+        let detail = Float(sin(t * 5.7) * 0.12 + sin(t * 3.1) * 0.08)
+        audioLevel.current = max(0, min(1, base + detail))
+    }
+
+    private func advanceText() {
+        textIndex = (textIndex + 1) % sampleTexts.count
+        segments = [TranscriptionSegment(text: sampleTexts[textIndex], isConfirmed: false)]
     }
 }
