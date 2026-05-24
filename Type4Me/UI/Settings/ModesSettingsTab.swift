@@ -462,7 +462,7 @@ private struct HotkeyRecordingSheet: View {
                             .fill(TF.settingsAccentRed)
                             .frame(width: 8, height: 8)
                             .opacity(0.8)
-                        Text(L("按下快捷键或鼠标按键...", "Press a key or mouse button..."))
+                        Text(L("按下快捷键、鼠标或耳机按键...", "Press a key, mouse or headphone button..."))
                             .font(.system(size: 14))
                             .foregroundStyle(TF.settingsTextSecondary)
                     }
@@ -538,6 +538,19 @@ private struct HotkeyRecordingSheet: View {
                 .fixedSize(horizontal: false, vertical: true)
             }
 
+            if let kc = capturedKeyCode, ModeBinding.isMediaKeyCode(kc) {
+                let keyType = ModeBinding.mediaKeyType(from: kc)
+                if keyType == 0 || keyType == 1 || keyType == 7 {
+                    Text(L(
+                        "⚠️ 绑定音量/静音键后，按下该键时系统音量将不会改变",
+                        "⚠️ When volume/mute key is bound, pressing it will not change system volume"
+                    ))
+                    .font(.system(size: 11))
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
             HStack(spacing: 12) {
                 if !isListening && capturedKeyCode != nil {
                     Button(L("重录", "Re-record")) {
@@ -594,7 +607,26 @@ private struct HotkeyRecordingSheet: View {
         cleanup()
         isListening = true
 
-        eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged, .keyDown, .otherMouseDown]) { event in
+        eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged, .keyDown, .otherMouseDown, .systemDefined]) { event in
+            // Media key (headphone buttons, keyboard media keys)
+            if event.type == .systemDefined {
+                guard event.subtype.rawValue == 8 else { return event }
+                let keyType = Int((event.data1 >> 16) & 0xFFFF)
+                let keyState = Int((event.data1 >> 8) & 0xFF)
+                guard keyState == 0x0A else { return event }  // key down only
+                guard HotkeyRecorderView.isKnownMediaKeyType(keyType) else { return event }
+
+                modifierCaptureTask?.cancel()
+                modifierCaptureTask = nil
+                pendingModifierCode = nil
+
+                capturedKeyCode = ModeBinding.mediaKeyCode(for: keyType)
+                capturedModifiers = 0
+                isListening = false
+                removeMonitor()
+                return nil
+            }
+
             // Mouse button (middle click, side buttons)
             if event.type == .otherMouseDown {
                 let buttonNumber = event.buttonNumber

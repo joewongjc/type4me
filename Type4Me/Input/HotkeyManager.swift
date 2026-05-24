@@ -13,6 +13,9 @@ struct ModeBinding {
     /// Whether this binding is for a mouse button (encoded with high-bit keyCode).
     var isMouseButton: Bool { ModeBinding.isMouseKeyCode(Int(keyCode)) }
 
+    /// Whether this binding is for a media key (encoded with high-bit keyCode).
+    var isMediaKey: Bool { ModeBinding.isMediaKeyCode(Int(keyCode)) }
+
     /// The mouse button number (2=middle, 3+=side buttons). Only valid when isMouseButton is true.
     var mouseButtonNumber: Int { ModeBinding.mouseButtonNumber(from: Int(keyCode)) }
 
@@ -24,6 +27,7 @@ struct ModeBinding {
     // The encoded value fits in both Int and UInt16 (CGKeyCode).
 
     private static let mouseKeyCodeBase = 0x8000
+    private static let mediaKeyCodeBase = 0x9000
 
     /// Encode a mouse button number as a keyCode (for storage in ProcessingMode.hotkeyCode).
     static func mouseKeyCode(for buttonNumber: Int) -> Int { mouseKeyCodeBase + buttonNumber }
@@ -32,7 +36,24 @@ struct ModeBinding {
     static func mouseButtonNumber(from keyCode: Int) -> Int { keyCode - mouseKeyCodeBase }
 
     /// Check if a keyCode represents a mouse button.
-    static func isMouseKeyCode(_ keyCode: Int) -> Bool { keyCode >= mouseKeyCodeBase }
+    static func isMouseKeyCode(_ keyCode: Int) -> Bool { keyCode >= mouseKeyCodeBase && keyCode < mediaKeyCodeBase }
+
+    // MARK: - Media Key Encoding
+    //
+    // Convention: keyCode = 0x9000 + NX_KEYTYPE value.
+    // NX_KEYTYPE_SOUND_UP=0, NX_KEYTYPE_SOUND_DOWN=1, NX_KEYTYPE_MUTE=7,
+    // NX_KEYTYPE_PLAY=16, NX_KEYTYPE_NEXT=17, NX_KEYTYPE_PREVIOUS=18,
+    // NX_KEYTYPE_FAST=19, NX_KEYTYPE_REWIND=20.
+    // No collision with keyboard (0–127) or mouse (0x8000+) keyCodes.
+
+    /// Encode an NX_KEYTYPE value as a keyCode (for storage in ProcessingMode.hotkeyCode).
+    static func mediaKeyCode(for keyType: Int) -> Int { mediaKeyCodeBase + keyType }
+
+    /// Decode a media keyCode back to the NX_KEYTYPE value.
+    static func mediaKeyType(from keyCode: Int) -> Int { keyCode - mediaKeyCodeBase }
+
+    /// Check if a keyCode represents a media key.
+    static func isMediaKeyCode(_ keyCode: Int) -> Bool { keyCode >= mediaKeyCodeBase }
 }
 
 final class HotkeyManager: NSObject {
@@ -106,6 +127,7 @@ final class HotkeyManager: NSObject {
             | (1 << CGEventType.flagsChanged.rawValue)
             | (1 << CGEventType.otherMouseDown.rawValue)
             | (1 << CGEventType.otherMouseUp.rawValue)
+            | (1 << 14)  // kCGEventSystemDefined (NX_SYSDEFINED) for media/headphone keys
 
         let userInfo = Unmanaged.passUnretained(self).toOpaque()
 
@@ -245,12 +267,67 @@ final class HotkeyManager: NSObject {
             return Unmanaged.passUnretained(event)
         }
 
+        // MARK: Media key events (headphone buttons, keyboard media keys)
+        if type.rawValue == 14 {  // kCGEventSystemDefined (NX_SYSDEFINED)
+            guard let nsEvent = NSEvent(cgEvent: event),
+                  nsEvent.type == .systemDefined,
+                  nsEvent.subtype.rawValue == 8 else {
+                return Unmanaged.passUnretained(event)
+            }
+
+            let keyType = Int((nsEvent.data1 >> 16) & 0xFFFF)
+            let keyState = Int((nsEvent.data1 >> 8) & 0xFF)
+            let isKeyDown = keyState == 0x0A
+            let isKeyUp = keyState == 0x0B
+
+            guard Self.isKnownMediaKeyType(keyType) else {
+                return Unmanaged.passUnretained(event)
+            }
+
+            let encodedKeyCode = ModeBinding.mediaKeyCode(for: keyType)
+
+            for binding in bindings {
+                guard binding.isMediaKey, Int(binding.keyCode) == encodedKeyCode else { continue }
+
+                switch binding.style {
+                case .hold:
+                    if isKeyDown {
+                        handleBindingEvent(binding: binding, pressed: true)
+                    } else if isKeyUp {
+                        handleBindingEvent(binding: binding, pressed: false)
+                    }
+                case .toggle:
+                    if isKeyDown {
+                        let id = binding.modeId
+                        if let activeId = activeToggleModeId, activeId != id {
+                            toggleState[activeId] = false
+                            activeToggleModeId = nil
+                            onCrossModeStop?(id)
+                        } else {
+                            let isOn = toggleState[id] ?? false
+                            toggleState[id] = !isOn
+                            if !isOn {
+                                activeToggleModeId = id
+                                binding.onStart()
+                            } else {
+                                activeToggleModeId = nil
+                                binding.onStop()
+                            }
+                        }
+                    }
+                }
+                return nil  // Swallow matched media key events
+            }
+
+            return Unmanaged.passUnretained(event)
+        }
+
         // MARK: Keyboard events
         let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
 
         for binding in bindings {
-            // Skip mouse button bindings in the keyboard path
-            guard !binding.isMouseButton else { continue }
+            // Skip mouse button and media key bindings in the keyboard path
+            guard !binding.isMouseButton && !binding.isMediaKey else { continue }
             guard binding.keyCode == keyCode else { continue }
 
             if isModifierKeyCode(keyCode) {
@@ -418,9 +495,9 @@ final class HotkeyManager: NSObject {
             let id = binding.modeId
             guard holdState[id] == true else { continue }
 
-            // Mouse buttons: no API to query current state, rely on mouseUp events instead.
-            // Safety timer will catch truly stuck mouse holds.
-            if binding.isMouseButton { continue }
+            // Mouse buttons and media keys: no API to query current state, rely on release events instead.
+            // Safety timer will catch truly stuck holds.
+            if binding.isMouseButton || binding.isMediaKey { continue }
 
             let stillDown: Bool
             if isModifierKeyCode(binding.keyCode) {
@@ -439,6 +516,12 @@ final class HotkeyManager: NSObject {
     }
 
     // MARK: - Helpers
+
+    private static func isKnownMediaKeyType(_ keyType: Int) -> Bool {
+        // NX_KEYTYPE values from IOKit/hidsystem/IOHIDParameter.h
+        // SOUND_UP=0, SOUND_DOWN=1, MUTE=7, PLAY=16, NEXT=17, PREVIOUS=18, FAST=19, REWIND=20
+        [0, 1, 7, 16, 17, 18, 19, 20].contains(keyType)
+    }
 
     private func isModifierKeyCode(_ keyCode: CGKeyCode) -> Bool {
         [54, 55, 56, 58, 59, 60, 61, 62, 63].contains(keyCode)
