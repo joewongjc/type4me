@@ -177,6 +177,15 @@ if [ "$SIGNING_IDENTITY" != "-" ]; then
         fi
     done < <(find "$APP/Contents" -type f -print0)
 
+    QWEN3_WRAPPER="$APP/Contents/MacOS/qwen3-asr-server"
+    if [ -f "$QWEN3_WRAPPER" ]; then
+        if [ -n "$HELPER_ENTITLEMENTS" ] && [ -f "$HELPER_ENTITLEMENTS" ]; then
+            codesign "${COMMON[@]}" --entitlements "$HELPER_ENTITLEMENTS" "$QWEN3_WRAPPER"
+        else
+            codesign "${COMMON[@]}" "$QWEN3_WRAPPER"
+        fi
+    fi
+
     APP_SIGN_ARGS=("${COMMON[@]}")
     if [ -f "$APP_ENTITLEMENTS" ]; then
         APP_SIGN_ARGS+=(--entitlements "$APP_ENTITLEMENTS")
