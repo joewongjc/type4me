@@ -59,6 +59,12 @@ Public GitHub Releases ship only `pure` (universal) and `local` (arm64).
 
 ### Build commands
 
+`build-dmg.sh` creates a drag-to-Applications DMG. When `CODESIGN_IDENTITY`
+resolves to a Developer ID certificate it signs inside-out, notarizes the app,
+staples the app, creates the DMG, signs/notarizes/staples the DMG, and writes a
+SHA256 file. Without a Developer ID identity it fails closed unless
+`SKIP_NOTARIZE=1` is set for local packaging smoke tests.
+
 ```bash
 # Open-source cloud edition (no subscription, no local ASR)
 VARIANT=pure bash scripts/build-dmg.sh
@@ -66,9 +72,17 @@ VARIANT=pure bash scripts/build-dmg.sh
 # Open-source local edition (bundled models, Apple Silicon only)
 VARIANT=local bash scripts/build-dmg.sh
 
+# Personal side-by-side build. Uses Type4Me CtriXin.app,
+# bundle id com.ctrixin.type4me, and URL scheme type4me-ctrixin.
+APP_FLAVOR=personal VARIANT=pure ARCH=arm64 bash scripts/build-dmg.sh
+
 # Official member edition — archived, see "Subscription paused" above.
 # VARIANT=official bash scripts/build-dmg.sh
 ```
+
+Public and personal builds can be installed together because they use different
+app names, bundle identifiers, URL schemes, UserDefaults domains, Application
+Support directories, and Keychain service names.
 
 ### Subscription code location
 

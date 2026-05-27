@@ -11,11 +11,7 @@ actor ModelManager {
     // MARK: - Paths
 
     static var defaultModelsDir: String {
-        let appSupport = FileManager.default.urls(
-            for: .applicationSupportDirectory, in: .userDomainMask
-        ).first!
-        return appSupport
-            .appendingPathComponent("Type4Me", isDirectory: true)
+        AppIdentity.applicationSupportDirectory
             .appendingPathComponent("models", isDirectory: true)
             .path
     }

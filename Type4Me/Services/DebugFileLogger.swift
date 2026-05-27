@@ -5,9 +5,7 @@ enum DebugFileLogger {
     private static let queue = DispatchQueue(label: "com.type4me.debug-file-logger")
 
     static var logURL: URL {
-        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-            .appendingPathComponent("Type4Me", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let dir = AppIdentity.applicationSupportDirectory
         return dir.appendingPathComponent("debug.log")
     }
 

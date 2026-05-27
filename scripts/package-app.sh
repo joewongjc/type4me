@@ -2,11 +2,28 @@
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && /bin/pwd -P)"
-APP_PATH="${APP_PATH:-$PROJECT_DIR/dist/Type4Me.app}"
-APP_NAME="Type4Me"
-APP_EXECUTABLE="Type4Me"
-APP_ICON_NAME="AppIcon"
-APP_BUNDLE_ID="${APP_BUNDLE_ID:-com.type4me.app}"
+APP_FLAVOR="${APP_FLAVOR:-public}"  # public or personal
+
+case "$APP_FLAVOR" in
+    public)
+        APP_NAME="${APP_NAME:-Type4Me}"
+        APP_BUNDLE_ID="${APP_BUNDLE_ID:-com.type4me.app}"
+        URL_SCHEME="${URL_SCHEME:-type4me}"
+        ;;
+    personal)
+        APP_NAME="${APP_NAME:-Type4Me CtriXin}"
+        APP_BUNDLE_ID="${APP_BUNDLE_ID:-com.ctrixin.type4me}"
+        URL_SCHEME="${URL_SCHEME:-type4me-ctrixin}"
+        ;;
+    *)
+        echo "ERROR: Unknown APP_FLAVOR=$APP_FLAVOR (expected public or personal)"
+        exit 1
+        ;;
+esac
+
+APP_PATH="${APP_PATH:-$PROJECT_DIR/dist/${APP_NAME}.app}"
+APP_EXECUTABLE="${APP_EXECUTABLE:-Type4Me}"
+APP_ICON_NAME="${APP_ICON_NAME:-AppIcon}"
 APP_VERSION="${APP_VERSION:-1.9.3}"
 APP_BUILD="${APP_BUILD:-1}"
 MIN_SYSTEM_VERSION="${MIN_SYSTEM_VERSION:-14.0}"
@@ -38,11 +55,32 @@ else
     swift build -c release --package-path "$PROJECT_DIR" --arch arm64 --arch x86_64 2>&1 | grep -E "Build complete|Build succeeded|error:|warning:" || true
 fi
 
-if [ -f "$PROJECT_DIR/.build/apple/Products/Release/Type4Me" ]; then
-    BINARY="$PROJECT_DIR/.build/apple/Products/Release/Type4Me"
-elif [ -f "$PROJECT_DIR/.build/release/Type4Me" ]; then
-    BINARY="$PROJECT_DIR/.build/release/Type4Me"
+BINARY=""
+if [ "$ARCH" = "arm64" ]; then
+    # arm64 builds can leave a stale universal artifact under .build/apple.
+    for candidate in \
+        "$PROJECT_DIR/.build/arm64-apple-macosx/release/Type4Me" \
+        "$PROJECT_DIR/.build/release/Type4Me" \
+        "$PROJECT_DIR/.build/apple/Products/Release/Type4Me"
+    do
+        if [ -f "$candidate" ]; then
+            BINARY="$candidate"
+            break
+        fi
+    done
 else
+    for candidate in \
+        "$PROJECT_DIR/.build/apple/Products/Release/Type4Me" \
+        "$PROJECT_DIR/.build/release/Type4Me"
+    do
+        if [ -f "$candidate" ]; then
+            BINARY="$candidate"
+            break
+        fi
+    done
+fi
+
+if [ -z "$BINARY" ]; then
     BINARY="$(find "$PROJECT_DIR/.build" -path '*/release/Type4Me' -type f -not -path '*/x86_64/*' -not -path '*/arm64/*' | head -n 1)"
 fi
 
@@ -107,7 +145,7 @@ cat >"$INFO_PLIST" <<EOF
             <string>${APP_BUNDLE_ID}</string>
             <key>CFBundleURLSchemes</key>
             <array>
-                <string>type4me</string>
+                <string>${URL_SCHEME}</string>
             </array>
         </dict>
     </array>
@@ -240,7 +278,7 @@ if [ "$NEEDS_SIGN" = "1" ]; then
     codesign --verify --strict "$APP_PATH" && echo "Signature verified." || { echo "ERROR: Signature verification failed"; exit 1; }
 fi
 
-echo "Variant: $VARIANT | Arch: $ARCH"
+echo "Flavor: $APP_FLAVOR | Variant: $VARIANT | Arch: $ARCH"
 
 # Remove quarantine flag that macOS adds to downloaded apps.
 # This flag can silently prevent Accessibility permission from working.

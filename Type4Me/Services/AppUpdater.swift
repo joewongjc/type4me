@@ -31,8 +31,7 @@ final class AppUpdater {
     // MARK: - Directories
 
     private var stagingDir: URL {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        return appSupport.appendingPathComponent("Type4Me/Updates")
+        AppIdentity.applicationSupportDirectory.appendingPathComponent("Updates")
     }
 
     private var updateLogURL: URL { stagingDir.appendingPathComponent("update.log") }
@@ -175,7 +174,7 @@ final class AppUpdater {
     // MARK: - Download
 
     private func dmgPath(for version: String) -> URL {
-        stagingDir.appendingPathComponent("Type4Me-v\(version)-cloud.dmg")
+        stagingDir.appendingPathComponent("\(AppIdentity.displayName)-v\(version)-cloud.dmg")
     }
 
     private func startDownload(url: URL, release: UpdateInfo) {

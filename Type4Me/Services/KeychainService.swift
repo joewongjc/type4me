@@ -5,14 +5,11 @@ enum KeychainService {
 
     private static let lock = NSLock()
     private static var cachedCredentials: [String: Any]?
-    private static let keychainScalarService = "com.type4me.scalar"
-    private static let keychainGroupedService = "com.type4me.grouped"
+    private static var keychainScalarService: String { AppIdentity.keychainScalarService }
+    private static var keychainGroupedService: String { AppIdentity.keychainGroupedService }
 
     private static var credentialsURL: URL {
-        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-            .appendingPathComponent("Type4Me", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir.appendingPathComponent("credentials.json")
+        AppIdentity.applicationSupportDirectory.appendingPathComponent("credentials.json")
     }
 
     // MARK: - Core read/write (now supports nested objects)
@@ -493,10 +490,11 @@ enum KeychainService {
     /// Uses file-level merge instead of directory rename, because other init code may create
     /// the new directory before this migration runs.
     private static func migrateAppSupportDirectory() {
+        guard AppIdentity.isPublicBundle else { return }
         let fm = FileManager.default
         let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let oldDir = appSupport.appendingPathComponent("TypeFlow", isDirectory: true)
-        let newDir = appSupport.appendingPathComponent("Type4Me", isDirectory: true)
+        let newDir = AppIdentity.applicationSupportDirectory
 
         // Old directory must exist and contain real data (credentials.json is the marker)
         guard fm.fileExists(atPath: oldDir.appendingPathComponent("credentials.json").path) else { return }
