@@ -25,11 +25,13 @@ var targets: [Target] = [
         exclude: excludes,
         cSettings: hasSherpaFramework ? [.headerSearchPath("Bridge")] : [],
         swiftSettings: swiftDefines,
-        linkerSettings: hasSherpaFramework ? [
+        linkerSettings: (hasSherpaFramework ? [
             .linkedLibrary("c++"),
             .linkedFramework("Accelerate"),
             .linkedFramework("Foundation"),
-        ] : []
+        ] : []) + [
+            .linkedFramework("MediaPlayer"),
+        ]
     ),
     .testTarget(
         name: "Type4MeTests",

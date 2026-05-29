@@ -1,4 +1,5 @@
 import Cocoa
+import MediaPlayer
 
 typealias HotkeyStyle = ProcessingMode.HotkeyStyle
 
@@ -106,6 +107,10 @@ final class HotkeyManager: NSObject {
     /// Timestamp of the last event received by the tap callback.
     fileprivate var lastEventTime: Date?
 
+    /// Tokens for MPRemoteCommandCenter handlers (prevents Apple Music from auto-launching).
+    private var mediaCommandTokens: [(command: MPRemoteCommand, token: Any)] = []
+    private var isMediaSessionActive = false
+
     // MARK: - Registration
 
     func registerBindings(_ newBindings: [ModeBinding]) {
@@ -115,6 +120,7 @@ final class HotkeyManager: NSObject {
         wasModifierDown = [:]
         holdSafetyTimers.values.forEach { $0.invalidate() }
         holdSafetyTimers = [:]
+        updateMediaKeySession()
     }
 
     // MARK: - Start / Stop
@@ -131,14 +137,25 @@ final class HotkeyManager: NSObject {
 
         let userInfo = Unmanaged.passUnretained(self).toOpaque()
 
-        guard let tap = CGEvent.tapCreate(
+        // Try cghidEventTap first for more reliable interception of media/headphone keys.
+        // If unavailable (e.g. insufficient permissions), fall back to cgSessionEventTap.
+        let tap: CFMachPort? = CGEvent.tapCreate(
+            tap: .cghidEventTap,
+            place: .headInsertEventTap,
+            options: .defaultTap,
+            eventsOfInterest: eventMask,
+            callback: hotkeyCallback,
+            userInfo: userInfo
+        ) ?? CGEvent.tapCreate(
             tap: .cgSessionEventTap,
             place: .headInsertEventTap,
             options: .defaultTap,
             eventsOfInterest: eventMask,
             callback: hotkeyCallback,
             userInfo: userInfo
-        ) else {
+        )
+
+        guard let tap = tap else {
             return false
         }
 
@@ -151,10 +168,12 @@ final class HotkeyManager: NSObject {
         CGEvent.tapEnable(tap: tap, enable: true)
 
         startHealthCheck()
+        updateMediaKeySession()
         return true
     }
 
     func stop() {
+        deactivateMediaKeySession()
         healthCheckTimer?.invalidate()
         healthCheckTimer = nil
         if let tap = eventTap {
@@ -567,6 +586,102 @@ final class HotkeyManager: NSObject {
         case 59, 62: return flags.contains(.maskControl)
         case 63: return flags.contains(.maskSecondaryFn)
         default: return false
+        }
+    }
+
+    // MARK: - Media Session (prevent Apple Music auto-launch)
+
+    /// Register as an active media session when transport media keys (play/next/prev)
+    /// are bound as hotkeys, so the system doesn't launch Apple Music on key press.
+    private func updateMediaKeySession() {
+        for (command, token) in mediaCommandTokens {
+            command.removeTarget(token)
+        }
+        mediaCommandTokens = []
+
+        // Find which transport key types are bound (volume keys don't launch Apple Music)
+        let boundKeyTypes = Set(bindings.filter(\.isMediaKey).map { ModeBinding.mediaKeyType(from: Int($0.keyCode)) })
+        let transportKeyTypes: Set<Int> = [16, 17, 18, 19, 20]
+        let boundTransportKeys = boundKeyTypes.intersection(transportKeyTypes)
+
+        if boundTransportKeys.isEmpty {
+            if isMediaSessionActive {
+                MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+                MPNowPlayingInfoCenter.default().playbackState = .stopped
+                isMediaSessionActive = false
+                NSLog("[HotkeyManager] Deactivated media session (no transport keys bound)")
+            }
+            return
+        }
+
+        let commandCenter = MPRemoteCommandCenter.shared()
+
+        if !isMediaSessionActive {
+            // Must set non-empty NowPlaying info with playbackState=.playing —
+            // mediaremoted on macOS 15 ignores apps with empty nowPlayingInfo.
+            let nowPlayingInfo: [String: Any] = [
+                MPMediaItemPropertyTitle: "Type4Me Voice Input",
+                MPNowPlayingInfoPropertyPlaybackRate: 1.0,
+                MPNowPlayingInfoPropertyElapsedPlaybackTime: 0.0,
+            ]
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+            MPNowPlayingInfoCenter.default().playbackState = .playing
+            isMediaSessionActive = true
+            NSLog("[HotkeyManager] Activated media session (transport keys bound)")
+        }
+
+        let handler: (MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus = { event in
+            NSLog("[HotkeyManager] Media remote command received: %@", String(describing: type(of: event)))
+            return .success
+        }
+
+        if boundTransportKeys.contains(16) {
+            commandCenter.playCommand.isEnabled = true
+            commandCenter.pauseCommand.isEnabled = true
+            commandCenter.togglePlayPauseCommand.isEnabled = true
+
+            let playToken = commandCenter.playCommand.addTarget(handler: handler)
+            let pauseToken = commandCenter.pauseCommand.addTarget(handler: handler)
+            let toggleToken = commandCenter.togglePlayPauseCommand.addTarget(handler: handler)
+            mediaCommandTokens.append(contentsOf: [
+                (command: commandCenter.playCommand, token: playToken),
+                (command: commandCenter.pauseCommand, token: pauseToken),
+                (command: commandCenter.togglePlayPauseCommand, token: toggleToken),
+            ])
+        }
+        if boundTransportKeys.contains(17) {
+            commandCenter.nextTrackCommand.isEnabled = true
+            let token = commandCenter.nextTrackCommand.addTarget(handler: handler)
+            mediaCommandTokens.append((command: commandCenter.nextTrackCommand, token: token))
+        }
+        if boundTransportKeys.contains(18) {
+            commandCenter.previousTrackCommand.isEnabled = true
+            let token = commandCenter.previousTrackCommand.addTarget(handler: handler)
+            mediaCommandTokens.append((command: commandCenter.previousTrackCommand, token: token))
+        }
+        if boundTransportKeys.contains(19) {
+            commandCenter.seekForwardCommand.isEnabled = true
+            let token = commandCenter.seekForwardCommand.addTarget(handler: handler)
+            mediaCommandTokens.append((command: commandCenter.seekForwardCommand, token: token))
+        }
+        if boundTransportKeys.contains(20) {
+            commandCenter.seekBackwardCommand.isEnabled = true
+            let token = commandCenter.seekBackwardCommand.addTarget(handler: handler)
+            mediaCommandTokens.append((command: commandCenter.seekBackwardCommand, token: token))
+        }
+    }
+
+    private func deactivateMediaKeySession() {
+        for (command, token) in mediaCommandTokens {
+            command.isEnabled = false
+            command.removeTarget(token)
+        }
+        mediaCommandTokens = []
+        if isMediaSessionActive {
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+            MPNowPlayingInfoCenter.default().playbackState = .stopped
+            isMediaSessionActive = false
+            NSLog("[HotkeyManager] Deactivated media session (stop)")
         }
     }
 }
