@@ -53,19 +53,16 @@ final class FloatingBarController {
     private let panelSize: NSSize
     private var panelGeneration = 0
 
-    init(state: AppState, onCancelRecording: @escaping () -> Void) {
+    init(state: AppState) {
         self.state = state
 
         let inset: CGFloat = 16  // extra room for shadow/glow
-        let contentHeight = TF.barHeight
+        let contentHeight = TF.barHeight + TF.transcriptPopupGap + TF.transcriptPopupMaxHeight
         let frame = NSRect(x: 0, y: 0, width: TF.barWidth + inset * 2, height: contentHeight + inset * 2)
         panelSize = frame.size
         panel = FloatingBarPanel(contentRect: frame)
 
-        let barView = FloatingBarView<AppState>(
-            state: state,
-            onCancelRecording: onCancelRecording
-        )
+        let barView = FloatingBarView<AppState>(state: state)
         let hosting = NSHostingView(rootView: barView)
         hosting.layer?.backgroundColor = .clear
         hosting.frame = NSRect(origin: .zero, size: frame.size)

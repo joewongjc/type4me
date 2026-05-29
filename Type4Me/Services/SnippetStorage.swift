@@ -19,7 +19,8 @@ enum SnippetStorage {
     // MARK: - File paths
 
     private static var appSupportDir: URL {
-        AppIdentity.applicationSupportDirectory
+        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        return dir.appendingPathComponent("Type4Me")
     }
 
     /// Built-in snippets file (seeded from defaults, user-editable for bulk ops)

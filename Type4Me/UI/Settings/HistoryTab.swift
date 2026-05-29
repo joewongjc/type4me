@@ -258,7 +258,7 @@ struct HistoryTab: View {
                         Image(systemName: "calendar").font(.system(size: 11))
                         Text(dateFilter.label).font(.system(size: 12, weight: .medium))
                     }
-                    .foregroundStyle(dateFilter == .all ? TF.settingsTextSecondary : TF.settingsNavActiveFg)
+                    .foregroundStyle(dateFilter == .all ? TF.settingsTextSecondary : TF.settingsNavActive)
                 }
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
@@ -270,7 +270,7 @@ struct HistoryTab: View {
                     RoundedRectangle(cornerRadius: 6)
                         .stroke(dateFilter == .all
                             ? TF.settingsTextTertiary.opacity(0.2)
-                            : TF.settingsNavActiveFg.opacity(0.4),
+                            : TF.settingsNavActive.opacity(0.4),
                         lineWidth: 1)
                 )
                 .popover(isPresented: $showCustomRange, arrowEdge: .bottom) {
@@ -448,7 +448,7 @@ struct HistoryTab: View {
                 .font(.system(size: 12, weight: .medium))
             }
             .buttonStyle(.plain)
-            .foregroundStyle(TF.settingsNavActiveFg)
+            .foregroundStyle(TF.settingsNavActive)
             .disabled(sections.isEmpty)
 
             Button {
@@ -550,7 +550,7 @@ struct HistoryTab: View {
                 .foregroundStyle(.white)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 5)
-                .background(RoundedRectangle(cornerRadius: 6).fill(TF.settingsNavActiveBg))
+                .background(RoundedRectangle(cornerRadius: 6).fill(TF.settingsNavActive))
             }
         }
         .padding(16)
@@ -639,7 +639,7 @@ struct HistoryTab: View {
                     .foregroundStyle(.white)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 5)
-                    .background(RoundedRectangle(cornerRadius: 6).fill(TF.settingsNavActiveBg))
+                    .background(RoundedRectangle(cornerRadius: 6).fill(TF.settingsNavActive))
                     .disabled(exportRecordCount == 0)
             }
         }

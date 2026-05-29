@@ -145,7 +145,6 @@ struct VocabularyTab: View {
                     .foregroundStyle(TF.settingsText)
                 sortToggle($hotwordSort)
                 bulkEditButton { showBulkHotwordsSheet = true }
-                vocabImportExportButton(type: .hotwords)
             }
             .padding(.bottom, 4)
 
@@ -184,7 +183,6 @@ struct VocabularyTab: View {
                     .foregroundStyle(TF.settingsText)
                 sortToggle($snippetSort)
                 bulkEditButton { showBulkSnippetsSheet = true }
-                vocabImportExportButton(type: .snippets)
             }
             .padding(.bottom, 4)
 
@@ -379,90 +377,6 @@ struct VocabularyTab: View {
             .foregroundStyle(TF.settingsAccentBlue)
         }
         .buttonStyle(.plain)
-    }
-
-    // MARK: - Import/Export
-
-    private enum VocabType { case hotwords, snippets }
-
-    private func vocabImportExportButton(type: VocabType) -> some View {
-        Menu {
-            Button {
-                exportVocab(type: type)
-            } label: {
-                Label(L("导出…", "Export…"), systemImage: "square.and.arrow.up")
-            }
-            Divider()
-            Button {
-                importVocab(type: type)
-            } label: {
-                Label(L("导入…", "Import…"), systemImage: "square.and.arrow.down")
-            }
-        } label: {
-            HStack(spacing: 3) {
-                Image(systemName: "arrow.triangle.2.circlepath")
-                    .font(.system(size: 9))
-                Text(L("导入导出", "Import/Export"))
-                    .font(.system(size: 10))
-            }
-            .foregroundStyle(TF.settingsAccentBlue)
-        }
-        .menuStyle(.borderlessButton)
-        .frame(height: 16)
-    }
-
-    private func exportVocab(type: VocabType) {
-        let panel = NSSavePanel()
-        panel.title = type == .hotwords
-            ? L("导出热词", "Export Hotwords")
-            : L("导出片段", "Export Snippets")
-        panel.nameFieldStringValue = type == .hotwords ? "hotwords.json" : "snippets.json"
-        panel.allowedContentTypes = [.json]
-        panel.canCreateDirectories = true
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-
-        let data: Data?
-        if type == .hotwords {
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .withoutEscapingSlashes]
-            data = try? encoder.encode(hotwords)
-        } else {
-            struct Entry: Codable { let trigger: String; let replacement: String }
-            let entries = snippets.map { Entry(trigger: $0.trigger, replacement: $0.value) }
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .withoutEscapingSlashes]
-            data = try? encoder.encode(entries)
-        }
-        guard let data else { return }
-        try? data.write(to: url, options: .atomic)
-    }
-
-    private func importVocab(type: VocabType) {
-        let panel = NSOpenPanel()
-        panel.title = type == .hotwords
-            ? L("导入热词", "Import Hotwords")
-            : L("导入片段", "Import Snippets")
-        panel.allowedContentTypes = [.json]
-        panel.allowsMultipleSelection = false
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        guard let raw = try? Data(contentsOf: url) else { return }
-
-        if type == .hotwords {
-            guard let imported = try? JSONDecoder().decode([String].self, from: raw) else { return }
-            let existing = Set(hotwords.map { $0.lowercased() })
-            let newWords = imported.filter { !existing.contains($0.lowercased()) }
-            hotwords.append(contentsOf: newWords)
-            HotwordStorage.save(hotwords)
-        } else {
-            struct Entry: Codable { let trigger: String; let replacement: String }
-            guard let imported = try? JSONDecoder().decode([Entry].self, from: raw) else { return }
-            let existing = Set(snippets.map { $0.trigger.lowercased() })
-            let newSnippets = imported
-                .filter { !$0.trigger.trimmingCharacters(in: .whitespaces).isEmpty && !existing.contains($0.trigger.lowercased()) }
-                .map { (trigger: $0.trigger, value: $0.replacement) }
-            snippets.append(contentsOf: newSnippets)
-            saveCurrentSnippets()
-        }
     }
 
     // MARK: - Hotword Tag

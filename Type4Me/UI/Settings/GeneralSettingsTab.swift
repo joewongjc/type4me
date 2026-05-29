@@ -20,7 +20,7 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
     @AppStorage("tf_showDockIcon") private var showDockIcon = true
     @AppStorage("tf_bypassProxy") private var bypassProxy = "off"
     @AppStorage("tf_stripTrailingPunctuation") private var stripTrailingPunctuation = "off"
-    @AppStorage(RecordingEffectLayout.storageKey) private var showRecordingEffectText = RecordingEffectLayout.defaultShowsText
+    @AppStorage("tf_hoverTranscriptPreview") private var hoverTranscriptPreview = true
     @AppStorage("tf_micKeepAlive") private var micKeepAlive = false
     @AppStorage("tf_selectedMicrophoneUID") private var selectedMicrophoneUID = ""
     @AppStorage("tf_selectedSpeakerUID") private var selectedSpeakerUID = ""
@@ -57,28 +57,13 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
 
                 SettingsDivider()
 
-                // Row 2: 录音动效 / 动效文字
+                // Row 2: 录音动效 / 麦克风保活
                 HStack(alignment: .top, spacing: 16) {
                     visualStyleRow
                         .frame(maxWidth: .infinity)
-                    recordingEffectTextRow
-                        .frame(maxWidth: .infinity)
-                }
-
-                SettingsDivider()
-
-                // Row 3: 麦克风保活
-                HStack(alignment: .top, spacing: 16) {
                     micKeepAliveRow
                         .frame(maxWidth: .infinity)
-                    Spacer()
-                        .frame(maxWidth: .infinity)
                 }
-
-                SettingsDivider()
-
-                // Row 3: 外观主题
-                themeRow
             }
 
             Spacer().frame(height: 16)
@@ -98,11 +83,11 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
 
                 SettingsDivider()
 
-                // Row 2: 去句末标点
+                // Row 2: 去句末标点 / 悬停文字预览
                 HStack(alignment: .top, spacing: 16) {
                     stripPunctuationRow
                         .frame(maxWidth: .infinity)
-                    Spacer()
+                    hoverPreviewRow
                         .frame(maxWidth: .infinity)
                 }
             }
@@ -305,126 +290,21 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
     }
 
     private var visualStyleRow: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(L("录音动效", "Visual Style").uppercased())
-                    .font(.system(size: 10, weight: .semibold))
-                    .tracking(0.8)
-                    .foregroundStyle(TF.settingsTextTertiary)
-                if TF.showsTechwearChrome {
-                    // The Evolution theme owns the recording visualizer (DNA helix).
-                    Text(L("DNA 螺旋（随「进化」主题）", "DNA Helix (tied to Evolution theme)"))
-                        .font(.system(size: 12))
-                        .foregroundStyle(TF.settingsTextSecondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.vertical, 7)
-                } else {
-                    settingsSegmentedPicker(
-                        selection: $visualStyle,
-                        options: [
-                            ("classic", L("线条", "Lines")),
-                            ("dual", L("粒子云", "Blocks")),
-                            ("timeline", L("电平", "Minimal")),
-                        ]
-                    )
-                }
-            }
-            .padding(.vertical, 6)
-
-            SettingsDivider()
-
-            recordingPreviewDisclosure
-        }
-    }
-
-    // MARK: - Recording Preview
-
-    @State private var previewState = PreviewState()
-    @State private var isRecordingPreviewExpanded = false
-
-    private var recordingPreviewDisclosure: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Button {
-                withAnimation(TF.springSnappy) {
-                    isRecordingPreviewExpanded.toggle()
-                }
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: isRecordingPreviewExpanded ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(TF.settingsTextTertiary)
-                        .frame(width: 12)
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(L("预览效果", "Preview").uppercased())
-                            .font(.system(size: 10, weight: .semibold))
-                            .tracking(0.8)
-                            .foregroundStyle(TF.settingsTextTertiary)
-                        Text(isRecordingPreviewExpanded
-                             ? L("点击隐藏预览", "Click to hide preview")
-                             : L("点击展开预览；默认关闭以降低 CPU 占用", "Click to expand; off by default to reduce CPU usage"))
-                            .font(.system(size: 10))
-                            .foregroundStyle(TF.settingsTextTertiary)
-                    }
-
-                    Spacer()
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-
-            if isRecordingPreviewExpanded {
-                recordingPreview
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-        }
-        .padding(.vertical, 6)
-        .onAppear {
-            if isRecordingPreviewExpanded {
-                previewState.startSimulation()
-            }
-        }
-        .onChange(of: isRecordingPreviewExpanded) { _, expanded in
-            if expanded {
-                previewState.startSimulation()
-            } else {
-                previewState.stopSimulation()
-            }
-        }
-        .onDisappear {
-            previewState.stopSimulation()
-        }
-    }
-
-    private var themeRow: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(L("外观主题", "Appearance").uppercased())
+            Text(L("录音动效", "Visual Style").uppercased())
                 .font(.system(size: 10, weight: .semibold))
                 .tracking(0.8)
                 .foregroundStyle(TF.settingsTextTertiary)
             settingsSegmentedPicker(
-                selection: Binding(
-                    get: { ThemeStore.shared.current.rawValue },
-                    set: { ThemeStore.shared.current = AppTheme(rawValue: $0) ?? .warm }
-                ),
-                options: AppTheme.allCases.map {
-                    ($0.rawValue, L($0.instance.displayNameZH, $0.instance.displayNameEN))
-                }
+                selection: $visualStyle,
+                options: [
+                    ("classic", L("线条", "Lines")),
+                    ("dual", L("粒子云", "Blocks")),
+                    ("timeline", L("电平", "Minimal")),
+                ]
             )
         }
         .padding(.vertical, 6)
-    }
-
-    private var recordingPreview: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            ZStack {
-                Color(white: 0.06, opacity: 0.5)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                FloatingBarView(state: previewState)
-                    .frame(width: TF.barWidth, height: TF.barHeight + 16)
-            }
-            .frame(height: 80)
-        }
     }
 
     private var launchAtLoginRow: some View {
@@ -490,16 +370,24 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
         .padding(.vertical, 6)
     }
 
-    private var recordingEffectTextRow: some View {
+    private var hoverPreviewRow: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(L("录音动效文字", "Recording Effect Text").uppercased())
-                .font(.system(size: 10, weight: .semibold))
-                .tracking(0.8)
-                .foregroundStyle(TF.settingsTextTertiary)
+            HStack(spacing: 4) {
+                Text(L("悬停文字预览", "Hover Text Preview").uppercased())
+                    .font(.system(size: 10, weight: .semibold))
+                    .tracking(0.8)
+                    .foregroundStyle(TF.settingsTextTertiary)
+                Text("|")
+                    .font(.system(size: 10))
+                    .foregroundStyle(TF.settingsTextTertiary.opacity(0.5))
+                Text(L("鼠标悬停悬浮条时显示完整文本", "Show full text when hovering the bar"))
+                    .font(.system(size: 10))
+                    .foregroundStyle(TF.settingsTextTertiary)
+            }
             settingsDropdown(
                 selection: Binding(
-                    get: { showRecordingEffectText ? "on" : "off" },
-                    set: { showRecordingEffectText = $0 == "on" }
+                    get: { hoverTranscriptPreview ? "on" : "off" },
+                    set: { hoverTranscriptPreview = $0 == "on" }
                 ),
                 options: [
                     ("on", L("开启", "On")),
@@ -769,78 +657,5 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
         } else {
             launchAtLogin = status == .enabled
         }
-    }
-}
-
-// MARK: - Preview State
-
-@Observable
-@MainActor
-private final class PreviewState: FloatingBarState {
-
-    var barPhase: FloatingBarPhase = .recording
-    var segments: [TranscriptionSegment] = []
-    var currentMode = ProcessingMode(
-        id: UUID(), name: "Preview", prompt: "{text}", isBuiltin: true,
-        processingLabel: "Processing", hotkeyCode: nil, hotkeyModifiers: nil,
-        hotkeyStyle: .hold
-    )
-    let audioLevel = AudioLevelMeter()
-    var feedbackMessage = ""
-    var feedbackKind: FeedbackKind = .standard
-    var processingFinishTime: Date? = nil
-    var recordingStartDate: Date? = Date()
-    var isQwen3OnlyMode = false
-    var effectiveProcessingLabel = ""
-
-    private var timer: Timer?
-    private var textTimer: Timer?
-    private var textIndex = 0
-
-    private let sampleTexts = [
-        "今天天气不错，我们",
-        "今天天气不错，我们去",
-        "今天天气不错，我们去公园",
-        "今天天气不错，我们去公园走走",
-        "今天天气不错，我们去公园走走吧。",
-    ]
-
-    var transcriptionText: String {
-        segments.map(\.text).joined()
-    }
-
-    func startSimulation() {
-        stopSimulation()
-        barPhase = .recording
-        recordingStartDate = Date()
-        segments = [TranscriptionSegment(text: sampleTexts[0], isConfirmed: false)]
-        textIndex = 0
-
-        timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.tick() }
-        }
-
-        textTimer = Timer.scheduledTimer(withTimeInterval: 1.2, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.advanceText() }
-        }
-    }
-
-    func stopSimulation() {
-        timer?.invalidate()
-        timer = nil
-        textTimer?.invalidate()
-        textTimer = nil
-    }
-
-    private func tick() {
-        let t = Date().timeIntervalSinceReferenceDate
-        let base = Float(sin(t * 0.9) * 0.5 + 0.5)
-        let detail = Float(sin(t * 5.7) * 0.12 + sin(t * 3.1) * 0.08)
-        audioLevel.current = max(0, min(1, base + detail))
-    }
-
-    private func advanceText() {
-        textIndex = (textIndex + 1) % sampleTexts.count
-        segments = [TranscriptionSegment(text: sampleTexts[textIndex], isConfirmed: false)]
     }
 }

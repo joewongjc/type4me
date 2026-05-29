@@ -112,8 +112,6 @@ echo "Packaging app bundle at $APP_PATH..."
 mkdir -p "$APP_PATH/Contents/MacOS" "$APP_PATH/Contents/Resources"
 cp "$BINARY" "$APP_PATH/Contents/MacOS/$APP_EXECUTABLE"
 cp "$PROJECT_DIR/Type4Me/Resources/${APP_ICON_NAME}.icns" "$APP_PATH/Contents/Resources/${APP_ICON_NAME}.icns" 2>/dev/null || true
-# Theme-specific Dock icon, swapped at runtime by AppIconThemeSync (Evolution theme).
-cp "$PROJECT_DIR/Type4Me/Resources/AppIconCold.icns" "$APP_PATH/Contents/Resources/AppIconCold.icns" 2>/dev/null || true
 
 cat >"$INFO_PLIST" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -128,8 +126,6 @@ cat >"$INFO_PLIST" <<EOF
     <string>${APP_EXECUTABLE}</string>
     <key>CFBundleIconFile</key>
     <string>${APP_ICON_NAME}</string>
-    <key>ATSApplicationFontsPath</key>
-    <string>Fonts</string>
     <key>CFBundleIdentifier</key>
     <string>${APP_BUNDLE_ID}</string>
     <key>CFBundleInfoDictionaryVersion</key>
@@ -178,10 +174,6 @@ EOF
 
 mkdir -p "$APP_PATH/Contents/Resources/Sounds"
 cp "$PROJECT_DIR/Type4Me/Resources/Sounds/"*.wav "$APP_PATH/Contents/Resources/Sounds/" 2>/dev/null || true
-
-# Bundled fonts — activated at launch via ATSApplicationFontsPath (see Info.plist).
-mkdir -p "$APP_PATH/Contents/Resources/Fonts"
-cp "$PROJECT_DIR/Type4Me/Resources/Fonts/"*.ttf "$APP_PATH/Contents/Resources/Fonts/" 2>/dev/null || true
 
 # --- Models and local ASR server (local variant only) ---
 if [ "$VARIANT" = "local" ]; then

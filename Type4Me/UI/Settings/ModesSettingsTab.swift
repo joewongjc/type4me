@@ -264,7 +264,7 @@ struct ModesSettingsTab: View {
         .contentShape(Rectangle())
         .background(
             RoundedRectangle(cornerRadius: 8)
-                .fill(isActive ? TF.settingsNavActiveBg : .clear)
+                .fill(isActive ? TF.settingsNavActive : .clear)
         )
         .onTapGesture {
             var t = Transaction(); t.animation = nil
@@ -607,7 +607,7 @@ private struct HotkeyRecordingSheet: View {
                                 .frame(maxWidth: .infinity, minHeight: 26)
                                 .background(
                                     RoundedRectangle(cornerRadius: 5)
-                                        .fill(selected ? TF.settingsNavActiveBg : .clear)
+                                        .fill(selected ? TF.settingsNavActive : .clear)
                                 )
                         }
                         .buttonStyle(.plain)
@@ -676,7 +676,7 @@ private struct HotkeyRecordingSheet: View {
                 .foregroundStyle(.white)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 5)
-                .background(RoundedRectangle(cornerRadius: 6).fill(TF.settingsNavActiveBg))
+                .background(RoundedRectangle(cornerRadius: 6).fill(TF.settingsNavActive))
                 .disabled(capturedKeyCode == nil)
                 .opacity(capturedKeyCode == nil ? 0.5 : 1)
             }
@@ -948,7 +948,7 @@ private struct ModeDetailInner: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 5)
                 .background(RoundedRectangle(cornerRadius: 6).fill(
-                    isDirty ? TF.settingsNavActiveBg : TF.settingsTextTertiary
+                    isDirty ? TF.settingsNavActive : TF.settingsTextTertiary
                 ))
                 .disabled(!isDirty)
             }
@@ -1139,7 +1139,7 @@ private struct FormalWritingDetailInner: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 5)
                 .background(RoundedRectangle(cornerRadius: 6).fill(
-                    isDirty ? TF.settingsNavActiveBg : TF.settingsTextTertiary
+                    isDirty ? TF.settingsNavActive : TF.settingsTextTertiary
                 ))
                 .disabled(!isDirty)
             }

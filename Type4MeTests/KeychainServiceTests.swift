@@ -4,9 +4,8 @@ import XCTest
 final class KeychainServiceTests: XCTestCase {
 
     private var originalProvider: ASRProvider!
-    private var appSupportDir: URL {
-        AppIdentity.applicationSupportDirectory
-    }
+    private let appSupportDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        .appendingPathComponent("Type4Me", isDirectory: true)
     private var credentialsURL: URL {
         appSupportDir.appendingPathComponent("credentials.json")
     }

@@ -2,10 +2,6 @@
 set -euo pipefail
 
 APP_PATH="${1:-${APP_PATH:-/Applications/Type4Me.app}}"
-EXPECTED_BUNDLE_ID="${EXPECTED_BUNDLE_ID:-com.type4me.app}"
-EXPECTED_APP_NAME="${EXPECTED_APP_NAME:-Type4Me}"
-EXPECTED_APP_VERSION="${EXPECTED_APP_VERSION:-1.0.0}"
-EXPECTED_APP_BUILD="${EXPECTED_APP_BUILD:-1}"
 INFO_PLIST="$APP_PATH/Contents/Info.plist"
 
 fail() {
@@ -24,12 +20,12 @@ read_plist() {
 [ -f "$APP_PATH/Contents/Resources/AppIcon.icns" ] || fail "app icon missing"
 
 [ "$(read_plist CFBundleExecutable)" = "Type4Me" ] || fail "CFBundleExecutable should be Type4Me"
-[ "$(read_plist CFBundleIdentifier)" = "$EXPECTED_BUNDLE_ID" ] || fail "CFBundleIdentifier should be $EXPECTED_BUNDLE_ID"
-[ "$(read_plist CFBundleName)" = "$EXPECTED_APP_NAME" ] || fail "CFBundleName should be $EXPECTED_APP_NAME"
-[ "$(read_plist CFBundleDisplayName)" = "$EXPECTED_APP_NAME" ] || fail "CFBundleDisplayName should be $EXPECTED_APP_NAME"
+[ "$(read_plist CFBundleIdentifier)" = "com.type4me.app" ] || fail "CFBundleIdentifier should be com.type4me.app"
+[ "$(read_plist CFBundleName)" = "Type4Me" ] || fail "CFBundleName should be Type4Me"
+[ "$(read_plist CFBundleDisplayName)" = "Type4Me" ] || fail "CFBundleDisplayName should be Type4Me"
 [ "$(read_plist CFBundlePackageType)" = "APPL" ] || fail "CFBundlePackageType should be APPL"
-[ "$(read_plist CFBundleShortVersionString)" = "$EXPECTED_APP_VERSION" ] || fail "CFBundleShortVersionString should be $EXPECTED_APP_VERSION"
-[ "$(read_plist CFBundleVersion)" = "$EXPECTED_APP_BUILD" ] || fail "CFBundleVersion should be $EXPECTED_APP_BUILD"
+[ "$(read_plist CFBundleShortVersionString)" = "1.0.0" ] || fail "CFBundleShortVersionString should be 1.0.0"
+[ "$(read_plist CFBundleVersion)" = "1" ] || fail "CFBundleVersion should be 1"
 [ "$(read_plist CFBundleIconFile)" = "AppIcon" ] || fail "CFBundleIconFile should be AppIcon"
 [ "$(read_plist LSMinimumSystemVersion)" = "14.0" ] || fail "LSMinimumSystemVersion should be 14.0"
 [ -n "$(read_plist NSMicrophoneUsageDescription)" ] || fail "NSMicrophoneUsageDescription should be present"
