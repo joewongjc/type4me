@@ -1,6 +1,11 @@
 {
-  "latest": "1.9.3",
+  "latest": "1.9.4",
   "releases": [
+    {
+      "version": "1.9.4",
+      "date": "2026-06-01",
+      "notes": "- 新增 Mac Action 模式：用语音执行窗口管理、提醒事项、滚动等 macOS 操作\n- LLM 设置增强：支持自定义 OpenAI 兼容服务、从 /v1/models 自动发现模型，并可按服务商控制思考模式\n- 历史记录新增本机 ASR 用量详情：按模型/引擎查看近 1 天、7 天、30 天累计时长\n- 支持耳机/媒体键作为录音快捷键\n- ElevenLabs 转写更干净，并自动限制 keyterm 避免请求失败\n- Local 版本稳定性提升：修复 SenseVoice + Qwen3 长时间使用内存增长、服务重启和 MLX 兼容问题"
+    },
     {
       "version": "1.9.3",
       "date": "2026-04-26",
