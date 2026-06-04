@@ -127,33 +127,47 @@ final class HotkeyManager: NSObject {
 
     @discardableResult
     func start() -> Bool {
+        let hasMediaKeyBindings = bindings.contains { $0.isMediaKey }
+
         let eventMask: CGEventMask =
             (1 << CGEventType.keyDown.rawValue)
             | (1 << CGEventType.keyUp.rawValue)
             | (1 << CGEventType.flagsChanged.rawValue)
             | (1 << CGEventType.otherMouseDown.rawValue)
             | (1 << CGEventType.otherMouseUp.rawValue)
-            | (1 << 14)  // kCGEventSystemDefined (NX_SYSDEFINED) for media/headphone keys
+            | (hasMediaKeyBindings ? (1 << 14) : 0)  // kCGEventSystemDefined (NX_SYSDEFINED) for media/headphone keys
 
         let userInfo = Unmanaged.passUnretained(self).toOpaque()
 
-        // Try cghidEventTap first for more reliable interception of media/headphone keys.
-        // If unavailable (e.g. insufficient permissions), fall back to cgSessionEventTap.
-        let tap: CFMachPort? = CGEvent.tapCreate(
-            tap: .cghidEventTap,
-            place: .headInsertEventTap,
-            options: .defaultTap,
-            eventsOfInterest: eventMask,
-            callback: hotkeyCallback,
-            userInfo: userInfo
-        ) ?? CGEvent.tapCreate(
-            tap: .cgSessionEventTap,
-            place: .headInsertEventTap,
-            options: .defaultTap,
-            eventsOfInterest: eventMask,
-            callback: hotkeyCallback,
-            userInfo: userInfo
-        )
+        let tap: CFMachPort?
+        if hasMediaKeyBindings {
+            // Try cghidEventTap first for more reliable interception of media/headphone keys.
+            // If unavailable (e.g. insufficient permissions), fall back to cgSessionEventTap.
+            tap = CGEvent.tapCreate(
+                tap: .cghidEventTap,
+                place: .headInsertEventTap,
+                options: .defaultTap,
+                eventsOfInterest: eventMask,
+                callback: hotkeyCallback,
+                userInfo: userInfo
+            ) ?? CGEvent.tapCreate(
+                tap: .cgSessionEventTap,
+                place: .headInsertEventTap,
+                options: .defaultTap,
+                eventsOfInterest: eventMask,
+                callback: hotkeyCallback,
+                userInfo: userInfo
+            )
+        } else {
+            tap = CGEvent.tapCreate(
+                tap: .cgSessionEventTap,
+                place: .headInsertEventTap,
+                options: .defaultTap,
+                eventsOfInterest: eventMask,
+                callback: hotkeyCallback,
+                userInfo: userInfo
+            )
+        }
 
         guard let tap = tap else {
             return false

@@ -406,7 +406,9 @@ actor RecognitionSession {
         }
 
         do {
-            audioEngine.selectedDeviceUID = UserDefaults.standard.string(forKey: "tf_selectedMicrophoneUID")
+            let selectedDeviceUID = AudioInputDevicePreferenceStore.resolvedCachedDeviceUID()
+            audioEngine.selectedDeviceUID = selectedDeviceUID
+            DebugFileLogger.log("audio input selected uid=\(selectedDeviceUID ?? "system-default") mode=\(AudioInputDevicePreferenceStore.selectionMode().rawValue)")
             try audioEngine.start()
             NSLog("[Session] Audio engine started OK")
             DebugFileLogger.log("audio engine started OK")

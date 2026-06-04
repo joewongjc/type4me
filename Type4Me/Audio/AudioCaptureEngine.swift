@@ -56,14 +56,14 @@ final class AudioCaptureEngine: NSObject, @unchecked Sendable, AVCaptureAudioDat
     /// Set before calling `start()`. Empty string or nil means system default.
     var selectedDeviceUID: String?
 
+    /// Returns rich metadata for available audio input devices.
+    static func availableAudioInputDevices() -> [AudioInputDevice] {
+        AudioInputDeviceDiscovery.availableInputDevices()
+    }
+
     /// Returns a list of available audio input devices (UID + display name).
     static func availableAudioDevices() -> [(uid: String, name: String)] {
-        let discoverySession = AVCaptureDevice.DiscoverySession(
-            deviceTypes: [.builtInMicrophone, .externalUnknown],
-            mediaType: .audio,
-            position: .unspecified
-        )
-        return discoverySession.devices.map { (uid: $0.uniqueID, name: $0.localizedName) }
+        availableAudioInputDevices().map { (uid: $0.uid, name: $0.name) }
     }
 
     /// Resolve the capture device: use selectedDeviceUID if set and valid, otherwise system default.

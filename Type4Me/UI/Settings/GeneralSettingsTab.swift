@@ -22,12 +22,14 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
     @AppStorage("tf_stripTrailingPunctuation") private var stripTrailingPunctuation = "off"
     @AppStorage("tf_hoverTranscriptPreview") private var hoverTranscriptPreview = true
     @AppStorage("tf_micKeepAlive") private var micKeepAlive = false
+    @AppStorage(AudioInputDevicePreferenceStore.selectionModeKey) private var microphoneSelectionMode = AudioInputDeviceSelectionMode.systemDefault.rawValue
     @AppStorage("tf_selectedMicrophoneUID") private var selectedMicrophoneUID = ""
+    @AppStorage(AudioInputDevicePreferenceStore.priorityOrderKey) private var microphonePriorityOrder = AudioInputDevicePreferenceStore.defaultPriorityOrderStorageValue
     @AppStorage("tf_selectedSpeakerUID") private var selectedSpeakerUID = ""
 
     @State private var hasMic = false
     @State private var hasAccessibility = false
-    @State private var availableMicrophones: [(uid: String, name: String)] = []
+    @State private var availableMicrophones: [AudioInputDevice] = []
     @State private var availableSpeakers: [(uid: String, name: String)] = []
 
     typealias TestStatus = SettingsTestStatus
@@ -205,6 +207,9 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
         }
         .onChange(of: micKeepAlive) { _, _ in
             AudioKeepAliveManager.syncMicState()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .audioInputDevicesDidChange)) { _ in
+            refreshMicrophones()
         }
     }
 
@@ -422,20 +427,110 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
                 .buttonStyle(.plain)
                 .help(L("刷新麦克风列表", "Refresh microphone list"))
             }
-            settingsDropdown(
-                selection: $selectedMicrophoneUID,
-                options: [("", L("系统默认", "System Default"))] + availableMicrophones.map { ($0.uid, $0.name) }
+            settingsSegmentedPicker(
+                selection: $microphoneSelectionMode,
+                options: AudioInputDeviceSelectionMode.allCases.map { ($0.rawValue, $0.displayName) }
             )
+
+            switch AudioInputDeviceSelectionMode(rawValue: microphoneSelectionMode) ?? .systemDefault {
+            case .systemDefault:
+                microphoneHint(
+                    icon: "gearshape",
+                    text: L("跟随 macOS 当前默认输入设备。", "Use the current macOS default input device.")
+                )
+            case .manual:
+                settingsDropdown(
+                    selection: $selectedMicrophoneUID,
+                    options: [("", L("选择设备", "Choose Device"))] + availableMicrophones.map {
+                        ($0.uid, "\($0.name) · \($0.category.displayName)")
+                    }
+                )
+            case .automatic:
+                microphonePriorityEditor
+                microphoneAutoMatchSummary
+            }
         }
         .padding(.vertical, 6)
     }
 
     private func refreshMicrophones() {
-        availableMicrophones = AudioCaptureEngine.availableAudioDevices()
-        if !selectedMicrophoneUID.isEmpty,
+        let devices = AudioCaptureEngine.availableAudioInputDevices()
+        availableMicrophones = devices
+        AudioInputDeviceMonitor.shared.replaceCachedDevices(devices)
+        if microphoneSelectionMode == AudioInputDeviceSelectionMode.manual.rawValue,
+           !selectedMicrophoneUID.isEmpty,
            !availableMicrophones.contains(where: { $0.uid == selectedMicrophoneUID }) {
             selectedMicrophoneUID = ""
         }
+    }
+
+    private var microphonePriorityEditor: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(Array(currentMicrophonePriorityOrder.enumerated()), id: \.element.rawValue) { index, category in
+                HStack(spacing: 8) {
+                    Text("\(index + 1)")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 18, height: 18)
+                        .background(Circle().fill(TF.settingsNavActive))
+                    settingsDropdown(
+                        selection: priorityBinding(at: index),
+                        options: AudioInputDeviceCategory.defaultPriorityOrder.map { ($0.rawValue, $0.displayName) }
+                    )
+                }
+            }
+        }
+    }
+
+    private var microphoneAutoMatchSummary: some View {
+        let matched = AudioInputDevicePreferenceStore.resolvedAutomaticDevice(
+            devices: availableMicrophones,
+            priorityOrder: currentMicrophonePriorityOrder
+        )
+        return microphoneHint(
+            icon: matched == nil ? "gearshape" : "checkmark.circle.fill",
+            text: matched.map {
+                L("当前匹配：\($0.name)（\($0.category.displayName)）",
+                  "Current match: \($0.name) (\($0.category.displayName))")
+            } ?? L("当前没有匹配的设备，将回退到系统默认输入。",
+                   "No matching device is available; system default will be used.")
+        )
+    }
+
+    private var currentMicrophonePriorityOrder: [AudioInputDeviceCategory] {
+        AudioInputDevicePreferenceStore.priorityOrder(from: microphonePriorityOrder)
+    }
+
+    private func priorityBinding(at index: Int) -> Binding<String> {
+        Binding(
+            get: {
+                let order = currentMicrophonePriorityOrder
+                guard order.indices.contains(index) else { return AudioInputDeviceCategory.other.rawValue }
+                return order[index].rawValue
+            },
+            set: { newValue in
+                guard let newCategory = AudioInputDeviceCategory(rawValue: newValue) else { return }
+                var order = currentMicrophonePriorityOrder.filter { $0 != newCategory }
+                order.insert(newCategory, at: min(index, order.count))
+                microphonePriorityOrder = AudioInputDevicePreferenceStore.storageValue(for: order)
+            }
+        )
+    }
+
+    private func microphoneHint(icon: String, text: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(TF.settingsTextTertiary)
+            Text(text)
+                .font(.system(size: 10))
+                .foregroundStyle(TF.settingsTextTertiary)
+                .lineLimit(2)
+            Spacer()
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(RoundedRectangle(cornerRadius: 8).fill(TF.settingsCardAlt.opacity(0.65)))
     }
 
     private var speakerSelectionRow: some View {

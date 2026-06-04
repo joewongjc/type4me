@@ -71,6 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         KeychainService.migrateIfNeeded()
         HotwordStorage.migrateIfNeeded()
         SnippetStorage.migrateIfNeeded()
+        AudioInputDevicePreferenceStore.migrateIfNeeded()
 
         // Sync hotwords to Volcengine cloud table (async, non-blocking)
         VolcHotwordSyncManager.syncIfNeeded()
@@ -90,6 +91,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let appState = self.appState
 
         SoundFeedback.warmUp()
+        AudioInputDeviceMonitor.shared.start()
         AudioKeepAliveManager.syncState()
 
         // Pre-warm audio subsystem and ASR connection so the first recording starts instantly
@@ -450,7 +452,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 timer.invalidate()
                 retryTimer = nil
                 hotkeyRetryCount = 0
-                } else if hotkeyRetryCount >= 5 {
+            } else if hotkeyRetryCount >= 5 {
                 // Permission granted but event tap still fails (macOS caches denial at kernel level).
                 // Suggest restart.
                 timer.invalidate()
