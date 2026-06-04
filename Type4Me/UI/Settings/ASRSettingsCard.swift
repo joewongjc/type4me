@@ -25,6 +25,7 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
     @State private var qwen3Toggling = false
     @AppStorage("tf_qwen3FinalEnabled") private var qwen3FinalEnabled = true
     @AppStorage("tf_sensevoiceEnabled") private var sensevoiceEnabled = true
+    @AppStorage("tf_whisperFallbackEnabled") private var whisperFallbackEnabled = false
     @State private var qwen3StartError: String?
 
     private var currentASRFields: [CredentialField] {
@@ -58,6 +59,10 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
 
     private var isASRProviderAvailable: Bool {
         ASRProviderRegistry.entry(for: selectedASRProvider)?.isAvailable ?? false
+    }
+
+    private var hasVolcanoFallbackConfig: Bool {
+        KeychainService.loadASRConfig(for: .volcano) != nil
     }
 
     private var currentASRGuideLinks: [(prefix: String?, label: String, url: URL)] {
@@ -438,6 +443,8 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
                     #endif
                 }
 
+                whisperFallbackOption
+
                 HStack {
                     Spacer()
                     testButton(L("测试连接", "Test"), status: asrTestStatus) { testLocalModel() }
@@ -459,6 +466,52 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
             }
         }
         .padding(.vertical, 8)
+    }
+
+    private var whisperFallbackOption: some View {
+        let canEnable = hasVolcanoFallbackConfig
+        let enabledBinding = Binding<Bool>(
+            get: { whisperFallbackEnabled && canEnable },
+            set: { newValue in
+                whisperFallbackEnabled = canEnable ? newValue : false
+            }
+        )
+
+        return HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "moon.zzz.fill")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 26, height: 26)
+                .background(RoundedRectangle(cornerRadius: 7).fill(canEnable ? TF.settingsAccentBlue : TF.settingsTextTertiary))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(L("低声增强", "Whisper Enhancement"))
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(TF.settingsText)
+
+                Text(L("使用本地识别时，如果检测到低音量或本地结果过短，会调用火山引擎进行辅助识别。开启前必须先配置并保存火山引擎 (Doubao) API 凭证。",
+                       "When using local recognition, low-volume or very short local results can be rechecked with Volcano. Configure and save Volcano (Doubao) API credentials before enabling."))
+                    .font(.system(size: 10))
+                    .foregroundStyle(TF.settingsTextSecondary)
+                    .lineSpacing(2)
+
+                if !canEnable {
+                    Text(L("未检测到火山引擎配置，请先切换到火山引擎并保存凭证。",
+                           "Volcano credentials not found. Switch to Volcano and save credentials first."))
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(TF.settingsAccentAmber)
+                }
+            }
+
+            Spacer()
+
+            Toggle("", isOn: enabledBinding)
+                .toggleStyle(.switch)
+                .labelsHidden()
+                .disabled(!canEnable)
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 8).fill(TF.settingsCardAlt))
     }
 
     private func staticEngineBlock(
