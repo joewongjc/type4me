@@ -40,19 +40,19 @@ struct LLMSettingsCard: View, SettingsCardHelpers {
 
     /// Effective values: saved base + dirty edits overlaid.
     private var effectiveLLMValues: [String: String] {
-        var result = savedLLMValues
-        for key in editedFields {
-            result[key] = llmCredentialValues[key] ?? ""
-        }
-        return result
+        LLMCredentialDraft.effectiveValues(
+            fields: currentLLMFields,
+            savedValues: savedLLMValues,
+            draftValues: llmCredentialValues,
+            editedFields: editedFields
+        )
     }
 
     private var hasLLMCredentials: Bool {
-        let required = currentLLMFields.filter { !$0.isOptional }
-        let effective = effectiveLLMValues
-        return required.allSatisfy { field in
-            !(effective[field.key] ?? "").isEmpty
-        }
+        LLMCredentialDraft.hasRequiredValues(
+            fields: currentLLMFields,
+            values: effectiveLLMValues
+        )
     }
 
     // MARK: Body
