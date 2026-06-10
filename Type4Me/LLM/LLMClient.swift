@@ -1,9 +1,14 @@
 import Foundation
 
 /// Common interface for LLM clients (OpenAI-compatible and Claude).
-protocol LLMClient: Sendable {
+protocol LLMClient: AnyObject, Sendable {
     func process(text: String, prompt: String, config: LLMConfig) async throws -> String
     func warmUp(baseURL: String) async
+    func invalidate() async
+}
+
+extension LLMClient {
+    func invalidate() async {}
 }
 
 extension String {

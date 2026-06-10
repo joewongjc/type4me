@@ -26,9 +26,24 @@ enum CloudLLMError: Error, LocalizedError {
 actor CloudLLMClient: LLMClient {
 
     private let logger = Logger(subsystem: "com.type4me.app", category: "CloudLLM")
+    private let session: URLSession
+    private let metricsDelegate: LLMURLSessionMetricsDelegate
+
+    init(bypassProxy: Bool = ProxyBypassMode.current.bypassLLM) {
+        let resources = LLMURLSessionFactory.make(
+            providerID: "cloud",
+            bypassProxy: bypassProxy
+        )
+        session = resources.session
+        metricsDelegate = resources.metricsDelegate
+    }
 
     func warmUp(baseURL: String) async {
         // No warmup needed — proxy handles connection pooling
+    }
+
+    func invalidate() async {
+        session.invalidateAndCancel()
     }
 
     func process(text: String, prompt: String, config: LLMConfig) async throws -> String {
@@ -54,7 +69,7 @@ actor CloudLLMClient: LLMClient {
             LLMRequest(text: text, prompt: prompt, mode: "cloud")
         )
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
 
         guard let http = response as? HTTPURLResponse else {
             throw CloudLLMError.networkError
