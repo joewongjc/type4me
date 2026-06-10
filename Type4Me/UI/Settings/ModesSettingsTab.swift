@@ -422,13 +422,8 @@ struct ModesSettingsTab: View {
         ]
     }
 
-    @AppStorage("tf_shortTextExemption") private var shortTextExemption = "0"
-
     private func formalWritingModeDetail(_ mode: ProcessingMode) -> some View {
-        FormalWritingDetailInner(
-            mode: mode,
-            shortTextExemption: $shortTextExemption
-        ) { updated in
+        FormalWritingDetailInner(mode: mode) { updated in
             if let idx = modes.firstIndex(where: { $0.id == updated.id }) {
                 modes[idx] = updated
                 persistModes()
@@ -851,7 +846,6 @@ private struct ModeDetailInner: View {
     let mode: ProcessingMode
     let onSave: (ProcessingMode) -> Void
 
-    @AppStorage("tf_shortTextExemption") private var shortTextExemption = "0"
     @State private var name = ""
     @State private var processingLabel = ""
     @State private var prompt = ""
@@ -863,59 +857,6 @@ private struct ModeDetailInner: View {
 
     private var isDirty: Bool {
         name != mode.name || processingLabel != mode.processingLabel || prompt != mode.prompt
-    }
-
-    private let exemptionOptions: [(value: String, label: String)] = [
-        ("0", L("关闭", "Off")),
-        ("10", L("10 字以下", "Under 10 chars")),
-        ("20", L("20 字以下", "Under 20 chars")),
-        ("30", L("30 字以下", "Under 30 chars")),
-        ("40", L("40 字以下", "Under 40 chars")),
-        ("50", L("50 字以下", "Under 50 chars")),
-    ]
-
-    private var shortTextExemptionSection: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(L("短文本跳过", "Short Text Skip").uppercased())
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(TF.settingsTextTertiary)
-            exemptionDropdown
-            Text(L("文本少于该字数时跳过润色，直接使用识别结果",
-                     "Skip polishing for texts shorter than this threshold"))
-                .font(.system(size: 10))
-                .foregroundStyle(TF.settingsTextTertiary)
-        }
-    }
-
-    private var exemptionDropdown: some View {
-        let currentLabel = exemptionOptions.first(where: { $0.value == shortTextExemption })?.label ?? shortTextExemption
-        return Menu {
-            ForEach(exemptionOptions, id: \.value) { option in
-                Button {
-                    shortTextExemption = option.value
-                } label: {
-                    if option.value == shortTextExemption {
-                        Label(option.label, systemImage: "checkmark")
-                    } else {
-                        Text(option.label)
-                    }
-                }
-            }
-        } label: {
-            HStack(spacing: 8) {
-                Text(currentLabel)
-                    .font(.system(size: 13))
-                    .foregroundStyle(TF.settingsText)
-                Spacer()
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(TF.settingsTextTertiary)
-            }
-            .padding(.horizontal, 12)
-            .frame(height: 36)
-            .background(RoundedRectangle(cornerRadius: 8).fill(TF.settingsCardAlt))
-        }
-        .buttonStyle(.plain)
     }
 
     var body: some View {
@@ -1023,9 +964,10 @@ private struct ModeDetailInner: View {
 private struct FormalWritingDetailInner: View {
 
     let mode: ProcessingMode
-    @Binding var shortTextExemption: String
     let onSave: (ProcessingMode) -> Void
 
+    @AppStorage(ShortTextDirectPolicy.enabledKey) private var shortTextDirectEnabled = true
+    @AppStorage(ShortTextDirectPolicy.thresholdKey) private var shortTextDirectThreshold = ShortTextDirectPolicy.defaultThreshold
     @State private var name = ""
     @State private var processingLabel = ""
     @State private var prompt = ""
@@ -1044,25 +986,31 @@ private struct FormalWritingDetailInner: View {
         prompt == ProcessingMode.formalWritingPromptTemplate
     }
 
-    private let exemptionOptions: [(value: String, label: String)] = [
-        ("0", L("关闭", "Off")),
-        ("10", L("10 字以下", "Under 10 chars")),
-        ("20", L("20 字以下", "Under 20 chars")),
-        ("30", L("30 字以下", "Under 30 chars")),
-        ("40", L("40 字以下", "Under 40 chars")),
-        ("50", L("50 字以下", "Under 50 chars")),
-    ]
+    private let directThresholdOptions = [4, 6, 8, 10, 12]
 
-    private var shortTextExemptionSection: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(L("短文本跳过", "Short Text Skip").uppercased())
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(TF.settingsTextTertiary)
-            exemptionDropdown
-            Text(L("文本少于该字数时跳过润色，直接使用识别结果",
-                     "Skip polishing for texts shorter than this threshold"))
+    private var shortTextDirectSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle(
+                L("短句直接输出", "Direct Output for Short Phrases"),
+                isOn: $shortTextDirectEnabled
+            )
+            .toggleStyle(.switch)
+            Text(L("语义字符不超过阈值时跳过润色，直接使用最终识别结果",
+                   "Skip polishing when semantic content does not exceed the threshold"))
                 .font(.system(size: 10))
                 .foregroundStyle(TF.settingsTextTertiary)
+            if shortTextDirectEnabled {
+                Picker(
+                    L("阈值", "Threshold"),
+                    selection: $shortTextDirectThreshold
+                ) {
+                    ForEach(directThresholdOptions, id: \.self) { value in
+                        Text(L("\(value) 个语义字符", "\(value) semantic characters"))
+                            .tag(value)
+                    }
+                }
+                .pickerStyle(.menu)
+            }
         }
     }
 
@@ -1175,8 +1123,7 @@ private struct FormalWritingDetailInner: View {
                     .foregroundStyle(TF.settingsTextTertiary)
             }
 
-            // Short text exemption
-            shortTextExemptionSection
+            shortTextDirectSection
 
             // Prompt 模板
             VStack(alignment: .leading, spacing: 4) {
@@ -1203,37 +1150,6 @@ private struct FormalWritingDetailInner: View {
         .onChange(of: name) { _, _ in if saveStatus == .saved { saveStatus = .dirty } }
         .onChange(of: processingLabel) { _, _ in if saveStatus == .saved { saveStatus = .dirty } }
         .onChange(of: prompt) { _, _ in if saveStatus == .saved { saveStatus = .dirty } }
-    }
-
-    private var exemptionDropdown: some View {
-        let currentLabel = exemptionOptions.first(where: { $0.value == shortTextExemption })?.label ?? shortTextExemption
-        return Menu {
-            ForEach(exemptionOptions, id: \.value) { option in
-                Button {
-                    shortTextExemption = option.value
-                } label: {
-                    if option.value == shortTextExemption {
-                        Label(option.label, systemImage: "checkmark")
-                    } else {
-                        Text(option.label)
-                    }
-                }
-            }
-        } label: {
-            HStack(spacing: 8) {
-                Text(currentLabel)
-                    .font(.system(size: 13))
-                    .foregroundStyle(TF.settingsText)
-                Spacer()
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(TF.settingsTextTertiary)
-            }
-            .padding(.horizontal, 12)
-            .frame(height: 36)
-            .background(RoundedRectangle(cornerRadius: 8).fill(TF.settingsCardAlt))
-        }
-        .buttonStyle(.plain)
     }
 
     private func syncFields() {

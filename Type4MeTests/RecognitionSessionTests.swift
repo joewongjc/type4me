@@ -366,6 +366,140 @@ final class RecognitionSessionTests: XCTestCase {
         XCTAssertTrue(guardState.claim(generation: 11))
     }
 
+    func testShortTextDirectOutputForPolishingMode() {
+        XCTAssertEqual(
+            ShortTextDirectPolicy.decide(
+                text: "收到。",
+                mode: .formalWriting,
+                enabled: true,
+                threshold: 8
+            ),
+            .directOutput
+        )
+    }
+
+    func testExactlyEightSemanticCharactersUseDirectOutput() {
+        XCTAssertEqual(
+            ShortTextDirectPolicy.decide(
+                text: "一二三四五六七八。",
+                mode: .formalWriting,
+                enabled: true,
+                threshold: 8
+            ),
+            .directOutput
+        )
+    }
+
+    func testNineSemanticCharactersUseNormalLLMPath() {
+        XCTAssertEqual(
+            ShortTextDirectPolicy.decide(
+                text: "一二三四五六七八九。",
+                mode: .formalWriting,
+                enabled: true,
+                threshold: 8
+            ),
+            .textTooLong
+        )
+    }
+
+    func testSemanticLengthIgnoresPunctuationAndWhitespace() {
+        XCTAssertEqual(
+            ShortTextDirectPolicy.semanticLength(of: " 好的，\n马上。 "),
+            4
+        )
+    }
+
+    func testTranslationModeStillRequiresLLMForShortText() {
+        XCTAssertEqual(
+            ShortTextDirectPolicy.decide(
+                text: "收到。",
+                mode: .translate,
+                enabled: true,
+                threshold: 8
+            ),
+            .modeRequiresLLM
+        )
+    }
+
+    func testCustomizedPolishingPromptStillRequiresLLMForShortText() {
+        var customized = ProcessingMode.formalWriting
+        customized.prompt = "Rewrite this: {text}"
+
+        XCTAssertEqual(
+            ShortTextDirectPolicy.decide(
+                text: "收到。",
+                mode: customized,
+                enabled: true,
+                threshold: 8
+            ),
+            .modeRequiresLLM
+        )
+    }
+
+    func testShortPartialSkipsStopTimeProvisional() {
+        XCTAssertFalse(
+            ShortTextDirectPolicy.shouldStartStopTimeProvisional(
+                partialText: "稍等一下。",
+                mode: .formalWriting,
+                enabled: true,
+                threshold: 8
+            )
+        )
+    }
+
+    func testShortPartialCanStillUseFreshLLMWhenFinalBecomesLong() {
+        XCTAssertFalse(
+            ShortTextDirectPolicy.shouldStartStopTimeProvisional(
+                partialText: "稍等一下。",
+                mode: .formalWriting,
+                enabled: true,
+                threshold: 8
+            )
+        )
+        XCTAssertEqual(
+            ShortTextDirectPolicy.decide(
+                text: "一二三四五六七八九",
+                mode: .formalWriting,
+                enabled: true,
+                threshold: 8
+            ),
+            .textTooLong
+        )
+    }
+
+    func testLongPartialProvisionalIsDiscardedWhenFinalBecomesShort() {
+        XCTAssertTrue(
+            ShortTextDirectPolicy.shouldStartStopTimeProvisional(
+                partialText: "一二三四五六七八九",
+                mode: .formalWriting,
+                enabled: true,
+                threshold: 8
+            )
+        )
+        XCTAssertEqual(
+            ShortTextDirectPolicy.decide(
+                text: "收到。",
+                mode: .formalWriting,
+                enabled: true,
+                threshold: 8
+            ),
+            .directOutput
+        )
+    }
+
+    func testShortDirectSpeculativeMinimumIsThresholdPlusOne() {
+        var throttle = SpeculativeLLMThrottle()
+
+        XCTAssertEqual(
+            throttle.submit("xxxxxxxx", minimumTextLength: 9),
+            .tooShort
+        )
+        XCTAssertEqual(
+            throttle.submit("xxxxxxxxx", minimumTextLength: 9),
+            .debounce
+        )
+    }
+
     func testCurrentSessionGenerationAcceptsLLMCompletion() {
         XCTAssertTrue(SessionGenerationGuard.isCurrent(expected: 7, active: 7))
     }

@@ -804,10 +804,11 @@ actor RecognitionSession {
         var earlyLLMTask: Task<String?, Never>?
         var earlyLLMInput: String?
         if needsLLM && !partialAtStop.isEmpty {
-            let exemptionThreshold = currentMode.id == ProcessingMode.formalWritingId
-                ? (Int(UserDefaults.standard.string(forKey: "tf_shortTextExemption") ?? "0") ?? 0)
-                : 0
-            if exemptionThreshold == 0 || partialAtStop.count >= exemptionThreshold {
+            let partialDirectDecision = ShortTextDirectPolicy.decide(
+                text: partialAtStop,
+                mode: currentMode
+            )
+            if partialDirectDecision != .directOutput {
                 let existingDiff = TranscriptDiff.classify(
                     source: speculativeLLMText,
                     final: partialAtStop
@@ -846,21 +847,24 @@ actor RecognitionSession {
                     earlyLLMTask = task
                     earlyLLMInput = provisionalInput
                 }
+            } else {
+                cancelStaleSpeculativeRequest(reason: "shortTextDirectOutput")
+                DebugFileLogger.log(
+                    "stop: provisional canceled reason=shortTextDirectOutput"
+                )
             }
         }
 
-        // Early label override for short text exemption (语音润色 only).
+        // Early label override for short direct output (语音润色 only).
         // Use streaming transcript to update UI immediately, before ASR teardown,
         // so the floating bar doesn't flash "润色中" → "校准中".
-        if needsLLM && currentMode.id == ProcessingMode.formalWritingId {
-            let exemptionThreshold = Int(UserDefaults.standard.string(forKey: "tf_shortTextExemption") ?? "0") ?? 0
-            if exemptionThreshold > 0 {
-                let streamingText = currentTranscript.composedText
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                if streamingText.count < exemptionThreshold {
-                    onASREvent?(.processingLabelOverride(L("校准中", "Calibrating")))
-                }
-            }
+        if needsLLM,
+           ShortTextDirectPolicy.decide(
+               text: partialAtStop,
+               mode: currentMode
+           ) == .directOutput
+        {
+            onASREvent?(.processingLabelOverride(L("校准中", "Calibrating")))
         }
 
         // ASR teardown: send endAudio, then wait for the final transcript.
@@ -978,15 +982,33 @@ actor RecognitionSession {
             DebugFileLogger.log("stop: finalTranscript len=\(finalLLMInput.count) diffType=noProvisional semanticMatch=false")
         }
 
-        let exemptionThreshold = currentMode.id == ProcessingMode.formalWritingId
-            ? (Int(UserDefaults.standard.string(forKey: "tf_shortTextExemption") ?? "0") ?? 0)
-            : 0
-        if needsLLM && exemptionThreshold > 0 && finalLLMInput.count < exemptionThreshold {
+        let shortDirectEnabled = ShortTextDirectPolicy.isEnabled
+        let shortDirectThreshold = ShortTextDirectPolicy.threshold
+        let finalSemanticLength = ShortTextDirectPolicy.semanticLength(of: finalLLMInput)
+        let shortDirectDecision = ShortTextDirectPolicy.decide(
+            text: finalLLMInput,
+            mode: currentMode,
+            enabled: shortDirectEnabled,
+            threshold: shortDirectThreshold
+        )
+        DebugFileLogger.log(
+            "stop: short-text direct check mode=\(currentMode.name) rawLen=\(finalLLMInput.count) semanticLen=\(finalSemanticLength) threshold=\(shortDirectThreshold) enabled=\(shortDirectEnabled)"
+        )
+        switch shortDirectDecision {
+        case .directOutput:
             needsLLM = false
             earlyLLMTask?.cancel()
             earlyLLMTask = nil
-            DebugFileLogger.log("stop: short text exemption (\(finalLLMInput.count) < \(exemptionThreshold) chars), skipping LLM")
+            cancelStaleSpeculativeRequest(reason: "shortTextDirectOutput")
+            DebugFileLogger.log("stop: short-text direct output selected")
+            DebugFileLogger.log("stop: provisional canceled reason=shortTextDirectOutput")
             onASREvent?(.processingLabelOverride(L("校准中", "Calibrating")))
+        case .modeRequiresLLM:
+            DebugFileLogger.log("stop: short-text direct output skipped reason=modeRequiresLLM")
+        case .textTooLong:
+            DebugFileLogger.log("stop: short-text direct output skipped reason=textTooLong")
+        case .disabled:
+            DebugFileLogger.log("stop: short-text direct output skipped reason=disabled")
         }
 
         let freshConfig = needsLLM ? loadEffectiveLLMConfig() : nil
@@ -1041,16 +1063,6 @@ actor RecognitionSession {
 
             // Apply snippet replacements before LLM (e.g. "我的邮箱" → actual email)
             finalText = SnippetStorage.applyEffective(to: finalText, bundleId: targetBundleId)
-
-            // Short text exemption (for non-streaming providers, 语音润色 only)
-            if needsLLM && earlyLLMTask == nil && currentMode.id == ProcessingMode.formalWritingId {
-                let exemptionThreshold = Int(UserDefaults.standard.string(forKey: "tf_shortTextExemption") ?? "0") ?? 0
-                if exemptionThreshold > 0 && finalText.count < exemptionThreshold {
-                    DebugFileLogger.log("stop: short text exemption (\(finalText.count) < \(exemptionThreshold) chars), skipping LLM (sync path)")
-                    needsLLM = false
-                    onASREvent?(.processingLabelOverride(L("校准中", "Calibrating")))
-                }
-            }
 
             // LLM post-processing: prefer early result (fired at stop time),
             // fall back to synchronous call for very short recordings where
@@ -1208,6 +1220,11 @@ actor RecognitionSession {
             guard finalInjectionGuard.claim(generation: myGeneration) else {
                 DebugFileLogger.log("stop: duplicate injection blocked generation=\(myGeneration)")
                 return
+            }
+            if shortDirectDecision == .directOutput {
+                DebugFileLogger.log(
+                    "stop: short-text direct injecting finalTranscript len=\(finalText.count)"
+                )
             }
             _ = await withCheckedContinuation { continuation in
                 Task.detached {
@@ -1498,7 +1515,16 @@ actor RecognitionSession {
         var text = currentTranscript.composedText
             .trimmingCharacters(in: .whitespacesAndNewlines)
         text = SnippetStorage.applyEffective(to: text, bundleId: targetBundleId)
-        let submission = speculativeThrottle.submit(text)
+        let semanticLength = ShortTextDirectPolicy.semanticLength(of: text)
+        let minimumSemanticLength = ShortTextDirectPolicy.isSafePolishingMode(currentMode)
+            && ShortTextDirectPolicy.isEnabled
+            ? ShortTextDirectPolicy.threshold + 1
+            : 8
+        let throttleText = String(repeating: "x", count: semanticLength)
+        let submission = speculativeThrottle.submit(
+            throttleText,
+            minimumTextLength: minimumSemanticLength
+        )
 
         speculativeDebounceTask?.cancel()
         speculativeDebounceTask = nil
@@ -1506,10 +1532,10 @@ actor RecognitionSession {
         switch submission {
         case .tooShort:
             DebugFileLogger.log(
-                "speculative request skipped reason=textTooShort len=\(text.count) min=\(SpeculativeLLMThrottle.minimumTextLength)"
+                "speculative request skipped reason=textTooShort rawLen=\(text.count) semanticLen=\(semanticLength) min=\(minimumSemanticLength)"
             )
         case .deltaTooSmall:
-            let delta = text.count - speculativeThrottle.lastStartedText.count
+            let delta = semanticLength - speculativeThrottle.lastStartedText.count
             DebugFileLogger.log(
                 "speculative request skipped reason=deltaTooSmall len=\(text.count) delta=\(delta) minDelta=\(SpeculativeLLMThrottle.minimumCharacterIncrement)"
             )
@@ -1520,22 +1546,22 @@ actor RecognitionSession {
         case .duplicate:
             break
         case .debounce:
-            scheduleSpeculativeDebounce(for: text)
+            scheduleSpeculativeDebounce(for: text, throttleText: throttleText)
         }
     }
 
-    private func scheduleSpeculativeDebounce(for text: String) {
+    private func scheduleSpeculativeDebounce(for text: String, throttleText: String) {
         speculativeDebounceTask?.cancel()
         speculativeDebounceTask = Task {
             try? await Task.sleep(for: SpeculativeLLMThrottle.debounceDuration)
             guard !Task.isCancelled, state == .recording else { return }
-            await fireSpeculativeLLM(text: text)
+            await fireSpeculativeLLM(text: text, throttleText: throttleText)
         }
     }
 
-    private func fireSpeculativeLLM(text: String) async {
+    private func fireSpeculativeLLM(text: String, throttleText: String) async {
         guard let llmConfig = loadEffectiveLLMConfig() else { return }
-        guard speculativeThrottle.beginDebouncedRequest(for: text) else { return }
+        guard speculativeThrottle.beginDebouncedRequest(for: throttleText) else { return }
 
         speculativeLLMText = text
         speculativeLLMGeneration = sessionGeneration
@@ -1610,13 +1636,23 @@ actor RecognitionSession {
             DebugFileLogger.log("speculative request completed len=\(input.count)")
         }
 
-        guard let pending = speculativeThrottle.requestCompleted(input: input),
+        let completedThrottleText = String(
+            repeating: "x",
+            count: ShortTextDirectPolicy.semanticLength(of: input)
+        )
+        guard let pending = speculativeThrottle.requestCompleted(input: completedThrottleText),
               state == .recording
         else { return }
 
         let submission = speculativeThrottle.submit(pending)
         if submission == .debounce {
-            scheduleSpeculativeDebounce(for: pending)
+            var pendingText = currentTranscript.composedText
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            pendingText = SnippetStorage.applyEffective(
+                to: pendingText,
+                bundleId: targetBundleId
+            )
+            scheduleSpeculativeDebounce(for: pendingText, throttleText: pending)
         }
     }
 

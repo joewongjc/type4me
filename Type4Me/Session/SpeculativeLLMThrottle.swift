@@ -1,7 +1,6 @@
 import Foundation
 
 struct SpeculativeLLMThrottle: Sendable {
-    static let minimumTextLength = 8
     static let minimumCharacterIncrement = 8
     static let debounceDuration: Duration = .milliseconds(600)
 
@@ -18,8 +17,8 @@ struct SpeculativeLLMThrottle: Sendable {
     private(set) var pendingText: String?
     private(set) var inFlight = false
 
-    mutating func submit(_ text: String) -> Submission {
-        guard text.count >= Self.minimumTextLength else {
+    mutating func submit(_ text: String, minimumTextLength: Int = 8) -> Submission {
+        guard text.count >= minimumTextLength else {
             debounceText = nil
             pendingText = nil
             return .tooShort
