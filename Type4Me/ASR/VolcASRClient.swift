@@ -107,9 +107,8 @@ actor VolcASRClient: SpeechRecognizer {
         didRequestEnd = false
         sessionStartTime = ContinuousClock.now
         lastTranscriptTime = nil
-        localConfirmedSegments = []
-        lastPartialText = ""
-        lastServerConfirmedCount = 0
+        partialAssembler.reset()
+        sequenceGate.reset()
         NSLog("[ASR] Sending full_client_request (%d bytes), connectId=%@", message.count, connectId)
         do {
             try await activeTask.send(.data(message))
@@ -201,14 +200,8 @@ actor VolcASRClient: SpeechRecognizer {
     private var lastTranscriptTime: ContinuousClock.Instant?
     private var sessionStartTime: ContinuousClock.Instant?
 
-    /// Locally promoted confirmed segments from dropped partials.
-    /// When the server starts a new utterance without confirming the previous partial,
-    /// we preserve the old partial here to prevent UI flicker.
-    private var localConfirmedSegments: [String] = []
-    /// Previous partial text for drop detection.
-    private var lastPartialText: String = ""
-    /// Previous server confirmed count, to detect genuine new confirmations vs stale state.
-    private var lastServerConfirmedCount: Int = 0
+    private var partialAssembler = VolcPartialCandidateAssembler()
+    private var sequenceGate = VolcSequenceGate()
 
     func sendAudio(_ data: Data) async throws {
         guard let task = webSocketTask else { return }
@@ -316,10 +309,21 @@ actor VolcASRClient: SpeechRecognizer {
 
             do {
                 let response = try VolcProtocol.decodeServerResponse(data)
-                let transcript = makeTranscript(
-                    from: response.result,
+                let previousSequence = sequenceGate.latest
+                if !sequenceGate.accept(response.sequenceNumber) {
+                    DebugFileLogger.log(
+                        "partial candidate reliability=false reason=staleEvent sequence=\(response.sequenceNumber ?? 0) latest=\(previousSequence ?? 0)"
+                    )
+                    DebugFileLogger.log(
+                        "partial candidate skipped reason=unreliable"
+                    )
+                    return
+                }
+                let assembly = partialAssembler.assemble(
+                    result: response.result,
                     isFinal: response.header.flags == .asyncFinal
                 )
+                let transcript = assembly.transcript
                 guard transcript != lastTranscript else { return }
                 lastTranscript = transcript
 
@@ -330,6 +334,14 @@ actor VolcASRClient: SpeechRecognizer {
 
                 let gapMs = Int(sinceLastUpdate.components.seconds * 1000 + sinceLastUpdate.components.attoseconds / 1_000_000_000_000_000)
                 DebugFileLogger.log("ASR transcript +\(sinceStart) gap=\(gapMs)ms confirmed=\(transcript.confirmedSegments.count) partial=\(transcript.partialText.count) final=\(transcript.isFinal)")
+                DebugFileLogger.log(
+                    "asr partial event: eventSequence=\(assembly.sequence) serverSequence=\(response.sequenceNumber.map(String.init) ?? "none") definiteCount=\(assembly.definiteCount) incomingLen=\(assembly.incomingLength) committedLen=\(assembly.committedLength) mutableLen=\(assembly.mutableLength) assembledPartialLen=\(assembly.assembledPartialLength) previousPartialLen=\(assembly.previousPartialLength) commonPrefixLength=\(assembly.commonPrefixLength) replacedMutableSegment=\(assembly.replacedMutableSegment) appendedCommittedSegment=\(assembly.appendedCommittedSegment)"
+                )
+                if let reason = transcript.partialCandidateReliability.reason {
+                    DebugFileLogger.log(
+                        "partial candidate reliability=false reason=\(reason)"
+                    )
+                }
 
                 NSLog(
                     "[ASR] Transcript update +%@ gap=%dms confirmed=%d partial=%d final=%@",
@@ -361,83 +373,4 @@ actor VolcASRClient: SpeechRecognizer {
         eventContinuation?.yield(event)
     }
 
-    private func makeTranscript(from result: VolcASRResult, isFinal: Bool) -> RecognitionTranscript {
-        let serverConfirmed = result.utterances
-            .filter(\.definite)
-            .map(\.text)
-            .filter { !$0.isEmpty }
-        let partialText = result.utterances.last(where: { !$0.definite && !$0.text.isEmpty })?.text ?? ""
-
-        let prevServerConfirmedCount = lastServerConfirmedCount
-        lastServerConfirmedCount = serverConfirmed.count
-
-        // When the server confirms new segments, sync local state
-        if serverConfirmed.count > localConfirmedSegments.count {
-            localConfirmedSegments = serverConfirmed
-        }
-
-        // Detect dropped partial: server started a new utterance without confirming the old one.
-        // Conditions: (1) server confirmed count didn't increase since last response,
-        // (2) old partial was substantial.
-        // Two sub-cases:
-        //   a) new partial is non-empty but shares <50% prefix with old → replaced
-        //   b) new partial is empty → server cleared it (e.g. during finalization)
-        if !isFinal,
-           serverConfirmed.count <= prevServerConfirmedCount,
-           lastPartialText.count >= 4
-        {
-            if partialText.isEmpty {
-                NSLog("[ASR] Partial cleared without confirmation: \"%@\", promoting to local confirmed",
-                      lastPartialText)
-                localConfirmedSegments.append(lastPartialText)
-            } else {
-                let lcp = longestCommonPrefixLength(lastPartialText, partialText)
-                let ratio = Double(lcp) / Double(lastPartialText.count)
-                if ratio < 0.5 {
-                    NSLog("[ASR] Dropped partial detected: \"%@\" → \"%@\" (LCP=%d ratio=%.2f), promoting to local confirmed",
-                          lastPartialText, partialText, lcp, ratio)
-                    localConfirmedSegments.append(lastPartialText)
-                }
-            }
-        }
-
-        lastPartialText = partialText
-
-        // Guard against false promotion: if the new partial overlaps significantly
-        // with the last promoted segment, the server merely re-analyzed — undo.
-        if !partialText.isEmpty && localConfirmedSegments.count > serverConfirmed.count {
-            let lastPromoted = localConfirmedSegments.last!
-            let lcp = longestCommonPrefixLength(lastPromoted, partialText)
-            let ratio = Double(lcp) / Double(lastPromoted.count)
-            if ratio >= 0.5 {
-                NSLog("[ASR] Un-promoting \"%@\" — partial \"%@\" reclaims it (LCP ratio=%.2f)",
-                      lastPromoted, partialText, ratio)
-                localConfirmedSegments.removeLast()
-            }
-        }
-
-        // Use local confirmed segments (which may include promoted partials)
-        let effectiveConfirmed = localConfirmedSegments.count > serverConfirmed.count
-            ? localConfirmedSegments : serverConfirmed
-
-        let composedText = (effectiveConfirmed + (partialText.isEmpty ? [] : [partialText])).joined()
-        let authoritativeText = result.text.isEmpty ? composedText : result.text
-        return RecognitionTranscript(
-            confirmedSegments: effectiveConfirmed,
-            partialText: partialText,
-            authoritativeText: authoritativeText,
-            isFinal: isFinal
-        )
-    }
-
-    private func longestCommonPrefixLength(_ a: String, _ b: String) -> Int {
-        var count = 0
-        var ai = a.startIndex, bi = b.startIndex
-        while ai < a.endIndex, bi < b.endIndex, a[ai] == b[bi] {
-            count += 1
-            ai = a.index(after: ai)
-            bi = b.index(after: bi)
-        }
-        return count
-    }
 }

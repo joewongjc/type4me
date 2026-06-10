@@ -15,6 +15,7 @@ struct VolcASRResult: Sendable, Equatable {
 
 struct VolcServerResponse: Sendable, Equatable {
     let header: VolcHeader
+    let sequenceNumber: Int32?
     let result: VolcASRResult
 }
 
@@ -150,9 +151,22 @@ enum VolcProtocol: Sendable {
         let header = try VolcHeader.decode(from: data)
         let headerBytes = Int(header.headerSize) * 4
         var offset = headerBytes
+        var sequenceNumber: Int32?
 
-        // Skip sequence number if present
-        if header.flags == .positiveSequence || header.flags == .negativeSequenceLast {
+        if header.flags.hasSequence {
+            guard data.count >= offset + 4 else {
+                throw VolcProtocolError.invalidPayload
+            }
+            let sequenceBytes = data[
+                data.startIndex + offset ..< data.startIndex + offset + 4
+            ]
+            sequenceNumber = Int32(
+                bitPattern: UInt32(
+                    bigEndian: sequenceBytes.withUnsafeBytes {
+                        $0.load(as: UInt32.self)
+                    }
+                )
+            )
             offset += 4
         }
 
@@ -219,6 +233,7 @@ enum VolcProtocol: Sendable {
 
         return VolcServerResponse(
             header: header,
+            sequenceNumber: sequenceNumber,
             result: VolcASRResult(text: text, utterances: utterances)
         )
     }

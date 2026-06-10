@@ -500,6 +500,29 @@ final class RecognitionSessionTests: XCTestCase {
         )
     }
 
+    func testUnreliablePartialSkipsSpeculativeAndStopTimeProvisional() {
+        let transcript = RecognitionTranscript(
+            confirmedSegments: ["旧的临时结果"],
+            partialText: "新的修订",
+            authoritativeText: "",
+            isFinal: false,
+            partialCandidateReliability: .unreliable(reason: "prefixCollapse")
+        )
+
+        XCTAssertFalse(PartialCandidateGate.isEligible(transcript))
+    }
+
+    func testFinalASRStillUsesFreshLLMWhenPartialWasUnreliable() {
+        XCTAssertEqual(
+            EarlyLLMDecision.decide(
+                earlyInput: nil,
+                finalInput: "明天下午三点开会",
+                needsLLM: true
+            ),
+            .runFresh
+        )
+    }
+
     func testCurrentSessionGenerationAcceptsLLMCompletion() {
         XCTAssertTrue(SessionGenerationGuard.isCurrent(expected: 7, active: 7))
     }

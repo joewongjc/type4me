@@ -50,6 +50,7 @@ struct RecognitionTranscript: Sendable, Equatable {
     let partialText: String
     let authoritativeText: String
     let isFinal: Bool
+    var partialCandidateReliability: PartialCandidateReliability = .reliable
     /// Monotonic timestamp when the ASR client emitted this transcript.
     /// Used for pipeline latency diagnostics; excluded from Equatable.
     var emitTime: ContinuousClock.Instant = .now
@@ -59,13 +60,15 @@ struct RecognitionTranscript: Sendable, Equatable {
             && lhs.partialText == rhs.partialText
             && lhs.authoritativeText == rhs.authoritativeText
             && lhs.isFinal == rhs.isFinal
+            && lhs.partialCandidateReliability == rhs.partialCandidateReliability
     }
 
     static let empty = RecognitionTranscript(
         confirmedSegments: [],
         partialText: "",
         authoritativeText: "",
-        isFinal: false
+        isFinal: false,
+        partialCandidateReliability: .reliable
     )
 
     var composedText: String {
@@ -75,6 +78,10 @@ struct RecognitionTranscript: Sendable, Equatable {
 
     var displayText: String {
         authoritativeText.isEmpty ? composedText : authoritativeText
+    }
+
+    var isPartialCandidateReliable: Bool {
+        partialCandidateReliability.isReliable
     }
 }
 

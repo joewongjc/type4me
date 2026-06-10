@@ -288,6 +288,28 @@ final class VolcProtocolTests: XCTestCase {
         XCTAssertEqual(response.result.utterances.first?.text, "修正后的整句")
     }
 
+    func testDecodeServerResponsePreservesSequenceNumber() throws {
+        let jsonData = try JSONSerialization.data(withJSONObject: [
+            "text": "partial",
+            "utterances": [] as [[String: Any]],
+        ])
+        let header = VolcHeader(
+            messageType: .serverResponse,
+            flags: .positiveSequence,
+            serialization: .json,
+            compression: .none
+        )
+        let message = VolcProtocol.encodeMessage(
+            header: header,
+            payload: jsonData,
+            sequenceNumber: 42
+        )
+
+        let response = try VolcProtocol.decodeServerResponse(message)
+
+        XCTAssertEqual(response.sequenceNumber, 42)
+    }
+
     func testDecodeServerMessage_uncompressed() throws {
         let jsonPayload: [String: Any] = [
             "text": "test",

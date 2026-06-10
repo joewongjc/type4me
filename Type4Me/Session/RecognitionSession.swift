@@ -798,12 +798,16 @@ actor RecognitionSession {
         var needsLLM = !currentMode.prompt.isEmpty
         var partialAtStop = currentTranscript.composedText
             .trimmingCharacters(in: .whitespacesAndNewlines)
+        let partialAtStopReliable = PartialCandidateGate.isEligible(currentTranscript)
         partialAtStop = SnippetStorage.applyEffective(to: partialAtStop, bundleId: targetBundleId)
         DebugFileLogger.log("stop: partialAtStop len=\(partialAtStop.count)")
 
         var earlyLLMTask: Task<String?, Never>?
         var earlyLLMInput: String?
-        if needsLLM && !partialAtStop.isEmpty {
+        if !partialAtStopReliable {
+            cancelStaleSpeculativeRequest(reason: "unreliablePartial")
+            DebugFileLogger.log("partial candidate skipped reason=unreliable")
+        } else if needsLLM && !partialAtStop.isEmpty {
             let partialDirectDecision = ShortTextDirectPolicy.decide(
                 text: partialAtStop,
                 mode: currentMode
@@ -1511,6 +1515,12 @@ actor RecognitionSession {
         #if HAS_CLOUD_SUBSCRIPTION
         if isCloudMode { return }
         #endif
+        guard PartialCandidateGate.isEligible(currentTranscript) else {
+            speculativeDebounceTask?.cancel()
+            speculativeDebounceTask = nil
+            DebugFileLogger.log("partial candidate skipped reason=unreliable")
+            return
+        }
 
         var text = currentTranscript.composedText
             .trimmingCharacters(in: .whitespacesAndNewlines)
