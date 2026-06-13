@@ -961,7 +961,7 @@ private struct ModeDetailInner: View {
 
 // MARK: - Formal Writing Detail Inner
 
-private struct FormalWritingDetailInner: View {
+private struct FormalWritingDetailInner: View, SettingsCardHelpers {
 
     let mode: ProcessingMode
     let onSave: (ProcessingMode) -> Void
@@ -989,28 +989,62 @@ private struct FormalWritingDetailInner: View {
     private let directThresholdOptions = [4, 6, 8, 10, 12]
 
     private var shortTextDirectSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Toggle(
-                L("短句直接输出", "Direct Output for Short Phrases"),
-                isOn: $shortTextDirectEnabled
-            )
-            .toggleStyle(.switch)
-            Text(L("语义字符不超过阈值时跳过润色，直接使用最终识别结果",
-                   "Skip polishing when semantic content does not exceed the threshold"))
+        settingsGroupCard(L("短句处理", "Short Phrase Handling"), icon: "text.badge.checkmark") {
+            HStack(alignment: .top, spacing: 16) {
+                VStack(alignment: .leading, spacing: 6) {
+                    settingLabel(
+                        L("短句直接输出", "Direct Output"),
+                        description: L("跳过 LLM 润色", "Skip LLM polishing")
+                    )
+                    settingsDropdown(
+                        selection: Binding(
+                            get: { shortTextDirectEnabled ? "on" : "off" },
+                            set: { shortTextDirectEnabled = $0 == "on" }
+                        ),
+                        options: [
+                            ("on", L("开启", "On")),
+                            ("off", L("关闭", "Off")),
+                        ]
+                    )
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 6)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    settingLabel(
+                        L("直接输出阈值", "Direct Output Threshold"),
+                        description: L("忽略空格与标点", "Ignores spaces and punctuation")
+                    )
+                    settingsDropdown(
+                        selection: Binding(
+                            get: { String(shortTextDirectThreshold) },
+                            set: { shortTextDirectThreshold = Int($0) ?? ShortTextDirectPolicy.defaultThreshold }
+                        ),
+                        options: directThresholdOptions.map { value in
+                            (String(value), L("\(value) 个语义字符", "\(value) semantic characters"))
+                        }
+                    )
+                    .disabled(!shortTextDirectEnabled)
+                    .opacity(shortTextDirectEnabled ? 1 : 0.45)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 6)
+            }
+        }
+    }
+
+    private func settingLabel(_ title: String, description: String) -> some View {
+        HStack(spacing: 4) {
+            Text(title.uppercased())
+                .font(.system(size: 10, weight: .semibold))
+                .tracking(0.8)
+                .foregroundStyle(TF.settingsTextTertiary)
+            Text("|")
+                .font(.system(size: 10))
+                .foregroundStyle(TF.settingsTextTertiary.opacity(0.5))
+            Text(description)
                 .font(.system(size: 10))
                 .foregroundStyle(TF.settingsTextTertiary)
-            if shortTextDirectEnabled {
-                Picker(
-                    L("阈值", "Threshold"),
-                    selection: $shortTextDirectThreshold
-                ) {
-                    ForEach(directThresholdOptions, id: \.self) { value in
-                        Text(L("\(value) 个语义字符", "\(value) semantic characters"))
-                            .tag(value)
-                    }
-                }
-                .pickerStyle(.menu)
-            }
         }
     }
 
