@@ -510,6 +510,7 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
                     .font(.system(size: 13))
                     .foregroundStyle(TF.settingsText)
                     .lineLimit(1)
+                    .truncationMode(.middle)
                 Spacer()
                 Image(systemName: "chevron.down")
                     .font(.system(size: 10, weight: .medium))
@@ -542,13 +543,15 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
     }
 
     private var microphonePriorityMenuLabel: String {
-        L("当前优先级：\(microphonePrioritySummary)",
-          "Current Priority: \(microphonePrioritySummary)")
+        L("使用当前优先级", "Use Current Priority")
     }
 
     private var microphonePrioritySummary: String {
         let names = microphonePriorityEntries.map { displayName(for: $0) }
-        return (names + [L("跟随系统", "System")]).joined(separator: L("、", ", "))
+        let visibleNames = Array(names.prefix(2))
+        let hiddenCount = max(0, names.count - visibleNames.count)
+        let hiddenSummary = hiddenCount > 0 ? [L("另 \(hiddenCount) 个", "\(hiddenCount) more")] : []
+        return (visibleNames + hiddenSummary + [L("跟随系统", "System")]).joined(separator: L("、", ", "))
     }
 
     private func openMicrophonePrioritySheet() {
@@ -834,19 +837,29 @@ private struct MicrophonePrioritySheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(L("麦克风优先级", "Microphone Priority"))
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(TF.settingsText)
-                Text(L("Type4Me 会按顺序使用可用设备，最后回退到系统默认。",
-                       "Type4Me uses the first available device, then falls back to system default."))
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 10) {
+                    Text(L("麦克风优先级", "Microphone Priority"))
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(TF.settingsText)
+                    Spacer()
+                    Label(L("末尾跟随系统", "System fallback"), systemImage: "gearshape")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(TF.settingsTextTertiary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Capsule().fill(TF.settingsCardAlt.opacity(0.75)))
+                }
+
+                Text(L("点一行加入或移除，箭头调整顺序。",
+                       "Click a row to add or remove it; use arrows to reorder."))
                     .font(.system(size: 11))
                     .foregroundStyle(TF.settingsTextTertiary)
             }
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 6) {
                     if allEntries.isEmpty {
                         Text(L("当前没有可用输入设备。", "No input devices are currently available."))
                             .font(.system(size: 12))
@@ -858,14 +871,17 @@ private struct MicrophonePrioritySheet: View {
                             deviceRow(entry)
                         }
                     }
-
-                    systemFallbackRow
                 }
-                .padding(.vertical, 2)
+                .padding(6)
             }
-            .frame(maxHeight: 320)
+            .frame(height: listHeight)
+            .background(RoundedRectangle(cornerRadius: 10).fill(TF.settingsCardAlt.opacity(0.35)))
 
-            HStack {
+            HStack(spacing: 10) {
+                Text(selectionFooterText)
+                    .font(.system(size: 10))
+                    .foregroundStyle(TF.settingsTextTertiary)
+                    .lineLimit(1)
                 Spacer()
                 Button(L("取消", "Cancel"), action: onCancel)
                     .buttonStyle(.plain)
@@ -892,8 +908,8 @@ private struct MicrophonePrioritySheet: View {
                 .disabled(orderedEntries.isEmpty)
             }
         }
-        .padding(20)
-        .frame(width: 480)
+        .padding(16)
+        .frame(width: 460)
         .background(TF.settingsBg)
     }
 
@@ -905,54 +921,55 @@ private struct MicrophonePrioritySheet: View {
         return result
     }
 
-    private var systemFallbackRow: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "gearshape")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(TF.settingsTextTertiary)
-                .frame(width: 24, height: 24)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(L("最后：跟随系统", "Last: Follow System"))
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(TF.settingsText)
-                Text(L("所有指定设备都不可用时使用。", "Used when none of the selected devices are available."))
-                    .font(.system(size: 10))
-                    .foregroundStyle(TF.settingsTextTertiary)
-            }
-            Spacer()
+    private var listHeight: CGFloat {
+        guard !allEntries.isEmpty else {
+            return 52
         }
-        .padding(10)
-        .background(RoundedRectangle(cornerRadius: 8).fill(TF.settingsCardAlt.opacity(0.55)))
+        let visibleRows = min(allEntries.count, 5)
+        let rowHeight: CGFloat = 38
+        let rowSpacing: CGFloat = 6
+        let verticalPadding: CGFloat = 12
+        return CGFloat(visibleRows) * rowHeight
+            + CGFloat(max(visibleRows - 1, 0)) * rowSpacing
+            + verticalPadding
+    }
+
+    private var selectionFooterText: String {
+        L("已选 \(orderedEntries.count) 个，最后自动跟随系统",
+          "\(orderedEntries.count) selected, then system fallback")
     }
 
     private func deviceRow(_ entry: AudioInputDevicePreferenceEntry) -> some View {
         let selectedIndex = orderedEntries.firstIndex(where: { $0.uid == entry.uid })
         let device = devices.first { $0.uid == entry.uid }
-        return HStack(spacing: 10) {
+        return HStack(spacing: 8) {
             if let selectedIndex {
                 Text("\(selectedIndex + 1)")
                     .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(.white)
-                    .frame(width: 24, height: 24)
+                    .frame(width: 22, height: 22)
                     .background(Circle().fill(TF.settingsNavActive))
             } else {
                 Image(systemName: "circle")
                     .font(.system(size: 13))
                     .foregroundStyle(TF.settingsTextTertiary)
-                    .frame(width: 24, height: 24)
+                    .frame(width: 22, height: 22)
             }
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(device?.name ?? entry.name)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(TF.settingsText)
-                    .lineLimit(1)
-                Text(device.map { $0.category.displayName } ?? L("未连接", "Offline"))
-                    .font(.system(size: 10))
-                    .foregroundStyle(TF.settingsTextTertiary)
-            }
+            Text(device?.name ?? entry.name)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(TF.settingsText)
+                .lineLimit(1)
 
-            Spacer()
+            Spacer(minLength: 8)
+
+            Text(device.map { $0.category.displayName } ?? L("未连接", "Offline"))
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(TF.settingsTextTertiary)
+                .lineLimit(1)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(Capsule().fill(TF.settingsBg.opacity(0.72)))
 
             if let selectedIndex {
                 iconButton("chevron.up", disabled: selectedIndex == 0) {
@@ -970,9 +987,17 @@ private struct MicrophonePrioritySheet: View {
                 }
             }
         }
-        .padding(10)
+        .padding(.horizontal, 8)
+        .frame(height: 38)
         .contentShape(Rectangle())
-        .background(RoundedRectangle(cornerRadius: 8).fill(TF.settingsCardAlt))
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(selectedIndex == nil ? TF.settingsCardAlt.opacity(0.72) : TF.settingsCardAlt)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(selectedIndex == nil ? Color.clear : TF.settingsNavActive.opacity(0.22), lineWidth: 1)
+        )
         .onTapGesture {
             toggleEntry(entry)
         }
