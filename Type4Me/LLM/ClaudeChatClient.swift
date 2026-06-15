@@ -4,16 +4,16 @@ import os
 actor ClaudeChatClient: LLMClient {
 
     private let logger = Logger(subsystem: "com.type4me.llm", category: "ClaudeChatClient")
+    private let session: URLSession
+    private let metricsDelegate: LLMURLSessionMetricsDelegate
 
-    private var session: URLSession {
-        let config = URLSessionConfiguration.default
-        // Cap total request duration (including streaming) to 60s so a stalled
-        // server can't hang the for-await loop indefinitely.
-        config.timeoutIntervalForResource = 60
-        if ProxyBypassMode.current.bypassLLM {
-            config.connectionProxyDictionary = [:]
-        }
-        return URLSession(configuration: config)
+    init(bypassProxy: Bool = ProxyBypassMode.current.bypassLLM) {
+        let resources = LLMURLSessionFactory.make(
+            providerID: LLMProvider.claude.rawValue,
+            bypassProxy: bypassProxy
+        )
+        session = resources.session
+        metricsDelegate = resources.metricsDelegate
     }
 
     /// Pre-establish TCP+TLS connection so the first real request skips handshake.
@@ -24,6 +24,10 @@ actor ClaudeChatClient: LLMClient {
         request.timeoutInterval = 5
         _ = try? await session.data(for: request)
         logger.info("Claude connection pre-warmed to \(baseURL)")
+    }
+
+    func invalidate() async {
+        session.invalidateAndCancel()
     }
 
     /// Process text through Anthropic Messages API (streaming).

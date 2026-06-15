@@ -5,20 +5,20 @@ actor DoubaoChatClient: LLMClient {
 
     private let logger = Logger(subsystem: "com.type4me.llm", category: "DoubaoChatClient")
     private let provider: LLMProvider
+    private let session: URLSession
+    private let metricsDelegate: LLMURLSessionMetricsDelegate
 
-    init(provider: LLMProvider = .doubao) {
+    init(
+        provider: LLMProvider = .doubao,
+        bypassProxy: Bool = ProxyBypassMode.current.bypassLLM
+    ) {
         self.provider = provider
-    }
-
-    private var session: URLSession {
-        let config = URLSessionConfiguration.default
-        // Cap total request duration (including streaming) to 60s so a stalled
-        // server can't hang the for-await loop indefinitely.
-        config.timeoutIntervalForResource = 60
-        if ProxyBypassMode.current.bypassLLM {
-            config.connectionProxyDictionary = [:]
-        }
-        return URLSession(configuration: config)
+        let resources = LLMURLSessionFactory.make(
+            providerID: provider.rawValue,
+            bypassProxy: bypassProxy
+        )
+        session = resources.session
+        metricsDelegate = resources.metricsDelegate
     }
 
     /// Pre-establish TCP+TLS connection so the first real request skips handshake.
@@ -29,6 +29,10 @@ actor DoubaoChatClient: LLMClient {
         request.timeoutInterval = 5
         _ = try? await session.data(for: request)
         logger.info("LLM connection pre-warmed to \(baseURL)")
+    }
+
+    func invalidate() async {
+        session.invalidateAndCancel()
     }
 
     /// Process text through Doubao ARK API (OpenAI-compatible streaming).
@@ -80,6 +84,8 @@ actor DoubaoChatClient: LLMClient {
     // MARK: - Streaming (SSE)
 
     private func processStreaming(request: URLRequest, model: String) async throws -> String {
+        let requestStart = ContinuousClock.now
+        DebugFileLogger.log("llm: request started model=\(model)")
         let (bytes, response) = try await session.bytes(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw LLMError.requestFailed(0)
@@ -92,15 +98,25 @@ actor DoubaoChatClient: LLMClient {
 
         var result = ""
         var lineCount = 0
+        var loggedFirstEvent = false
+        var loggedFirstToken = false
         for try await line in bytes.lines {
             lineCount += 1
             guard line.hasPrefix("data: ") else { continue }
+            if !loggedFirstEvent {
+                loggedFirstEvent = true
+                DebugFileLogger.log("llm: first SSE event +\(ContinuousClock.now - requestStart) model=\(model)")
+            }
             let payload = String(line.dropFirst(6))
             if payload == "[DONE]" { break }
             guard let data = payload.data(using: .utf8),
                   let chunk = try? JSONDecoder().decode(ChatStreamChunk.self, from: data),
                   let content = chunk.choices.first?.delta.content
             else { continue }
+            if !loggedFirstToken, !content.isEmpty {
+                loggedFirstToken = true
+                DebugFileLogger.log("llm: first content token +\(ContinuousClock.now - requestStart) model=\(model)")
+            }
             result += content
         }
 
@@ -112,6 +128,7 @@ actor DoubaoChatClient: LLMClient {
             DebugFileLogger.log("LLM[\(model)]: 0 lines received (connection closed immediately)")
             throw LLMError.emptyResponse(nil)
         }
+        DebugFileLogger.log("llm: completed +\(ContinuousClock.now - requestStart) chars=\(result.count) model=\(model)")
         return result
     }
 
