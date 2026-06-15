@@ -5,6 +5,8 @@ import XCTest
 final class AudioInputDevicePreferenceTests: XCTestCase {
 
     override func tearDown() {
+        UserDefaults.standard.removeObject(forKey: AudioInputDevicePreferenceStore.modeKey)
+        UserDefaults.standard.removeObject(forKey: AudioInputDevicePreferenceStore.priorityEntriesKey)
         UserDefaults.standard.removeObject(forKey: AudioInputDevicePreferenceStore.selectedUIDKey)
         UserDefaults.standard.removeObject(forKey: AudioInputDevicePreferenceStore.backupUIDKey)
         UserDefaults.standard.removeObject(forKey: "tf_microphoneSelectionMode")
@@ -43,9 +45,26 @@ final class AudioInputDevicePreferenceTests: XCTestCase {
         XCTAssertEqual(category, .external)
     }
 
-    func testResolvedDeviceUsesPrimaryWhenAvailable() {
-        UserDefaults.standard.set("airpods", forKey: AudioInputDevicePreferenceStore.selectedUIDKey)
-        UserDefaults.standard.set("built-in", forKey: AudioInputDevicePreferenceStore.backupUIDKey)
+    func testResolvedDeviceUsesSystemDefaultWhenModeIsSystem() {
+        AudioInputDevicePreferenceStore.savePriorityEntries([
+            AudioInputDevicePreferenceEntry(uid: "airpods", name: "AirPods Pro"),
+        ])
+        AudioInputDevicePreferenceStore.resetToSystemDefault()
+        let devices = [
+            AudioInputDevice(uid: "airpods", name: "AirPods Pro", category: .bluetooth),
+        ]
+
+        let resolved = AudioInputDevicePreferenceStore.resolvedDevice(devices: devices)
+
+        XCTAssertNil(resolved)
+        XCTAssertEqual(AudioInputDevicePreferenceStore.priorityEntries().map(\.uid), ["airpods"])
+    }
+
+    func testResolvedDeviceUsesFirstAvailablePriorityEntry() {
+        AudioInputDevicePreferenceStore.savePriorityEntries([
+            AudioInputDevicePreferenceEntry(uid: "airpods", name: "AirPods Pro"),
+            AudioInputDevicePreferenceEntry(uid: "built-in", name: "MacBook Pro Microphone"),
+        ])
         let devices = [
             AudioInputDevice(uid: "built-in", name: "MacBook Pro Microphone", category: .builtIn),
             AudioInputDevice(uid: "airpods", name: "AirPods Pro", category: .bluetooth),
@@ -56,9 +75,11 @@ final class AudioInputDevicePreferenceTests: XCTestCase {
         XCTAssertEqual(resolved?.uid, "airpods")
     }
 
-    func testResolvedDeviceUsesBackupWhenPrimaryUnavailable() {
-        UserDefaults.standard.set("airpods", forKey: AudioInputDevicePreferenceStore.selectedUIDKey)
-        UserDefaults.standard.set("built-in", forKey: AudioInputDevicePreferenceStore.backupUIDKey)
+    func testResolvedDeviceUsesNextPriorityEntryWhenFirstUnavailable() {
+        AudioInputDevicePreferenceStore.savePriorityEntries([
+            AudioInputDevicePreferenceEntry(uid: "airpods", name: "AirPods Pro"),
+            AudioInputDevicePreferenceEntry(uid: "built-in", name: "MacBook Pro Microphone"),
+        ])
         let devices = [
             AudioInputDevice(uid: "built-in", name: "MacBook Pro Microphone", category: .builtIn),
         ]
@@ -68,9 +89,11 @@ final class AudioInputDevicePreferenceTests: XCTestCase {
         XCTAssertEqual(resolved?.uid, "built-in")
     }
 
-    func testResolvedDeviceFallsBackToSystemDefaultWhenPrimaryAndBackupUnavailable() {
-        UserDefaults.standard.set("airpods", forKey: AudioInputDevicePreferenceStore.selectedUIDKey)
-        UserDefaults.standard.set("built-in", forKey: AudioInputDevicePreferenceStore.backupUIDKey)
+    func testResolvedDeviceFallsBackToSystemDefaultWhenNoPriorityEntriesAreAvailable() {
+        AudioInputDevicePreferenceStore.savePriorityEntries([
+            AudioInputDevicePreferenceEntry(uid: "airpods", name: "AirPods Pro"),
+            AudioInputDevicePreferenceEntry(uid: "built-in", name: "MacBook Pro Microphone"),
+        ])
         let devices = [
             AudioInputDevice(uid: "usb", name: "USB Microphone", category: .external),
         ]
@@ -80,20 +103,39 @@ final class AudioInputDevicePreferenceTests: XCTestCase {
         XCTAssertNil(resolved)
     }
 
-    func testResolvedDeviceUsesSystemDefaultWhenNoPrimaryIsConfigured() {
-        UserDefaults.standard.set("built-in", forKey: AudioInputDevicePreferenceStore.backupUIDKey)
-        let devices = [
-            AudioInputDevice(uid: "built-in", name: "MacBook Pro Microphone", category: .builtIn),
+    func testPriorityEntryStoragePreservesDeviceNamesAndOrder() {
+        let entries = [
+            AudioInputDevicePreferenceEntry(uid: "airpods", name: "AirPods Pro"),
+            AudioInputDevicePreferenceEntry(uid: "built-in", name: "MacBook Pro Microphone"),
         ]
 
-        let resolved = AudioInputDevicePreferenceStore.resolvedDevice(devices: devices)
+        let roundTrip = AudioInputDevicePreferenceStore.priorityEntries(
+            from: AudioInputDevicePreferenceStore.storageValue(for: entries)
+        )
 
-        XCTAssertNil(resolved)
+        XCTAssertEqual(roundTrip, entries)
     }
 
-    func testCachedResolutionUsesMonitorCacheForBackup() {
-        UserDefaults.standard.set("airpods", forKey: AudioInputDevicePreferenceStore.selectedUIDKey)
-        UserDefaults.standard.set("built-in", forKey: AudioInputDevicePreferenceStore.backupUIDKey)
+    func testPriorityEntryStorageNormalizesDuplicateUIDs() {
+        let entries = [
+            AudioInputDevicePreferenceEntry(uid: "airpods", name: "AirPods Pro"),
+            AudioInputDevicePreferenceEntry(uid: "airpods", name: "AirPods Pro 2"),
+            AudioInputDevicePreferenceEntry(uid: "built-in", name: "MacBook Pro Microphone"),
+        ]
+
+        let roundTrip = AudioInputDevicePreferenceStore.priorityEntries(
+            from: AudioInputDevicePreferenceStore.storageValue(for: entries)
+        )
+
+        XCTAssertEqual(roundTrip.map(\.uid), ["airpods", "built-in"])
+        XCTAssertEqual(roundTrip.first?.name, "AirPods Pro")
+    }
+
+    func testCachedResolutionUsesMonitorCacheForPriorityEntries() {
+        AudioInputDevicePreferenceStore.savePriorityEntries([
+            AudioInputDevicePreferenceEntry(uid: "airpods", name: "AirPods Pro"),
+            AudioInputDevicePreferenceEntry(uid: "built-in", name: "MacBook Pro Microphone"),
+        ])
         AudioInputDeviceMonitor.shared.replaceCachedDevices([
             AudioInputDevice(uid: "built-in", name: "MacBook Pro Microphone", category: .builtIn),
         ])
@@ -103,13 +145,34 @@ final class AudioInputDevicePreferenceTests: XCTestCase {
         XCTAssertEqual(resolved, "built-in")
     }
 
-    func testMigrationRemovesObsoletePriorityModeKeys() {
+    func testMigrationMapsLegacyPrimaryAndBackupToPriorityEntries() {
+        UserDefaults.standard.set("airpods", forKey: AudioInputDevicePreferenceStore.selectedUIDKey)
+        UserDefaults.standard.set("built-in", forKey: AudioInputDevicePreferenceStore.backupUIDKey)
         UserDefaults.standard.set("automatic", forKey: "tf_microphoneSelectionMode")
         UserDefaults.standard.set("bluetooth,builtIn", forKey: "tf_microphonePriorityOrder")
 
         AudioInputDevicePreferenceStore.migrateIfNeeded()
 
+        XCTAssertEqual(AudioInputDevicePreferenceStore.mode(), .priority)
+        XCTAssertEqual(AudioInputDevicePreferenceStore.priorityEntries().map(\.uid), ["airpods", "built-in"])
+        XCTAssertNil(UserDefaults.standard.string(forKey: AudioInputDevicePreferenceStore.selectedUIDKey))
+        XCTAssertNil(UserDefaults.standard.string(forKey: AudioInputDevicePreferenceStore.backupUIDKey))
         XCTAssertNil(UserDefaults.standard.string(forKey: "tf_microphoneSelectionMode"))
         XCTAssertNil(UserDefaults.standard.string(forKey: "tf_microphonePriorityOrder"))
+    }
+
+    func testMigrationSetsPriorityModeWhenPriorityEntriesAlreadyExist() {
+        let entries = [
+            AudioInputDevicePreferenceEntry(uid: "airpods", name: "AirPods Pro"),
+        ]
+        UserDefaults.standard.set(
+            AudioInputDevicePreferenceStore.storageValue(for: entries),
+            forKey: AudioInputDevicePreferenceStore.priorityEntriesKey
+        )
+
+        AudioInputDevicePreferenceStore.migrateIfNeeded()
+
+        XCTAssertEqual(AudioInputDevicePreferenceStore.mode(), .priority)
+        XCTAssertEqual(AudioInputDevicePreferenceStore.priorityEntries(), entries)
     }
 }

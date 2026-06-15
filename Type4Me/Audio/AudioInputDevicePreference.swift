@@ -33,14 +33,47 @@ struct AudioInputDevice: Identifiable, Equatable {
     let category: AudioInputDeviceCategory
 }
 
+enum AudioInputDevicePreferenceMode: String {
+    case systemDefault
+    case priority
+}
+
+struct AudioInputDevicePreferenceEntry: Codable, Equatable, Identifiable {
+    var id: String { uid }
+    let uid: String
+    let name: String
+}
+
 enum AudioInputDevicePreferenceStore {
+    static let modeKey = "tf_microphonePreferenceMode"
+    static let priorityEntriesKey = "tf_microphonePriorityEntries"
+
     static let selectedUIDKey = "tf_selectedMicrophoneUID"
     static let backupUIDKey = "tf_backupMicrophoneUID"
-
     private static let obsoleteSelectionModeKey = "tf_microphoneSelectionMode"
     private static let obsoletePriorityOrderKey = "tf_microphonePriorityOrder"
 
     static func migrateIfNeeded() {
+        if UserDefaults.standard.object(forKey: modeKey) == nil {
+            let storedEntries = priorityEntries(from: UserDefaults.standard.string(forKey: priorityEntriesKey))
+            if !storedEntries.isEmpty {
+                UserDefaults.standard.set(AudioInputDevicePreferenceMode.priority.rawValue, forKey: modeKey)
+            } else {
+                let legacyEntries = [
+                    legacyEntry(forKey: selectedUIDKey),
+                    legacyEntry(forKey: backupUIDKey),
+                ].compactMap { $0 }
+
+                if legacyEntries.isEmpty {
+                    UserDefaults.standard.set(AudioInputDevicePreferenceMode.systemDefault.rawValue, forKey: modeKey)
+                } else {
+                    savePriorityEntries(legacyEntries)
+                }
+            }
+        }
+
+        UserDefaults.standard.removeObject(forKey: selectedUIDKey)
+        UserDefaults.standard.removeObject(forKey: backupUIDKey)
         UserDefaults.standard.removeObject(forKey: obsoleteSelectionModeKey)
         UserDefaults.standard.removeObject(forKey: obsoletePriorityOrderKey)
     }
@@ -54,29 +87,71 @@ enum AudioInputDevicePreferenceStore {
         return resolvedDevice(devices: devices)?.uid
     }
 
-    static func selectedUID() -> String {
-        UserDefaults.standard.string(forKey: selectedUIDKey) ?? ""
+    static func mode() -> AudioInputDevicePreferenceMode {
+        migrateIfNeeded()
+        let rawValue = UserDefaults.standard.string(forKey: modeKey)
+        return rawValue.flatMap(AudioInputDevicePreferenceMode.init(rawValue:)) ?? .systemDefault
     }
 
-    static func backupUID() -> String {
-        UserDefaults.standard.string(forKey: backupUIDKey) ?? ""
+    static func priorityEntries() -> [AudioInputDevicePreferenceEntry] {
+        migrateIfNeeded()
+        return priorityEntries(from: UserDefaults.standard.string(forKey: priorityEntriesKey))
+    }
+
+    static func priorityEntries(from rawValue: String?) -> [AudioInputDevicePreferenceEntry] {
+        guard let rawValue, !rawValue.isEmpty else { return [] }
+        if let data = rawValue.data(using: .utf8),
+           let entries = try? JSONDecoder().decode([AudioInputDevicePreferenceEntry].self, from: data) {
+            return normalizedEntries(entries)
+        }
+
+        let legacyEntries = rawValue
+            .split(separator: ",")
+            .map { String($0) }
+            .filter { !$0.isEmpty }
+            .map { AudioInputDevicePreferenceEntry(uid: $0, name: $0) }
+        return normalizedEntries(legacyEntries)
+    }
+
+    static func storageValue(for entries: [AudioInputDevicePreferenceEntry]) -> String {
+        let normalized = normalizedEntries(entries)
+        guard let data = try? JSONEncoder().encode(normalized) else { return "" }
+        return String(data: data, encoding: .utf8) ?? ""
+    }
+
+    static func savePriorityEntries(_ entries: [AudioInputDevicePreferenceEntry]) {
+        let normalized = normalizedEntries(entries)
+        guard !normalized.isEmpty else {
+            resetToSystemDefault(clearPriority: true)
+            return
+        }
+        UserDefaults.standard.set(AudioInputDevicePreferenceMode.priority.rawValue, forKey: modeKey)
+        UserDefaults.standard.set(storageValue(for: normalized), forKey: priorityEntriesKey)
+    }
+
+    static func resetToSystemDefault(clearPriority: Bool = false) {
+        UserDefaults.standard.set(AudioInputDevicePreferenceMode.systemDefault.rawValue, forKey: modeKey)
+        if clearPriority {
+            UserDefaults.standard.removeObject(forKey: priorityEntriesKey)
+        }
     }
 
     static func resolvedDevice(devices: [AudioInputDevice]) -> AudioInputDevice? {
-        let primaryUID = selectedUID()
-        guard !primaryUID.isEmpty else {
+        guard mode() == .priority else {
             return nil
         }
+        return resolvedDevice(devices: devices, priorityEntries: priorityEntries())
+    }
 
-        if let primary = devices.first(where: { $0.uid == primaryUID }) {
-            return primary
+    static func resolvedDevice(
+        devices: [AudioInputDevice],
+        priorityEntries: [AudioInputDevicePreferenceEntry]
+    ) -> AudioInputDevice? {
+        for entry in normalizedEntries(priorityEntries) {
+            if let device = devices.first(where: { $0.uid == entry.uid }) {
+                return device
+            }
         }
-
-        let fallbackUID = backupUID()
-        if !fallbackUID.isEmpty {
-            return devices.first { $0.uid == fallbackUID }
-        }
-
         return nil
     }
 
@@ -86,6 +161,26 @@ enum AudioInputDevicePreferenceStore {
             return cached
         }
         return AudioInputDeviceMonitor.shared.refreshSynchronously()
+    }
+
+    private static func legacyEntry(forKey key: String) -> AudioInputDevicePreferenceEntry? {
+        guard let uid = UserDefaults.standard.string(forKey: key), !uid.isEmpty else {
+            return nil
+        }
+        return AudioInputDevicePreferenceEntry(uid: uid, name: uid)
+    }
+
+    private static func normalizedEntries(_ entries: [AudioInputDevicePreferenceEntry]) -> [AudioInputDevicePreferenceEntry] {
+        var seen = Set<String>()
+        var result: [AudioInputDevicePreferenceEntry] = []
+        for entry in entries {
+            let uid = entry.uid.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !uid.isEmpty, !seen.contains(uid) else { continue }
+            seen.insert(uid)
+            let name = entry.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            result.append(AudioInputDevicePreferenceEntry(uid: uid, name: name.isEmpty ? uid : name))
+        }
+        return result
     }
 }
 
