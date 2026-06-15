@@ -1690,6 +1690,13 @@ extension String {
     /// "hello world" is untouched.
     var removingCJKLatinSpaces: String {
         let cjk = "[\\u3400-\\u4DBF\\u4E00-\\u9FFF\\uF900-\\uFAFF]"
+        let preserveCJKLatinSpacing = UserDefaults.standard.object(forKey: "tf_preserveCJKLatinSpacing") as? Bool ?? true
+        guard preserveCJKLatinSpacing else {
+            var s = self
+            s = s.replacingOccurrences(of: "(?<=\(cjk)) +(?=\\S)", with: "", options: .regularExpression)
+            s = s.replacingOccurrences(of: "(?<=\\S) +(?=\(cjk))", with: "", options: .regularExpression)
+            return s
+        }
         // A neighbour that should hug the CJK character with no space: anything
         // that is neither whitespace nor an ASCII letter/digit (i.e. another CJK
         // char, punctuation, or a symbol). Latin letters/digits are excluded so

@@ -4,6 +4,7 @@ import XCTest
 final class RecognitionSessionTests: XCTestCase {
     override func tearDown() {
         KeychainService.selectedASRProvider = .volcano
+        UserDefaults.standard.removeObject(forKey: "tf_preserveCJKLatinSpacing")
     }
 
     func testInitialStateIsIdle() async {
@@ -67,6 +68,8 @@ final class RecognitionSessionTests: XCTestCase {
     /// (Pangu spacing) must survive normalization. Regression test for #186,
     /// where "我已经把最新的 prompt 提交并更新" was collapsed to "...的prompt提交...".
     func testRemovingCJKLatinSpaces_preservesPanguSpacing() {
+        UserDefaults.standard.set(true, forKey: "tf_preserveCJKLatinSpacing")
+
         // The reported case: CJK ↔ Latin spaces are kept.
         XCTAssertEqual(
             "我已经把最新的 prompt 提交并更新".removingCJKLatinSpaces,
@@ -84,11 +87,23 @@ final class RecognitionSessionTests: XCTestCase {
     /// Spaces between two CJK characters, or between a CJK character and
     /// punctuation, are ASR/LLM noise and must still be removed.
     func testRemovingCJKLatinSpaces_stripsCJKAndPunctuationNoise() {
+        UserDefaults.standard.set(true, forKey: "tf_preserveCJKLatinSpacing")
+
         // CJK ↔ CJK noise from ASR token boundaries.
         XCTAssertEqual("你 好".removingCJKLatinSpaces, "你好")
         XCTAssertEqual("你  好".removingCJKLatinSpaces, "你好")
         // CJK ↔ punctuation (full-width and ASCII).
         XCTAssertEqual("你好 ，世界".removingCJKLatinSpaces, "你好，世界")
         XCTAssertEqual("你好 , 世界".removingCJKLatinSpaces, "你好,世界")
+    }
+
+    func testRemovingCJKLatinSpaces_canStripPanguSpacingWhenDisabled() {
+        UserDefaults.standard.set(false, forKey: "tf_preserveCJKLatinSpacing")
+
+        XCTAssertEqual(
+            "我已经把最新的 prompt 提交并更新".removingCJKLatinSpaces,
+            "我已经把最新的prompt提交并更新"
+        )
+        XCTAssertEqual("第 3 个".removingCJKLatinSpaces, "第3个")
     }
 }

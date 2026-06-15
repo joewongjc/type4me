@@ -20,6 +20,7 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
     @AppStorage("tf_showDockIcon") private var showDockIcon = true
     @AppStorage("tf_bypassProxy") private var bypassProxy = "off"
     @AppStorage("tf_stripTrailingPunctuation") private var stripTrailingPunctuation = "off"
+    @AppStorage("tf_preserveCJKLatinSpacing") private var preserveCJKLatinSpacing = true
     @AppStorage("tf_hoverTranscriptPreview") private var hoverTranscriptPreview = true
     @AppStorage("tf_micKeepAlive") private var micKeepAlive = false
     @AppStorage(AudioInputDevicePreferenceStore.selectionModeKey) private var microphoneSelectionMode = AudioInputDeviceSelectionMode.systemDefault.rawValue
@@ -85,9 +86,11 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
 
                 SettingsDivider()
 
-                // Row 2: 去句末标点 / 悬停文字预览
+                // Row 2: 去句末标点 / 中英文空格 / 悬停文字预览
                 HStack(alignment: .top, spacing: 16) {
                     stripPunctuationRow
+                        .frame(maxWidth: .infinity)
+                    cjkLatinSpacingRow
                         .frame(maxWidth: .infinity)
                     hoverPreviewRow
                         .frame(maxWidth: .infinity)
@@ -375,20 +378,32 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
         .padding(.vertical, 6)
     }
 
+    private var cjkLatinSpacingRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(L("中英文空格", "CJK-Latin Spacing").uppercased())
+                .font(.system(size: 10, weight: .semibold))
+                .tracking(0.8)
+                .foregroundStyle(TF.settingsTextTertiary)
+            settingsDropdown(
+                selection: Binding(
+                    get: { preserveCJKLatinSpacing ? "on" : "off" },
+                    set: { preserveCJKLatinSpacing = $0 == "on" }
+                ),
+                options: [
+                    ("on", L("保留", "Keep")),
+                    ("off", L("去掉", "Strip")),
+                ]
+            )
+        }
+        .padding(.vertical, 6)
+    }
+
     private var hoverPreviewRow: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 4) {
-                Text(L("悬停文字预览", "Hover Text Preview").uppercased())
-                    .font(.system(size: 10, weight: .semibold))
-                    .tracking(0.8)
-                    .foregroundStyle(TF.settingsTextTertiary)
-                Text("|")
-                    .font(.system(size: 10))
-                    .foregroundStyle(TF.settingsTextTertiary.opacity(0.5))
-                Text(L("鼠标悬停悬浮条时显示完整文本", "Show full text when hovering the bar"))
-                    .font(.system(size: 10))
-                    .foregroundStyle(TF.settingsTextTertiary)
-            }
+            Text(L("悬停文字预览", "Hover Text Preview").uppercased())
+                .font(.system(size: 10, weight: .semibold))
+                .tracking(0.8)
+                .foregroundStyle(TF.settingsTextTertiary)
             settingsDropdown(
                 selection: Binding(
                     get: { hoverTranscriptPreview ? "on" : "off" },
