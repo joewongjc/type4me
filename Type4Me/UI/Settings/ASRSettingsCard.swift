@@ -302,10 +302,13 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
                     serverRunning = false
                 }
             }
-            // Start both servers when user explicitly switches to local ASR
+            // Start local services when user explicitly switches to local ASR.
+            // Preserve the user's SenseVoice preview preference; if both engines
+            // were off, keep Qwen3 final enabled so local ASR still has an engine.
             if newProvider == .sherpa {
-                sensevoiceEnabled = true
-                qwen3FinalEnabled = true
+                if !sensevoiceEnabled && !qwen3FinalEnabled {
+                    qwen3FinalEnabled = true
+                }
                 startServer()
             }
         }
@@ -413,13 +416,17 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
         VStack(alignment: .leading, spacing: 12) {
             if localModelAvailable {
                 HStack(spacing: 12) {
-                    // Left: 流式识别引擎 (always on)
-                    staticEngineBlock(
+                    // Left: 流式识别引擎
+                    localEngineBlock(
                         icon: "waveform",
                         name: "SenseVoice",
                         subtitle: L("流式识别引擎", "Streaming Engine"),
-                        description: L("基础识别模型，流式识别，支持实时展示。内存占用约 500MB。",
-                                       "Base model, streaming ASR, real-time display. ~500MB memory.")
+                        description: L("录音期间实时出字。关闭后仅使用 Qwen3-ASR 最终识别，可释放约 500MB 内存。",
+                                       "Real-time preview while recording. Turn it off to use only Qwen3-ASR final transcription and free ~500MB."),
+                        isRunning: sensevoiceEnabled,
+                        isToggling: false,
+                        onStart: { toggleSenseVoice(true) },
+                        onStop: { toggleSenseVoice(false) }
                     )
 
                     // Right: 精准识别引擎
@@ -617,9 +624,17 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
     }
 
     private func toggleSenseVoice(_ enabled: Bool) {
-        // SenseVoice is native sherpa-onnx, no server process to manage.
+        if !enabled && !qwen3FinalEnabled {
+            guard hasQwen3ASR else { return }
+            toggleQwen3(true)
+        }
         sensevoiceEnabled = enabled
-        serverRunning = enabled
+        serverRunning = enabled || qwen3Running
+        if !enabled {
+            #if HAS_SHERPA_ONNX
+            SenseVoiceASRClient.releaseCachedModels()
+            #endif
+        }
     }
 
     private func toggleQwen3(_ enabled: Bool) {
@@ -635,6 +650,9 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
                 } catch {
                     NSLog("[ASRSettings] Qwen3 start failed: %@", String(describing: error))
                     qwen3FinalEnabled = false
+                    if !sensevoiceEnabled {
+                        sensevoiceEnabled = true
+                    }
                     qwen3StartError = extractStartError(error)
                 }
             } else {

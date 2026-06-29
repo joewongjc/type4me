@@ -44,6 +44,7 @@ actor SenseVoiceASRClient: SpeechRecognizer {
     private var recognizer: SherpaOnnxOfflineRecognizer?
     private var vad: SherpaOnnxVoiceActivityDetectorWrapper?
     private var punctProcessor: SherpaPunctuationProcessor?
+    private var streamingPreviewEnabled = true
 
     private var eventContinuation: AsyncStream<RecognitionEvent>.Continuation?
     private var _events: AsyncStream<RecognitionEvent>?
@@ -241,6 +242,13 @@ actor SenseVoiceASRClient: SpeechRecognizer {
         pendingConfirmations = 0
         generation += 1
         vadResidualSamples = []
+        streamingPreviewEnabled = UserDefaults.standard.object(forKey: "tf_sensevoiceEnabled") as? Bool ?? true
+
+        if !streamingPreviewEnabled {
+            eventContinuation?.yield(.ready)
+            logger.info("SenseVoiceASR connected in Qwen3-only mode")
+            return
+        }
 
         let svModelDir = sherpaConfig.senseVoiceModelDir
         let vadModelDir = sherpaConfig.vadModelDir
@@ -340,13 +348,18 @@ actor SenseVoiceASRClient: SpeechRecognizer {
     // MARK: - Send Audio
 
     func sendAudio(_ data: Data) async throws {
+        // Always keep the complete PCM stream for optional Qwen3 final calibration.
+        allAudioData.append(data)
+
+        if !streamingPreviewEnabled {
+            totalSamplesFed += data.count / MemoryLayout<Int16>.size
+            return
+        }
+
         guard let vad, let recognizer else {
             logger.error("sendAudio called but recognizer/VAD is nil — engine not initialized")
             throw SherpaASRError.recognizerInitFailed
         }
-
-        // Accumulate raw PCM for Qwen3 calibration
-        allAudioData.append(data)
 
         var floatSamples = Self.int16ToFloat32(data)
         totalSamplesFed += floatSamples.count
@@ -441,6 +454,11 @@ actor SenseVoiceASRClient: SpeechRecognizer {
     // MARK: - End Audio
 
     func endAudio() async throws {
+        if !streamingPreviewEnabled {
+            await finalizeQwen3Only()
+            return
+        }
+
         guard let vad, let recognizer else {
             DebugFileLogger.log("SenseVoice endAudio: guard failed, vad=\(vad != nil) recognizer=\(recognizer != nil)")
             return
@@ -515,27 +533,8 @@ actor SenseVoiceASRClient: SpeechRecognizer {
         speechBuffer = []
         currentPartialText = ""
 
-        // Qwen3 calibration: if server is running, send full audio for more accurate result
-        let qwen3Enabled = UserDefaults.standard.object(forKey: "tf_qwen3FinalEnabled") as? Bool ?? true
-        if qwen3Enabled, let port = SenseVoiceServerManager.currentQwen3Port, allAudioData.count > 3200 {
-            DebugFileLogger.log("SenseVoice endAudio: Qwen3 calibration starting (\(allAudioData.count) bytes)")
-            if let calibratedText = await qwen3Calibrate(audio: allAudioData, port: port) {
-                let senseVoiceText = confirmedSegments.joined()
-                let sanitizedText = Qwen3HotwordLeakSanitizer.sanitize(
-                    calibratedText,
-                    hotwords: calibrationHotwords,
-                    fallbackText: senseVoiceText
-                )
-                if sanitizedText != calibratedText {
-                    DebugFileLogger.log(
-                        "SenseVoice endAudio: Qwen3 hotword leak sanitized \(calibratedText.count)->\(sanitizedText.count) chars"
-                    )
-                }
-                confirmedSegments = [sanitizedText]
-                DebugFileLogger.log("SenseVoice endAudio: Qwen3 calibration OK (\(sanitizedText.count) chars)")
-            } else {
-                DebugFileLogger.log("SenseVoice endAudio: Qwen3 calibration failed, using SenseVoice result")
-            }
+        if let calibratedText = await runQwen3Calibration(fallbackText: confirmedSegments.joined()) {
+            confirmedSegments = [calibratedText]
         }
         allAudioData = Data()
 
@@ -561,6 +560,7 @@ actor SenseVoiceASRClient: SpeechRecognizer {
         allAudioData = Data()
         calibrationHotwords = []
         vadResidualSamples = []
+        streamingPreviewEnabled = true
         logger.info("SenseVoiceASR disconnected")
     }
 
@@ -603,6 +603,57 @@ actor SenseVoiceASRClient: SpeechRecognizer {
     }
 
     // MARK: - Qwen3 Calibration
+
+    private func finalizeQwen3Only() async {
+        let minBytes = Int(0.3 * 16000) * 2
+        if allAudioData.count < minBytes {
+            DebugFileLogger.log("Qwen3-only endAudio: audio too short (\(allAudioData.count) bytes < \(minBytes)), skipping")
+            allAudioData = Data()
+            confirmedSegments = []
+            currentPartialText = ""
+            emitTranscript(isFinal: true)
+            eventContinuation?.yield(.completed)
+            return
+        }
+
+        if let calibratedText = await runQwen3Calibration(fallbackText: "") {
+            confirmedSegments = [calibratedText]
+        } else {
+            confirmedSegments = []
+        }
+        currentPartialText = ""
+        allAudioData = Data()
+        emitTranscript(isFinal: true)
+        eventContinuation?.yield(.completed)
+        logger.info("Qwen3-only ASR finalized: \(self.confirmedSegments.count) segments, \(self.totalSamplesFed) samples")
+    }
+
+    private func runQwen3Calibration(fallbackText: String) async -> String? {
+        let qwen3Enabled = UserDefaults.standard.object(forKey: "tf_qwen3FinalEnabled") as? Bool ?? true
+        guard qwen3Enabled, let port = SenseVoiceServerManager.currentQwen3Port, allAudioData.count > 3200 else {
+            DebugFileLogger.log("Qwen3 calibration skipped: enabled=\(qwen3Enabled) port=\(SenseVoiceServerManager.currentQwen3Port ?? -1) bytes=\(allAudioData.count)")
+            return nil
+        }
+
+        DebugFileLogger.log("Qwen3 calibration starting (\(allAudioData.count) bytes)")
+        guard let calibratedText = await qwen3Calibrate(audio: allAudioData, port: port) else {
+            DebugFileLogger.log("Qwen3 calibration failed, using fallback")
+            return nil
+        }
+
+        let sanitizedText = Qwen3HotwordLeakSanitizer.sanitize(
+            calibratedText,
+            hotwords: calibrationHotwords,
+            fallbackText: fallbackText
+        )
+        if sanitizedText != calibratedText {
+            DebugFileLogger.log(
+                "Qwen3 hotword leak sanitized \(calibratedText.count)->\(sanitizedText.count) chars"
+            )
+        }
+        DebugFileLogger.log("Qwen3 calibration OK (\(sanitizedText.count) chars)")
+        return sanitizedText
+    }
 
     private func qwen3Calibrate(audio: Data, port: Int) async -> String? {
         let url = URL(string: "http://127.0.0.1:\(port)/transcribe")!
