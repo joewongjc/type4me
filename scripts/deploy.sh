@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && /bin/pwd -P)"
 APP_PATH="${APP_PATH:-/Applications/Type4Me.app}"
-APP_NAME="Type4Me"
+APP_NAME="${APP_NAME:-Type4Me}"
 LAUNCH_APP="${LAUNCH_APP:-1}"
 
 echo "Stopping Type4Me..."
@@ -42,22 +42,32 @@ if [ -n "$NEW_CDHASH" ]; then
                 : # already set via env var
             elif [ -f "$KC_PASS_FILE" ]; then
                 KC_PASS="$(cat "$KC_PASS_FILE")"
-            else
+            elif [ -t 0 ]; then
                 read -s -p "Keychain password (save to $KC_PASS_FILE to skip next time): " KC_PASS
                 echo
+            else
+                echo "Keychain: skipping partition-list update (set KC_PASS or create $KC_PASS_FILE to enable)."
+                KC_PASS=""
+            fi
+            if [ -z "$KC_PASS" ]; then
+                continue_update=0
+            else
+                continue_update=1
             fi
             UPDATED=0
-            for item in "${T4M_ITEMS[@]}"; do
-                svc="${item%%|*}"
-                acct="${item#*|}"
-                if security set-generic-password-partition-list \
-                    -s "$svc" -a "$acct" \
-                    -S "apple-tool:,apple:,teamid:${TEAM_ID},cdhash:$NEW_CDHASH" \
-                    -k "$KC_PASS" \
-                    ~/Library/Keychains/login.keychain-db >/dev/null 2>&1; then
-                    UPDATED=$((UPDATED + 1))
-                fi
-            done
+            if [ "$continue_update" = "1" ]; then
+                for item in "${T4M_ITEMS[@]}"; do
+                    svc="${item%%|*}"
+                    acct="${item#*|}"
+                    if security set-generic-password-partition-list \
+                        -s "$svc" -a "$acct" \
+                        -S "apple-tool:,apple:,teamid:${TEAM_ID},cdhash:$NEW_CDHASH" \
+                        -k "$KC_PASS" \
+                        ~/Library/Keychains/login.keychain-db >/dev/null 2>&1; then
+                        UPDATED=$((UPDATED + 1))
+                    fi
+                done
+            fi
             echo "Keychain: $UPDATED/${#T4M_ITEMS[@]} items updated."
         fi
     fi

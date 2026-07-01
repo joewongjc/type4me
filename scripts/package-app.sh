@@ -60,6 +60,9 @@ if [ -n "${CODESIGN_IDENTITY:-}" ]; then
 elif security find-identity -v -p codesigning 2>/dev/null | grep -q "Developer ID Application"; then
     SIGNING_IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)"/\1/')
     echo "Using Developer ID: $SIGNING_IDENTITY"
+elif security find-identity -v -p codesigning 2>/dev/null | grep -q "Apple Development"; then
+    SIGNING_IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null | grep "Apple Development" | head -1 | sed 's/.*"\(.*\)"/\1/')
+    echo "Using Apple Development: $SIGNING_IDENTITY"
 elif security find-identity -v -p codesigning 2>/dev/null | grep -q "Type4Me Dev"; then
     SIGNING_IDENTITY="Type4Me Dev"
 else

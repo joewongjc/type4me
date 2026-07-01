@@ -15,15 +15,11 @@ struct OpenAppAction: MacAction {
             return .failure(L("缺少应用名称", "Missing app name"))
         }
 
-        // NSWorkspace.fullPath(forApplication:) handles many casings + locales.
         let workspace = NSWorkspace.shared
-        let candidate = workspace.fullPath(forApplication: appName)
-            ?? workspace.fullPath(forApplication: appName.capitalized)
-        guard let path = candidate else {
+        guard let url = Self.applicationURL(named: appName, workspace: workspace) else {
             return .failure(L("找不到应用：\(appName)", "App not found: \(appName)"))
         }
 
-        let url = URL(fileURLWithPath: path)
         return await withCheckedContinuation { continuation in
             workspace.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration()) { _, error in
                 if let error {
@@ -33,5 +29,49 @@ struct OpenAppAction: MacAction {
                 }
             }
         }
+    }
+
+    private static func applicationURL(named appName: String, workspace: NSWorkspace) -> URL? {
+        if appName.contains("."),
+           let url = workspace.urlForApplication(withBundleIdentifier: appName) {
+            return url
+        }
+
+        let wantedNames = [
+            appName,
+            appName.capitalized,
+            appName.hasSuffix(".app") ? appName : "\(appName).app",
+            appName.capitalized.hasSuffix(".app") ? appName.capitalized : "\(appName.capitalized).app"
+        ].map { $0.lowercased() }
+
+        let searchRoots = [
+            FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications"),
+            URL(fileURLWithPath: "/Applications"),
+            URL(fileURLWithPath: "/System/Applications"),
+            URL(fileURLWithPath: "/System/Applications/Utilities")
+        ]
+
+        for root in searchRoots {
+            guard let enumerator = FileManager.default.enumerator(
+                at: root,
+                includingPropertiesForKeys: [.isApplicationKey],
+                options: [.skipsHiddenFiles, .skipsPackageDescendants]
+            ) else { continue }
+
+            for case let url as URL in enumerator {
+                guard url.pathExtension == "app" else { continue }
+                if wantedNames.contains(url.lastPathComponent.lowercased())
+                    || wantedNames.contains(url.deletingPathExtension().lastPathComponent.lowercased()) {
+                    return url
+                }
+                if let bundle = Bundle(url: url),
+                   let displayName = bundle.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String,
+                   wantedNames.contains(displayName.lowercased()) {
+                    return url
+                }
+            }
+        }
+
+        return nil
     }
 }

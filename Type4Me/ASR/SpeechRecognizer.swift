@@ -103,6 +103,10 @@ enum RecognitionEvent: Sendable {
     /// Mac Action mode: action result to surface in the floating bar with
     /// status-specific icon and color, holding for ~3 seconds.
     case macActionResult(message: String, status: MacActionResultStatus)
+    /// Selection ask mode: show a separate answer panel and stream Markdown into it.
+    case selectionAskStarted(question: String, selectedText: String)
+    case selectionAskAnswerDelta(String)
+    case selectionAskAnswerCompleted
 }
 
 struct LLMConfig: Sendable {

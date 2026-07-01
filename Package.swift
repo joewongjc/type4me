@@ -18,6 +18,11 @@ var excludes = ["Resources"]
 if !hasCloudSubscription { excludes.append("CloudSubscription") }
 
 var targets: [Target] = [
+    .target(
+        name: "Type4MeUI",
+        path: "Type4MeUI",
+        swiftSettings: swiftDefines
+    ),
     .executableTarget(
         name: "Type4Me",
         dependencies: hasSherpaFramework ? ["SherpaOnnxLib"] : [],
@@ -50,6 +55,10 @@ if hasSherpaFramework {
 let package = Package(
     name: "Type4Me",
     platforms: [.macOS(.v14)],
+    products: [
+        .executable(name: "Type4Me", targets: ["Type4Me"]),
+        .library(name: "Type4MeUI", targets: ["Type4MeUI"]),
+    ],
     dependencies: [],
     targets: targets
 )

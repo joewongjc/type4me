@@ -171,6 +171,89 @@ final class ModeStorageTests: XCTestCase {
         XCTAssertEqual(direct?.hotkeyStyle, ProcessingMode.direct.hotkeyStyle)
     }
 
+    func testMissingExecutionKindDefaultsToRecording() throws {
+        let json = """
+        {"id":"11111111-1111-1111-1111-111111111111","name":"旧模式","prompt":"Do {text}","isBuiltin":false,"processingLabel":"处理中"}
+        """
+        let mode = try JSONDecoder().decode(ProcessingMode.self, from: Data(json.utf8))
+        XCTAssertEqual(mode.executionKind, .recording)
+    }
+
+    func testExistingUsersGetSelectionAskBuiltin() throws {
+        let storage = ModeStorage(fileURL: testURL)
+        try storage.save([ProcessingMode.direct, ProcessingMode.formalWriting])
+
+        let loaded = storage.load()
+
+        XCTAssertTrue(loaded.contains { $0.id == ProcessingMode.selectionAskId })
+        XCTAssertEqual(
+            loaded.first(where: { $0.id == ProcessingMode.selectionAskId })?.executionKind,
+            .selectionAsk
+        )
+    }
+
+    func testSelectionAskLegacyPromptMigratesToLatestPrompt() throws {
+        let storage = ModeStorage(fileURL: testURL)
+        var legacy = ProcessingMode.selectionAsk
+        legacy.prompt = """
+        你是 Type4Me 的划词问答助手。用户选中了一段文本，并固定询问：“这句话是什么意思？”
+
+        请用中文回答，允许使用 Markdown，让排版清晰、易读。
+
+        # 回答要求
+        1. 先直接解释选中文本的核心含义。
+
+        # 选中文本
+        {selected}
+        """
+
+        try storage.save([ProcessingMode.direct, legacy])
+        let loaded = storage.load()
+        let migrated = loaded.first { $0.id == ProcessingMode.selectionAskId }
+
+        XCTAssertEqual(migrated?.prompt, ProcessingMode.selectionAsk.prompt)
+        XCTAssertTrue(migrated?.prompt.contains("# 用户语音问题") == true)
+    }
+
+    func testSelectionAskPreviousBuiltinPromptMigratesForConversationContext() throws {
+        let storage = ModeStorage(fileURL: testURL)
+        var previousBuiltin = ProcessingMode.selectionAsk
+        previousBuiltin.prompt = """
+        你是语音问答助手。用户可能选中了一段文本，也可能只通过语音提出一个问题或指令。
+
+        # 回答要求
+        1. 用户语音问题是最高优先级。必须严格执行用户语音问题，不要擅自改成解释、分析或模板。
+
+        # 选中文本
+        ```text
+        {selected}
+        ```
+
+        # 用户语音问题
+        ```text
+        {text}
+        ```
+        """
+
+        try storage.save([ProcessingMode.direct, previousBuiltin])
+        let loaded = storage.load()
+        let migrated = loaded.first { $0.id == ProcessingMode.selectionAskId }
+
+        XCTAssertEqual(migrated?.prompt, ProcessingMode.selectionAsk.prompt)
+        XCTAssertTrue(migrated?.prompt.contains("{conversation}") == true)
+    }
+
+    func testSelectionAskCustomPromptIsPreserved() throws {
+        let storage = ModeStorage(fileURL: testURL)
+        var custom = ProcessingMode.selectionAsk
+        custom.prompt = "Custom ask prompt with {selected} and {text}"
+
+        try storage.save([ProcessingMode.direct, custom])
+        let loaded = storage.load()
+
+        XCTAssertEqual(loaded.first { $0.id == ProcessingMode.selectionAskId }?.prompt, custom.prompt)
+    }
+
     func testToggleStyleIsPersisted() throws {
         let storage = ModeStorage(fileURL: testURL)
         var mode = ProcessingMode(

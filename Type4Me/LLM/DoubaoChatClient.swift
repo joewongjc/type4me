@@ -75,15 +75,64 @@ actor DoubaoChatClient: LLMClient {
 
         logger.info("LLM request: \(text.count) chars, endpoint=\(config.model), stream=true")
 
-        let result = try await processStreaming(request: request, model: config.model)
+        let result = try await streamChat(request: request, model: config.model)
 
         logger.info("LLM result: \(result.count) chars")
         return result.strippingThinkTags()
     }
 
+    func processStreaming(
+        text: String,
+        prompt: String,
+        config: LLMConfig,
+        onDelta: @escaping @Sendable (String) async -> Void
+    ) async throws -> String {
+        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedText.isEmpty else { return text }
+        let finalPrompt = prompt.replacingOccurrences(of: "{text}", with: trimmedText)
+
+        guard let url = URL(string: "\(config.baseURL)/chat/completions") else {
+            throw LLMError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 30
+
+        let disableThinking: Bool = {
+            guard let obj = UserDefaults.standard.object(forKey: "tf_disableThinking") else {
+                return true
+            }
+            return obj as? Bool ?? true
+        }()
+        let disableField = disableThinking ? provider.thinkingDisableField : nil
+        let body = ChatRequest(
+            model: config.model,
+            messages: [ChatMessage(role: "user", content: finalPrompt)],
+            stream: true,
+            thinking: disableField == .thinking ? ThinkingConfig(type: "disabled") : nil,
+            enable_thinking: disableField == .enableThinking ? false : nil,
+            reasoning_effort: disableField == .reasoningEffort ? "none" : nil,
+            think: disableField == .think ? false : nil,
+            reasoning_split: provider.needsReasoningSplit ? true : nil
+        )
+        request.httpBody = try JSONEncoder().encode(body)
+
+        logger.info("LLM streaming request: \(text.count) chars, endpoint=\(config.model)")
+        let result = try await streamChat(request: request, model: config.model, onDelta: onDelta)
+        logger.info("LLM streaming result: \(result.count) chars")
+        return result.strippingThinkTags()
+    }
+
     // MARK: - Streaming (SSE)
 
-    private func processStreaming(request: URLRequest, model: String) async throws -> String {
+    private func streamChat(
+        request: URLRequest,
+        model: String,
+        onDelta: (@Sendable (String) async -> Void)? = nil
+    ) async throws -> String {
         let requestStart = ContinuousClock.now
         DebugFileLogger.log("llm: request started model=\(model)")
         let (bytes, response) = try await session.bytes(for: request)
@@ -118,6 +167,9 @@ actor DoubaoChatClient: LLMClient {
                 DebugFileLogger.log("llm: first content token +\(ContinuousClock.now - requestStart) model=\(model)")
             }
             result += content
+            if !content.isEmpty {
+                await onDelta?(content)
+            }
         }
 
         if result.isEmpty && lineCount > 0 {

@@ -32,6 +32,15 @@ actor ClaudeChatClient: LLMClient {
 
     /// Process text through Anthropic Messages API (streaming).
     func process(text: String, prompt: String, config: LLMConfig) async throws -> String {
+        return try await processStreaming(text: text, prompt: prompt, config: config) { _ in }
+    }
+
+    func processStreaming(
+        text: String,
+        prompt: String,
+        config: LLMConfig,
+        onDelta: @escaping @Sendable (String) async -> Void
+    ) async throws -> String {
         let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedText.isEmpty else { return text }
         let finalPrompt = prompt.replacingOccurrences(of: "{text}", with: trimmedText)
@@ -80,6 +89,7 @@ actor ClaudeChatClient: LLMClient {
             case "content_block_delta":
                 if let delta = event.delta, let text = delta.text {
                     result += text
+                    await onDelta(text)
                 }
             case "message_stop":
                 break

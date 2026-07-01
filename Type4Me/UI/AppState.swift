@@ -74,10 +74,16 @@ struct ProcessingMode: Codable, Identifiable, Equatable, Hashable {
     var hotkeyCode: Int?
     var hotkeyModifiers: UInt64?
     var hotkeyStyle: HotkeyStyle
+    var executionKind: ExecutionKind
 
     enum HotkeyStyle: String, Codable, CaseIterable {
         case hold    // press and hold to record
         case toggle  // press once to start, again to stop
+    }
+
+    enum ExecutionKind: String, Codable, Sendable {
+        case recording
+        case selectionAsk
     }
 
     /// Global default hotkey style, stored in UserDefaults.
@@ -102,7 +108,8 @@ struct ProcessingMode: Codable, Identifiable, Equatable, Hashable {
         processingLabel: String = L("处理中", "Processing"),
         hotkeyCode: Int? = nil,
         hotkeyModifiers: UInt64? = nil,
-        hotkeyStyle: HotkeyStyle? = nil
+        hotkeyStyle: HotkeyStyle? = nil,
+        executionKind: ExecutionKind = .recording
     ) {
         self.id = id
         self.name = name
@@ -112,11 +119,12 @@ struct ProcessingMode: Codable, Identifiable, Equatable, Hashable {
         self.hotkeyCode = hotkeyCode
         self.hotkeyModifiers = hotkeyModifiers
         self.hotkeyStyle = hotkeyStyle ?? Self.defaultHotkeyStyle
+        self.executionKind = executionKind
     }
 
     enum CodingKeys: String, CodingKey {
         case id, name, prompt, isBuiltin, processingLabel
-        case hotkeyCode, hotkeyModifiers, hotkeyStyle
+        case hotkeyCode, hotkeyModifiers, hotkeyStyle, executionKind
     }
 
     init(from decoder: Decoder) throws {
@@ -129,6 +137,7 @@ struct ProcessingMode: Codable, Identifiable, Equatable, Hashable {
         hotkeyCode = try container.decodeIfPresent(Int.self, forKey: .hotkeyCode)
         hotkeyModifiers = try container.decodeIfPresent(UInt64.self, forKey: .hotkeyModifiers)
         hotkeyStyle = try container.decodeIfPresent(HotkeyStyle.self, forKey: .hotkeyStyle) ?? Self.defaultHotkeyStyle
+        executionKind = try container.decodeIfPresent(ExecutionKind.self, forKey: .executionKind) ?? .recording
     }
 
     // MARK: - Built-in Mode IDs (stable, never change)
@@ -136,6 +145,7 @@ struct ProcessingMode: Codable, Identifiable, Equatable, Hashable {
     static let smartDirectId = UUID(uuidString: "00000000-0000-0000-0000-000000000006")!
     static let translateId = UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
     static let macActionId = UUID(uuidString: "00000000-0000-0000-0000-000000000008")!
+    static let selectionAskId = UUID(uuidString: "00000000-0000-0000-0000-000000000009")!
     static var direct: ProcessingMode {
         ProcessingMode(
             id: directId,
@@ -565,6 +575,50 @@ struct ProcessingMode: Codable, Identifiable, Equatable, Hashable {
         )
     }
 
+    static let selectionAskPromptTemplate = #"""
+    你是语音问答助手。用户可能选中了一段文本，也可能只通过语音提出一个问题或指令。
+
+    # 回答要求
+    1. 用户语音问题是最高优先级。必须严格执行用户语音问题，不要擅自改成解释、分析或模板。
+    2. 如果用户要求翻译，直接输出译文。不要解释原文、不要复述“选中的文本是”、不要给通用模板。
+    3. 如果用户要求“翻译成英文”，输出英文；要求其它目标语言时输出对应语言。未指定目标语言时再跟随用户语音语言。
+    4. 如果用户要求总结、改写、解释、找问题或给建议，且选中文本非空，就按该意图直接处理选中文本。
+    5. 如果选中文本为空，直接回答用户语音问题，不要要求用户先选择文本。
+    6. 不要编造选中文本之外的事实；不确定时明确说明。
+    7. 如果“上方会话上下文”非空，当前问题可能是追问。必须结合上方对话理解指代、省略和继续讨论的对象。
+    8. 除非用户只要求短答案或翻译，否则使用清晰的 Markdown 排版。段落之间保留空行，不要输出一个很长的连续段落。
+    9. 每段最多 1-2 句话；需要列举时使用项目符号或编号列表。
+
+    # 上方会话上下文
+    ```text
+    {conversation}
+    ```
+
+    # 选中文本
+    ```text
+    {selected}
+    ```
+
+    # 用户语音问题
+    ```text
+    {text}
+    ```
+    """#
+
+    static var selectionAsk: ProcessingMode {
+        ProcessingMode(
+            id: selectionAskId,
+            name: L("随便问", "Ask Anything"),
+            prompt: selectionAskPromptTemplate,
+            isBuiltin: true,
+            processingLabel: L("思考中", "Thinking"),
+            hotkeyCode: 22,
+            hotkeyModifiers: 524288,
+            hotkeyStyle: .toggle,
+            executionKind: .selectionAsk
+        )
+    }
+
     static let agentModePromptTemplate = #"""
     # Role
     你是一个"直接交付"型 AI 助手。用户通过语音口述一个需求，你的任务是**直接给出最终成品**，让用户能立即粘贴到目标场景使用。
@@ -715,8 +769,8 @@ struct ProcessingMode: Codable, Identifiable, Equatable, Hashable {
         )
     }
 
-    static var builtins: [ProcessingMode] { [.direct, .formalWriting, .macAction] }
-    static var defaults: [ProcessingMode] { [.direct, .formalWriting, .promptOptimize, .translate, .agentMode, .commandMode, .macAction] }
+    static var builtins: [ProcessingMode] { [.direct, .formalWriting, .macAction, .selectionAsk] }
+    static var defaults: [ProcessingMode] { [.direct, .formalWriting, .promptOptimize, .translate, .agentMode, .commandMode, .macAction, .selectionAsk] }
 }
 
 // MARK: - Audio Level (isolated from @Observable to avoid high-frequency view invalidation)

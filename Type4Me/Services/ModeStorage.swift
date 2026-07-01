@@ -69,6 +69,19 @@ struct ModeStorage {
                 }
                 return d
             }
+            if mode.id == ProcessingMode.selectionAskId {
+                var d = ProcessingMode.selectionAsk
+                d.hotkeyCode = mode.hotkeyCode
+                d.hotkeyModifiers = mode.hotkeyModifiers
+                d.hotkeyStyle = mode.hotkeyStyle
+                if mode.prompt != ProcessingMode.selectionAsk.prompt,
+                   !selectionAskPromptIsLegacy(mode.prompt) {
+                    d.name = mode.name
+                    d.processingLabel = mode.processingLabel
+                    d.prompt = mode.prompt
+                }
+                return d
+            }
             if mode.id == ProcessingMode.translate.id {
                 return migrateSeededDefaultPrompt(
                     mode,
@@ -162,5 +175,13 @@ struct ModeStorage {
         migrated.prompt = fallbackPrompt
         migrated.isBuiltin = false
         return migrated
+    }
+
+    private func selectionAskPromptIsLegacy(_ prompt: String) -> Bool {
+        prompt.contains("固定询问：“这句话是什么意思？”")
+            || prompt.contains("先直接解释选中文本的核心含义")
+            || prompt.contains("请用中文回答，允许使用 Markdown")
+            || (!prompt.contains("# 用户语音问题") && prompt.contains("# 选中文本"))
+            || (prompt.contains("你是语音问答助手") && !prompt.contains("{conversation}"))
     }
 }

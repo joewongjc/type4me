@@ -68,22 +68,20 @@ actor RecognitionSession {
 
     /// Return the appropriate LLM client for the currently selected provider.
     private func currentLLMClient() -> any LLMClient {
-        #if HAS_CLOUD_SUBSCRIPTION
-        if isCloudMode { return CloudLLMClient() }
-        #endif
-        let provider = KeychainService.selectedLLMProvider
-        if provider == .claude {
-            return ClaudeChatClient()
-        }
-        return DoubaoChatClient(provider: provider)
+        LLMRuntime.currentClient(isCloudMode: isCloudModeForLLM)
     }
 
     /// Load LLM credentials from KeychainService.
     private func loadEffectiveLLMConfig() -> LLMConfig? {
+        LLMRuntime.currentConfig(isCloudMode: isCloudModeForLLM)
+    }
+
+    private var isCloudModeForLLM: Bool {
         #if HAS_CLOUD_SUBSCRIPTION
-        if isCloudMode { return LLMConfig(apiKey: "", model: "cloud") }
+        return isCloudMode
+        #else
+        return false
         #endif
-        return KeychainService.loadLLMConfig()
     }
 
     private func currentASRModelLabel(for provider: ASRProvider) -> String? {
@@ -223,6 +221,7 @@ actor RecognitionSession {
     private var speculativeThrottle = SpeculativeLLMThrottle()
     /// Stores the last LLM error from the early/fresh LLM task, consumed once by stopRecording().
     private var pendingLLMError: Error?
+    private var pendingSelectionAskConversationContext = ""
     /// When true, skip text injection (paste) but still save to clipboard & history.
     private var injectionAborted = false
     /// Continuation resumed when a final (isFinal) transcript arrives during stop.
@@ -279,6 +278,9 @@ actor RecognitionSession {
         #endif
 
         let effectiveMode = ASRProviderRegistry.resolvedMode(for: mode, provider: provider)
+        if effectiveMode.executionKind != .selectionAsk {
+            pendingSelectionAskConversationContext = ""
+        }
         sessionGeneration &+= 1
         let myGeneration = sessionGeneration
 
@@ -361,7 +363,6 @@ actor RecognitionSession {
         // Load hotwords
         let hotwords = HotwordStorage.loadEffective()
         let biasSettings = ASRBiasSettingsStorage.load()
-        let needsLLM = !effectiveMode.prompt.isEmpty
         let requestOptions = ASRRequestOptions(
             enablePunc: true,
             hotwords: hotwords,
@@ -528,6 +529,10 @@ actor RecognitionSession {
         }
     }
 
+    func setSelectionAskConversationContext(_ context: String) {
+        pendingSelectionAskConversationContext = context
+    }
+
     /// Auto-stop triggered by max recording duration timer.
     private func autoStopIfRecording() async {
         guard state == .recording else { return }
@@ -639,6 +644,101 @@ actor RecognitionSession {
         }
         resetSpeculativeLLM()
         SystemVolumeManager.restore()
+    }
+
+    private func completeSelectionAsk(
+        questionText: String,
+        recordingStartTime: Date?,
+        activeProvider: ASRProvider,
+        myGeneration: Int
+    ) async {
+        let question = questionText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let contextSource = SelectionAskPromptBuilder.contextSource(from: promptContext)
+        let contextText = SelectionAskPromptBuilder.contextText(from: promptContext)
+        let conversationContext = pendingSelectionAskConversationContext
+        pendingSelectionAskConversationContext = ""
+
+        guard !question.isEmpty else {
+            onASREvent?(.selectionAskStarted(question: "", selectedText: contextText))
+            onASREvent?(.selectionAskAnswerDelta(L("没有识别到问题，请重试。", "No question was recognized. Please try again.")))
+            onASREvent?(.selectionAskAnswerCompleted)
+            onASREvent?(.completed)
+            finishSelectionAskSession(myGeneration: myGeneration)
+            return
+        }
+
+        guard let llmConfig = loadEffectiveLLMConfig() else {
+            onASREvent?(.selectionAskStarted(question: question, selectedText: contextText))
+            onASREvent?(.selectionAskAnswerDelta(L("请先在设置中配置 LLM。", "Please configure an LLM provider in Settings first.")))
+            onASREvent?(.selectionAskAnswerCompleted)
+            onASREvent?(.completed)
+            finishSelectionAskSession(myGeneration: myGeneration)
+            return
+        }
+
+        state = .postProcessing
+        onASREvent?(.selectionAskStarted(question: question, selectedText: contextText))
+
+        let client = currentLLMClient()
+        let effectiveContext = PromptContext(selectedText: contextText, clipboardText: "")
+        let prompt = SelectionAskPromptBuilder.requestText(
+            mode: currentMode,
+            context: effectiveContext,
+            question: question,
+            conversationContext: conversationContext
+        )
+        DebugFileLogger.log("""
+        selectionAsk LLM request
+        provider=\(KeychainService.selectedLLMProvider.rawValue)
+        model=\(llmConfig.model)
+        contextSource=\(contextSource.rawValue)
+        question=\(question)
+        selectedRaw=\(promptContext.selectedText)
+        clipboardChars=\(promptContext.clipboardText.count)
+        contextChars=\(contextText.count)
+        conversationChars=\(conversationContext.count)
+        prompt:
+        \(prompt)
+        """)
+        do {
+            _ = try await client.processStreaming(
+                text: prompt,
+                prompt: "{text}",
+                config: llmConfig
+            ) { [weak self] delta in
+                await self?.emitSelectionAskDelta(delta)
+            }
+            onASREvent?(.selectionAskAnswerCompleted)
+        } catch {
+            onASREvent?(.selectionAskAnswerDelta(userFacingLLMError(error)))
+            onASREvent?(.selectionAskAnswerCompleted)
+        }
+
+        onASREvent?(.completed)
+        finishSelectionAskSession(myGeneration: myGeneration)
+    }
+
+    private func emitSelectionAskDelta(_ delta: String) {
+        guard !delta.isEmpty else { return }
+        onASREvent?(.selectionAskAnswerDelta(delta))
+    }
+
+    private func finishSelectionAskSession(myGeneration: Int) {
+        if sessionGeneration == myGeneration, state != .idle {
+            state = .idle
+            hasEmittedReadyForCurrentSession = false
+            currentTranscript = .empty
+            warmUpASRConnection()
+        }
+        resetSpeculativeLLM()
+        SystemVolumeManager.restore()
+    }
+
+    private func userFacingLLMError(_ error: Error) -> String {
+        if let localized = (error as? LocalizedError)?.errorDescription, !localized.isEmpty {
+            return localized
+        }
+        return error.localizedDescription
     }
 
     func stopRecording() async {
@@ -760,7 +860,7 @@ actor RecognitionSession {
         // Keep speculative LLM task alive — we'll compare its input text
         // against the final ASR transcript after full teardown.
         cancelSpeculativeLLM()
-        var needsLLM = !currentMode.prompt.isEmpty
+        var needsLLM = !currentMode.prompt.isEmpty && currentMode.executionKind == .recording
 
         // Early label override for short text exemption (语音润色 only).
         // Use streaming transcript to update UI immediately, before ASR teardown,
@@ -940,6 +1040,16 @@ actor RecognitionSession {
             var processedText: String? = nil
             var llmFailed = false
 
+            if currentMode.executionKind == .selectionAsk {
+                await completeSelectionAsk(
+                    questionText: rawText,
+                    recordingStartTime: recordingStartTime,
+                    activeProvider: activeProvider,
+                    myGeneration: myGeneration
+                )
+                return
+            }
+
             // Apply snippet replacements before LLM (e.g. "我的邮箱" → actual email)
             finalText = SnippetStorage.applyEffective(to: finalText, bundleId: targetBundleId)
 
@@ -1085,7 +1195,7 @@ actor RecognitionSession {
             let aborted = injectionAborted
             let onEvent = self.onASREvent
             let injectLog = "stop: injecting method=clipboard len=\(finalText.count) +\(ContinuousClock.now - stopT0)"
-            let injectionOutcome: InjectionOutcome = await withCheckedContinuation { continuation in
+            _ = await withCheckedContinuation { continuation in
                 Task.detached {
                     let outcome: InjectionOutcome
                     if aborted {
@@ -1207,7 +1317,7 @@ actor RecognitionSession {
                 cont.resume(returning: transcript.displayText)
             }
             logger.info("Transcript updated: \(transcript.displayText)")
-            if state == .recording && !currentMode.prompt.isEmpty {
+            if state == .recording && !currentMode.prompt.isEmpty && currentMode.executionKind == .recording {
                 scheduleSpeculativeLLM()
             }
 
@@ -1234,7 +1344,8 @@ actor RecognitionSession {
                 Task { await self.stopRecording() }
             }
 
-        case .processingResult, .processingLabelOverride, .finalized, .macActionResult:
+        case .processingResult, .processingLabelOverride, .finalized, .macActionResult,
+             .selectionAskStarted, .selectionAskAnswerDelta, .selectionAskAnswerCompleted:
             break
         }
     }

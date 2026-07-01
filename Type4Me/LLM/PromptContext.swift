@@ -16,7 +16,10 @@ struct PromptContext: Sendable {
         let clipboard = await MainActor.run {
             NSPasteboard.general.string(forType: .string) ?? ""
         }
-        let selected = await readSelectedTextAsync(timeoutMs: 500)
+        var selected = await readSelectedTextAsync(timeoutMs: 500)
+        if selected.isEmpty {
+            selected = await readSelectedTextByTemporaryCopy(timeoutMs: 250)
+        }
         return PromptContext(selectedText: selected, clipboardText: clipboard)
     }
 
@@ -97,5 +100,71 @@ struct PromptContext: Sendable {
         }
 
         return selectedRef as? String
+    }
+
+    @MainActor
+    private static func readSelectedTextByTemporaryCopy(timeoutMs: Int) async -> String {
+        guard AXIsProcessTrusted() else { return "" }
+
+        let pasteboard = NSPasteboard.general
+        let snapshot = PasteboardSnapshot.capture(from: pasteboard)
+        let previousChangeCount = pasteboard.changeCount
+
+        postCopyShortcut()
+
+        let deadline = Date().addingTimeInterval(Double(timeoutMs) / 1_000)
+        var copiedText = ""
+        while Date() < deadline {
+            try? await Task.sleep(for: .milliseconds(25))
+            if pasteboard.changeCount != previousChangeCount {
+                copiedText = pasteboard.string(forType: .string) ?? ""
+                break
+            }
+        }
+
+        snapshot.restore(to: pasteboard)
+        return copiedText
+    }
+
+    @MainActor
+    private static func postCopyShortcut() {
+        guard let keyDown = CGEvent(keyboardEventSource: nil, virtualKey: 0x08, keyDown: true),
+              let keyUp = CGEvent(keyboardEventSource: nil, virtualKey: 0x08, keyDown: false) else {
+            return
+        }
+
+        keyDown.flags = .maskCommand
+        keyUp.flags = .maskCommand
+        keyDown.post(tap: .cghidEventTap)
+        keyUp.post(tap: .cghidEventTap)
+    }
+
+    private struct PasteboardSnapshot {
+        private let items: [[NSPasteboard.PasteboardType: Data]]
+
+        @MainActor
+        static func capture(from pasteboard: NSPasteboard) -> PasteboardSnapshot {
+            let items = pasteboard.pasteboardItems?.map { item in
+                item.types.reduce(into: [NSPasteboard.PasteboardType: Data]()) { result, type in
+                    result[type] = item.data(forType: type)
+                }
+            } ?? []
+            return PasteboardSnapshot(items: items)
+        }
+
+        @MainActor
+        func restore(to pasteboard: NSPasteboard) {
+            pasteboard.clearContents()
+            guard !items.isEmpty else { return }
+
+            let restoredItems = items.map { storedItem in
+                let item = NSPasteboardItem()
+                for (type, data) in storedItem {
+                    item.setData(data, forType: type)
+                }
+                return item
+            }
+            pasteboard.writeObjects(restoredItems)
+        }
     }
 }
