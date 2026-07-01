@@ -182,5 +182,6 @@ struct ModeStorage {
             || prompt.contains("先直接解释选中文本的核心含义")
             || prompt.contains("请用中文回答，允许使用 Markdown")
             || (!prompt.contains("# 用户语音问题") && prompt.contains("# 选中文本"))
+            || (prompt.contains("你是语音问答助手") && !prompt.contains("{conversation}"))
     }
 }

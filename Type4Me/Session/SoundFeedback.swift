@@ -357,8 +357,8 @@ enum SoundFeedback {
             guard channelCount > 0 else { continue }
 
             // Get device UID
-            var uidRef: CFString = "" as CFString
-            var uidSize = UInt32(MemoryLayout<CFString>.size)
+            var uidRef: Unmanaged<CFString>?
+            var uidSize = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
             var uidAddress = AudioObjectPropertyAddress(
                 mSelector: kAudioDevicePropertyDeviceUID,
                 mScope: kAudioObjectPropertyScopeGlobal,
@@ -368,8 +368,8 @@ enum SoundFeedback {
                                              &uidRef) == noErr else { continue }
 
             // Get device name
-            var nameRef: CFString = "" as CFString
-            var nameSize = UInt32(MemoryLayout<CFString>.size)
+            var nameRef: Unmanaged<CFString>?
+            var nameSize = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
             var nameAddress = AudioObjectPropertyAddress(
                 mSelector: kAudioObjectPropertyName,
                 mScope: kAudioObjectPropertyScopeGlobal,
@@ -378,7 +378,9 @@ enum SoundFeedback {
             guard AudioObjectGetPropertyData(id, &nameAddress, 0, nil, &nameSize,
                                              &nameRef) == noErr else { continue }
 
-            result.append((uid: uidRef as String, name: nameRef as String))
+            guard let uid = uidRef?.takeRetainedValue() as String?,
+                  let name = nameRef?.takeRetainedValue() as String? else { continue }
+            result.append((uid: uid, name: name))
         }
         return result
     }

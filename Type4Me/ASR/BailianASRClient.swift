@@ -232,7 +232,7 @@ private actor BailianTaskStartGate {
     func waitUntilStarted(timeout: Duration) async throws {
         let timeoutTask = Task {
             try? await Task.sleep(for: timeout)
-            await self.markFailure(BailianASRError.handshakeTimedOut)
+            self.markFailure(BailianASRError.handshakeTimedOut)
         }
 
         defer { timeoutTask.cancel() }

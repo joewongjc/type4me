@@ -215,6 +215,34 @@ final class ModeStorageTests: XCTestCase {
         XCTAssertTrue(migrated?.prompt.contains("# 用户语音问题") == true)
     }
 
+    func testSelectionAskPreviousBuiltinPromptMigratesForConversationContext() throws {
+        let storage = ModeStorage(fileURL: testURL)
+        var previousBuiltin = ProcessingMode.selectionAsk
+        previousBuiltin.prompt = """
+        你是语音问答助手。用户可能选中了一段文本，也可能只通过语音提出一个问题或指令。
+
+        # 回答要求
+        1. 用户语音问题是最高优先级。必须严格执行用户语音问题，不要擅自改成解释、分析或模板。
+
+        # 选中文本
+        ```text
+        {selected}
+        ```
+
+        # 用户语音问题
+        ```text
+        {text}
+        ```
+        """
+
+        try storage.save([ProcessingMode.direct, previousBuiltin])
+        let loaded = storage.load()
+        let migrated = loaded.first { $0.id == ProcessingMode.selectionAskId }
+
+        XCTAssertEqual(migrated?.prompt, ProcessingMode.selectionAsk.prompt)
+        XCTAssertTrue(migrated?.prompt.contains("{conversation}") == true)
+    }
+
     func testSelectionAskCustomPromptIsPreserved() throws {
         let storage = ModeStorage(fileURL: testURL)
         var custom = ProcessingMode.selectionAsk

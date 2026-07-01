@@ -221,6 +221,7 @@ actor RecognitionSession {
     private var speculativeThrottle = SpeculativeLLMThrottle()
     /// Stores the last LLM error from the early/fresh LLM task, consumed once by stopRecording().
     private var pendingLLMError: Error?
+    private var pendingSelectionAskConversationContext = ""
     /// When true, skip text injection (paste) but still save to clipboard & history.
     private var injectionAborted = false
     /// Continuation resumed when a final (isFinal) transcript arrives during stop.
@@ -277,6 +278,9 @@ actor RecognitionSession {
         #endif
 
         let effectiveMode = ASRProviderRegistry.resolvedMode(for: mode, provider: provider)
+        if effectiveMode.executionKind != .selectionAsk {
+            pendingSelectionAskConversationContext = ""
+        }
         sessionGeneration &+= 1
         let myGeneration = sessionGeneration
 
@@ -359,7 +363,6 @@ actor RecognitionSession {
         // Load hotwords
         let hotwords = HotwordStorage.loadEffective()
         let biasSettings = ASRBiasSettingsStorage.load()
-        let needsLLM = !effectiveMode.prompt.isEmpty
         let requestOptions = ASRRequestOptions(
             enablePunc: true,
             hotwords: hotwords,
@@ -526,6 +529,10 @@ actor RecognitionSession {
         }
     }
 
+    func setSelectionAskConversationContext(_ context: String) {
+        pendingSelectionAskConversationContext = context
+    }
+
     /// Auto-stop triggered by max recording duration timer.
     private func autoStopIfRecording() async {
         guard state == .recording else { return }
@@ -648,6 +655,8 @@ actor RecognitionSession {
         let question = questionText.trimmingCharacters(in: .whitespacesAndNewlines)
         let contextSource = SelectionAskPromptBuilder.contextSource(from: promptContext)
         let contextText = SelectionAskPromptBuilder.contextText(from: promptContext)
+        let conversationContext = pendingSelectionAskConversationContext
+        pendingSelectionAskConversationContext = ""
 
         guard !question.isEmpty else {
             onASREvent?(.selectionAskStarted(question: "", selectedText: contextText))
@@ -675,7 +684,8 @@ actor RecognitionSession {
         let prompt = SelectionAskPromptBuilder.requestText(
             mode: currentMode,
             context: effectiveContext,
-            question: question
+            question: question,
+            conversationContext: conversationContext
         )
         DebugFileLogger.log("""
         selectionAsk LLM request
@@ -686,6 +696,7 @@ actor RecognitionSession {
         selectedRaw=\(promptContext.selectedText)
         clipboardChars=\(promptContext.clipboardText.count)
         contextChars=\(contextText.count)
+        conversationChars=\(conversationContext.count)
         prompt:
         \(prompt)
         """)
@@ -1184,7 +1195,7 @@ actor RecognitionSession {
             let aborted = injectionAborted
             let onEvent = self.onASREvent
             let injectLog = "stop: injecting method=clipboard len=\(finalText.count) +\(ContinuousClock.now - stopT0)"
-            let injectionOutcome: InjectionOutcome = await withCheckedContinuation { continuation in
+            _ = await withCheckedContinuation { continuation in
                 Task.detached {
                     let outcome: InjectionOutcome
                     if aborted {

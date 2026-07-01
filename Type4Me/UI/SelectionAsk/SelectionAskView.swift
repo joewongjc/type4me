@@ -4,6 +4,8 @@ import SwiftUI
 struct SelectionAskView: View {
     let state: SelectionAskState
     let onClose: () -> Void
+    let onFollowUp: () -> Void
+    private let bottomAnchorID = "selectionAskBottomAnchor"
 
     var body: some View {
         ZStack {
@@ -13,14 +15,35 @@ struct SelectionAskView: View {
             VStack(spacing: 0) {
                 header
                 Divider().opacity(0.5)
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 22) {
-                        questionSection
-                        answerSection
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 22) {
+                            questionSection
+                            ForEach(state.turns) { turn in
+                                turnView(turn)
+                                    .transition(.asymmetric(
+                                        insertion: .move(edge: .bottom).combined(with: .opacity),
+                                        removal: .opacity
+                                    ))
+                            }
+                            if state.turns.isEmpty {
+                                answerSection
+                            }
+                            Color.clear
+                                .frame(height: 1)
+                                .id(bottomAnchorID)
+                        }
+                        .padding(.horizontal, 34)
+                        .padding(.vertical, 26)
+                        .animation(.spring(response: 0.32, dampingFraction: 0.86), value: state.turns)
                     }
-                    .padding(.horizontal, 34)
-                    .padding(.vertical, 26)
+                    .onChange(of: state.turns) { _, _ in
+                        withAnimation(.easeOut(duration: 0.18)) {
+                            proxy.scrollTo(bottomAnchorID, anchor: .bottom)
+                        }
+                    }
                 }
+                followUpBar
             }
         }
         .padding(10)
@@ -83,15 +106,40 @@ struct SelectionAskView: View {
     }
 
     private var answerSection: some View {
+        turnView(SelectionAskState.Turn(
+            question: state.question,
+            answer: answerText ?? "",
+            isLoading: answerText == nil,
+            errorMessage: errorText
+        ))
+    }
+
+    private func turnView(_ turn: SelectionAskState.Turn) -> some View {
         VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "person.crop.circle")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(Color(red: 0.38, green: 0.40, blue: 0.44))
+                Text(turn.question.isEmpty ? L("正在识别问题...", "Recognizing question...") : turn.question)
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(Color(red: 0.18, green: 0.20, blue: 0.24))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 20)
+            .padding(.bottom, 12)
+
+            Divider()
+
             HStack(spacing: 10) {
                 Image(systemName: "sparkles")
                     .font(.system(size: 18, weight: .semibold))
                 Text(L("回答", "Answer"))
                     .font(.system(size: 22, weight: .bold))
                 Spacer()
-                if let answer = answerText {
-                    copyButton(text: answer, systemImage: "doc.on.doc")
+                if !turn.answer.isEmpty {
+                    copyButton(text: turn.answer, systemImage: "doc.on.doc")
                 }
             }
             .foregroundStyle(Color(red: 0.12, green: 0.12, blue: 0.12))
@@ -101,13 +149,12 @@ struct SelectionAskView: View {
             Divider()
 
             Group {
-                switch state.phase {
-                case .idle, .loading:
-                    loadingView
-                case .answered(let markdown):
-                    markdownView(markdown)
-                case .error(let message):
+                if let message = turn.errorMessage {
                     errorView(message)
+                } else if turn.isLoading && turn.answer.isEmpty {
+                    loadingView
+                } else {
+                    markdownView(turn.answer)
                 }
             }
             .padding(.horizontal, 24)
@@ -119,6 +166,37 @@ struct SelectionAskView: View {
             RoundedRectangle(cornerRadius: 20)
                 .fill(Color.white)
         )
+    }
+
+    private var followUpBar: some View {
+        HStack(spacing: 12) {
+            Spacer()
+            Button(action: onFollowUp) {
+                HStack(spacing: 10) {
+                    Image(systemName: state.isRecordingFollowUp ? "stop.fill" : "mic.fill")
+                        .font(.system(size: 16, weight: .bold))
+                        .frame(width: 18, height: 18)
+                    Text(state.isRecordingFollowUp ? L("停止追问", "Stop follow-up") : L("继续追问", "Ask follow-up"))
+                        .font(.system(size: 16, weight: .semibold))
+                    if state.isRecordingFollowUp {
+                        VoiceBars()
+                    }
+                }
+                .foregroundStyle(Color.white)
+                .padding(.horizontal, 18)
+                .frame(height: 46)
+                .background(
+                    Capsule()
+                        .fill(state.isRecordingFollowUp
+                              ? Color(red: 0.82, green: 0.22, blue: 0.18)
+                              : Color(red: 0.10, green: 0.12, blue: 0.16))
+                )
+                .shadow(color: Color.black.opacity(0.12), radius: 10, y: 4)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 34)
+        .padding(.bottom, 24)
     }
 
     private var loadingView: some View {
@@ -166,6 +244,13 @@ struct SelectionAskView: View {
         return nil
     }
 
+    private var errorText: String? {
+        if case .error(let message) = state.phase {
+            return message
+        }
+        return nil
+    }
+
     private var hasSelectedText: Bool {
         !state.selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
@@ -181,5 +266,27 @@ struct SelectionAskView: View {
                 .frame(width: 32, height: 32)
         }
         .buttonStyle(.plain)
+    }
+}
+
+private struct VoiceBars: View {
+    @State private var active = false
+
+    var body: some View {
+        HStack(spacing: 3) {
+            ForEach(0..<4, id: \.self) { index in
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(Color.white.opacity(0.82))
+                    .frame(width: 3, height: index.isMultiple(of: 2) ? 12 : 18)
+                    .scaleEffect(y: active == index.isMultiple(of: 2) ? 1.35 : 0.72, anchor: .center)
+                    .animation(
+                        .easeInOut(duration: 0.45 + Double(index) * 0.08)
+                            .repeatForever(autoreverses: true),
+                        value: active
+                    )
+            }
+        }
+        .frame(width: 24)
+        .onAppear { active = true }
     }
 }

@@ -54,7 +54,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let permissionGuideModel = PermissionGuideModel()
     /// Computed dynamically per recording based on audio device topology.
     private var floatingBarController: FloatingBarController?
-    private let selectionAskController = SelectionAskController()
+    private lazy var selectionAskController = SelectionAskController { [weak self] conversationContext in
+        self?.toggleSelectionAskFollowUp(conversationContext: conversationContext) ?? false
+    }
     private let hotkeyManager = HotkeyManager()
     private let session = RecognitionSession()
 
@@ -168,6 +170,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         self.safeResetHotkeyState()
                     case .error(let error):
                         appState.showError(self.userFacingMessage(for: error))
+                        self.selectionAskController.cancelFollowUpRecording()
                         self.hotkeyManager.isProcessing = false
                         self.safeResetHotkeyState()
                     }
@@ -408,6 +411,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.syncESCAbortSetting()
             }
         }
+    }
+
+    private func toggleSelectionAskFollowUp(conversationContext: String) -> Bool {
+        let phase = appState.barPhase
+        if phase == .recording || phase == .preparing {
+            DebugFileLogger.log("selectionAsk follow-up stop phase=\(phase)")
+            appState.stopRecording()
+            if phase == .preparing {
+                Task { await self.session.cancelRecording() }
+            } else {
+                Task { await self.session.stopRecording() }
+            }
+            return true
+        }
+
+        guard phase != .processing else {
+            DebugFileLogger.log("selectionAsk follow-up blocked: still processing")
+            return false
+        }
+
+        let selectedProvider = KeychainService.selectedASRProvider
+        let availableModes = appState.availableModes
+        let resolvedMode = ASRProviderRegistry.resolvedMode(for: .selectionAsk, provider: selectedProvider)
+        let effectiveMode = availableModes.first(where: { $0.id == resolvedMode.id }) ?? resolvedMode
+
+        DebugFileLogger.log("selectionAsk follow-up start")
+        appState.currentMode = effectiveMode
+        appState.startRecording()
+        Task {
+            let ready = await self.session.awaitIdle()
+            if !ready {
+                DebugFileLogger.log("selectionAsk follow-up start: awaitIdle timed out")
+            }
+            await self.session.setSelectionAskConversationContext(conversationContext)
+            await self.session.startRecording(mode: effectiveMode)
+        }
+        return true
     }
 
     private func syncESCAbortSetting() {
