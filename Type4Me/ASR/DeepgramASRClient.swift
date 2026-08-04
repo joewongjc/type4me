@@ -105,7 +105,11 @@ actor DeepgramASRClient: SpeechRecognizer {
             options: options
         )
         var request = URLRequest(url: url)
-        request.setValue("Token \(deepgramConfig.apiKey)", forHTTPHeaderField: "Authorization")
+        if deepgramConfig.baseURL == DeepgramASRConfig.defaultBaseURL {
+            request.setValue("Token \(deepgramConfig.apiKey)", forHTTPHeaderField: "Authorization")
+        } else {
+            request.setValue(deepgramConfig.apiKey, forHTTPHeaderField: "X-API-Key")
+        }
 
         let connectionGate = DeepgramConnectionGate()
         let closeTracker = DeepgramCloseTracker()
