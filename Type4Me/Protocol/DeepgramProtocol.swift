@@ -18,7 +18,6 @@ struct DeepgramTranscriptUpdate: Sendable, Equatable {
 
 enum DeepgramProtocol {
 
-    private static let endpoint = "wss://api.deepgram.com/v1/listen"
     private static let keywordIntensity = 2
     private static let maxURLKeyterms = 30
 
@@ -26,7 +25,9 @@ enum DeepgramProtocol {
         config: DeepgramASRConfig,
         options: ASRRequestOptions
     ) throws -> URL {
-        guard var components = URLComponents(string: endpoint) else {
+        guard var components = URLComponents(string: config.baseURL),
+              components.scheme?.lowercased() == "wss",
+              components.host != nil else {
             throw DeepgramProtocolError.invalidEndpoint
         }
 
@@ -60,7 +61,7 @@ enum DeepgramProtocol {
             })
         }
 
-        components.queryItems = queryItems
+        components.queryItems = (components.queryItems ?? []) + queryItems
 
         guard let url = components.url else {
             throw DeepgramProtocolError.invalidEndpoint

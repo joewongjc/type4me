@@ -6,6 +6,7 @@ struct DeepgramASRConfig: ASRProviderConfig, Sendable {
     static let displayName = "Deepgram"
     static let defaultModel = "nova-3"
     static let defaultLanguage = "zh"
+    static let defaultBaseURL = "wss://api.deepgram.com/v1/listen"
 
     static let supportedModels = [
         "nova-3",
@@ -25,6 +26,7 @@ struct DeepgramASRConfig: ASRProviderConfig, Sendable {
 
     static var credentialFields: [CredentialField] {[
         CredentialField(key: "apiKey", label: L("API Key", "API Key"), placeholder: L("粘贴 API Key", "Paste your API Key"), isSecure: true, isOptional: false, defaultValue: ""),
+        CredentialField(key: "baseURL", label: "Base URL", placeholder: defaultBaseURL, isSecure: false, isOptional: false, defaultValue: defaultBaseURL),
         CredentialField(key: "model", label: L("模型", "Model"), placeholder: defaultModel, isSecure: false, isOptional: false, defaultValue: defaultModel,
             options: supportedModels.map { FieldOption(value: $0, label: $0) }),
         CredentialField(key: "language", label: L("语言", "Language"), placeholder: defaultLanguage, isSecure: false, isOptional: false, defaultValue: defaultLanguage,
@@ -34,6 +36,7 @@ struct DeepgramASRConfig: ASRProviderConfig, Sendable {
     ]}
 
     let apiKey: String
+    let baseURL: String
     let model: String
     let language: String
     let numerals: Bool
@@ -47,6 +50,8 @@ struct DeepgramASRConfig: ASRProviderConfig, Sendable {
         let language = credentials["language"]?.trimmingCharacters(in: .whitespacesAndNewlines)
 
         self.apiKey = apiKey
+        let configuredBaseURL = credentials["baseURL"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        self.baseURL = configuredBaseURL.isEmpty ? Self.defaultBaseURL : configuredBaseURL
         self.model = model?.isEmpty == false ? model! : Self.defaultModel
         self.language = language?.isEmpty == false ? language! : Self.defaultLanguage
         self.numerals = credentials["numerals"] == "true"
@@ -55,6 +60,7 @@ struct DeepgramASRConfig: ASRProviderConfig, Sendable {
     func toCredentials() -> [String: String] {
         [
             "apiKey": apiKey,
+            "baseURL": baseURL,
             "model": model,
             "language": language,
             "numerals": numerals ? "true" : "false",

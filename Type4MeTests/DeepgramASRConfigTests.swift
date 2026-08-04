@@ -11,6 +11,7 @@ final class DeepgramASRConfigTests: XCTestCase {
         XCTAssertEqual(config.apiKey, "dg_test_key")
         XCTAssertEqual(config.model, DeepgramASRConfig.defaultModel)
         XCTAssertEqual(config.language, DeepgramASRConfig.defaultLanguage)
+        XCTAssertEqual(config.baseURL, DeepgramASRConfig.defaultBaseURL)
         XCTAssertTrue(config.isValid)
     }
 
@@ -34,6 +35,14 @@ final class DeepgramASRConfigTests: XCTestCase {
         XCTAssertEqual(config.toCredentials()["apiKey"], "dg_test_key")
         XCTAssertEqual(config.toCredentials()["model"], "nova-2")
         XCTAssertEqual(config.toCredentials()["language"], DeepgramASRConfig.defaultLanguage)
+        XCTAssertEqual(config.toCredentials()["baseURL"], DeepgramASRConfig.defaultBaseURL)
+    }
+
+    func testCustomBaseURL_roundTrips() throws {
+        let endpoint = "wss://example.test/proxy/deepgram/v1/listen"
+        let config = try XCTUnwrap(DeepgramASRConfig(credentials: ["apiKey": "proxy-token", "baseURL": endpoint]))
+        XCTAssertEqual(config.baseURL, endpoint)
+        XCTAssertEqual(config.toCredentials()["baseURL"], endpoint)
     }
 
     func testRegistry_exposesDeepgramProvider() {

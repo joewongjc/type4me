@@ -35,6 +35,13 @@ final class DeepgramProtocolTests: XCTestCase {
         XCTAssertNil(items.value(for: "keyterm"))
     }
 
+    func testBuildWebSocketURL_usesCustomEndpoint() throws {
+        let endpoint = "wss://example.test/proxy/deepgram/v1/listen"
+        let config = try XCTUnwrap(DeepgramASRConfig(credentials: ["apiKey": "proxy-token", "baseURL": endpoint]))
+        let url = try DeepgramProtocol.buildWebSocketURL(config: config, options: ASRRequestOptions())
+        XCTAssertEqual(url.absoluteString.components(separatedBy: "?").first, endpoint)
+    }
+
     func testBuildWebSocketURL_usesKeytermForNova3Models() throws {
         let config = try XCTUnwrap(DeepgramASRConfig(credentials: [
             "apiKey": "dg_test_key",
