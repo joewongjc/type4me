@@ -311,6 +311,18 @@ final class HistoryStoreTests: XCTestCase {
                 asrModel: "ElevenLabs"
             ),
             HistoryRecord(
+                id: "deepgram-provider", createdAt: now.addingTimeInterval(-2 * 24 * 60 * 60), durationSeconds: 40,
+                rawText: "dg", processingMode: nil, processedText: nil,
+                finalText: "dg", status: "completed", characterCount: 1, asrProvider: "Deepgram",
+                asrModel: nil
+            ),
+            HistoryRecord(
+                id: "deepgram-model", createdAt: now.addingTimeInterval(-40 * 24 * 60 * 60), durationSeconds: 20,
+                rawText: "dg2", processingMode: nil, processedText: nil,
+                finalText: "dg2", status: "completed", characterCount: 1, asrProvider: nil,
+                asrModel: "Deepgram · nova-3"
+            ),
+            HistoryRecord(
                 id: "unknown", createdAt: now.addingTimeInterval(-60), durationSeconds: 60,
                 rawText: "g", processingMode: nil, processedText: nil,
                 finalText: "g", status: "completed", characterCount: 1, asrProvider: nil
@@ -338,6 +350,11 @@ final class HistoryStoreTests: XCTestCase {
         XCTAssertEqual(byModel["ElevenLabs"]?.recordCount, 2)
         XCTAssertEqual(byModel["ElevenLabs"]?.last30DaysDuration ?? 0, 45, accuracy: 0.01)
         XCTAssertEqual(byModel["ElevenLabs"]?.allTimeDuration ?? 0, 120, accuracy: 0.01)
+        XCTAssertEqual(rows.filter { $0.modelName == "Deepgram" }.count, 1)
+        XCTAssertEqual(rows.filter { $0.modelName == "Deepgram · nova-3" }.count, 0)
+        XCTAssertEqual(byModel["Deepgram"]?.recordCount, 2)
+        XCTAssertEqual(byModel["Deepgram"]?.last30DaysDuration ?? 0, 40, accuracy: 0.01)
+        XCTAssertEqual(byModel["Deepgram"]?.allTimeDuration ?? 0, 60, accuracy: 0.01)
         XCTAssertEqual(rows.last?.modelName, L("未知", "Unknown"))
         XCTAssertEqual(rows.dropLast().map(\.allTimeDuration), rows.dropLast().map(\.allTimeDuration).sorted(by: >))
     }

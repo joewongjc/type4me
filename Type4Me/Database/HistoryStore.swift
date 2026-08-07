@@ -539,6 +539,8 @@ actor HistoryStore {
         SELECT
             CASE
                 WHEN lower(trim(COALESCE(asr_provider, ''))) = 'elevenlabs' THEN 'ElevenLabs'
+                WHEN lower(trim(COALESCE(asr_provider, ''))) = 'deepgram'
+                     OR lower(trim(COALESCE(asr_model, ''))) LIKE 'deepgram%' THEN 'Deepgram'
                 ELSE COALESCE(NULLIF(asr_model, ''), NULLIF(asr_provider, ''), ?)
             END AS model_name,
             COALESCE(SUM(CASE WHEN created_at >= ? THEN duration_seconds ELSE 0 END), 0),
