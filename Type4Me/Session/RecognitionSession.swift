@@ -2143,12 +2143,23 @@ extension String {
     /// "hello world" is untouched.
     var removingCJKLatinSpaces: String {
         let cjk = "[\\u3400-\\u4DBF\\u4E00-\\u9FFF\\uF900-\\uFAFF]"
+
+        func restoringOrderedListSpacing(in text: String) -> String {
+            // Punctuation cleanup treats the dot in a list marker as ordinary
+            // punctuation. Restore the syntactic space in "3. 中文".
+            text.replacingOccurrences(
+                of: "(?m)^([ \\t]*[0-9]+\\.)(?=\(cjk))",
+                with: "$1 ",
+                options: .regularExpression
+            )
+        }
+
         let preserveCJKLatinSpacing = UserDefaults.standard.object(forKey: "tf_preserveCJKLatinSpacing") as? Bool ?? true
         guard preserveCJKLatinSpacing else {
             var s = self
             s = s.replacingOccurrences(of: "(?<=\(cjk)) +(?=\\S)", with: "", options: .regularExpression)
             s = s.replacingOccurrences(of: "(?<=\\S) +(?=\(cjk))", with: "", options: .regularExpression)
-            return s
+            return restoringOrderedListSpacing(in: s)
         }
         // A neighbour that should hug the CJK character with no space: anything
         // that is neither whitespace nor an ASCII letter/digit (i.e. another CJK
@@ -2162,7 +2173,7 @@ extension String {
         // Space before CJK, after a non-letter/digit: "， 你" → "，你"
         // ("Max 你" / "3 个" keep their space because 'x' / '3' are letter/digit.)
         s = s.replacingOccurrences(of: "(?<=\(glue)) +(?=\(cjk))", with: "", options: .regularExpression)
-        return s
+        return restoringOrderedListSpacing(in: s)
     }
 
     /// Strip trailing punctuation based on user preference (tf_stripTrailingPunctuation).

@@ -125,4 +125,22 @@ final class RecognitionSessionTests: XCTestCase {
         )
         XCTAssertEqual("第 3 个".removingCJKLatinSpaces, "第3个")
     }
+
+    func testRemovingCJKLatinSpaces_preservesOrderedListSpacingBeforeCJK() {
+        let input = """
+        3. 智谱
+        10. 中文标题
+        """
+
+        for preservePanguSpacing in [true, false] {
+            UserDefaults.standard.set(preservePanguSpacing, forKey: "tf_preserveCJKLatinSpacing")
+            XCTAssertEqual(input.removingCJKLatinSpaces, input)
+        }
+    }
+
+    func testRemovingCJKLatinSpaces_doesNotTreatDecimalAsOrderedList() {
+        UserDefaults.standard.set(true, forKey: "tf_preserveCJKLatinSpacing")
+
+        XCTAssertEqual("3.14 版本".removingCJKLatinSpaces, "3.14 版本")
+    }
 }
