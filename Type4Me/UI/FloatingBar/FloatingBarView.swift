@@ -22,6 +22,46 @@ protocol FloatingBarState: AnyObject, Observable {
     var effectiveProcessingLabel: String { get }
 }
 
+/// Stable hover state for the transcript preview.
+///
+/// Once an overflowing transcript opens during a hover session, it remains
+/// visible until the pointer leaves. Streaming ASR corrections may change the
+/// text width, but they must not dismiss an already-open preview.
+struct TranscriptHoverState: Equatable {
+    private(set) var isHovering = false
+    private(set) var isPopupVisible = false
+
+    /// Updates the pointer state and starts or ends a hover session.
+    ///
+    /// - Parameters:
+    ///   - hovering: Whether the pointer is currently inside the preview region.
+    ///   - transcriptNeedsExpansion: Whether the current transcript overflows the bar.
+    mutating func setHovering(_ hovering: Bool, transcriptNeedsExpansion: Bool) {
+        isHovering = hovering
+        if hovering {
+            if transcriptNeedsExpansion {
+                isPopupVisible = true
+            }
+        } else {
+            isPopupVisible = false
+        }
+    }
+
+    /// Opens the preview when a transcript grows beyond the bar during hover.
+    ///
+    /// - Parameter needsExpansion: Whether the updated transcript overflows the bar.
+    mutating func updateTranscript(needsExpansion: Bool) {
+        guard isHovering, needsExpansion else { return }
+        isPopupVisible = true
+    }
+
+    /// Clears all hover state at recording lifecycle boundaries.
+    mutating func reset() {
+        isHovering = false
+        isPopupVisible = false
+    }
+}
+
 /// Dark-themed floating transcription bar with smooth morphing between states.
 ///
 /// Design: single capsule container that animates width + content transitions.
@@ -39,7 +79,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
     @State private var recordingPeakWidth: CGFloat = TF.barHeight
     @State private var processingStartDate: Date?
     @State private var doneStartDate: Date?
-    @State private var isHovered = false
+    @State private var transcriptHoverState = TranscriptHoverState()
     @AppStorage("tf_hoverTranscriptPreview") private var hoverTranscriptPreview = true
     @AppStorage(RecordingVisualStyle.storageKey) private var visualStyle = RecordingVisualStyle.defaultValue
 
@@ -67,12 +107,10 @@ struct FloatingBarView<S: FloatingBarState>: View {
         }
         guard recordingVisualStyle.showsRecordingPanel,
               hoverTranscriptPreview,
-              isHovered,
-              state.barPhase == .recording,
-              !state.segments.isEmpty
+              transcriptHoverState.isPopupVisible,
+              state.barPhase == .recording
         else { return false }
-        let textWidth = measureText(state.transcriptionText)
-        return textWidth + 66 > TF.barWidth
+        return true
     }
 
     private var capsuleWidth: CGFloat {
@@ -117,8 +155,12 @@ struct FloatingBarView<S: FloatingBarState>: View {
         }
         .background {
             FloatingBarHoverTracker { hovered in
+                let needsExpansion = transcriptNeedsExpansion(state.transcriptionText)
                 withAnimation(TF.springSnappy) {
-                    isHovered = hovered
+                    transcriptHoverState.setHovering(
+                        hovered,
+                        transcriptNeedsExpansion: needsExpansion
+                    )
                 }
             }
         }
@@ -135,6 +177,9 @@ struct FloatingBarView<S: FloatingBarState>: View {
             guard state.barPhase == .recording else { return }
             let text = newSegments.map(\.text).joined()
             let textWidth = measureText(text)
+            transcriptHoverState.updateTranscript(
+                needsExpansion: !text.isEmpty && textWidth + 66 > TF.barWidth
+            )
             let needed = min(TF.barWidth, max(TF.barHeight, textWidth + 66.0))
             if needed > recordingPeakWidth {
                 // Growing: fixed velocity 250pt/s
@@ -404,12 +449,10 @@ struct FloatingBarView<S: FloatingBarState>: View {
     // MARK: - Phase Transitions
 
     private func handlePhaseChange(_ phase: FloatingBarPhase) {
-        // Reset hover state on panel show/hide boundaries.
-        // NSTrackingArea suspends events when the view is hidden (panel orderOut)
-        // instead of firing mouseExited, so isHovered would otherwise leak across
-        // recording sessions and auto-show the popup without any actual hover.
-        if phase == .preparing || phase == .hidden {
-            isHovered = false
+        // Hover state belongs to one recording session and must not leak into
+        // preparing, processing, or a later recording.
+        if phase != .recording {
+            transcriptHoverState.reset()
         }
         switch phase {
         case .preparing:
@@ -456,6 +499,14 @@ struct FloatingBarView<S: FloatingBarState>: View {
     /// Measure actual rendered width using the same font as the floating bar text.
     private func measureText(_ string: String) -> CGFloat {
         ceil((string as NSString).size(withAttributes: [.font: floatingBarFont]).width)
+    }
+
+    /// Returns whether the transcript needs the expanded preview.
+    ///
+    /// - Parameter text: Current complete transcript text.
+    /// - Returns: `true` when the rendered text cannot fit inside the bar.
+    private func transcriptNeedsExpansion(_ text: String) -> Bool {
+        !text.isEmpty && measureText(text) + 66 > TF.barWidth
     }
 
     // MARK: - Transcript Popup View
@@ -1016,24 +1067,26 @@ struct FloatingBarHoverTracker: NSViewRepresentable {
 final class HoverTrackingNSView: NSView {
     var onHoverChanged: ((Bool) -> Void)?
     private var enterWorkItem: DispatchWorkItem?
+    private var hoverTrackingArea: NSTrackingArea?
 
     override func updateTrackingAreas() {
-        for area in trackingAreas { removeTrackingArea(area) }
-        addTrackingArea(NSTrackingArea(
-            rect: bounds,
+        super.updateTrackingAreas()
+        guard hoverTrackingArea == nil else { return }
+
+        let trackingArea = NSTrackingArea(
+            rect: .zero,
             options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
             owner: self
-        ))
-        super.updateTrackingAreas()
+        )
+        addTrackingArea(trackingArea)
+        hoverTrackingArea = trackingArea
     }
 
     override func mouseEntered(with event: NSEvent) {
         enterWorkItem?.cancel()
         let work = DispatchWorkItem { [weak self] in
             guard let self, let window = self.window else { return }
-            // Re-check mouse position at trigger time: updateTrackingAreas()
-            // sends synthetic mouseEntered when the tracking area is recreated
-            // with the cursor inside (e.g. bar grows during recording).
+            // Re-check after the activation delay in case the pointer already left.
             let mouseInView = self.convert(window.mouseLocationOutsideOfEventStream, from: nil)
             guard self.bounds.contains(mouseInView) else { return }
             self.onHoverChanged?(true)
