@@ -64,6 +64,10 @@ final class FloatingBarController {
 
         let barView = FloatingBarView<AppState>(state: state)
         let hosting = NSHostingView(rootView: barView)
+        // The controller owns the panel frame. Content-driven sizing can otherwise
+        // resize the window while SwiftUI is laying it out and trigger an AppKit
+        // update-constraints loop for long transcript previews.
+        hosting.sizingOptions = []
         hosting.layer?.backgroundColor = .clear
         hosting.frame = NSRect(origin: .zero, size: frame.size)
         hosting.autoresizingMask = [.width, .height]
