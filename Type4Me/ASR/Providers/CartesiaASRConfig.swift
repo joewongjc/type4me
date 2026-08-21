@@ -7,7 +7,7 @@ struct CartesiaASRConfig: ASRProviderConfig, Sendable {
     static let language = "en"
 
     static var credentialFields: [CredentialField] { [
-        CredentialField(key: "apiKey", label: "API Key", placeholder: L("粘贴 API Key", "Paste your API Key"), isSecure: true, isOptional: false, defaultValue: ""),
+        CredentialField(key: "apiKey", label: "API Key", placeholder: "sk_car_...", isSecure: true, isOptional: false, defaultValue: ""),
     ] }
 
     let apiKey: String
