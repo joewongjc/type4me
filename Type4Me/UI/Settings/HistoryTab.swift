@@ -1035,12 +1035,14 @@ struct HistoryTab: View {
                             .font(.system(size: 12, weight: .semibold, design: .rounded))
                             .foregroundStyle(TF.settingsTextSecondary)
                             .monospacedDigit()
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
                         Text(String(format: "%.1fs", record.durationSeconds))
                             .font(.system(size: 9, weight: .medium, design: .rounded))
                             .foregroundStyle(TF.settingsTextTertiary)
                             .monospacedDigit()
                     }
-                    .frame(width: 48, alignment: .leading)
+                    .frame(width: 62, alignment: .leading)
 
                     VStack(alignment: .leading, spacing: 7) {
                         Text(record.finalText)
@@ -1064,16 +1066,11 @@ struct HistoryTab: View {
                         .foregroundStyle(TF.settingsTextTertiary)
                         .lineLimit(1)
 
-                        // Keep the source model visible without requiring users to
-                        // expand every history row.  Long provider/model names are
-                        // truncated rather than wrapping the metadata into single
-                        // characters in the compact settings window.
+                        // Keep the ASR vendor visible without duplicating the
+                        // recording duration already shown in the time column.
                         HStack(spacing: 10) {
-                            if let asr = historyASRDescription(record) {
-                                Label(asr, systemImage: "mic")
-                            }
-                            if let llm = historyLLMDescription(record) {
-                                Label(llm, systemImage: "cpu")
+                            if let vendor = historyASRVendorDescription(record) {
+                                Label(vendor, systemImage: "mic")
                             }
                         }
                         .font(.system(size: 9, weight: .medium))
@@ -1237,6 +1234,16 @@ struct HistoryTab: View {
         let provider = record.asrProvider?.trimmingCharacters(in: .whitespacesAndNewlines)
         let source = model?.isEmpty == false ? model : (provider?.isEmpty == false ? provider : nil)
         return historySourceDescription(source, durationSeconds: record.asrDurationSeconds)
+    }
+
+    private func historyASRVendorDescription(_ record: HistoryRecord) -> String? {
+        let model = record.asrModel?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let provider = record.asrProvider?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let source = model?.isEmpty == false ? model : provider
+        return source?
+            .components(separatedBy: " · ")
+            .first?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func historyLLMDescription(_ record: HistoryRecord) -> String? {
