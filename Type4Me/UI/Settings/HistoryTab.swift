@@ -1062,6 +1062,23 @@ struct HistoryTab: View {
                         }
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(TF.settingsTextTertiary)
+                        .lineLimit(1)
+
+                        // Keep the source model visible without requiring users to
+                        // expand every history row.  Long provider/model names are
+                        // truncated rather than wrapping the metadata into single
+                        // characters in the compact settings window.
+                        HStack(spacing: 10) {
+                            if let asr = historyASRDescription(record) {
+                                Label(asr, systemImage: "mic")
+                            }
+                            if let llm = historyLLMDescription(record) {
+                                Label(llm, systemImage: "cpu")
+                            }
+                        }
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(TF.settingsTextTertiary)
+                        .lineLimit(1)
 
                         if isExpanded {
                             expandedRecordDetails(record)
