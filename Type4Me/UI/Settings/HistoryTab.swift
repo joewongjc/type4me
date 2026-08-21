@@ -1061,19 +1061,11 @@ struct HistoryTab: View {
                             } else {
                                 Label(L("直接转写", "Transcription"), systemImage: "waveform")
                             }
-                        }
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(TF.settingsTextTertiary)
-                        .lineLimit(1)
-
-                        // Keep the ASR vendor visible without duplicating the
-                        // recording duration already shown in the time column.
-                        HStack(spacing: 10) {
                             if let vendor = historyASRVendorDescription(record) {
                                 Label(vendor, systemImage: "mic")
                             }
                         }
-                        .font(.system(size: 9, weight: .medium))
+                        .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(TF.settingsTextTertiary)
                         .lineLimit(1)
 
@@ -1648,12 +1640,15 @@ struct HistoryTab: View {
     }
 
     private func formatDuration(_ seconds: Double) -> String {
-        let hours = Int(seconds) / 3600
-        let minutes = (Int(seconds) % 3600) / 60
+        let totalSeconds = max(0, Int(seconds))
+        let hours = totalSeconds / 3600
+        let minutes = (totalSeconds % 3600) / 60
         if hours > 0 {
             return String(format: L("%d小时%d分", "%dh %dm"), hours, minutes)
-        } else {
+        } else if minutes > 0 {
             return String(format: L("%d分钟", "%dm"), minutes)
+        } else {
+            return String(format: L("%d秒", "%ds"), totalSeconds)
         }
     }
 
