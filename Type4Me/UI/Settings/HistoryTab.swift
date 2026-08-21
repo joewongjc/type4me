@@ -823,7 +823,7 @@ struct HistoryTab: View {
             Text("·")
                 .font(.system(size: 11))
                 .foregroundStyle(TF.settingsTextTertiary.opacity(0.4))
-            Text(L("\(count) 条", "\(count)"))
+            Text(L("\(count) 条", "\(count) rec"))
                 .font(.system(size: 10))
                 .foregroundStyle(TF.settingsTextTertiary.opacity(0.6))
             Text("·")
