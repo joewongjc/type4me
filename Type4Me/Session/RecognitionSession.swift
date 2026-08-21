@@ -201,6 +201,9 @@ actor RecognitionSession {
         if provider == .sherpa {
             return "\(providerName) · \(ModelManager.selectedStreamingModel.displayName)"
         }
+        if provider == .cartesia {
+            return "\(providerName) · \(CartesiaASRConfig.model)"
+        }
 
         guard let credentials = KeychainService.loadASRConfig(for: provider)?.toCredentials() else {
             return providerName

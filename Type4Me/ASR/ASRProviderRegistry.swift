@@ -68,6 +68,11 @@ enum ASRProviderRegistry {
                 createClient: { DeepgramASRClient() },
                 capabilities: .streaming()
             ),
+            .cartesia: ProviderEntry(
+                configType: CartesiaASRConfig.self,
+                createClient: { CartesiaASRClient() },
+                capabilities: .streaming()
+            ),
             .assemblyai: ProviderEntry(
                 configType: AssemblyAIASRConfig.self,
                 createClient: { AssemblyAIASRClient() },

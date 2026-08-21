@@ -113,6 +113,11 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
                 (L("可用模型", "Models"), L("查看", "view"), URL(string: "https://developers.deepgram.com/docs/models-languages-overview/")!),
                 (L("API Key", "API Key"), L("获取", "get"), URL(string: "https://developers.deepgram.com/docs/create-additional-api-keys")!),
             ]
+        case .cartesia:
+            return [
+                (L("文档", "Docs"), L("查看", "view"), URL(string: "https://docs.cartesia.ai/use-the-api/stt/compare-endpoints")!),
+                ("API Key", L("获取", "get"), URL(string: "https://play.cartesia.ai/keys")!),
+            ]
         case .assemblyai:
             return [
                 (L("可用模型", "Models"), L("查看", "view"), URL(string: "https://www.assemblyai.com/docs/getting-started/models")!),

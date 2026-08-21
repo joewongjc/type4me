@@ -12,6 +12,7 @@ enum ASRProvider: String, CaseIterable, Codable, Sendable {
     case google
     case aws
     case deepgram
+    case cartesia
     case assemblyai
     case elevenlabs
     case grok
@@ -40,6 +41,7 @@ enum ASRProvider: String, CaseIterable, Codable, Sendable {
         case .google:   return "Google Cloud STT"
         case .aws:      return "AWS Transcribe"
         case .deepgram: return "Deepgram"
+        case .cartesia: return "Cartesia"
         case .assemblyai: return "AssemblyAI"
         case .elevenlabs: return "ElevenLabs"
         case .grok:     return "Grok"
