@@ -10,6 +10,10 @@ actor CartesiaASRClient: SpeechRecognizer {
     private var eventContinuation: AsyncStream<RecognitionEvent>.Continuation?
     private var stream: AsyncStream<RecognitionEvent>?
     private var confirmedSegments: [String] = []
+    /// Cartesia may finalize individual transcript chunks while the microphone
+    /// remains open. Only the explicit `finalize` we send on key release ends
+    /// the app's recording session.
+    private var awaitingFinalization = false
 
     var events: AsyncStream<RecognitionEvent> {
         if let stream { return stream }
@@ -27,6 +31,7 @@ actor CartesiaASRClient: SpeechRecognizer {
         self.stream = stream
         eventContinuation = continuation
         confirmedSegments = []
+        awaitingFinalization = false
 
         let url = try CartesiaProtocol.buildWebSocketURL(config: config, options: options)
         var request = URLRequest(url: url)
@@ -45,6 +50,7 @@ actor CartesiaASRClient: SpeechRecognizer {
 
     func endAudio() async throws {
         guard let webSocketTask else { return }
+        awaitingFinalization = true
         try await webSocketTask.send(.string("finalize"))
     }
 
@@ -57,6 +63,7 @@ actor CartesiaASRClient: SpeechRecognizer {
         eventContinuation = nil
         stream = nil
         confirmedSegments = []
+        awaitingFinalization = false
     }
 
     private func startReceiveLoop() {
@@ -88,8 +95,18 @@ actor CartesiaASRClient: SpeechRecognizer {
             }
             guard let update = try CartesiaProtocol.makeTranscriptUpdate(from: data, confirmedSegments: confirmedSegments) else { return }
             confirmedSegments = update.confirmedSegments
-            eventContinuation?.yield(.transcript(update.transcript))
-            if update.transcript.isFinal { eventContinuation?.yield(.completed) }
+            let completesRecording = awaitingFinalization && update.transcript.isFinal
+            let transcript = RecognitionTranscript(
+                confirmedSegments: update.transcript.confirmedSegments,
+                partialText: update.transcript.partialText,
+                authoritativeText: update.transcript.authoritativeText,
+                isFinal: completesRecording
+            )
+            eventContinuation?.yield(.transcript(transcript))
+            if completesRecording {
+                awaitingFinalization = false
+                eventContinuation?.yield(.completed)
+            }
         } catch {
             eventContinuation?.yield(.error(error))
         }
