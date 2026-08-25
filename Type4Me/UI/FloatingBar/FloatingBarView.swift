@@ -34,9 +34,11 @@ protocol FloatingBarState: AnyObject, Observable {
 
 struct FloatingBarPresentation: Equatable {
     var indicatorStyle: RecordingIndicatorStyle = .regular
-    var visualStyle: RecordingVisualStyle
-    var showsLiveTranscript: Bool
-    var enablesHoverTranscriptPreview: Bool
+    var visualStyle: RecordingVisualStyle = .timeline
+    var showsLiveTranscript: Bool = true
+    var enablesHoverTranscriptPreview: Bool = true
+    var showsTooltips: Bool = true
+    var showsCancelButton: Bool = true
 
     var showsRecordingIndicator: Bool {
         indicatorStyle == .compact || visualStyle.showsRecordingPanel
@@ -76,6 +78,8 @@ struct FloatingBarView<S: FloatingBarState>: View {
     @AppStorage(RecordingIndicatorStyle.storageKey) private var indicatorStyle = RecordingIndicatorStyle.defaultValue
     @AppStorage(LiveTranscriptDisplayPreference.storageKey) private var showLiveTranscript = LiveTranscriptDisplayPreference.defaultValue
     @AppStorage("tf_hoverTranscriptPreview") private var hoverTranscriptPreview = true
+    @AppStorage(AppearancePreferenceDefaults.showTooltipsKey) private var showTooltips = AppearancePreferenceDefaults.showTooltipsDefault
+    @AppStorage(AppearancePreferenceDefaults.showCancelButtonKey) private var showCancelButton = AppearancePreferenceDefaults.showCancelButtonDefault
     @AppStorage(RecordingVisualStyle.storageKey) private var visualStyle = RecordingVisualStyle.defaultValue
     @AppStorage("tf_language") private var language = AppLanguage.systemDefault
 
@@ -101,6 +105,18 @@ struct FloatingBarView<S: FloatingBarState>: View {
     private var effectiveHoverTranscriptPreview: Bool {
         guard effectiveIndicatorStyle == .regular else { return false }
         return presentationOverride?.enablesHoverTranscriptPreview ?? hoverTranscriptPreview
+    }
+
+    private var effectiveShowsTooltips: Bool {
+        presentationOverride?.showsTooltips ?? showTooltips
+    }
+
+    private var effectiveShowsCancelButton: Bool {
+        presentationOverride?.showsCancelButton ?? showCancelButton
+    }
+
+    private var currentRecordingChromeWidth: CGFloat {
+        effectiveShowsCancelButton ? TF.recordingChromeWidth : TF.recordingSingleButtonChromeWidth
     }
 
     private var usesCompactPresentation: Bool {
@@ -150,7 +166,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
               !state.segments.isEmpty
         else { return false }
         let textWidth = measureText(state.transcriptionText)
-        return textWidth + TF.recordingChromeWidth > TF.barWidth
+        return textWidth + currentRecordingChromeWidth > TF.barWidth
     }
 
     private var activeTopOverlay: FloatingBarTopOverlay? {
@@ -158,6 +174,9 @@ struct FloatingBarView<S: FloatingBarState>: View {
             guard recordingVisualStyle.showsRecordingPanel else { return nil }
         }
         if showTranscriptPopup { return .transcript }
+
+        guard effectiveShowsTooltips else { return nil }
+
         if let hoveredAction, state.barPhase == .recording || state.barPhase == .preparing {
             return .action(hoveredAction)
         }
@@ -217,11 +236,11 @@ struct FloatingBarView<S: FloatingBarState>: View {
         }
         switch state.barPhase {
         case .preparing:
-            let defaultWidth = measureText(recordingDisplayText) + TF.recordingChromeWidth
+            let defaultWidth = measureText(recordingDisplayText) + currentRecordingChromeWidth
             return max(TF.barWidthCompact, defaultWidth)
         case .recording:
             guard effectiveShowsLiveTranscript, !state.segments.isEmpty else {
-                let defaultWidth = measureText(recordingDisplayText) + TF.recordingChromeWidth
+                let defaultWidth = measureText(recordingDisplayText) + currentRecordingChromeWidth
                 return max(TF.barWidthCompact, defaultWidth)
             }
             return recordingPeakWidth
@@ -257,7 +276,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
             guard !usesCompactPresentation, state.barPhase == .recording, effectiveShowsLiveTranscript else { return }
             let text = newSegments.map(\.text).joined()
             let textWidth = measureText(text)
-            let needed = min(TF.barWidth, max(TF.barWidthCompact, textWidth + TF.recordingChromeWidth))
+            let needed = min(TF.barWidth, max(TF.barWidthCompact, textWidth + currentRecordingChromeWidth))
             if needed > recordingPeakWidth {
                 recordingPeakWidth = needed
             } else if recordingPeakWidth - needed > 30 {
@@ -274,10 +293,10 @@ struct FloatingBarView<S: FloatingBarState>: View {
             if showsLive && !state.segments.isEmpty {
                 let text = state.transcriptionText
                 let textWidth = measureText(text)
-                let needed = min(TF.barWidth, max(TF.barWidthCompact, textWidth + TF.recordingChromeWidth))
+                let needed = min(TF.barWidth, max(TF.barWidthCompact, textWidth + currentRecordingChromeWidth))
                 recordingPeakWidth = needed
             } else {
-                let defaultWidth = min(TF.barWidth, max(TF.barWidthCompact, measureText(recordingDisplayText) + TF.recordingChromeWidth))
+                let defaultWidth = min(TF.barWidth, max(TF.barWidthCompact, measureText(recordingDisplayText) + currentRecordingChromeWidth))
                 recordingPeakWidth = defaultWidth
             }
         }
@@ -357,8 +376,12 @@ struct FloatingBarView<S: FloatingBarState>: View {
             CompactAudioIndicator(meter: state.audioLevel)
                 .frame(maxWidth: .infinity, maxHeight: TF.compactIndicatorHeight)
 
-            compactRecordingButton(.cancel)
-                .frame(width: 32, height: TF.compactIndicatorHeight)
+            if effectiveShowsCancelButton {
+                compactRecordingButton(.cancel)
+                    .frame(width: 32, height: TF.compactIndicatorHeight)
+            } else {
+                Spacer().frame(width: TF.recordingEdgeInset)
+            }
         }
         .frame(width: TF.compactIndicatorWidth, height: TF.compactIndicatorHeight)
     }
@@ -500,7 +523,9 @@ struct FloatingBarView<S: FloatingBarState>: View {
 
             recordingText
 
-            recordingButton(.cancel)
+            if effectiveShowsCancelButton {
+                recordingButton(.cancel)
+            }
         }
         .padding(.horizontal, TF.recordingEdgeInset)
     }
@@ -769,14 +794,16 @@ struct FloatingBarView<S: FloatingBarState>: View {
         }
         switch phase {
         case .preparing:
-            let defaultWidth = max(TF.barWidthCompact, measureText(recordingDisplayText) + TF.recordingChromeWidth)
+            let defaultWidth = max(TF.barWidthCompact, measureText(recordingDisplayText) + currentRecordingChromeWidth)
             recordingPeakWidth = defaultWidth
             processingStartDate = nil
             doneStartDate = nil
             recordingActionLocked = false
-            showModeHint()
+            if effectiveShowsTooltips {
+                showModeHint()
+            }
         case .recording:
-            let defaultWidth = max(TF.barWidthCompact, measureText(recordingDisplayText) + TF.recordingChromeWidth)
+            let defaultWidth = max(TF.barWidthCompact, measureText(recordingDisplayText) + currentRecordingChromeWidth)
             if recordingPeakWidth < defaultWidth {
                 recordingPeakWidth = defaultWidth
             }

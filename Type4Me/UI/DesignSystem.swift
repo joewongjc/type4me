@@ -116,6 +116,10 @@ enum TF {
         + recordingEdgeInset * 2
         + recordingControlGap * 2
         + 16
+    static let recordingSingleButtonChromeWidth: CGFloat = recordingControlSize
+        + recordingEdgeInset * 2
+        + recordingControlGap
+        + 16
 
     // MARK: Transcript Popup (hover preview above bar)
 

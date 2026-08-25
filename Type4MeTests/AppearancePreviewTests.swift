@@ -11,14 +11,48 @@ final class AppearancePreviewTests: XCTestCase {
             indicatorStyle: .regular,
             visualStyle: .dual,
             showsLiveTranscript: false,
-            enablesHoverTranscriptPreview: false
+            enablesHoverTranscriptPreview: false,
+            showsTooltips: false,
+            showsCancelButton: false
         )
 
         XCTAssertEqual(presentation.indicatorStyle, .regular)
         XCTAssertEqual(presentation.visualStyle, .dual)
         XCTAssertFalse(presentation.showsLiveTranscript)
         XCTAssertFalse(presentation.enablesHoverTranscriptPreview)
+        XCTAssertFalse(presentation.showsTooltips)
+        XCTAssertFalse(presentation.showsCancelButton)
         XCTAssertTrue(presentation.showsRecordingIndicator)
+    }
+
+    func testFloatingBarPresentation_defaults() {
+        let presentation = FloatingBarPresentation()
+        XCTAssertEqual(presentation.indicatorStyle, .regular)
+        XCTAssertEqual(presentation.visualStyle, .timeline)
+        XCTAssertTrue(presentation.showsLiveTranscript)
+        XCTAssertTrue(presentation.enablesHoverTranscriptPreview)
+        XCTAssertTrue(presentation.showsTooltips)
+        XCTAssertTrue(presentation.showsCancelButton)
+        XCTAssertTrue(presentation.showsRecordingIndicator)
+    }
+
+    func testAppearancePreferenceDefaults() {
+        XCTAssertEqual(AppearancePreferenceDefaults.showTooltipsKey, "tf_showTooltips")
+        XCTAssertTrue(AppearancePreferenceDefaults.showTooltipsDefault)
+        XCTAssertEqual(AppearancePreferenceDefaults.showCancelButtonKey, "tf_showCancelButton")
+        XCTAssertTrue(AppearancePreferenceDefaults.showCancelButtonDefault)
+    }
+
+    func testRecordingChromeWidthDesignTokens() {
+        // Dual-button chrome: Finish(35) + Cancel(35) + EdgeInsets*2(20) + Gap*2(16) + Safety(16) = 122
+        XCTAssertEqual(TF.recordingChromeWidth, 122)
+        // Single-button chrome: Finish(35) + EdgeInsets*2(20) + Gap(8) + Safety(16) = 79
+        XCTAssertEqual(TF.recordingSingleButtonChromeWidth, 79)
+        // Difference is exactly one control size (35) plus one control gap (8)
+        XCTAssertEqual(
+            TF.recordingChromeWidth - TF.recordingSingleButtonChromeWidth,
+            TF.recordingControlSize + TF.recordingControlGap
+        )
     }
 
     func testFloatingBarPresentation_compactShowsRecordingIndicatorEvenWhenVisualStyleHidden() {

@@ -24,7 +24,8 @@
 3. **状态保留原则**：隐藏常规专属配置项时不重写其存储值；切回常规模式后已保存的动效与文本偏好立即恢复；
 4. **Preview 一致性**：`FloatingBarPresentation` 完整承载新配置字段，Settings Preview Stage 直接复用生产渲染管道，无分叉逻辑；
 5. **快捷键保留**：隐藏取消按钮属于纯视觉/触控层精简，键盘全局 `Esc` 键取消录音的事件链路不受影响；
-6. **多语言即时响应**：所有新增文案遵循 `L("...", "...")` 国际化规范，支持运行中切换语言无需重启。
+6. **无魔数推导**：所有胶囊与按钮边距、宽度计算均基于 `TF` 设计系统常量对称推导；
+7. **多语言即时响应**：所有新增文案遵循 `L("...", "...")` 国际化规范，支持运行中切换语言无需重启。
 
 ---
 
@@ -35,28 +36,36 @@
 当前定义（`Type4Me/UI/FloatingBar/FloatingBarView.swift`）：
 ```swift
 struct FloatingBarPresentation: Equatable {
-    var indicatorStyle: RecordingIndicatorStyle
-    var visualStyle: RecordingVisualStyle
-    var showsLiveTranscript: Bool
-    var enablesHoverTranscriptPreview: Bool
+    var indicatorStyle: RecordingIndicatorStyle = .regular
+    var visualStyle: RecordingVisualStyle = .timeline
+    var showsLiveTranscript: Bool = true
+    var enablesHoverTranscriptPreview: Bool = true
+
+    var showsRecordingIndicator: Bool {
+        indicatorStyle == .compact || visualStyle.showsRecordingPanel
+    }
 }
 ```
 
 扩展为：
 ```swift
 struct FloatingBarPresentation: Equatable {
-    var indicatorStyle: RecordingIndicatorStyle
-    var visualStyle: RecordingVisualStyle
-    var showsLiveTranscript: Bool
-    var enablesHoverTranscriptPreview: Bool
-    var showsTooltips: Bool
-    var showsCancelButton: Bool
+    var indicatorStyle: RecordingIndicatorStyle = .regular
+    var visualStyle: RecordingVisualStyle = .timeline
+    var showsLiveTranscript: Bool = true
+    var enablesHoverTranscriptPreview: Bool = true
+    var showsTooltips: Bool = true
+    var showsCancelButton: Bool = true
+
+    var showsRecordingIndicator: Bool {
+        indicatorStyle == .compact || visualStyle.showsRecordingPanel
+    }
 }
 ```
 
 ### 3.2 AppStorage 键与默认值
 
-在 `AppState.swift` 或相关服务中定义常量：
+在 `AppState.swift` 中定义全局默认常量：
 ```swift
 enum AppearancePreferenceDefaults {
     static let showTooltipsKey = "tf_showTooltips"
@@ -140,14 +149,14 @@ private var compactRecordingContent: some View {
             compactRecordingButton(.cancel)
                 .frame(width: 32, height: TF.compactIndicatorHeight)
         } else {
-            Spacer().frame(width: 10)
+            Spacer().frame(width: TF.recordingEdgeInset)
         }
     }
     .frame(width: TF.compactIndicatorWidth, height: TF.compactIndicatorHeight)
 }
 ```
 - **尺寸稳定**：总宽固定为 `TF.compactIndicatorWidth`（180pt），高 24pt；
-- **右侧填充**：隐藏取消按钮时，右侧使用 10pt 内边距占位，`CompactAudioIndicator` 弹性扩展填满中间可用宽度；
+- **右侧填充**：隐藏取消按钮时，右侧使用 `TF.recordingEdgeInset`（10pt）内边距占位，`CompactAudioIndicator` 弹性扩展填满中间可用宽度；
 - **声纹动画**：Canvas 根据传入的 `size.width` 动态计算总列数并自动延伸声纹流。
 
 #### 4.3.2 常规模式（Regular Layout）
@@ -162,23 +171,45 @@ private var recordingContent: some View {
             recordingButton(.cancel)
         }
     }
-    .padding(.leading, TF.recordingEdgeInset)
-    .padding(.trailing, effectiveShowsCancelButton ? TF.recordingEdgeInset : 14)
+    .padding(.horizontal, TF.recordingEdgeInset)
 }
 ```
 
-- **宽度计算**：
-  - 最小宽度保持 `TF.barWidthCompact`（180pt）；
-  - `TF.recordingChromeWidth` 常量根据是否包含取消按钮动态折算：
-    - 含取消按钮：Finish (35) + Gap (8) + Cancel (35) + Gap (8) + Insets (20) ≈ 106pt；
-    - 不含取消按钮：Finish (35) + Gap (8) + Insets (24) ≈ 67pt；
-  - 动态计算公式：
-    ```swift
-    private var currentChromeWidth: CGFloat {
-        effectiveShowsCancelButton ? TF.recordingChromeWidth : 67.0
-    }
-    ```
-- **Esc 取消**：`handleKeyboardCancel` 与全局按键监听独立于视觉按钮，无按键移除副作用。
+- **统一内边距**：无论是否显示取消按钮，两侧水平 padding 均统一使用 `TF.recordingEdgeInset`（10pt），不引入硬编码魔数。
+- **设计系统 Token 扩展与推导**：
+  在 `DesignSystem.swift` 的 `TF` 中：
+  ```swift
+  // 双按钮 Chrome: Finish(35) + Cancel(35) + EdgeInset*2(20) + Gap*2(16) + Safety(16) = 122pt
+  static let recordingChromeWidth: CGFloat = recordingControlSize * 2
+      + recordingEdgeInset * 2
+      + recordingControlGap * 2
+      + 16
+
+  // 单按钮 Chrome: Finish(35) + EdgeInset*2(20) + Gap(8) + Safety(16) = 79pt
+  static let recordingSingleButtonChromeWidth: CGFloat = recordingControlSize
+      + recordingEdgeInset * 2
+      + recordingControlGap
+      + 16
+  ```
+
+- **动态 Chrome 计算属性**：
+  ```swift
+  private var currentRecordingChromeWidth: CGFloat {
+      effectiveShowsCancelButton ? TF.recordingChromeWidth : TF.recordingSingleButtonChromeWidth
+  }
+  ```
+
+- **全量 8 处调用点统一替换**：
+  1. `showTranscriptPopup`（行 153）：`textWidth + currentRecordingChromeWidth > TF.barWidth`
+  2. `capsuleWidth` - `.preparing`（行 220）：`measureText(recordingDisplayText) + currentRecordingChromeWidth`
+  3. `capsuleWidth` - `.recording`（行 224）：`measureText(recordingDisplayText) + currentRecordingChromeWidth`
+  4. `onChange(of: state.segments)`（行 260）：`textWidth + currentRecordingChromeWidth`
+  5. `onChange(of: effectiveShowsLiveTranscript)` 录音段测量（行 277）：`textWidth + currentRecordingChromeWidth`
+  6. `onChange(of: effectiveShowsLiveTranscript)` 缺省测量（行 280）：`measureText(recordingDisplayText) + currentRecordingChromeWidth`
+  7. `handlePhaseChange(.preparing)`（行 772）：`measureText(recordingDisplayText) + currentRecordingChromeWidth`
+  8. `handlePhaseChange(.recording)`（行 779）：`measureText(recordingDisplayText) + currentRecordingChromeWidth`
+
+- **Esc 取消**：`handleKeyboardCancel` 与全局按键监听独立于视觉按钮，取消按钮隐藏后按 `Esc` 依然能够取消录制。
 
 ---
 
@@ -259,10 +290,11 @@ private var showCancelButtonRow: some View {
 | 文件 | 变更内容 |
 |---|---|
 | `Type4Me/UI/AppState.swift` | 声明 `AppearancePreferenceDefaults` 常量（key / default） |
-| `Type4Me/UI/FloatingBar/FloatingBarView.swift` | `FloatingBarPresentation` 扩展新字段；`activeTopOverlay` 与录音布局适配显隐 |
+| `Type4Me/UI/DesignSystem.swift` | 声明 `recordingSingleButtonChromeWidth` 常量 |
+| `Type4Me/UI/FloatingBar/FloatingBarView.swift` | `FloatingBarPresentation` 扩展新字段；`activeTopOverlay`、`currentRecordingChromeWidth` 与录音布局适配显隐 |
 | `Type4Me/UI/Settings/AppearanceSettingsTab.swift` | 新增两个通用开关；重构为条件化渲染（`if !isCompact`） |
 | `Type4Me/UI/Settings/AppearancePreviewStage.swift` | 传递新增 presentation 字段以供实时预览 |
-| `Type4MeTests/AppearancePreviewTests.swift` | 增加新增配置的默认值、Presentation 解析与布局断言测试 |
+| `Type4MeTests/AppearancePreviewTests.swift` | 增加新增配置的默认值、Presentation 解析与单/双按钮 Chrome 宽度断言测试 |
 
 ---
 
@@ -273,12 +305,14 @@ private var showCancelButtonRow: some View {
    - 验证 `FloatingBarPresentation` 包含 `showsTooltips: true` 与 `showsCancelButton: true`；
 2. **偏好安全回退测试**：
    - 验证缺少 UserDefaults key 时默认解析为 `true`；
-3. **Tooltips 逻辑判定测试**：
+3. **Chrome 宽度推导测试**：
+   - 验证 `recordingChromeWidth` (122pt) 与 `recordingSingleButtonChromeWidth` (79pt) 的算术推导正确性；
+4. **Tooltips 逻辑判定测试**：
    - 验证 `showsTooltips == false` 时 `activeTopOverlay` 为 `nil`；
-4. **取消按钮显隐布局测试**：
+5. **取消按钮显隐布局测试**：
    - 验证 Compact 模式在隐藏取消按钮时仍满足 180 × 24 几何约束；
-   - 验证 Regular 模式在隐藏取消按钮时满足 180 最小宽度与紧凑计算规则；
-5. **多语言文本匹配测试**：
+   - 验证 Regular 模式在隐藏取消按钮时满足 180 最小宽度与单按钮 Chrome 计算规则；
+6. **多语言文本匹配测试**：
    - 验证中英文标题与副标题渲染正确。
 
 ### 8.2 自动化测试命令
@@ -294,8 +328,9 @@ swift build
 | 决策项 | 决策内容 | 理由 |
 |---|---|---|
 | **Tooltips 控制范围** | 同时控制模式提示与按钮操作气泡 | 保证界面免打扰的一致性 |
-| **取消按钮隐藏行为（Compact）** | 宽度保持 180pt，声纹自然右延 | 维持胶囊尺寸稳定性与视觉平衡 |
-| **取消按钮隐藏行为（Regular）** | 移除右侧按钮，右侧内边距 10pt，最小宽度 180pt | 保持一致的下限胶囊触控与视觉质感 |
+| **取消按钮隐藏行为（Compact）** | 宽度保持 180pt，声纹自然右延，右侧 10pt padding | 维持胶囊尺寸稳定性与视觉平衡 |
+| **取消按钮隐藏行为（Regular）** | 移除右侧按钮，两侧内边距均为 10pt，最小宽度 180pt | 保持一致的下限胶囊触控与视觉质感 |
+| **Chrome 宽度推导** | `recordingSingleButtonChromeWidth = recordingControlSize + edgeInset*2 + gap + 16` | 消除硬编码魔数，确保全量 8 处调用点一致 |
 | **设置页模式切换交互** | 条件隐藏专属项（`if !isCompact`），通用项置底 | 消除不生效项的认知干扰，界面极简高效 |
 | **存储 Key** | `tf_showTooltips` 与 `tf_showCancelButton` | 命名风格与现有 `tf_` 系列完全一致 |
 | **默认值** | 均为 `true` | 保障老用户平滑无感升级 |

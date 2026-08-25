@@ -18,6 +18,12 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
     @AppStorage("tf_hoverTranscriptPreview")
     private var hoverTranscriptPreview = true
 
+    @AppStorage(AppearancePreferenceDefaults.showTooltipsKey)
+    private var showTooltips = AppearancePreferenceDefaults.showTooltipsDefault
+
+    @AppStorage(AppearancePreferenceDefaults.showCancelButtonKey)
+    private var showCancelButton = AppearancePreferenceDefaults.showCancelButtonDefault
+
     @AppStorage("tf_stripTrailingPunctuation")
     private var stripTrailingPunctuation = "off"
 
@@ -39,7 +45,9 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
             indicatorStyle: RecordingIndicatorStyle(rawValue: indicatorStyle) ?? .regular,
             visualStyle: RecordingVisualStyle(rawValue: visualStyle) ?? .timeline,
             showsLiveTranscript: showLiveTranscript,
-            enablesHoverTranscriptPreview: hoverTranscriptPreview
+            enablesHoverTranscriptPreview: hoverTranscriptPreview,
+            showsTooltips: showTooltips,
+            showsCancelButton: showCancelButton
         )
     }
 
@@ -66,13 +74,22 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
 
             settingsGroupCard(L("录音显示", "Recording Display"), icon: "macwindow") {
                 indicatorStyleRow
+
+                if !isCompact {
+                    SettingsDivider()
+                    visualStyleRow
+                    SettingsDivider()
+                    liveTranscriptRow
+                    SettingsDivider()
+                    hoverPreviewRow
+                }
+
                 SettingsDivider()
-                visualStyleRow
+                showTooltipsRow
                 SettingsDivider()
-                liveTranscriptRow
-                SettingsDivider()
-                hoverPreviewRow
+                showCancelButtonRow
             }
+            .animation(TF.springGentle, value: isCompact)
 
             Spacer().frame(height: 16)
 
@@ -102,36 +119,48 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
     }
 
     private var visualStyleRow: some View {
-        settingsOptionRow(
-            L("录音动效", "Visual Style"),
-            subtitle: isCompact ? L("仅常规外观可用", "Available in Regular only") : nil
-        ) {
+        settingsOptionRow(L("录音动效", "Visual Style")) {
             settingsDropdown(
                 selection: $visualStyle,
                 options: RecordingVisualStyle.allCases.map { ($0.rawValue, $0.displayName) }
             )
-            .disabled(isCompact)
-            .opacity(isCompact ? 0.6 : 1.0)
         }
     }
 
     private var liveTranscriptRow: some View {
         settingsToggleRow(
             L("实时展示文本", "Live Transcript"),
-            subtitle: isCompact
-                ? L("仅常规外观可用", "Available in Regular only")
-                : L("开启后在录音时显示识别文本", "Show recognized text while recording"),
-            isOn: $showLiveTranscript,
-            isEnabled: !isCompact
+            subtitle: L("开启后在录音时显示识别文本", "Show recognized text while recording"),
+            isOn: $showLiveTranscript
         )
     }
 
     private var hoverPreviewRow: some View {
         settingsToggleRow(
             L("悬停文字预览", "Hover Text Preview"),
-            subtitle: isCompact ? L("仅常规外观可用", "Available in Regular only") : nil,
-            isOn: $hoverTranscriptPreview,
-            isEnabled: !isCompact
+            isOn: $hoverTranscriptPreview
+        )
+    }
+
+    private var showTooltipsRow: some View {
+        settingsToggleRow(
+            L("显示 Tooltips", "Show Tooltips"),
+            subtitle: L(
+                "开启后在录音开始与悬停按钮时显示提示气泡",
+                "Show hints on recording start and button hover"
+            ),
+            isOn: $showTooltips
+        )
+    }
+
+    private var showCancelButtonRow: some View {
+        settingsToggleRow(
+            L("显示取消按钮", "Show Cancel Button"),
+            subtitle: L(
+                "关闭后隐藏取消按钮，仍可通过 Esc 键取消录制",
+                "Hide cancel button; you can still cancel using Esc key"
+            ),
+            isOn: $showCancelButton
         )
     }
 

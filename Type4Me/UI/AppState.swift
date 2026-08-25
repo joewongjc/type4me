@@ -48,6 +48,14 @@ enum RecordingIndicatorStyle: String, CaseIterable {
     }
 }
 
+enum AppearancePreferenceDefaults {
+    static let showTooltipsKey = "tf_showTooltips"
+    static let showTooltipsDefault = true
+
+    static let showCancelButtonKey = "tf_showCancelButton"
+    static let showCancelButtonDefault = true
+}
+
 enum RecordingVisualStyle: String, CaseIterable {
     static let storageKey = "tf_visualStyle"
     static let defaultValue = Self.timeline.rawValue
