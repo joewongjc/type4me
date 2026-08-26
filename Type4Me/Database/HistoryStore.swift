@@ -657,7 +657,20 @@ actor HistoryStore {
 
         let sql = """
         SELECT
-            COALESCE(NULLIF(asr_model, ''), NULLIF(asr_provider, ''), ?) AS model_name,
+            CASE
+                -- Older history rows recorded only the provider. These providers
+                -- have one supported/default model, so fold those rows into the
+                -- same model-qualified bucket as newer rows.
+                WHEN lower(trim(COALESCE(asr_provider, ''))) = 'elevenlabs'
+                     AND (NULLIF(trim(asr_model), '') IS NULL
+                          OR lower(trim(asr_model)) = 'elevenlabs')
+                    THEN 'ElevenLabs · scribe_v2_realtime'
+                WHEN lower(trim(COALESCE(asr_provider, ''))) = 'deepgram'
+                     AND (NULLIF(trim(asr_model), '') IS NULL
+                          OR lower(trim(asr_model)) = 'deepgram')
+                    THEN 'Deepgram · nova-3'
+                ELSE COALESCE(NULLIF(asr_model, ''), NULLIF(asr_provider, ''), ?)
+            END AS model_name,
             COALESCE(SUM(CASE WHEN created_at >= ? THEN duration_seconds ELSE 0 END), 0),
             COALESCE(SUM(CASE WHEN created_at >= ? THEN duration_seconds ELSE 0 END), 0),
             COALESCE(SUM(CASE WHEN created_at >= ? THEN duration_seconds ELSE 0 END), 0),
