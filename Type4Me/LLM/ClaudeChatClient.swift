@@ -31,19 +31,34 @@ actor ClaudeChatClient: LLMClient {
     }
 
     /// Process text through Anthropic Messages API (streaming).
-    func process(text: String, prompt: String, config: LLMConfig) async throws -> String {
-        return try await processStreaming(text: text, prompt: prompt, config: config) { _ in }
+    func process(
+        text: String,
+        prompt: String,
+        config: LLMConfig,
+        inputBoundary: LLMInputBoundary
+    ) async throws -> String {
+        return try await processStreaming(
+            text: text,
+            prompt: prompt,
+            config: config,
+            inputBoundary: inputBoundary
+        ) { _ in }
     }
 
     func processStreaming(
         text: String,
         prompt: String,
         config: LLMConfig,
+        inputBoundary: LLMInputBoundary,
         onDelta: @escaping @Sendable (String) async -> Void
     ) async throws -> String {
         let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedText.isEmpty else { return text }
-        let finalPrompt = prompt.replacingOccurrences(of: "{text}", with: trimmedText)
+        let preparedPrompt = LLMPreparedPrompt.make(
+            text: trimmedText,
+            prompt: prompt,
+            inputBoundary: inputBoundary
+        )
 
         guard let url = URL(string: "\(config.baseURL)/messages") else {
             throw LLMError.invalidURL
@@ -59,8 +74,8 @@ actor ClaudeChatClient: LLMClient {
         let body = ClaudeRequest(
             model: config.model,
             max_tokens: 4096,
-            system: nil,
-            messages: [ClaudeMessage(role: "user", content: finalPrompt)],
+            system: preparedPrompt.system,
+            messages: [ClaudeMessage(role: "user", content: preparedPrompt.user)],
             stream: true
         )
         request.httpBody = try JSONEncoder().encode(body)

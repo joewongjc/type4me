@@ -142,7 +142,12 @@ final class LLMClientCacheTests: XCTestCase {
 private actor StubLLMClient: LLMClient {
     private(set) var isInvalidated = false
 
-    func process(text: String, prompt: String, config: LLMConfig) async throws -> String {
+    func process(
+        text: String,
+        prompt: String,
+        config: LLMConfig,
+        inputBoundary: LLMInputBoundary
+    ) async throws -> String {
         text
     }
 
