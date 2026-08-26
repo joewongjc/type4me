@@ -317,12 +317,57 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(controller.panel.frame.size, previewLayout.panelSize)
 
         controller.updatePanelLayout(visibleLayout)
+        // Immediate shrink is avoided while SwiftUI animations are in flight:
+        XCTAssertEqual(controller.panel.frame.size, previewLayout.panelSize)
+
+        // After flushing pending shrink:
+        controller.flushPendingShrink()
         XCTAssertEqual(controller.panel.frame.size, visibleLayout.panelSize)
 
         appState.barPhase = .hidden
         controller.updatePanelLayout(.hidden)
         XCTAssertTrue(controller.panel.ignoresMouseEvents)
         XCTAssertEqual(controller.panel.frame.size, FloatingBarPanelLayout.hidden.panelSize)
+    }
+
+    func testFloatingPanelControllerDefersShrinkingWhileExpandingImmediately() async throws {
+        let appState = AppState()
+        let controller = FloatingBarController(state: appState)
+        appState.barPhase = .recording
+
+        let compactLayout = FloatingBarPanelLayout(
+            contentSize: NSSize(width: TF.barWidthCompact, height: TF.barHeight)
+        )
+        controller.updatePanelLayout(compactLayout)
+        controller.flushPendingShrink()
+        XCTAssertEqual(controller.panel.frame.size, NSSize(width: 180, height: 55))
+
+        // 1. Immediate expansion on growing width:
+        let wideLayout = FloatingBarPanelLayout(
+            contentSize: NSSize(width: TF.barWidth, height: TF.barHeight)
+        )
+        controller.updatePanelLayout(wideLayout)
+        XCTAssertEqual(controller.panel.frame.size, NSSize(width: 400, height: 55))
+
+        // 2. Immediate expansion on growing height (overlay):
+        let overlayLayout = FloatingBarPanelLayout(
+            contentSize: NSSize(
+                width: TF.transcriptPopupWidth,
+                height: TF.barHeight + TF.transcriptPopupGap + 60
+            )
+        )
+        controller.updatePanelLayout(overlayLayout)
+        // Width covers the max envelope (400) while height immediately expands to 125
+        XCTAssertEqual(controller.panel.frame.size, NSSize(width: 400, height: 125))
+
+        // 3. Overlay dismisses: width shrinks to 180, height shrinks to 55
+        controller.updatePanelLayout(compactLayout)
+        // Immediately after, size stays at (400, 125) to avoid clipping fade-out and spring transitions:
+        XCTAssertEqual(controller.panel.frame.size, NSSize(width: 400, height: 125))
+
+        // After async sleep exceeds panelShrinkDelay:
+        try await Task.sleep(for: .milliseconds(400))
+        XCTAssertEqual(controller.panel.frame.size, NSSize(width: 180, height: 55))
     }
 
     func testFloatingIndicatorHoverTrackingDoesNotInterceptControls() {

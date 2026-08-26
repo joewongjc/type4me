@@ -86,12 +86,14 @@ final class FloatingBarPanel: NSPanel {
 /// smallest single rectangle containing the currently visible bar and overlay.
 @MainActor
 final class FloatingBarController {
+    static let panelShrinkDelay: TimeInterval = 0.35
 
     let panel: FloatingBarPanel
     private let state: AppState
     private var currentLayout = FloatingBarPanelLayout.hidden
     private var anchorDisplayID: CGDirectDisplayID?
     private var panelGeneration = 0
+    private var pendingShrinkTask: Task<Void, Never>?
 
     init(state: AppState) {
         self.state = state
@@ -126,19 +128,56 @@ final class FloatingBarController {
 
         // Let the existing fade-out finish at its current size. Mouse events are
         // already disabled above, so the disappearing panel cannot block clicks.
-        guard state.barPhase != .hidden || !panel.isVisible else { return }
+        guard state.barPhase != .hidden || !panel.isVisible else {
+            pendingShrinkTask?.cancel()
+            pendingShrinkTask = nil
+            return
+        }
 
         let shouldShow = layout.hasVisibleContent
             && state.barPhase != .hidden
             && !panel.isVisible
             && panelGeneration > 0
+
         let targetSize = layout.panelSize
-        if !approximatelyEqual(panel.frame.size, targetSize) {
-            applyPanelSize(targetSize, display: panel.isVisible)
-            Task { @MainActor [weak self] in
-                self?.panel.contentView?.layoutSubtreeIfNeeded()
-                self?.panel.invalidateShadow()
+        let currentSize = panel.frame.size
+
+        if state.barPhase == .hidden {
+            pendingShrinkTask?.cancel()
+            pendingShrinkTask = nil
+            if !approximatelyEqual(currentSize, targetSize) {
+                applyPanelSize(targetSize, display: false)
             }
+            return
+        }
+
+        let widthGrowing = targetSize.width > currentSize.width + 0.5
+        let heightGrowing = targetSize.height > currentSize.height + 0.5
+        let widthShrinking = targetSize.width < currentSize.width - 0.5
+        let heightShrinking = targetSize.height < currentSize.height - 0.5
+
+        if widthGrowing || heightGrowing {
+            // Immediate expansion to cover any dimension that is growing
+            let expandedSize = NSSize(
+                width: max(currentSize.width, targetSize.width),
+                height: max(currentSize.height, targetSize.height)
+            )
+            if !approximatelyEqual(currentSize, expandedSize) {
+                applyPanelSize(expandedSize, display: panel.isVisible)
+                Task { @MainActor [weak self] in
+                    self?.panel.contentView?.layoutSubtreeIfNeeded()
+                    self?.panel.invalidateShadow()
+                }
+            }
+        }
+
+        if widthShrinking || heightShrinking {
+            // Defer shrinking until the visible content animations complete (~0.3s spring / 0.18s transition)
+            schedulePendingShrink()
+        } else {
+            // Neither dimension is shrinking; cancel any previous pending shrink
+            pendingShrinkTask?.cancel()
+            pendingShrinkTask = nil
         }
 
         if shouldShow {
@@ -146,8 +185,41 @@ final class FloatingBarController {
         }
     }
 
+    func flushPendingShrink() {
+        pendingShrinkTask?.cancel()
+        pendingShrinkTask = nil
+        let targetSize = currentLayout.panelSize
+        if currentLayout.hasVisibleContent && !approximatelyEqual(panel.frame.size, targetSize) {
+            applyPanelSize(targetSize, display: panel.isVisible)
+            panel.contentView?.layoutSubtreeIfNeeded()
+            panel.invalidateShadow()
+        }
+    }
+
+    private func schedulePendingShrink() {
+        pendingShrinkTask?.cancel()
+        let generation = panelGeneration
+        pendingShrinkTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(Int(Self.panelShrinkDelay * 1000)))
+            guard let self,
+                  self.panelGeneration == generation,
+                  self.state.barPhase != .hidden
+            else { return }
+
+            let targetSize = self.currentLayout.panelSize
+            if self.currentLayout.hasVisibleContent && !self.approximatelyEqual(self.panel.frame.size, targetSize) {
+                self.applyPanelSize(targetSize, display: self.panel.isVisible)
+                self.panel.contentView?.layoutSubtreeIfNeeded()
+                self.panel.invalidateShadow()
+            }
+            self.pendingShrinkTask = nil
+        }
+    }
+
     func show() {
         panelGeneration &+= 1
+        pendingShrinkTask?.cancel()
+        pendingShrinkTask = nil
 
         if anchorDisplayID == nil || state.barPhase == .preparing {
             anchorDisplayID = FloatingBarPanel.screenUnderMouse()
@@ -175,6 +247,8 @@ final class FloatingBarController {
     }
 
     func hide() {
+        pendingShrinkTask?.cancel()
+        pendingShrinkTask = nil
         guard panel.isVisible else { return }
         panel.ignoresMouseEvents = true
 

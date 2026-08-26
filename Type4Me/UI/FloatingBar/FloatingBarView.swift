@@ -69,7 +69,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
     }
 
     /// High-water mark: only grows during recording, never shrinks (prevents ASR correction jitter)
-    @State private var recordingPeakWidth: CGFloat = TF.barHeight
+    @State private var recordingPeakWidth: CGFloat = TF.barWidthCompact
     @State private var processingStartDate: Date?
     @State private var doneStartDate: Date?
     @State private var isTranscriptHoverActive = false
@@ -255,7 +255,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
             guard effectiveShowsLiveTranscript else {
                 return baseRecordingWidth
             }
-            return recordingPeakWidth
+            return max(baseRecordingWidth, recordingPeakWidth)
         case .processing:
             return min(TF.barWidth, max(110, measureText(state.effectiveProcessingLabel) + 66.0))
         case .recovering:
