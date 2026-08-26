@@ -35,6 +35,8 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
     @State private var asrTestStatus: SettingsTestStatus = .idle
     @State private var isEditingASR = true
     @State private var hasStoredASR = false
+    /// Tracks option fields currently using a free-form value instead of a preset.
+    @State private var customASRModeFields: Set<String> = []
     @State private var testTask: Task<Void, Never>?
     /// Hint shown below ASR credentials when only bigasr works (not seed 2.0)
     @State private var volcResourceHint: String?
@@ -313,6 +315,7 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
                                 asrTestStatus = .idle
                                 asrCredentialValues = [:]
                                 editedFields = []
+                                syncCustomASRModeFields()
                                 isEditingASR = true
                             }
                         } else {
@@ -462,7 +465,61 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
 
     @ViewBuilder
     private func credentialFieldRow(_ field: CredentialField) -> some View {
-        if !field.options.isEmpty {
+        if !field.options.isEmpty && field.allowCustomInput {
+            let allOptions = field.options + [
+                FieldOption(
+                    value: CredentialField.customValue,
+                    label: selectedASRProvider == .deepgram
+                        ? L("其他模型…", "Other model…")
+                        : L("自定义…", "Custom…")
+                )
+            ]
+            let pickerBinding = Binding<String>(
+                get: {
+                    if customASRModeFields.contains(field.key) {
+                        return CredentialField.customValue
+                    }
+                    let val = asrCredentialValues[field.key] ?? ""
+                    return val.isEmpty ? (savedASRValues[field.key] ?? field.defaultValue) : val
+                },
+                set: { newValue in
+                    if newValue == CredentialField.customValue {
+                        customASRModeFields.insert(field.key)
+                        asrCredentialValues[field.key] = ""
+                    } else {
+                        customASRModeFields.remove(field.key)
+                        asrCredentialValues[field.key] = newValue
+                    }
+                    editedFields.insert(field.key)
+                }
+            )
+            let customBinding = Binding<String>(
+                get: {
+                    if let value = asrCredentialValues[field.key] {
+                        return value
+                    }
+                    return savedASRValues[field.key] ?? ""
+                },
+                set: {
+                    asrCredentialValues[field.key] = $0
+                    editedFields.insert(field.key)
+                }
+            )
+            settingsOptionRow(field.label, controlWidth: SettingsControlWidth.input) {
+                VStack(alignment: .trailing, spacing: 8) {
+                    settingsDropdown(
+                        selection: pickerBinding,
+                        options: allOptions.map { ($0.value, $0.label) }
+                    )
+                    if customASRModeFields.contains(field.key) {
+                        FixedWidthTextField(text: customBinding, placeholder: field.placeholder)
+                            .padding(.horizontal, 12)
+                            .frame(height: 36)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(TF.settingsCardAlt))
+                    }
+                }
+            }
+        } else if !field.options.isEmpty {
             let pickerBinding = Binding<String>(
                 get: {
                     let val = asrCredentialValues[field.key] ?? ""
@@ -796,6 +853,22 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
             hasStoredASR = false
             isEditingASR = true
         }
+        syncCustomASRModeFields()
+    }
+
+    /// Shows the free-form field when a saved value is not one of the presets.
+    private func syncCustomASRModeFields() {
+        var custom: Set<String> = []
+        let fields = ASRProviderRegistry.configType(for: selectedASRProvider)?.credentialFields ?? []
+        for field in fields where field.allowCustomInput && !field.options.isEmpty {
+            let val = asrCredentialValues[field.key]
+                ?? savedASRValues[field.key]
+                ?? field.defaultValue
+            if !val.isEmpty && !field.options.contains(where: { $0.value == val }) {
+                custom.insert(field.key)
+            }
+        }
+        customASRModeFields = custom
     }
 
     @discardableResult

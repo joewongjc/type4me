@@ -1579,13 +1579,13 @@ struct HistoryTab: View {
             }
         }
         .padding(16)
-        .frame(width: 550)
+        .frame(width: 650)
     }
 
     private var usageDetailsHeader: some View {
         HStack(spacing: 10) {
             Text(L("模型 / 引擎", "Model / Engine"))
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(width: 270, alignment: .leading)
             Text(L("近1天", "1 day"))
                 .frame(width: 78, alignment: .trailing)
             Text(L("7天", "7 days"))
@@ -1610,7 +1610,7 @@ struct HistoryTab: View {
                     .foregroundStyle(TF.settingsText)
                     .lineLimit(1)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(width: 270, alignment: .leading)
 
             Text(formatUsageDuration(row.lastDayDuration))
                 .frame(width: 78, alignment: .trailing)

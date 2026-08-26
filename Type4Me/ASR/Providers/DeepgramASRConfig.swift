@@ -28,7 +28,7 @@ struct DeepgramASRConfig: ASRProviderConfig, Sendable {
         CredentialField(key: "apiKey", label: L("API Key", "API Key"), placeholder: L("粘贴 API Key", "Paste your API Key"), isSecure: true, isOptional: false, defaultValue: ""),
         CredentialField(key: "baseURL", label: "Base URL", placeholder: defaultBaseURL, isSecure: false, isOptional: false, defaultValue: defaultBaseURL),
         CredentialField(key: "model", label: L("模型", "Model"), placeholder: defaultModel, isSecure: false, isOptional: false, defaultValue: defaultModel,
-            options: supportedModels.map { FieldOption(value: $0, label: $0) }),
+            options: supportedModels.map { FieldOption(value: $0, label: $0) }, allowCustomInput: true),
         CredentialField(key: "language", label: L("语言", "Language"), placeholder: defaultLanguage, isSecure: false, isOptional: false, defaultValue: defaultLanguage,
             options: supportedLanguages.map { FieldOption(value: $0, label: $0) }),
         CredentialField(key: "numerals", label: L("数字转换", "Numerals"), placeholder: "false", isSecure: false, isOptional: true, defaultValue: "false",
