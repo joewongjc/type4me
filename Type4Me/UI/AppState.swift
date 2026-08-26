@@ -147,6 +147,16 @@ enum LiveTranscriptDisplayPreference {
     }
 }
 
+enum RecordingMetadataDisplayPreference {
+    static let showModeNameKey = "tf_showRecordingModeName"
+    static let showProviderNameKey = "tf_showRecordingProviderName"
+    static let showModelNameKey = "tf_showRecordingModelName"
+
+    static let showModeNameDefault = true
+    static let showProviderNameDefault = false
+    static let showModelNameDefault = false
+}
+
 enum CrossModeFinishPreference {
     static let storageKey = "tf_allowCrossModeFinish"
     static let defaultValue = false
@@ -1390,6 +1400,8 @@ final class AppState {
     var barPhase: FloatingBarPhase = .hidden
     var segments: [TranscriptionSegment] = []
     var currentMode: ProcessingMode
+    var recordingProvider: ASRProvider? = nil
+    var recordingModelName: String? = nil
     @ObservationIgnored private let modeSelectionDefaults: UserDefaults
     @ObservationIgnored let audioLevel = AudioLevelMeter()
     var recordingStartDate: Date?
@@ -1461,6 +1473,7 @@ final class AppState {
     // MARK: Actions
 
     func startRecording() {
+        captureRecordingMetadata()
         activityKind = .standard
         latestReviseUndoTicketID = nil
         awaitsSuppressedCancellationFinalization = false
@@ -1478,6 +1491,7 @@ final class AppState {
     }
 
     func startReviseRecording() {
+        captureRecordingMetadata()
         activityKind = .revise
         latestReviseUndoTicketID = nil
         awaitsSuppressedCancellationFinalization = false
@@ -1781,6 +1795,13 @@ final class AppState {
         segments.map(\.text).joined()
     }
 
+    private func captureRecordingMetadata() {
+        let provider = KeychainService.selectedASRProvider
+        let metadata = RecordingDisplayMetadata.current(for: provider)
+        recordingProvider = provider
+        recordingModelName = metadata.modelName
+    }
+
     func reconcileCurrentMode(for provider: ASRProvider) {
         let resolved = ASRProviderRegistry.resolvedMode(for: currentMode, provider: provider)
         guard resolved.id != currentMode.id else { return }
@@ -1833,6 +1854,34 @@ final class AppState {
 // MARK: - FloatingBarState Conformance
 
 extension AppState: FloatingBarState {}
+
+private struct RecordingDisplayMetadata {
+    let modelName: String?
+
+    static func current(for provider: ASRProvider) -> Self {
+        if provider == .sherpa {
+            return Self(
+                modelName: ModelManager.selectedStreamingModel.displayName
+            )
+        }
+        if provider == .cartesia {
+            return Self(
+                modelName: CartesiaASRConfig.model
+            )
+        }
+
+        let model: String?
+        if let credentials = KeychainService.loadASRConfig(for: provider)?.toCredentials() {
+            model = ["model", "resourceId", "devPid", "lmId"]
+                .compactMap { credentials[$0]?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .first { !$0.isEmpty }
+        } else {
+            model = nil
+        }
+
+        return Self(modelName: model)
+    }
+}
 
 extension Notification.Name {
     static let modesDidChange = Notification.Name("Type4MeModesDidChange")

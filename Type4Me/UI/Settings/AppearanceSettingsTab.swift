@@ -24,6 +24,15 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
     @AppStorage(AppearancePreferenceDefaults.showCancelButtonKey)
     private var showCancelButton = AppearancePreferenceDefaults.showCancelButtonDefault
 
+    @AppStorage(RecordingMetadataDisplayPreference.showModeNameKey)
+    private var showModeName = RecordingMetadataDisplayPreference.showModeNameDefault
+
+    @AppStorage(RecordingMetadataDisplayPreference.showProviderNameKey)
+    private var showProviderName = RecordingMetadataDisplayPreference.showProviderNameDefault
+
+    @AppStorage(RecordingMetadataDisplayPreference.showModelNameKey)
+    private var showModelName = RecordingMetadataDisplayPreference.showModelNameDefault
+
     @AppStorage("tf_stripTrailingPunctuation")
     private var stripTrailingPunctuation = "off"
 
@@ -47,7 +56,10 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
             showsLiveTranscript: showLiveTranscript,
             enablesHoverTranscriptPreview: hoverTranscriptPreview,
             showsTooltips: showTooltips,
-            showsCancelButton: showCancelButton
+            showsCancelButton: showCancelButton,
+            showsModeName: showModeName,
+            showsProviderName: showProviderName,
+            showsModelName: showModelName
         )
     }
 
@@ -81,6 +93,12 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
                     SettingsDivider()
                 }
 
+                modeNameRow
+                SettingsDivider()
+                providerNameRow
+                SettingsDivider()
+                modelNameRow
+                SettingsDivider()
                 liveTranscriptRow
 
                 if !isCompact {
@@ -139,6 +157,30 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
             L("实时展示文本", "Live Transcript"),
             subtitle: L("开启后在录音时显示识别文本", "Show recognized text while recording"),
             isOn: $showLiveTranscript
+        )
+    }
+
+    private var modeNameRow: some View {
+        settingsToggleRow(
+            L("显示模式名称", "Show Mode Name"),
+            subtitle: L("在录音指示条中显示当前模式", "Show the current mode in the recording indicator"),
+            isOn: $showModeName
+        )
+    }
+
+    private var providerNameRow: some View {
+        settingsToggleRow(
+            L("显示服务商", "Show Provider"),
+            subtitle: L("显示语音识别服务商，例如 Deepgram", "Show the speech provider, such as Deepgram"),
+            isOn: $showProviderName
+        )
+    }
+
+    private var modelNameRow: some View {
+        settingsToggleRow(
+            L("显示模型名称", "Show Model Name"),
+            subtitle: L("显示语音识别模型，例如 ink-2", "Show the speech model, such as ink-2"),
+            isOn: $showModelName
         )
     }
 

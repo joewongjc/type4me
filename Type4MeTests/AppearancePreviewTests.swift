@@ -13,7 +13,10 @@ final class AppearancePreviewTests: XCTestCase {
             showsLiveTranscript: false,
             enablesHoverTranscriptPreview: false,
             showsTooltips: false,
-            showsCancelButton: false
+            showsCancelButton: false,
+            showsModeName: true,
+            showsProviderName: true,
+            showsModelName: true
         )
 
         XCTAssertEqual(presentation.indicatorStyle, .regular)
@@ -22,6 +25,9 @@ final class AppearancePreviewTests: XCTestCase {
         XCTAssertFalse(presentation.enablesHoverTranscriptPreview)
         XCTAssertFalse(presentation.showsTooltips)
         XCTAssertFalse(presentation.showsCancelButton)
+        XCTAssertTrue(presentation.showsModeName)
+        XCTAssertTrue(presentation.showsProviderName)
+        XCTAssertTrue(presentation.showsModelName)
         XCTAssertTrue(presentation.showsRecordingIndicator)
     }
 
@@ -33,6 +39,9 @@ final class AppearancePreviewTests: XCTestCase {
         XCTAssertTrue(presentation.enablesHoverTranscriptPreview)
         XCTAssertTrue(presentation.showsTooltips)
         XCTAssertTrue(presentation.showsCancelButton)
+        XCTAssertTrue(presentation.showsModeName)
+        XCTAssertFalse(presentation.showsProviderName)
+        XCTAssertFalse(presentation.showsModelName)
         XCTAssertTrue(presentation.showsRecordingIndicator)
     }
 
@@ -41,6 +50,12 @@ final class AppearancePreviewTests: XCTestCase {
         XCTAssertTrue(AppearancePreferenceDefaults.showTooltipsDefault)
         XCTAssertEqual(AppearancePreferenceDefaults.showCancelButtonKey, "tf_showCancelButton")
         XCTAssertTrue(AppearancePreferenceDefaults.showCancelButtonDefault)
+    }
+
+    func testRecordingMetadataDisplayPreferenceDefaults() {
+        XCTAssertTrue(RecordingMetadataDisplayPreference.showModeNameDefault)
+        XCTAssertFalse(RecordingMetadataDisplayPreference.showProviderNameDefault)
+        XCTAssertFalse(RecordingMetadataDisplayPreference.showModelNameDefault)
     }
 
     func testRecordingChromeWidthDesignTokens() {

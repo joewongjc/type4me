@@ -13,6 +13,8 @@ final class DemoState {
     var segments: [TranscriptionSegment] = []
     @ObservationIgnored let audioLevel = AudioLevelMeter()
     var currentMode: ProcessingMode = .direct
+    var recordingProvider: ASRProvider? { .cartesia }
+    var recordingModelName: String? { "ink-2" }
     var feedbackMessage: String = L("已完成", "Done")
     var feedbackKind: FeedbackKind = .standard
     var processingFinishTime: Date?
