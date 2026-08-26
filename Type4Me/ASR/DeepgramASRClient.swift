@@ -105,7 +105,7 @@ actor DeepgramASRClient: SpeechRecognizer {
             options: options
         )
         var request = URLRequest(url: url)
-        if deepgramConfig.baseURL == DeepgramASRConfig.defaultBaseURL {
+        if DeepgramProtocol.usesStandardAuthorization(for: deepgramConfig.baseURL) {
             request.setValue("Token \(deepgramConfig.apiKey)", forHTTPHeaderField: "Authorization")
         } else {
             request.setValue(deepgramConfig.apiKey, forHTTPHeaderField: "X-API-Key")

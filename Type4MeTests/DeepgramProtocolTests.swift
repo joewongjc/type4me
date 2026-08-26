@@ -3,6 +3,16 @@ import XCTest
 
 final class DeepgramProtocolTests: XCTestCase {
 
+    func testUsesStandardAuthorizationForDirectDeepgramEndpoints() {
+        XCTAssertTrue(DeepgramProtocol.usesStandardAuthorization(for: DeepgramASRConfig.defaultBaseURL))
+        XCTAssertTrue(DeepgramProtocol.usesStandardAuthorization(for: "wss://asr.autoloops.ai/v1/listen"))
+    }
+
+    func testUsesProxyAPIKeyForDevProxyEndpoints() {
+        XCTAssertFalse(DeepgramProtocol.usesStandardAuthorization(for: "wss://dev-proxy.example.com/proxy/deepgram/v1/listen"))
+        XCTAssertFalse(DeepgramProtocol.usesStandardAuthorization(for: "wss://asr.autoloops.ai.example.com/v1/listen"))
+    }
+
     func testBuildWebSocketURL_usesExpectedQueryItems() throws {
         let config = try XCTUnwrap(DeepgramASRConfig(credentials: [
             "apiKey": "dg_test_key",

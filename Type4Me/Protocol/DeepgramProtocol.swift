@@ -21,6 +21,19 @@ enum DeepgramProtocol {
     private static let keywordIntensity = 2
     private static let maxURLKeyterms = 30
 
+    /// Direct Deepgram-compatible endpoints use Deepgram's standard token
+    /// authorization. The dev-proxy endpoint uses the raw X-API-Key header
+    /// for authenticating the proxy request instead.
+    static func usesStandardAuthorization(for baseURL: String) -> Bool {
+        guard let components = URLComponents(string: baseURL),
+              components.scheme?.lowercased() == "wss",
+              let host = components.host?.lowercased()
+        else {
+            return false
+        }
+        return host == "api.deepgram.com" || host == "asr.autoloops.ai"
+    }
+
     static func buildWebSocketURL(
         config: DeepgramASRConfig,
         options: ASRRequestOptions
