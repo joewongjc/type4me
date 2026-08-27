@@ -384,7 +384,9 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
                     })
                 let recommended = Self.recommendedProviders.filter { availableSet.contains($0) }
                 let local = Self.localProviders.filter { availableSet.contains($0) }
-                let others = ASRProvider.allCases.filter { availableSet.contains($0) && !Self.recommendedProviders.contains($0) && !Self.localProviders.contains($0) }
+                let others = ASRProvider.allCases
+                    .filter { availableSet.contains($0) && !Self.recommendedProviders.contains($0) && !Self.localProviders.contains($0) }
+                    .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
 
                 Menu {
                     if !recommended.isEmpty {
