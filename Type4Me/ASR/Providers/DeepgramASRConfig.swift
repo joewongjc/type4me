@@ -8,6 +8,10 @@ struct DeepgramASRConfig: ASRProviderConfig, Sendable {
     static let defaultLanguage = "zh"
     static let defaultBaseURL = "wss://api.deepgram.com/v1/listen"
 
+    static func isFluxModel(_ model: String) -> Bool {
+        model.localizedCaseInsensitiveContains("flux")
+    }
+
     static let supportedModels = [
         "nova-3",
         "nova-3-general",

@@ -28,6 +28,12 @@ final class DeepgramASRConfigTests: XCTestCase {
         XCTAssertTrue(modelField?.allowCustomInput ?? false)
     }
 
+    func testFluxModelDetectionIsCaseInsensitive() {
+        XCTAssertTrue(DeepgramASRConfig.isFluxModel("flux-general-en"))
+        XCTAssertTrue(DeepgramASRConfig.isFluxModel("Flux Medical"))
+        XCTAssertFalse(DeepgramASRConfig.isFluxModel("qwen3-asr"))
+    }
+
     func testInit_rejectsMissingAPIKey() {
         XCTAssertNil(DeepgramASRConfig(credentials: [:]))
     }

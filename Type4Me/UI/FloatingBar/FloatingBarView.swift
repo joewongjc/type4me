@@ -1059,7 +1059,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
             let font = NSFont.systemFont(ofSize: 14, weight: .semibold)
             let maxWidth = TF.barWidth + TF.recordingTooltipOverhang * 2
             return NSSize(
-                width: min(maxWidth, measureText(localizedCurrentModeName, font: font) + 24),
+                width: min(maxWidth, measureText(recordingMetadataText ?? "", font: font) + 24),
                 height: ceil(font.boundingRectForFont.height) + 18
             )
         case .action(let action):

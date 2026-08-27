@@ -163,7 +163,7 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
     private var modeNameRow: some View {
         settingsToggleRow(
             L("显示模式名称", "Show Mode Name"),
-            subtitle: L("在录音指示条中显示当前模式", "Show the current mode in the recording indicator"),
+            subtitle: L("在录音开始提示中显示当前模式", "Show the current mode in the recording-start tooltip"),
             isOn: $showModeName
         )
     }
@@ -171,7 +171,7 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
     private var providerNameRow: some View {
         settingsToggleRow(
             L("显示服务商", "Show Provider"),
-            subtitle: L("显示语音识别服务商，例如 Deepgram", "Show the speech provider, such as Deepgram"),
+            subtitle: L("在录音开始提示中显示语音识别服务商", "Show the speech provider in the recording-start tooltip"),
             isOn: $showProviderName
         )
     }
@@ -179,7 +179,7 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
     private var modelNameRow: some View {
         settingsToggleRow(
             L("显示模型名称", "Show Model Name"),
-            subtitle: L("显示语音识别模型，例如 ink-2", "Show the speech model, such as ink-2"),
+            subtitle: L("在录音开始提示中显示语音识别模型", "Show the speech model in the recording-start tooltip"),
             isOn: $showModelName
         )
     }

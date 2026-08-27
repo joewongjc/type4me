@@ -516,6 +516,18 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
                             .padding(.horizontal, 12)
                             .frame(height: 36)
                             .background(RoundedRectangle(cornerRadius: 8).fill(TF.settingsCardAlt))
+
+                        if field.key == "model", selectedASRProvider == .deepgram,
+                           DeepgramASRConfig.isFluxModel(customBinding.wrappedValue) {
+                            Label(
+                                L("Flux 模型暂不支持；当前客户端使用 Deepgram V1 API。",
+                                  "Flux models are not supported yet because this client uses the Deepgram V1 API."),
+                                systemImage: "exclamationmark.triangle"
+                            )
+                            .font(.system(size: 10))
+                            .foregroundStyle(TF.settingsAccentAmber)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
                     }
                 }
             }

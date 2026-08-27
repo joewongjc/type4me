@@ -665,10 +665,12 @@ actor HistoryStore {
                      AND (NULLIF(trim(asr_model), '') IS NULL
                           OR lower(trim(asr_model)) = 'elevenlabs')
                     THEN 'ElevenLabs · scribe_v2_realtime'
+                -- Keep provider-only legacy rows separate from rows with a
+                -- recorded model; the old model cannot be inferred reliably.
                 WHEN lower(trim(COALESCE(asr_provider, ''))) = 'deepgram'
                      AND (NULLIF(trim(asr_model), '') IS NULL
                           OR lower(trim(asr_model)) = 'deepgram')
-                    THEN 'Deepgram · nova-3'
+                    THEN 'Deepgram'
                 ELSE COALESCE(NULLIF(asr_model, ''), NULLIF(asr_provider, ''), ?)
             END AS model_name,
             COALESCE(SUM(CASE WHEN created_at >= ? THEN duration_seconds ELSE 0 END), 0),
