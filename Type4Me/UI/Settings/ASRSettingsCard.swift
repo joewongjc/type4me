@@ -149,9 +149,11 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
                 (L("可用模型", "Models"), L("查看", "view"), URL(string: "https://help.aliyun.com/zh/model-studio/fun-asr-realtime-websocket-api")!),
                 (L("API Key", "API Key"), L("获取", "get"), URL(string: "https://help.aliyun.com/zh/model-studio/get-api-key")!),
             ]
-        case .stepfunBatch:
+        case .stepfun, .stepfunBatch:
             return [
-                (L("接入文档", "Setup guide"), L("查看", "view"), URL(string: "https://platform.stepfun.com/docs/zh/api-reference/audio/asr-sse")!),
+                (L("接入文档", "Setup guide"), L("查看", "view"), URL(string: selectedASRProvider == .stepfun
+                    ? "https://platform.stepfun.com/docs/zh/api-reference/audio/asr-stream"
+                    : "https://platform.stepfun.com/docs/zh/api-reference/audio/asr-sse")!),
                 ("API Key", L("获取", "get"), URL(string: "https://platform.stepfun.com/interface-key")!),
             ]
         case .mimo:
@@ -231,6 +233,11 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
             return L(
                 "松开快捷键后提交完整录音进行转写。",
                 "The complete recording is submitted after you release the hotkey."
+            )
+        case .stepfun:
+            return L(
+                "实时流式识别使用开放平台按量付费 API Key，不支持 Step Plan 路径。",
+                "Real-time streaming recognition uses a standard pay-as-you-go API key and is not available through the Step Plan endpoint."
             )
         case .stepfunBatch:
             return L(

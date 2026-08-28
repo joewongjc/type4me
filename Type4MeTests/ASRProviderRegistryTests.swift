@@ -4,7 +4,7 @@ import XCTest
 final class ASRProviderRegistryTests: XCTestCase {
 
     func testAvailableProvidersSupportDirectMode() {
-        for provider in [ASRProvider.volcano, .stepfunBatch, .mimo, .baidu, .bailian, .deepgram, .gemini, .assemblyai, .soniox, .openai] {
+        for provider in [ASRProvider.volcano, .stepfun, .stepfunBatch, .mimo, .baidu, .bailian, .deepgram, .gemini, .assemblyai, .soniox, .openai] {
             XCTAssertTrue(ASRProviderRegistry.supports(.direct, for: provider))
         }
     }
@@ -77,7 +77,7 @@ final class ASRProviderRegistryTests: XCTestCase {
         // Realtime streaming providers
         for realtime in [
             ASRProvider.apple, .volcano, .deepgram, .cartesia,
-            .assemblyai, .elevenlabs, .gemini, .grok, .soniox, .bailian, .baidu
+            .assemblyai, .elevenlabs, .gemini, .grok, .soniox, .stepfun, .bailian, .baidu
         ] {
             let caps = ASRProviderRegistry.capabilities(for: realtime)
             XCTAssertTrue(caps.isAvailable)
@@ -87,6 +87,7 @@ final class ASRProviderRegistryTests: XCTestCase {
     }
 
     func testProviderDisplayNames_areCleanWithoutBatchSuffix() {
+        XCTAssertEqual(ASRProvider.stepfun.displayName, L("阶跃星辰", "StepFun"))
         XCTAssertEqual(ASRProvider.stepfunBatch.displayName, L("阶跃星辰", "StepFun"))
         XCTAssertEqual(ASRProvider.mimo.displayName, L("小米 MiMo", "Xiaomi MiMo"))
         XCTAssertEqual(ASRProvider.openai.displayName, "OpenAI")
