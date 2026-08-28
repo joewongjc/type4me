@@ -609,6 +609,14 @@ actor RecognitionSession {
         return isTerminated ? .failSafeClipboard : .activateAndConfirm
     }
 
+    static func resolvedIntelliSenseTarget(
+        preference: InjectionTargetPreference,
+        recordingStartTarget: TargetApplicationContext?,
+        recordingEndTarget: TargetApplicationContext?
+    ) -> TargetApplicationContext? {
+        preference == .recordingEnd ? recordingEndTarget : recordingStartTarget
+    }
+
     /// Activates `target` and waits until it actually becomes the frontmost
     /// application, up to a short timeout. Returns `true` only once the target is
     /// confirmed frontmost, so callers can fail-safe (skip pasting) instead of
@@ -883,16 +891,27 @@ actor RecognitionSession {
             }
             if effectiveMode.id == ProcessingMode.intelliSenseId {
                 let settings = await IntelliSenseSettingsStore.shared.load()
-                let target = TargetApplicationContext(
+                let recordingStartTarget = TargetApplicationContext(
                     processIdentifier: frontmostApplication?.processIdentifier,
                     bundleIdentifier: frontmostApplication?.bundleIdentifier,
                     displayName: frontmostApplication?.localizedName
                 )
+                let target = Self.resolvedIntelliSenseTarget(
+                    preference: injectionTargetPreference,
+                    recordingStartTarget: recordingStartTarget,
+                    recordingEndTarget: nil
+                )
                 intelliSenseSettings = settings
                 intelliSenseTarget = target
                 intelliSenseStartedModeID = effectiveMode.id
-                intelliSenseContextTask = Task {
-                    await IntelliSenseContextCapturer.capture(target: target, settings: settings)
+                if let target {
+                    intelliSenseContextTask = Task {
+                        await IntelliSenseContextCapturer.capture(target: target, settings: settings)
+                    }
+                } else {
+                    // The destination is intentionally unknown until the user
+                    // stops a recording in the stop-time target mode.
+                    intelliSenseContextTask = nil
                 }
             }
 
@@ -1516,6 +1535,7 @@ actor RecognitionSession {
             && completionIntent == .normal
             ? confirmedEndTarget
             : nil
+        prepareStopTimeTargetContext(confirmedEndTarget)
         if let translationContext = translationRequestContext,
            currentMode.id == ProcessingMode.translationModeId {
             onASREvent?(.processingLabelOverride(L(
@@ -2794,12 +2814,67 @@ actor RecognitionSession {
     // MARK: - Speculative LLM
 
     private var isSpeculativeLLMEnabled: Bool {
+        // IntelliSense cannot know the relevant application or editor until
+        // stop time in this mode. Reusing a request built from the start-time
+        // app would make both processing and history attribution incorrect.
+        if injectionTargetPreference == .recordingEnd,
+           currentMode.id == ProcessingMode.intelliSenseId {
+            return false
+        }
         let provider = KeychainService.selectedLLMProvider
         guard provider.supportsSpeculativeProcessing else { return false }
         if let override = UserDefaults.standard.object(forKey: "tf_enableSpeculativeLLM") as? Bool {
             return override
         }
         return true
+    }
+
+    private func prepareStopTimeTargetContext(
+        _ confirmedEndTarget: TextInjectionEngine.ConfirmedInjectionTarget?
+    ) {
+        guard injectionTargetPreference == .recordingEnd else { return }
+
+        let recordingEndTarget = confirmedEndTarget.map { target in
+            TargetApplicationContext(
+                processIdentifier: target.processIdentifier,
+                bundleIdentifier: target.bundleIdentifier,
+                displayName: NSRunningApplication(
+                    processIdentifier: target.processIdentifier
+                )?.localizedName
+            )
+        }
+        targetBundleId = recordingEndTarget?.bundleIdentifier
+
+        guard currentMode.id == ProcessingMode.intelliSenseId,
+              intelliSenseStartedModeID == ProcessingMode.intelliSenseId,
+              !intelliSenseCrossModeFallback
+        else { return }
+
+        cancelAllSpeculativeLLM()
+        speculativeThrottle.reset()
+        pendingLLMError = nil
+        clearHistoryLLMMetadata()
+        intelliSenseContextTask?.cancel()
+        intelliSenseContextTask = nil
+        intelliSenseRequestContext = nil
+        intelliSenseLastProcessingResult = nil
+        intelliSenseTarget = Self.resolvedIntelliSenseTarget(
+            preference: injectionTargetPreference,
+            recordingStartTarget: intelliSenseTarget,
+            recordingEndTarget: recordingEndTarget
+        )
+
+        guard let target = intelliSenseTarget,
+              let settings = intelliSenseSettings else {
+            DebugFileLogger.log("intelli sense stop target unavailable")
+            return
+        }
+        intelliSenseContextTask = Task {
+            await IntelliSenseContextCapturer.capture(target: target, settings: settings)
+        }
+        DebugFileLogger.log(
+            "intelli sense retargeted at stop bundle=\(target.bundleIdentifier ?? "unknown")"
+        )
     }
 
     /// Debounce: after each transcript update, wait 800ms of silence before

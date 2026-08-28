@@ -1,5 +1,6 @@
 import XCTest
 @testable import Type4Me
+@testable import Type4MeIntelliSenseCore
 
 final class InjectionTargetPreferenceTests: XCTestCase {
     private var defaults: UserDefaults!
@@ -57,6 +58,57 @@ final class InjectionTargetPreferenceTests: XCTestCase {
         XCTAssertEqual(InjectionTargetPreference.recordingStart.displayName, "App at Recording Start")
         XCTAssertEqual(InjectionTargetPreference.recordingEnd.displayName, "Focused Field at Recording End")
         XCTAssertTrue(InjectionTargetPreference.recordingEnd.detail.contains("clipboard"))
+    }
+
+    func testIntelliSenseEnvironmentFollowsConfiguredTargetTime() throws {
+        let start = TargetApplicationContext(
+            processIdentifier: 100,
+            bundleIdentifier: "com.openai.codex",
+            displayName: "Codex"
+        )
+        let end = TargetApplicationContext(
+            processIdentifier: 200,
+            bundleIdentifier: "com.tencent.xinWeChat",
+            displayName: "WeChat"
+        )
+
+        XCTAssertEqual(
+            RecognitionSession.resolvedIntelliSenseTarget(
+                preference: .recordingStart,
+                recordingStartTarget: start,
+                recordingEndTarget: end
+            ),
+            start
+        )
+        let resolvedEnd = RecognitionSession.resolvedIntelliSenseTarget(
+            preference: .recordingEnd,
+            recordingStartTarget: start,
+            recordingEndTarget: end
+        )
+        XCTAssertEqual(resolvedEnd, end)
+        XCTAssertNil(RecognitionSession.resolvedIntelliSenseTarget(
+            preference: .recordingEnd,
+            recordingStartTarget: start,
+            recordingEndTarget: nil
+        ))
+
+        var settings = IntelliSenseSettings()
+        settings.applicationAwarenessEnabled = true
+        let snapshot = IntelliSenseContextSnapshot.appOnly(try XCTUnwrap(resolvedEnd))
+        let result = IntelliSenseOutputValidator.process(
+            input: "今晚发给文件传输助手。",
+            candidate: "今晚发给文件传输助手。",
+            context: snapshot
+        )
+        let trace = IntelliSenseHistoryTraceBuilder.build(
+            input: "今晚发给文件传输助手。",
+            finalText: result.finalText,
+            promptInput: .init(context: snapshot, settings: settings, expressionProfile: nil),
+            processingResult: result,
+            processingFailed: false
+        )
+        XCTAssertEqual(trace.appName, "WeChat")
+        XCTAssertEqual(trace.scene, .messaging)
     }
 }
 
