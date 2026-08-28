@@ -123,7 +123,7 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
                             .foregroundStyle(TF.settingsTextTertiary)
                     }
                     .buttonStyle(.plain)
-                    .help(L("刷新权限状态", "Refresh permission status"))
+                    .settingsTooltip(L("刷新权限状态", "Refresh permission status"))
                 )
             ) {
                 permissionRow(
@@ -291,7 +291,7 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
                         .foregroundStyle(TF.settingsTextTertiary)
                 }
                 .buttonStyle(.plain)
-                .help(L("刷新麦克风列表", "Refresh microphone list"))
+                .settingsTooltip(L("刷新麦克风列表", "Refresh microphone list"))
                 microphonePreferenceDropdown
             }
         }
@@ -425,7 +425,7 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
                         .foregroundStyle(TF.settingsTextTertiary)
                 }
                 .buttonStyle(.plain)
-                .help(L("刷新输出设备列表", "Refresh output device list"))
+                .settingsTooltip(L("刷新输出设备列表", "Refresh output device list"))
                 settingsDropdown(
                     selection: $selectedSpeakerUID,
                     options: [("", L("系统默认", "System Default"))] + availableSpeakers.map { ($0.uid, $0.name) }

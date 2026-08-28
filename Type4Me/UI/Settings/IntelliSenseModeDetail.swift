@@ -142,7 +142,7 @@ struct IntelliSenseModeDetail: View, SettingsCardHelpers {
                         .background(RoundedRectangle(cornerRadius: 8).fill(TF.settingsCardAlt))
                 }
                 .buttonStyle(.plain)
-                .help(L("添加 App", "Add App"))
+                .settingsTooltip(L("添加 App", "Add App"))
             )
         ) {
             if settings.blacklistedApps.isEmpty {

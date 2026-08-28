@@ -762,7 +762,7 @@ struct VocabularyTab: View {
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .help(help)
+        .settingsTooltip(help)
     }
 
     // MARK: - Snippet Group View

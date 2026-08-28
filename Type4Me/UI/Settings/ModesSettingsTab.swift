@@ -320,7 +320,7 @@ struct ModesSettingsTab: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help(L("删除模式", "Delete mode"))
+                .settingsTooltip(L("删除模式", "Delete mode"))
             }
         }
         .padding(.leading, 8)
@@ -971,7 +971,7 @@ struct HotkeySectionView: View {
                         .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
-                .help(L("删除快捷键", "Delete hotkey"))
+                .settingsTooltip(L("删除", "Delete"))
                 .transition(.scale.combined(with: .opacity))
             }
         }
