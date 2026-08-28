@@ -176,8 +176,8 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
                 settingsToggleRow(
                     L("开发者模式", "Developer Mode"),
                     subtitle: L(
-                        "在左侧菜单显示调试与诊断入口。",
-                        "Show the Debug & Diagnostics entry in the sidebar."
+                        "在左侧菜单显示开发者页（日志），并启用转写反馈。",
+                        "Show the Developer tab for logs and enable transcription feedback."
                     ),
                     isOn: $debugPanelEnabled
                 )
