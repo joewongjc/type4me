@@ -25,7 +25,7 @@ struct DebugSettingsTab: View, SettingsCardHelpers {
 
     var body: some View {
         SettingsSectionHeader(
-            label: "DEBUG",
+            label: "DEVELOPER",
             title: L("调试与诊断", "Debug & Diagnostics"),
             description: L(
                 "查看当前构建、运行环境、系统权限与实时日志，快速定位 Type4Me 的问题。",

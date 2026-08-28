@@ -1171,15 +1171,28 @@ struct HistoryTab: View {
             )
             .transition(.opacity)
         } else if isMarkedBad {
-            Image(systemName: "hand.thumbsdown.fill")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(TF.settingsAccentRed)
-                .frame(width: 26, height: 26)
-                .background(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(TF.settingsControl)
-                )
-                .accessibilityLabel(L("已标记为差", "Marked as bad"))
+            HStack(spacing: 5) {
+                Color.clear
+                    .frame(width: 26, height: 26)
+                    .allowsHitTesting(false)
+                Color.clear
+                    .frame(width: 26, height: 26)
+                    .allowsHitTesting(false)
+                Image(systemName: "hand.thumbsdown.fill")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(TF.settingsAccentRed)
+                    .frame(width: 26, height: 26)
+                    .background(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(TF.settingsControl)
+                    )
+                    .accessibilityLabel(L("已标记为差", "Marked as bad"))
+                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(TF.settingsTextTertiary.opacity(0.65))
+                    .frame(width: 26, height: 26)
+            }
+            .padding(.leading, 8)
         } else {
             Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                 .font(.system(size: 9, weight: .bold))
