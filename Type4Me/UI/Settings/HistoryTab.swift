@@ -344,6 +344,10 @@ struct HistoryTab: View {
         Set(sections.flatMap { $0.records.map(\.id) })
     }
 
+    private var showsFeedbackMetrics: Bool {
+        usageBreakdown.contains { $0.badCount > 0 }
+    }
+
     /// True when every row in the current list (loaded + search filter) is selected.
     private var isAllFilteredSelected: Bool {
         HistorySelectionHelpers.isAllFilteredSelected(
@@ -1065,10 +1069,6 @@ struct HistoryTab: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
 
                         HStack(spacing: 10) {
-                            if developerModeEnabled && (qualityScores[record.id] ?? 0) < 0 {
-                                Text("👎")
-                                    .accessibilityLabel(L("已标记为差", "Marked as bad"))
-                            }
                             if let chars = record.characterCount {
                                 Label(L("\(chars) 字", "\(chars) chars"), systemImage: "doc.text")
                             }
@@ -1119,6 +1119,8 @@ struct HistoryTab: View {
         isHovered: Bool,
         isExpanded: Bool
     ) -> some View {
+        let isMarkedBad = developerModeEnabled && (qualityScores[record.id] ?? 0) < 0
+
         if isHovered || copiedId == record.id {
             HStack(spacing: 5) {
                 historyRecordAction(
@@ -1142,7 +1144,6 @@ struct HistoryTab: View {
                 }
 
                 if developerModeEnabled {
-                    let isMarkedBad = (qualityScores[record.id] ?? 0) < 0
                     historyRecordAction(
                         icon: isMarkedBad ? "hand.thumbsdown.fill" : "hand.thumbsdown",
                         tooltip: isMarkedBad ? L("取消差评标记", "Unmark as bad") : L("标记为差", "Mark as bad"),
@@ -1169,6 +1170,16 @@ struct HistoryTab: View {
                     .fill(TF.settingsRowHover)
             )
             .transition(.opacity)
+        } else if isMarkedBad {
+            Image(systemName: "hand.thumbsdown.fill")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(TF.settingsAccentRed)
+                .frame(width: 26, height: 26)
+                .background(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(TF.settingsControl)
+                )
+                .accessibilityLabel(L("已标记为差", "Marked as bad"))
         } else {
             Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                 .font(.system(size: 9, weight: .bold))
@@ -1605,7 +1616,7 @@ struct HistoryTab: View {
             }
         }
         .padding(16)
-        .frame(width: 760)
+        .frame(width: showsFeedbackMetrics ? 760 : 600)
     }
 
     private var usageDetailsHeader: some View {
@@ -1620,10 +1631,12 @@ struct HistoryTab: View {
                 .frame(width: 70, alignment: .trailing)
             Text(L("全部", "All time"))
                 .frame(width: 70, alignment: .trailing)
-            Text("👎")
-                .frame(width: 60, alignment: .trailing)
-            Text(L("差评率", "% Bad"))
-                .frame(width: 68, alignment: .trailing)
+            if showsFeedbackMetrics {
+                Text("👎")
+                    .frame(width: 60, alignment: .trailing)
+                Text(L("差评率", "% Bad"))
+                    .frame(width: 68, alignment: .trailing)
+            }
         }
         .font(.system(size: 10, weight: .semibold))
         .foregroundStyle(TF.settingsTextTertiary)
@@ -1655,10 +1668,12 @@ struct HistoryTab: View {
                     .foregroundStyle(TF.settingsTextTertiary)
             }
             .frame(width: 70, alignment: .trailing)
-            Text("\(row.badCount)")
-                .frame(width: 60, alignment: .trailing)
-            Text(formatBadPercentage(row.badPercentage))
-                .frame(width: 68, alignment: .trailing)
+            if showsFeedbackMetrics {
+                Text("\(row.badCount)")
+                    .frame(width: 60, alignment: .trailing)
+                Text(formatBadPercentage(row.badPercentage))
+                    .frame(width: 68, alignment: .trailing)
+            }
         }
         .font(.system(size: 11, weight: .medium, design: .rounded))
         .foregroundStyle(TF.settingsText)
