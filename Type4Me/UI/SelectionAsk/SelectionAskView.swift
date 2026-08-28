@@ -72,8 +72,11 @@ struct SelectionAskView: View {
                     .zIndex(100)
             }
         }
-        .animation(.easeOut(duration: 0.08), value: isOpenInType4MeHovered)
         .id(language)
+        .coordinateSpace(name: "SettingsWindowCoordinateSpace")
+        .overlay {
+            SettingsTooltipRootHost()
+        }
     }
 
     private var header: some View {

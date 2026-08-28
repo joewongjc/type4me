@@ -153,6 +153,10 @@ struct SettingsView: View {
         }
         .id(language)
         .frame(minWidth: 900, minHeight: 600)
+        .coordinateSpace(name: "SettingsWindowCoordinateSpace")
+        .overlay {
+            SettingsTooltipRootHost()
+        }
         .background(SettingsWindowConfigurator(
             windowBox: windowBox,
             onVisibilityChanged: { isVisible in

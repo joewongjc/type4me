@@ -8,6 +8,73 @@ enum SettingsTooltipPlacement: Sendable {
     case bottom
 }
 
+/// Global coordinator for rendering tooltips at the root window layer.
+/// This completely decouples tooltips from child view hierarchies and prevents
+/// them from ever being clipped by parent ScrollViews, cards, or `.clipShape()` containers.
+@MainActor
+@Observable
+final class SettingsTooltipCoordinator {
+    static let shared = SettingsTooltipCoordinator()
+
+    struct TooltipState: Equatable {
+        let id: UUID
+        let text: String
+        var targetRect: CGRect
+        let placement: SettingsTooltipPlacement
+    }
+
+    var activeTooltip: TooltipState?
+    var isPresented: Bool = false
+
+    private var showTask: Task<Void, Never>?
+    private var hideTask: Task<Void, Never>?
+    private var currentHoverID: UUID?
+
+    func show(id: UUID, text: String, targetRect: CGRect, placement: SettingsTooltipPlacement) {
+        currentHoverID = id
+        hideTask?.cancel()
+        hideTask = nil
+
+        showTask?.cancel()
+        showTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 80_000_000) // 80ms delay
+            guard !Task.isCancelled, currentHoverID == id else { return }
+            activeTooltip = TooltipState(
+                id: id,
+                text: text,
+                targetRect: targetRect,
+                placement: placement
+            )
+            withAnimation(.easeOut(duration: 0.15)) {
+                isPresented = true
+            }
+        }
+    }
+
+    func updateTargetRect(id: UUID, targetRect: CGRect) {
+        guard activeTooltip?.id == id else { return }
+        activeTooltip?.targetRect = targetRect
+    }
+
+    func hide(id: UUID) {
+        if currentHoverID == id {
+            currentHoverID = nil
+        }
+        showTask?.cancel()
+        showTask = nil
+
+        hideTask?.cancel()
+        hideTask = Task { @MainActor in
+            withAnimation(.easeOut(duration: 0.05)) {
+                isPresented = false
+            }
+            try? await Task.sleep(nanoseconds: 50_000_000) // 50ms exit
+            guard !Task.isCancelled, currentHoverID == nil else { return }
+            activeTooltip = nil
+        }
+    }
+}
+
 /// Standard fluid tooltip bubble used across Type4Me settings.
 /// Complies with Transitions.dev open/close specification:
 /// - 80ms hover entrance delay (prevents accidental trigger while sweeping cursor)
@@ -40,10 +107,64 @@ struct SettingsTooltipBubble: View {
     }
 }
 
-private struct SettingsTooltipHeightPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 28
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
+/// Root host overlay mounted at the top-level window layer.
+struct SettingsTooltipRootHost: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private let coordinator = SettingsTooltipCoordinator.shared
+
+    var body: some View {
+        GeometryReader { windowGeo in
+            if let tooltip = coordinator.activeTooltip {
+                SettingsTooltipBubble(text: tooltip.text)
+                    .scaleEffect(
+                        reduceMotion ? 1.0 : (coordinator.isPresented ? 1.0 : 0.98),
+                        anchor: scaleAnchor(for: tooltip.placement)
+                    )
+                    .opacity(coordinator.isPresented ? 1.0 : 0.0)
+                    .position(calculatedPosition(for: tooltip, in: windowGeo.size))
+                    .allowsHitTesting(false)
+            }
+        }
+        .allowsHitTesting(false)
+    }
+
+    private func scaleAnchor(for placement: SettingsTooltipPlacement) -> UnitPoint {
+        switch placement {
+        case .top: return .bottom
+        case .bottom: return .top
+        }
+    }
+
+    private func calculatedPosition(
+        for tooltip: SettingsTooltipCoordinator.TooltipState,
+        in windowSize: CGSize
+    ) -> CGPoint {
+        let target = tooltip.targetRect
+        let bubbleHeight: CGFloat = 28
+        let gap: CGFloat = 8
+
+        var y: CGFloat
+        switch tooltip.placement {
+        case .top:
+            y = target.minY - gap - (bubbleHeight / 2)
+            // Auto flip to bottom if clipped by window top
+            if y - (bubbleHeight / 2) < 8 {
+                y = target.maxY + gap + (bubbleHeight / 2)
+            }
+        case .bottom:
+            y = target.maxY + gap + (bubbleHeight / 2)
+            // Auto flip to top if clipped by window bottom
+            if y + (bubbleHeight / 2) > windowSize.height - 8 {
+                y = target.minY - gap - (bubbleHeight / 2)
+            }
+        }
+
+        var x = target.midX
+        let minX: CGFloat = 50
+        let maxX: CGFloat = max(minX, windowSize.width - 50)
+        x = min(max(x, minX), maxX)
+
+        return CGPoint(x: x, y: y)
     }
 }
 
@@ -52,92 +173,49 @@ private struct SettingsFluidTooltipModifier: ViewModifier {
     let placement: SettingsTooltipPlacement
     let isEnabled: Bool
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var id = UUID()
     @State private var isHovered = false
-    @State private var isPresented = false
-    @State private var isVisible = false
-    @State private var hoverToken = 0
-    @State private var tooltipHeight: CGFloat = 28
 
     func body(content: Content) -> some View {
         content
-            .overlay(alignment: overlayAlignment) {
-                if isVisible {
-                    SettingsTooltipBubble(text: text)
-                        .background(
-                            GeometryReader { geo in
-                                Color.clear.preference(
-                                    key: SettingsTooltipHeightPreferenceKey.self,
-                                    value: geo.size.height
-                                )
+            .background(
+                GeometryReader { geo in
+                    Color.clear
+                        .onChange(of: isHovered) { _, hovering in
+                            guard isEnabled else { return }
+                            if hovering {
+                                let frame = geo.frame(in: .named("SettingsWindowCoordinateSpace"))
+                                if frame.width > 0 && frame.height > 0 {
+                                    SettingsTooltipCoordinator.shared.show(
+                                        id: id,
+                                        text: text,
+                                        targetRect: frame,
+                                        placement: placement
+                                    )
+                                }
+                            } else {
+                                SettingsTooltipCoordinator.shared.hide(id: id)
                             }
-                        )
-                        .onPreferenceChange(SettingsTooltipHeightPreferenceKey.self) { height in
-                            if height > 0 { tooltipHeight = height }
                         }
-                        .offset(y: verticalOffset)
-                        .scaleEffect(reduceMotion ? 1.0 : (isPresented ? 1.0 : 0.98), anchor: scaleAnchor)
-                        .opacity(isPresented ? 1.0 : 0.0)
-                        .allowsHitTesting(false)
+                        .onChange(of: geo.frame(in: .named("SettingsWindowCoordinateSpace"))) { _, newFrame in
+                            if isHovered && isEnabled && newFrame.width > 0 {
+                                SettingsTooltipCoordinator.shared.updateTargetRect(id: id, targetRect: newFrame)
+                            }
+                        }
                 }
-            }
-            .zIndex(isVisible ? 100 : 0)
+            )
             .onHover { hovering in
                 guard isEnabled else { return }
-                handleHover(hovering)
+                isHovered = hovering
             }
-    }
-
-    private var overlayAlignment: Alignment {
-        switch placement {
-        case .top: return .top
-        case .bottom: return .bottom
-        }
-    }
-
-    private var verticalOffset: CGFloat {
-        switch placement {
-        case .top: return -(tooltipHeight + 8)
-        case .bottom: return tooltipHeight + 8
-        }
-    }
-
-    private var scaleAnchor: UnitPoint {
-        switch placement {
-        case .top: return .bottom
-        case .bottom: return .top
-        }
-    }
-
-    private func handleHover(_ hovering: Bool) {
-        hoverToken += 1
-        let currentToken = hoverToken
-
-        if hovering {
-            isHovered = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { // 80ms delay
-                guard currentToken == hoverToken, isHovered else { return }
-                isVisible = true
-                withAnimation(reduceMotion ? .easeInOut(duration: 0.15) : .easeOut(duration: 0.15)) {
-                    isPresented = true
-                }
+            .onDisappear {
+                SettingsTooltipCoordinator.shared.hide(id: id)
             }
-        } else {
-            isHovered = false
-            // 0ms delay on exit, 50ms easeOut animation
-            withAnimation(reduceMotion ? .easeInOut(duration: 0.05) : .easeOut(duration: 0.05)) {
-                isPresented = false
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                guard currentToken == hoverToken, !isHovered else { return }
-                isVisible = false
-            }
-        }
     }
 }
 
 extension View {
-    /// Standard Settings Tooltip modifier with Apple-grade fluid animation.
+    /// Standard Settings Tooltip modifier with Apple-grade fluid animation and zero-clipping window-level host.
     func settingsTooltip(
         _ text: String,
         placement: SettingsTooltipPlacement = .top,
