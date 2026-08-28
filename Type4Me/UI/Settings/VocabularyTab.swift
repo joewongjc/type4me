@@ -824,7 +824,7 @@ struct VocabularyTab: View {
         let filtered = hotwords.filter(matchesSearch)
         switch hotwordSort {
         case .byTime: return filtered
-        case .byAlpha: return filtered.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+        case .byAlpha: return filtered.sorted { $0.localizedAlphabeticalCompare($1) == .orderedAscending }
         }
     }
 
@@ -834,7 +834,7 @@ struct VocabularyTab: View {
         }
         switch snippetSort {
         case .byTime: return groups
-        case .byAlpha: return groups.sorted { $0.replacement.localizedCaseInsensitiveCompare($1.replacement) == .orderedAscending }
+        case .byAlpha: return groups.sorted { $0.replacement.localizedAlphabeticalCompare($1.replacement) == .orderedAscending }
         }
     }
 
