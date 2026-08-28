@@ -1,53 +1,158 @@
 import SwiftUI
 
-// MARK: - Shared Settings Tooltip
+// MARK: - Shared Settings Fluid Tooltip (Design System Standard)
 
-/// Immediate black tooltip used by icon-only controls throughout Settings.
-/// Keeping this separate from SwiftUI's delayed `.help` modifier makes the
-/// interaction consistent across the Vocabulary and History pages.
+/// Standard tooltip placement relative to the trigger.
+enum SettingsTooltipPlacement: Sendable {
+    case top
+    case bottom
+}
+
+/// Standard fluid tooltip bubble used across Type4Me settings.
+/// Complies with Transitions.dev open/close specification:
+/// - 80ms hover entrance delay (prevents accidental trigger while sweeping cursor)
+/// - 150ms ease-out entrance with 0.98 scale transition anchored at boundary
+/// - 0ms exit delay with instant 50ms ease-out exit transition
+/// - Clean card surface (TF.settingsCard, 1px subtle stroke, soft ambient and contact drop shadow)
+/// - Respects accessibilityReduceMotion
 struct SettingsTooltipBubble: View {
     let text: String
 
     var body: some View {
         Text(text)
-            .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(.white)
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(TF.settingsText)
             .lineLimit(1)
-            .padding(.horizontal, 12)
-            .frame(height: 34)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
             .background(
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .fill(Color.black.opacity(0.92))
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(TF.settingsCard)
             )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(Color.black.opacity(0.06), lineWidth: 1)
+            )
+            .shadow(color: Color.black.opacity(0.05), radius: 3, x: 0, y: 2)
+            .shadow(color: Color.black.opacity(0.06), radius: 16, x: 0, y: 4)
             .fixedSize(horizontal: true, vertical: false)
             .allowsHitTesting(false)
     }
 }
 
-private struct SettingsTooltipModifier: ViewModifier {
+private struct SettingsTooltipHeightPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 28
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+private struct SettingsFluidTooltipModifier: ViewModifier {
     let text: String
+    let placement: SettingsTooltipPlacement
     let isEnabled: Bool
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovered = false
+    @State private var isPresented = false
+    @State private var isVisible = false
+    @State private var hoverToken = 0
+    @State private var tooltipHeight: CGFloat = 28
 
     func body(content: Content) -> some View {
         content
-            .overlay(alignment: .top) {
-                if isHovered && isEnabled {
+            .overlay(alignment: overlayAlignment) {
+                if isVisible {
                     SettingsTooltipBubble(text: text)
-                        .offset(y: 40)
-                        .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
+                        .background(
+                            GeometryReader { geo in
+                                Color.clear.preference(
+                                    key: SettingsTooltipHeightPreferenceKey.self,
+                                    value: geo.size.height
+                                )
+                            }
+                        )
+                        .onPreferenceChange(SettingsTooltipHeightPreferenceKey.self) { height in
+                            if height > 0 { tooltipHeight = height }
+                        }
+                        .offset(y: verticalOffset)
+                        .scaleEffect(reduceMotion ? 1.0 : (isPresented ? 1.0 : 0.98), anchor: scaleAnchor)
+                        .opacity(isPresented ? 1.0 : 0.0)
+                        .allowsHitTesting(false)
                 }
             }
-            .zIndex(isHovered && isEnabled ? 30 : 0)
-            .onHover { isHovered = $0 }
-            .animation(.easeOut(duration: 0.08), value: isHovered)
+            .zIndex(isVisible ? 100 : 0)
+            .onHover { hovering in
+                guard isEnabled else { return }
+                handleHover(hovering)
+            }
+    }
+
+    private var overlayAlignment: Alignment {
+        switch placement {
+        case .top: return .top
+        case .bottom: return .bottom
+        }
+    }
+
+    private var verticalOffset: CGFloat {
+        switch placement {
+        case .top: return -(tooltipHeight + 8)
+        case .bottom: return tooltipHeight + 8
+        }
+    }
+
+    private var scaleAnchor: UnitPoint {
+        switch placement {
+        case .top: return .bottom
+        case .bottom: return .top
+        }
+    }
+
+    private func handleHover(_ hovering: Bool) {
+        hoverToken += 1
+        let currentToken = hoverToken
+
+        if hovering {
+            isHovered = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { // 80ms delay
+                guard currentToken == hoverToken, isHovered else { return }
+                isVisible = true
+                withAnimation(reduceMotion ? .easeInOut(duration: 0.15) : .easeOut(duration: 0.15)) {
+                    isPresented = true
+                }
+            }
+        } else {
+            isHovered = false
+            // 0ms delay on exit, 50ms easeOut animation
+            withAnimation(reduceMotion ? .easeInOut(duration: 0.05) : .easeOut(duration: 0.05)) {
+                isPresented = false
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                guard currentToken == hoverToken, !isHovered else { return }
+                isVisible = false
+            }
+        }
     }
 }
 
 extension View {
-    func settingsTooltip(_ text: String, isEnabled: Bool = true) -> some View {
-        modifier(SettingsTooltipModifier(text: text, isEnabled: isEnabled))
+    /// Standard Settings Tooltip modifier with Apple-grade fluid animation.
+    func settingsTooltip(
+        _ text: String,
+        placement: SettingsTooltipPlacement = .top,
+        isEnabled: Bool = true
+    ) -> some View {
+        modifier(SettingsFluidTooltipModifier(text: text, placement: placement, isEnabled: isEnabled))
+    }
+
+    /// Alias for `settingsTooltip`.
+    func fluidTooltip(
+        _ text: String,
+        placement: SettingsTooltipPlacement = .top,
+        isEnabled: Bool = true
+    ) -> some View {
+        settingsTooltip(text, placement: placement, isEnabled: isEnabled)
     }
 }
 
