@@ -612,6 +612,13 @@ struct HistoryTab: View {
                 await loadStatistics()
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .historyFeedbackDidChange)) { _ in
+            guard isActive else { return }
+            Task {
+                qualityScores = await historyStore.fetchQualityScores()
+                await loadStatistics()
+            }
+        }
         .sheet(item: $correctionRecord) { record in
             QuickCorrectionSheet(text: record.rawText)
         }

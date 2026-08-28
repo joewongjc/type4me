@@ -41,7 +41,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .preferences: return L("设置", "Settings")
         case .appearance:  return L("外观", "Appearance")
         case .about:       return L("关于", "About")
-        case .debug:       return L("调试", "Debug")
+        case .debug:       return L("开发者", "Developer")
         #if HAS_CLOUD_SUBSCRIPTION
         case .account:     return L("账户", "Account")
         #endif

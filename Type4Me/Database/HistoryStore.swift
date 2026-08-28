@@ -4,6 +4,7 @@ import Type4MeReviseCore
 
 extension Notification.Name {
     static let historyStoreDidChange = Notification.Name("Type4Me.historyStoreDidChange")
+    static let historyFeedbackDidChange = Notification.Name("Type4Me.historyFeedbackDidChange")
 }
 actor HistoryStore {
 
@@ -466,7 +467,7 @@ actor HistoryStore {
         sqlite3_bind_int(stmt, 2, Int32(clamping: score))
         bind(stmt, 3, ISO8601DateFormatter().string(from: Date()))
         guard sqlite3_step(stmt) == SQLITE_DONE else { return false }
-        postDidChangeNotification()
+        postFeedbackDidChangeNotification()
         return true
     }
 
@@ -1062,6 +1063,12 @@ actor HistoryStore {
     private func postDidChangeNotification() {
         Task { @MainActor in
             NotificationCenter.default.post(name: .historyStoreDidChange, object: nil)
+        }
+    }
+
+    private func postFeedbackDidChangeNotification() {
+        Task { @MainActor in
+            NotificationCenter.default.post(name: .historyFeedbackDidChange, object: nil)
         }
     }
 }
