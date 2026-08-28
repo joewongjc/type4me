@@ -4,7 +4,13 @@ import SwiftUI
 enum DebugSettingsAvailability {
     static let defaultsKey = "tf_debug_panel"
 
-    static let defaultEnabled = false
+    static var defaultEnabled: Bool {
+        #if TYPE4ME_DEV_BUILD
+        true
+        #else
+        false
+        #endif
+    }
 
     static var buildLabel: String {
         #if TYPE4ME_DEV_BUILD
