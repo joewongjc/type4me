@@ -236,6 +236,38 @@ final class HistoryStoreTests: XCTestCase {
         XCTAssertTrue(all.isEmpty)
     }
 
+    func testBadFeedbackIsStoredSeparatelyFromHistoryRecord() async {
+        let record = HistoryRecord(
+            id: "feedback-record", createdAt: Date(), durationSeconds: 1,
+            rawText: "feedback", processingMode: nil, processedText: nil,
+            finalText: "feedback", status: "completed", characterCount: 8,
+            asrProvider: "Deepgram", asrModel: "Deepgram · nova-3"
+        )
+        await store.insert(record)
+
+        let marked = await store.setRecordQualityScore(recordID: record.id, score: -1)
+        let markedScores = await store.fetchQualityScores()
+        let fetched = await store.fetchAll()
+        XCTAssertTrue(marked)
+        XCTAssertEqual(markedScores[record.id], -1)
+        XCTAssertEqual(fetched.first?.finalText, record.finalText)
+
+        let unmarked = await store.setRecordQualityScore(recordID: record.id, score: 0)
+        let neutralScores = await store.fetchQualityScores()
+        XCTAssertTrue(unmarked)
+        XCTAssertEqual(neutralScores[record.id], 0)
+
+        let futureNegativeScore = await store.setRecordQualityScore(recordID: record.id, score: -3)
+        let futureNegativeScores = await store.fetchQualityScores()
+        XCTAssertTrue(futureNegativeScore)
+        XCTAssertEqual(futureNegativeScores[record.id], -3)
+
+        let futurePositiveScore = await store.setRecordQualityScore(recordID: record.id, score: 2)
+        let futurePositiveScores = await store.fetchQualityScores()
+        XCTAssertTrue(futurePositiveScore)
+        XCTAssertEqual(futurePositiveScores[record.id], 2)
+    }
+
     func testDeleteBatchEmptyDoesNothing() async {
         let id = "only-one"
         await store.insert(HistoryRecord(
@@ -429,6 +461,10 @@ final class HistoryStoreTests: XCTestCase {
         for record in records {
             await store.insert(record)
         }
+        let markedSoniox = await store.setRecordQualityScore(recordID: "soniox-now", score: -1)
+        let markedDeepgram = await store.setRecordQualityScore(recordID: "deepgram-model", score: -1)
+        XCTAssertTrue(markedSoniox)
+        XCTAssertTrue(markedDeepgram)
 
         let rows = await store.getUsageBreakdown(now: now)
         let byModel = Dictionary(uniqueKeysWithValues: rows.map { ($0.modelName, $0) })
@@ -437,6 +473,8 @@ final class HistoryStoreTests: XCTestCase {
         XCTAssertEqual(byModel["Soniox · stt-rt-v5"]?.last7DaysDuration ?? 0, 120, accuracy: 0.01)
         XCTAssertEqual(byModel["Soniox · stt-rt-v5"]?.last30DaysDuration ?? 0, 120, accuracy: 0.01)
         XCTAssertEqual(byModel["Soniox · stt-rt-v5"]?.allTimeDuration ?? 0, 120, accuracy: 0.01)
+        XCTAssertEqual(byModel["Soniox · stt-rt-v5"]?.badCount, 1)
+        XCTAssertEqual(byModel["Soniox · stt-rt-v5"]?.badPercentage ?? 0, 0.5, accuracy: 0.01)
         XCTAssertEqual(byModel["OpenAI"]?.lastDayDuration ?? 0, 0, accuracy: 0.01)
         XCTAssertEqual(byModel["OpenAI"]?.last7DaysDuration ?? 0, 0, accuracy: 0.01)
         XCTAssertEqual(byModel["OpenAI"]?.last30DaysDuration ?? 0, 120, accuracy: 0.01)
@@ -453,6 +491,8 @@ final class HistoryStoreTests: XCTestCase {
         XCTAssertEqual(byModel["Deepgram · nova-3"]?.recordCount, 1)
         XCTAssertEqual(byModel["Deepgram · nova-3"]?.last30DaysDuration ?? 0, 0, accuracy: 0.01)
         XCTAssertEqual(byModel["Deepgram · nova-3"]?.allTimeDuration ?? 0, 20, accuracy: 0.01)
+        XCTAssertEqual(byModel["Deepgram · nova-3"]?.badCount, 1)
+        XCTAssertEqual(byModel["Deepgram · nova-3"]?.badPercentage ?? 0, 1.0, accuracy: 0.01)
         XCTAssertEqual(rows.last?.modelName, L("未知", "Unknown"))
         XCTAssertEqual(rows.dropLast().map(\.allTimeDuration), rows.dropLast().map(\.allTimeDuration).sorted(by: >))
     }

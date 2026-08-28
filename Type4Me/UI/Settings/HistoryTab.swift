@@ -305,6 +305,7 @@ struct HistoryTab: View {
     @State private var isLoadingMore = false
     @State private var searchText = ""
     @State private var copiedId: String?
+    @State private var qualityScores: [String: Int] = [:]
     @State private var expandedRecordIds: Set<String> = []
     @State private var statistics: HistoryStore.Statistics?
     @State private var usageBreakdown: [HistoryStore.UsageBreakdown] = []
@@ -706,7 +707,16 @@ struct HistoryTab: View {
         let range = dateFilter.dateRange
         let fetched = await historyStore.fetchPage(limit: Self.pageSize, from: range?.start, to: range?.end)
         records = fetched
+        qualityScores = await historyStore.fetchQualityScores()
         hasMore = fetched.count >= Self.pageSize
+    }
+
+    private func toggleBadRecord(_ recordID: String) {
+        let nextScore = (qualityScores[recordID] ?? 0) < 0 ? 0 : -1
+        Task {
+            guard await historyStore.setRecordQualityScore(recordID: recordID, score: nextScore) else { return }
+            qualityScores = await historyStore.fetchQualityScores()
+        }
     }
 
     private func loadStatistics() async {
@@ -1123,6 +1133,15 @@ struct HistoryTab: View {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                         if copiedId == record.id { copiedId = nil }
                     }
+                }
+
+                let isMarkedBad = (qualityScores[record.id] ?? 0) < 0
+                historyRecordAction(
+                    icon: isMarkedBad ? "hand.thumbsdown.fill" : "hand.thumbsdown",
+                    tooltip: isMarkedBad ? L("取消差评标记", "Unmark as bad") : L("标记为差", "Mark as bad"),
+                    color: isMarkedBad ? TF.settingsAccentRed : TF.settingsTextSecondary
+                ) {
+                    toggleBadRecord(record.id)
                 }
 
                 historyRecordAction(
@@ -1578,21 +1597,25 @@ struct HistoryTab: View {
             }
         }
         .padding(16)
-        .frame(width: 650)
+        .frame(width: 760)
     }
 
     private var usageDetailsHeader: some View {
         HStack(spacing: 10) {
             Text(L("模型 / 引擎", "Model / Engine"))
-                .frame(width: 270, alignment: .leading)
+                .frame(width: 250, alignment: .leading)
             Text(L("近1天", "1 day"))
-                .frame(width: 78, alignment: .trailing)
+                .frame(width: 70, alignment: .trailing)
             Text(L("7天", "7 days"))
-                .frame(width: 78, alignment: .trailing)
+                .frame(width: 70, alignment: .trailing)
             Text(L("30天", "30 days"))
-                .frame(width: 78, alignment: .trailing)
+                .frame(width: 70, alignment: .trailing)
             Text(L("全部", "All time"))
-                .frame(width: 78, alignment: .trailing)
+                .frame(width: 70, alignment: .trailing)
+            Text("👎")
+                .frame(width: 60, alignment: .trailing)
+            Text(L("差评率", "% Bad"))
+                .frame(width: 68, alignment: .trailing)
         }
         .font(.system(size: 10, weight: .semibold))
         .foregroundStyle(TF.settingsTextTertiary)
@@ -1609,21 +1632,25 @@ struct HistoryTab: View {
                     .foregroundStyle(TF.settingsText)
                     .lineLimit(1)
             }
-            .frame(width: 270, alignment: .leading)
+            .frame(width: 250, alignment: .leading)
 
             Text(formatUsageDuration(row.lastDayDuration))
-                .frame(width: 78, alignment: .trailing)
+                .frame(width: 70, alignment: .trailing)
             Text(formatUsageDuration(row.last7DaysDuration))
-                .frame(width: 78, alignment: .trailing)
+                .frame(width: 70, alignment: .trailing)
             Text(formatUsageDuration(row.last30DaysDuration))
-                .frame(width: 78, alignment: .trailing)
+                .frame(width: 70, alignment: .trailing)
             VStack(alignment: .trailing, spacing: 2) {
                 Text(formatUsageDuration(row.allTimeDuration))
                 Text(L("\(row.recordCount) 条记录", "\(row.recordCount) records"))
                     .font(.system(size: 9))
                     .foregroundStyle(TF.settingsTextTertiary)
             }
-            .frame(width: 78, alignment: .trailing)
+            .frame(width: 70, alignment: .trailing)
+            Text("\(row.badCount)")
+                .frame(width: 60, alignment: .trailing)
+            Text(formatBadPercentage(row.badPercentage))
+                .frame(width: 68, alignment: .trailing)
         }
         .font(.system(size: 11, weight: .medium, design: .rounded))
         .foregroundStyle(TF.settingsText)
@@ -1666,6 +1693,10 @@ struct HistoryTab: View {
             return String(format: "%dm %02ds", minutes, secs)
         }
         return "\(secs)s"
+    }
+
+    private func formatBadPercentage(_ value: Double) -> String {
+        String(format: "%.1f%%", value * 100)
     }
 
     private func formatNumber(_ number: Int) -> String {

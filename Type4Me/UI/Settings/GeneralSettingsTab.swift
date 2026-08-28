@@ -172,17 +172,15 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
                         ]
                     )
                 }
-                #if TYPE4ME_DEV_BUILD
                 SettingsDivider()
                 settingsToggleRow(
-                    L("Debug 模式", "Debug Mode"),
+                    L("开发者模式", "Developer Mode"),
                     subtitle: L(
                         "在左侧菜单显示调试与诊断入口。",
                         "Show the Debug & Diagnostics entry in the sidebar."
                     ),
                     isOn: $debugPanelEnabled
                 )
-                #endif
             }
 
         }
