@@ -9,6 +9,42 @@ private enum FloatingBarTopOverlay: Equatable {
     case mode
 }
 
+// MARK: - Thinking States Text Swap Transition
+
+private struct TextSwapTransitionModifier: ViewModifier {
+    let y: CGFloat
+    let blur: CGFloat
+    let opacity: Double
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        content
+            .offset(y: reduceMotion ? 0 : y)
+            .blur(radius: reduceMotion ? 0 : blur)
+            .opacity(opacity)
+    }
+}
+
+extension AnyTransition {
+    /// Transitions.dev Thinking States text swap animation:
+    /// - 150ms ease-in-out duration
+    /// - Outgoing text translates up by 8pt with 2pt blur and fades to 0
+    /// - Incoming text enters from 8pt below with 2pt blur and fades to 1
+    static var textSwap: AnyTransition {
+        .asymmetric(
+            insertion: .modifier(
+                active: TextSwapTransitionModifier(y: 8, blur: 2, opacity: 0),
+                identity: TextSwapTransitionModifier(y: 0, blur: 0, opacity: 1)
+            ),
+            removal: .modifier(
+                active: TextSwapTransitionModifier(y: -8, blur: 2, opacity: 0),
+                identity: TextSwapTransitionModifier(y: 0, blur: 0, opacity: 1)
+            )
+        )
+    }
+}
+
 func recordingActionHorizontalOffset(
     _ action: RecordingControlAction,
     capsuleWidth: CGFloat,
@@ -486,20 +522,28 @@ struct FloatingBarView<S: FloatingBarState>: View {
 
     @ViewBuilder
     private var compactPhaseContent: some View {
-        switch state.barPhase {
-        case .preparing, .recording:
-            compactRecordingContent
-        case .processing:
-            compactStatusContent(phase: .processing, text: state.effectiveProcessingLabel)
-        case .recovering:
-            compactStatusContent(phase: .recovering, text: state.effectiveProcessingLabel)
-        case .done:
-            compactDoneContent
-        case .error:
-            compactStatusContent(phase: .error, text: state.feedbackMessage)
-        case .hidden:
-            EmptyView()
+        ZStack {
+            switch state.barPhase {
+            case .preparing, .recording:
+                compactRecordingContent
+                    .transition(.opacity.animation(.easeInOut(duration: 0.18)))
+            case .processing:
+                compactStatusContent(phase: .processing, text: state.effectiveProcessingLabel)
+                    .transition(.textSwap.animation(.easeInOut(duration: 0.15)))
+            case .recovering:
+                compactStatusContent(phase: .recovering, text: state.effectiveProcessingLabel)
+                    .transition(.opacity.animation(.easeInOut(duration: 0.18)))
+            case .done:
+                compactDoneContent
+                    .transition(.textSwap.animation(.easeInOut(duration: 0.15)))
+            case .error:
+                compactStatusContent(phase: .error, text: state.feedbackMessage)
+                    .transition(.opacity.animation(.easeInOut(duration: 0.18)))
+            case .hidden:
+                EmptyView()
+            }
         }
+        .animation(.easeInOut(duration: 0.15), value: state.barPhase)
     }
 
     @ViewBuilder
@@ -511,13 +555,13 @@ struct FloatingBarView<S: FloatingBarState>: View {
                     .transition(.opacity.animation(.easeInOut(duration: 0.18)))
             case .processing:
                 processingContent
-                    .transition(.opacity.animation(.easeInOut(duration: 0.18)))
+                    .transition(.textSwap.animation(.easeInOut(duration: 0.15)))
             case .recovering:
                 recoveringContent
                     .transition(.opacity.animation(.easeInOut(duration: 0.18)))
             case .done:
                 doneContent
-                    .transition(.opacity.animation(.easeInOut(duration: 0.18)))
+                    .transition(.textSwap.animation(.easeInOut(duration: 0.15)))
             case .error:
                 errorContent
                     .transition(.opacity.animation(.easeInOut(duration: 0.18)))
@@ -525,7 +569,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
                 EmptyView()
             }
         }
-        .animation(.easeInOut(duration: 0.18), value: state.barPhase)
+        .animation(.easeInOut(duration: 0.15), value: state.barPhase)
     }
 
     private var compactRecordingControls: some View {
