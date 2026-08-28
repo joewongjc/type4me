@@ -568,6 +568,10 @@ actor RecognitionSession {
     private var targetBundleId: String?
     /// The frontmost application captured when recording starts, used to restore focus if needed.
     private var targetApplication: NSRunningApplication?
+    /// Frozen for the lifetime of one recording. Only normal manual recordings
+    /// receive the user's configured value; specialized/automated flows pass the
+    /// backward-compatible recording-start preference.
+    private var injectionTargetPreference: InjectionTargetPreference = .defaultValue
 
     /// Pure, testable classification of how to treat the injection target that was
     /// captured when recording started, evaluated at paste time.
@@ -583,13 +587,24 @@ actor RecognitionSession {
         /// A live target was captured; it must be activated and confirmed frontmost
         /// (PID match) before pasting, otherwise fall back to the clipboard.
         case activateAndConfirm
+        /// A stop-time focused control was strictly confirmed. It must still be
+        /// the same frontmost AX element immediately before paste.
+        case injectIntoConfirmedEndTarget
         /// The captured target terminated during transcription/processing. Never
         /// paste — whatever is frontmost now is a different app — retain the text
         /// in the clipboard for a deliberate manual paste.
         case failSafeClipboard
     }
 
-    static func planInjectionTarget(hasCapturedTarget: Bool, isTerminated: Bool) -> InjectionTargetPlan {
+    static func planInjectionTarget(
+        preference: InjectionTargetPreference = .recordingStart,
+        hasCapturedTarget: Bool,
+        isTerminated: Bool,
+        hasConfirmedEndTarget: Bool = false
+    ) -> InjectionTargetPlan {
+        if preference == .recordingEnd {
+            return hasConfirmedEndTarget ? .injectIntoConfirmedEndTarget : .failSafeClipboard
+        }
         guard hasCapturedTarget else { return .injectIntoCurrentFrontmost }
         return isTerminated ? .failSafeClipboard : .activateAndConfirm
     }
@@ -604,19 +619,53 @@ actor RecognitionSession {
     /// safe signal — we verify the real frontmost app instead.
     nonisolated static func activateAndConfirmFrontmost(_ target: NSRunningApplication) -> Bool {
         let targetPid = target.processIdentifier
-        let activated = DispatchQueue.main.sync { target.activate() }
+        guard !target.isTerminated, let targetBundleID = target.bundleIdentifier else {
+            return false
+        }
+        let activated = DispatchQueue.main.sync {
+            target.activate()
+        }
         if !activated {
             DebugFileLogger.log("stop: target.activate() returned false pid=\(targetPid)")
         }
-        let deadline = Date().addingTimeInterval(0.4)
+        if !target.isTerminated,
+           !isExpectedFrontmostApplication(pid: targetPid, bundleIdentifier: targetBundleID) {
+            // macOS can reject delayed activation from a menu-bar app even
+            // though the recording began from a global user hotkey. Type4Me is
+            // already Accessibility-trusted, so use the target application's
+            // explicit AXFrontmost attribute as a narrow fallback.
+            let appElement = AXUIElementCreateApplication(targetPid)
+            AXUIElementSetMessagingTimeout(appElement, 0.1)
+            let axResult = AXUIElementSetAttributeValue(
+                appElement,
+                kAXFrontmostAttribute as CFString,
+                true as CFTypeRef
+            )
+            DebugFileLogger.log(
+                "stop: target AXFrontmost fallback result=\(axResult.rawValue) pid=\(targetPid)"
+            )
+        }
+        // Switching back to an app on another macOS Space includes the desktop
+        // animation, which regularly takes longer than 400 ms.
+        let deadline = Date().addingTimeInterval(1.0)
         while Date() < deadline {
             if target.isTerminated { return false }
-            if NSWorkspace.shared.frontmostApplication?.processIdentifier == targetPid {
+            if isExpectedFrontmostApplication(pid: targetPid, bundleIdentifier: targetBundleID) {
                 return true
             }
             usleep(20_000)
         }
-        return NSWorkspace.shared.frontmostApplication?.processIdentifier == targetPid
+        return !target.isTerminated
+            && isExpectedFrontmostApplication(pid: targetPid, bundleIdentifier: targetBundleID)
+    }
+
+    nonisolated private static func isExpectedFrontmostApplication(
+        pid: pid_t,
+        bundleIdentifier: String
+    ) -> Bool {
+        guard let frontmost = NSWorkspace.shared.frontmostApplication else { return false }
+        return frontmost.processIdentifier == pid
+            && frontmost.bundleIdentifier?.caseInsensitiveCompare(bundleIdentifier) == .orderedSame
     }
 
     // MARK: - Speculative LLM (fire during recording pauses)
@@ -654,7 +703,7 @@ actor RecognitionSession {
         case .idle:
             await startRecording()
         case .recording:
-            await stopRecording()
+            await stopRecording(confirmedEndTarget: captureAutomaticEndTarget())
         case .recovering:
             _ = await handleRecoveryHotkeyPress()
         default:
@@ -702,9 +751,14 @@ actor RecognitionSession {
 
     func startRecording(
         mode: ProcessingMode = .direct,
-        requestedAt: ContinuousClock.Instant? = nil
+        requestedAt: ContinuousClock.Instant? = nil,
+        injectionTargetPreference: InjectionTargetPreference = .recordingStart
     ) async {
-        await startRecording(purpose: .input(mode), requestedAt: requestedAt)
+        await startRecording(
+            purpose: .input(mode),
+            requestedAt: requestedAt,
+            injectionTargetPreference: injectionTargetPreference
+        )
     }
 
     func startReviseRecording(_ target: RevisePreparedTarget) async {
@@ -721,7 +775,8 @@ actor RecognitionSession {
 
     func startRecording(
         purpose: RecordingPurpose,
-        requestedAt: ContinuousClock.Instant? = nil
+        requestedAt: ContinuousClock.Instant? = nil,
+        injectionTargetPreference: InjectionTargetPreference = .recordingStart
     ) async {
         let recordingRequestStartedAt = requestedAt ?? ContinuousClock.now
         if state == .finishing || state == .injecting || state == .postProcessing || state == .recovering {
@@ -740,6 +795,7 @@ actor RecognitionSession {
         }
 
         self.recordingPurpose = purpose
+        self.injectionTargetPreference = injectionTargetPreference
         clipboardOutputPolicy = ClipboardOutputPolicy.current()
         completionIntent = .normal
         stoppedByMaxDuration = false
@@ -1124,7 +1180,15 @@ actor RecognitionSession {
         guard state == .recording else { return }
         DebugFileLogger.log("max recording duration reached (\(limit)s), auto-stopping")
         stoppedByMaxDuration = true
-        await stopRecording()
+        await stopRecording(confirmedEndTarget: captureAutomaticEndTarget())
+    }
+
+    private func captureAutomaticEndTarget() -> TextInjectionEngine.ConfirmedInjectionTarget? {
+        guard injectionTargetPreference == .recordingEnd,
+              currentMode.supportsOutputFormatting,
+              completionIntent == .normal
+        else { return nil }
+        return TextInjectionEngine.captureConfirmedInjectionTarget()
     }
 
     private func clearASRCleanupTask(generation: Int) {
@@ -1435,7 +1499,9 @@ actor RecognitionSession {
         return error.localizedDescription
     }
 
-    func stopRecording() async {
+    func stopRecording(
+        confirmedEndTarget: TextInjectionEngine.ConfirmedInjectionTarget? = nil
+    ) async {
         let myGeneration = sessionGeneration
         guard state == .recording else {
             logger.warning("stopRecording called but state is \(String(describing: self.state))")
@@ -1445,6 +1511,11 @@ actor RecognitionSession {
         // Set state BEFORE any await to prevent a second stop from
         // slipping through the guard during the suspension point.
         state = .finishing
+        let confirmedEndTarget = injectionTargetPreference == .recordingEnd
+            && currentMode.supportsOutputFormatting
+            && completionIntent == .normal
+            ? confirmedEndTarget
+            : nil
         if let translationContext = translationRequestContext,
            currentMode.id == ProcessingMode.translationModeId {
             onASREvent?(.processingLabelOverride(L(
@@ -2115,6 +2186,7 @@ actor RecognitionSession {
                     appName: nil
                 )
             let targetApp = targetApplication
+            let targetPreference = injectionTargetPreference
             let injectLog = "stop: injecting method=clipboard len=\(finalText.count) +\(ContinuousClock.now - stopT0)"
             let injectionResult: TrackedInjectionResult = await withCheckedContinuation { continuation in
                 Task.detached {
@@ -2134,8 +2206,10 @@ actor RecognitionSession {
                         )
                     } else {
                         let plan = RecognitionSession.planInjectionTarget(
+                            preference: targetPreference,
                             hasCapturedTarget: targetApp != nil,
-                            isTerminated: targetApp?.isTerminated ?? false
+                            isTerminated: targetApp?.isTerminated ?? false,
+                            hasConfirmedEndTarget: confirmedEndTarget != nil
                         )
                         let allowInjection: Bool
                         switch plan {
@@ -2143,6 +2217,8 @@ actor RecognitionSession {
                             allowInjection = true
                         case .activateAndConfirm:
                             allowInjection = targetApp.map(RecognitionSession.activateAndConfirmFrontmost) ?? false
+                        case .injectIntoConfirmedEndTarget:
+                            allowInjection = confirmedEndTarget != nil
                         case .failSafeClipboard:
                             allowInjection = false
                         }
@@ -2153,11 +2229,15 @@ actor RecognitionSession {
                                     finalText,
                                     sourceText: rawText,
                                     sourceRecordID: recordId,
-                                    modeID: modeID
+                                    modeID: modeID,
+                                    requiring: confirmedEndTarget
                                 )
                             } else {
                                 result = TrackedInjectionResult(
-                                    outcome: engine.inject(finalText),
+                                    outcome: engine.inject(
+                                        finalText,
+                                        requiring: confirmedEndTarget
+                                    ),
                                     observationContext: nil
                                 )
                             }
@@ -2166,7 +2246,14 @@ actor RecognitionSession {
                             // frontmost, so pasting now could leak the dictated text
                             // into the wrong app. Retain it in the clipboard instead.
                             engine.copyToClipboard(finalText)
-                            let reason = plan == .failSafeClipboard ? "target terminated" : "target focus unconfirmed"
+                            let reason: String
+                            if targetPreference == .recordingEnd {
+                                reason = "end target missing or focus changed"
+                            } else {
+                                reason = plan == .failSafeClipboard
+                                    ? "target terminated"
+                                    : "target focus unconfirmed"
+                            }
                             DebugFileLogger.log("stop: \(reason); retained in clipboard, paste skipped")
                             result = TrackedInjectionResult(
                                 outcome: .copiedToClipboard,
@@ -2569,7 +2656,11 @@ actor RecognitionSession {
                 } else if activeProvider != .grok {
                     NSLog("[Session] Server closed ASR while recording, initiating stop")
                     DebugFileLogger.log("server-initiated stop from recording state")
-                    Task { await self.stopRecording() }
+                    Task {
+                        await self.stopRecording(
+                            confirmedEndTarget: self.captureAutomaticEndTarget()
+                        )
+                    }
                 }
             }
 
