@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: - Navigation Item
 
-enum SettingsTab: String, CaseIterable, Identifiable {
+enum SettingsTab: String, CaseIterable, Identifiable, Hashable {
     case general
     case askAnything
     case models
@@ -109,7 +109,6 @@ struct SettingsView: View {
     @Environment(AppState.self) private var appState
     @Environment(AppNavigationModel.self) private var navigationModel
     @State private var hoveredTab: SettingsTab?
-    @State private var hoveredSettingsTab: SettingsTab?
     @State private var draftCoordinator = SettingsDraftCoordinator()
     @State private var windowBox = WeakSettingsWindowBox()
     @State private var pendingTransition: PendingTransition?
@@ -317,6 +316,13 @@ struct SettingsView: View {
                     .font(.system(size: 14, weight: isActive ? .semibold : .medium))
                     .foregroundStyle(TF.settingsText)
                 Spacer()
+                if tab == .preferences {
+                    Text(AppBuildInfo.current.compactLabel)
+                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .monospacedDigit()
+                        .foregroundStyle(TF.settingsTextTertiary)
+                        .lineLimit(1)
+                }
                 if showBadge {
                     Circle()
                         .fill(.red)
@@ -356,27 +362,11 @@ struct SettingsView: View {
     }
 
     private var settingsSectionPicker: some View {
-        HStack(spacing: 2) {
-            ForEach(settingsSubtabs) { tab in
-                settingsSectionButton(tab)
-            }
-        }
-        .padding(4)
-        .background(
-            Capsule()
-                .fill(TF.settingsControl)
-        )
-        .fixedSize()
-        .padding(.bottom, 24)
-    }
-
-    private func settingsSectionButton(_ tab: SettingsTab) -> some View {
-        let isSelected = selectedTab == tab
-        let isHovered = hoveredSettingsTab == tab
-
-        return Button {
-            requestNavigation(to: tab)
-        } label: {
+        LiquidGlassTabPicker(
+            items: settingsSubtabs,
+            selection: selectedTab,
+            onSelectionChange: { requestNavigation(to: $0) }
+        ) { tab, isSelected, _ in
             HStack(spacing: 6) {
                 Image(systemName: tab.icon)
                     .font(.system(size: 10, weight: .semibold))
@@ -391,32 +381,9 @@ struct SettingsView: View {
             .foregroundStyle(isSelected ? TF.settingsText : TF.settingsTextSecondary)
             .padding(.horizontal, 16)
             .frame(height: 32)
-            .background(
-                Capsule().fill(
-                    isSelected
-                        ? Color.white
-                        : (isHovered
-                           ? TF.settingsControlHover
-                           : Color.clear)
-                )
-            )
-            .contentShape(Capsule())
         }
-        .buttonStyle(.plain)
-        // Keep the selection-pill animation local to this control. Wrapping
-        // the navigation mutation in `withAnimation` animated the whole
-        // settings page replacement, including its otherwise unchanged header.
-        .animation(.easeInOut(duration: 0.16), value: isSelected)
-        .onHover { hovering in
-            withAnimation(.easeOut(duration: 0.12)) {
-                hoveredSettingsTab = hovering ? tab : nil
-            }
-            if hovering {
-                NSCursor.pointingHand.set()
-            } else {
-                NSCursor.arrow.set()
-            }
-        }
+        .fixedSize()
+        .padding(.bottom, 24)
     }
 
     private var settingsHubHeader: some View {

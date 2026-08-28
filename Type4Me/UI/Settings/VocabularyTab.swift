@@ -145,7 +145,6 @@ struct VocabularyTab: View {
     }
 
     @State private var selectedSection: VocabularySection = .hotwords
-    @State private var hoveredSection: VocabularySection?
     @State private var isSearchExpanded = false
     @State private var searchQuery = ""
     @FocusState private var isSearchFocused: Bool
@@ -169,7 +168,6 @@ struct VocabularyTab: View {
     @State private var newSnippetTriggers: [String] = []
     @State private var newValue: String = ""
     @State private var hoveredSnippetGroup: String? = nil
-    @State private var hoveredAppScopeKey: String? = nil
     @State private var isAddAppHovered = false
     @State private var showBulkSnippetsSheet = false
     @State private var bulkSnippetsText = ""
@@ -311,63 +309,18 @@ struct VocabularyTab: View {
     // MARK: - Primary Section Tabs
 
     private var vocabularySectionPicker: some View {
-        HStack(spacing: 2) {
-            vocabularySectionButton(
-                .hotwords,
-                title: L("ASR 热词", "ASR Hotwords")
-            )
-            vocabularySectionButton(
-                .snippets,
-                title: L("片段替换", "Snippets")
-            )
-        }
-        .padding(4)
-        .background(
-            Capsule()
-                .fill(TF.settingsControl)
-        )
-        .fixedSize()
-    }
-
-    private func vocabularySectionButton(
-        _ section: VocabularySection,
-        title: String
-    ) -> some View {
-        let isSelected = selectedSection == section
-        let isHovered = hoveredSection == section
-
-        return Button {
-            withAnimation(.easeInOut(duration: 0.16)) {
-                selectedSection = section
-            }
-        } label: {
-            Text(title)
+        LiquidGlassTabPicker(
+            items: [.hotwords, .snippets],
+            selection: selectedSection,
+            onSelectionChange: { selectedSection = $0 }
+        ) { section, isSelected, _ in
+            Text(section == .hotwords ? L("ASR 热词", "ASR Hotwords") : L("片段替换", "Snippets"))
                 .font(.system(size: 12, weight: isSelected ? .semibold : .medium))
                 .foregroundStyle(isSelected ? TF.settingsText : TF.settingsTextSecondary)
                 .padding(.horizontal, 18)
                 .frame(height: 32)
-                .background(
-                    Capsule().fill(
-                        isSelected
-                            ? Color.white
-                            : (isHovered
-                               ? TF.settingsControlHover
-                               : Color.clear)
-                    )
-                )
-                .contentShape(Capsule())
         }
-        .buttonStyle(.plain)
-        .onHover { hovering in
-            withAnimation(.easeOut(duration: 0.12)) {
-                hoveredSection = hovering ? section : nil
-            }
-            if hovering {
-                NSCursor.pointingHand.set()
-            } else {
-                NSCursor.arrow.set()
-            }
-        }
+        .fixedSize()
     }
 
     private var vocabularySectionDescription: String {
@@ -1053,34 +1006,40 @@ struct VocabularyTab: View {
     private func appScopeBar() -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                HStack(spacing: 2) {
-                    appScopeTab(
-                        label: L("全局生效", "Global"),
-                        bundleId: nil,
-                        icon: nil,
-                        systemIcon: "globe"
-                    )
-
-                    ForEach(registeredApps) { app in
-                        appScopeTab(
-                            label: app.name,
-                            bundleId: app.bundleId,
-                            icon: appIcon(for: app.bundleId)
-                        )
-                        .contextMenu {
+                LiquidGlassTabPicker(
+                    items: appScopeBundleIDs,
+                    selection: selectedAppScope,
+                    onSelectionChange: switchScope(to:)
+                ) { bundleId, isSelected, _ in
+                    let app = bundleId.flatMap { id in
+                        registeredApps.first(where: { $0.bundleId == id })
+                    }
+                    HStack(spacing: 6) {
+                        if bundleId == nil {
+                            Image(systemName: "globe")
+                                .font(.system(size: 11, weight: .medium))
+                        } else if let bundleId, let icon = appIcon(for: bundleId) {
+                            Image(nsImage: icon)
+                                .resizable()
+                                .frame(width: 14, height: 14)
+                        }
+                        Text(app?.name ?? L("全局生效", "Global"))
+                            .font(.system(size: 12, weight: isSelected ? .semibold : .medium))
+                            .lineLimit(1)
+                    }
+                    .foregroundStyle(isSelected ? TF.settingsText : TF.settingsTextSecondary)
+                    .padding(.horizontal, 14)
+                    .frame(height: 30)
+                    .contextMenu {
+                        if let bundleId {
                             Button(role: .destructive) {
-                                removeAppScope(bundleId: app.bundleId)
+                                removeAppScope(bundleId: bundleId)
                             } label: {
                                 Label(L("移除", "Remove"), systemImage: "trash")
                             }
                         }
                     }
                 }
-                .padding(4)
-                .background(
-                    Capsule()
-                        .fill(TF.settingsControl)
-                )
 
                 Button { pickApp() } label: {
                     Image(systemName: "plus")
@@ -1126,57 +1085,8 @@ struct VocabularyTab: View {
         }
     }
 
-    private func appScopeTab(
-        label: String,
-        bundleId: String?,
-        icon: NSImage?,
-        systemIcon: String? = nil
-    ) -> some View {
-        let isSelected = selectedAppScope == bundleId
-        let scopeKey = bundleId ?? "__global__"
-        let isHovered = hoveredAppScopeKey == scopeKey
-
-        return Button {
-            switchScope(to: bundleId)
-        } label: {
-            HStack(spacing: 6) {
-                if let systemIcon {
-                    Image(systemName: systemIcon)
-                        .font(.system(size: 11, weight: .medium))
-                } else if let icon {
-                    Image(nsImage: icon)
-                        .resizable()
-                        .frame(width: 14, height: 14)
-                }
-                Text(label)
-                    .font(.system(size: 12, weight: isSelected ? .semibold : .medium))
-                    .lineLimit(1)
-            }
-            .foregroundStyle(isSelected ? TF.settingsText : TF.settingsTextSecondary)
-            .padding(.horizontal, 14)
-            .frame(height: 30)
-            .background(
-                Capsule().fill(
-                    isSelected
-                        ? Color.white
-                        : (isHovered
-                           ? TF.settingsControlHover
-                           : Color.clear)
-                )
-            )
-            .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering in
-            withAnimation(.easeOut(duration: 0.1)) {
-                hoveredAppScopeKey = hovering ? scopeKey : nil
-            }
-            if hovering {
-                NSCursor.pointingHand.set()
-            } else {
-                NSCursor.arrow.set()
-            }
-        }
+    private var appScopeBundleIDs: [String?] {
+        [nil] + registeredApps.map { Optional($0.bundleId) }
     }
 
     private func appIcon(for bundleId: String) -> NSImage? {
