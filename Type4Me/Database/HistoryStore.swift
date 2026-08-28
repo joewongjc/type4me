@@ -71,6 +71,16 @@ actor HistoryStore {
             );
             """
             sqlite3_exec(db, feedbackTableSQL, nil, nil, nil)
+            // A previous development build created this table before scores
+            // were introduced. Add the column for those existing databases;
+            // the ALTER is a no-op (an expected error) when it already exists.
+            sqlite3_exec(
+                db,
+                "ALTER TABLE recognition_feedback ADD COLUMN quality_score INTEGER NOT NULL DEFAULT 0;",
+                nil,
+                nil,
+                nil
+            )
             sqlite3_exec(db, "CREATE INDEX IF NOT EXISTS idx_feedback_record_id ON recognition_feedback(record_id);", nil, nil, nil)
 
             let revisionTableSQL = """

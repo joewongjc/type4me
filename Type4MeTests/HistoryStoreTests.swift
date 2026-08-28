@@ -268,6 +268,37 @@ final class HistoryStoreTests: XCTestCase {
         XCTAssertEqual(futurePositiveScores[record.id], 2)
     }
 
+    func testLegacyFeedbackTableMigratesToIntegerScore() async {
+        let legacyPath = FileManager.default.temporaryDirectory
+            .appendingPathComponent("type4me-legacy-feedback-\(UUID().uuidString).db").path
+        defer { try? FileManager.default.removeItem(atPath: legacyPath) }
+
+        var db: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(legacyPath, &db), SQLITE_OK)
+        let createLegacyTable = """
+        CREATE TABLE recognition_feedback (
+            record_id TEXT PRIMARY KEY,
+            marked_at TEXT NOT NULL
+        );
+        """
+        XCTAssertEqual(sqlite3_exec(db, createLegacyTable, nil, nil, nil), SQLITE_OK)
+        sqlite3_close(db)
+
+        let migratedStore = HistoryStore(path: legacyPath)
+        let record = HistoryRecord(
+            id: "legacy-feedback-record", createdAt: Date(), durationSeconds: 1,
+            rawText: "legacy feedback", processingMode: nil, processedText: nil,
+            finalText: "legacy feedback", status: "completed", characterCount: 15,
+            asrProvider: "Deepgram", asrModel: "nova-3"
+        )
+        await migratedStore.insert(record)
+        let marked = await migratedStore.setRecordQualityScore(recordID: record.id, score: -1)
+
+        XCTAssertTrue(marked)
+        let scores = await migratedStore.fetchQualityScores()
+        XCTAssertEqual(scores[record.id], -1)
+    }
+
     func testDeleteBatchEmptyDoesNothing() async {
         let id = "only-one"
         await store.insert(HistoryRecord(

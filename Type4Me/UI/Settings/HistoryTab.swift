@@ -306,6 +306,8 @@ struct HistoryTab: View {
     @State private var searchText = ""
     @State private var copiedId: String?
     @State private var qualityScores: [String: Int] = [:]
+    @AppStorage(DebugSettingsAvailability.defaultsKey)
+    private var developerModeEnabled = DebugSettingsAvailability.defaultEnabled
     @State private var expandedRecordIds: Set<String> = []
     @State private var statistics: HistoryStore.Statistics?
     @State private var usageBreakdown: [HistoryStore.UsageBreakdown] = []
@@ -1063,6 +1065,10 @@ struct HistoryTab: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
 
                         HStack(spacing: 10) {
+                            if developerModeEnabled && (qualityScores[record.id] ?? 0) < 0 {
+                                Text("👎")
+                                    .accessibilityLabel(L("已标记为差", "Marked as bad"))
+                            }
                             if let chars = record.characterCount {
                                 Label(L("\(chars) 字", "\(chars) chars"), systemImage: "doc.text")
                             }
@@ -1135,13 +1141,15 @@ struct HistoryTab: View {
                     }
                 }
 
-                let isMarkedBad = (qualityScores[record.id] ?? 0) < 0
-                historyRecordAction(
-                    icon: isMarkedBad ? "hand.thumbsdown.fill" : "hand.thumbsdown",
-                    tooltip: isMarkedBad ? L("取消差评标记", "Unmark as bad") : L("标记为差", "Mark as bad"),
-                    color: isMarkedBad ? TF.settingsAccentRed : TF.settingsTextSecondary
-                ) {
-                    toggleBadRecord(record.id)
+                if developerModeEnabled {
+                    let isMarkedBad = (qualityScores[record.id] ?? 0) < 0
+                    historyRecordAction(
+                        icon: isMarkedBad ? "hand.thumbsdown.fill" : "hand.thumbsdown",
+                        tooltip: isMarkedBad ? L("取消差评标记", "Unmark as bad") : L("标记为差", "Mark as bad"),
+                        color: isMarkedBad ? TF.settingsAccentRed : TF.settingsTextSecondary
+                    ) {
+                        toggleBadRecord(record.id)
+                    }
                 }
 
                 historyRecordAction(
