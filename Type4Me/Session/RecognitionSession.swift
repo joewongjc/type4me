@@ -93,6 +93,17 @@ actor RecognitionSession {
         state = newState
     }
 
+    /// A connect error is actionable only while the same session still owns
+    /// the recording lifecycle. Stopping or replacing the session deliberately
+    /// tears down an in-flight connection.
+    static func shouldReportASRConnectFailure(
+        expectedGeneration: Int,
+        currentGeneration: Int,
+        state: SessionState
+    ) -> Bool {
+        expectedGeneration == currentGeneration && state == .recording
+    }
+
     /// Exposed for testing; production code should resolve modes through startRecording / switchMode.
     func currentModeForTesting() -> ProcessingMode {
         currentMode
@@ -220,6 +231,9 @@ actor RecognitionSession {
         if provider == .cartesia {
             return "\(providerName) · \(CartesiaASRConfig.model)"
         }
+        if provider == .stepfun {
+            return "\(providerName) · \(StepFunASRConfig.model)"
+        }
 
         guard let credentials = KeychainService.loadASRConfig(for: provider)?.toCredentials() else {
             return providerName
@@ -301,6 +315,8 @@ actor RecognitionSession {
         switch provider {
         case .volcano:
             return "https://openspeech.bytedance.com"
+        case .stepfun:
+            return "https://api.stepfun.com"
         case .stepfunBatch:
             return "https://api.stepfun.com"
         case .soniox:
@@ -997,6 +1013,26 @@ actor RecognitionSession {
             )
             DebugFileLogger.log("ASR connected OK provider=\(provider.rawValue)")
         } catch {
+            // stopRecording() may intentionally disconnect the recognizer while
+            // connect() is suspended. That cancellation belongs to the stopped
+            // (or superseded) session and must not surface as an ASR failure.
+            guard Self.shouldReportASRConnectFailure(
+                expectedGeneration: myGeneration,
+                currentGeneration: sessionGeneration,
+                state: state
+            ) else {
+                DebugFileLogger.log(
+                    "ASR connect ended after session stopped "
+                        + "provider=\(provider.rawValue) gen=\(myGeneration) "
+                        + "current=\(sessionGeneration) state=\(state) "
+                        + "error=\(String(describing: error))"
+                )
+                await client.disconnect()
+                if sessionGeneration == myGeneration {
+                    self.asrClient = nil
+                }
+                return
+            }
             NSLog("[Session] ASR connect FAILED provider=%@ error=%@", provider.rawValue, String(describing: error))
             DebugFileLogger.log("ASR connect failed provider=\(provider.rawValue): \(String(describing: error))")
             SoundFeedback.playError()
@@ -1018,7 +1054,9 @@ actor RecognitionSession {
         guard sessionGeneration == myGeneration, state == .recording else {
             DebugFileLogger.log("startRecording: zombie or state change after connect (gen=\(myGeneration) current=\(sessionGeneration) state=\(state)), bailing")
             await client.disconnect()
-            self.asrClient = nil
+            if sessionGeneration == myGeneration {
+                self.asrClient = nil
+            }
             return
         }
 
