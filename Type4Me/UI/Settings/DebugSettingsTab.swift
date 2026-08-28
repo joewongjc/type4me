@@ -2,16 +2,6 @@ import AppKit
 import SwiftUI
 
 enum DebugSettingsAvailability {
-    static let defaultsKey = "tf_debug_panel"
-
-    static var defaultEnabled: Bool {
-        #if TYPE4ME_DEV_BUILD
-        true
-        #else
-        false
-        #endif
-    }
-
     static var buildLabel: String {
         #if TYPE4ME_DEV_BUILD
         return "DEV"
@@ -21,7 +11,7 @@ enum DebugSettingsAvailability {
     }
 }
 
-/// Developer diagnostics exposed through the Developer Mode setting.
+/// Developer diagnostics exposed only by DEV builds.
 struct DebugSettingsTab: View, SettingsCardHelpers {
     @State private var recentLog = ""
     @State private var refreshedAt = Date()

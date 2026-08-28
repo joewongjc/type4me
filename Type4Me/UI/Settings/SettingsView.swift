@@ -41,7 +41,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .preferences: return L("设置", "Settings")
         case .appearance:  return L("外观", "Appearance")
         case .about:       return L("关于", "About")
-        case .debug:       return L("开发者", "Developer")
+        case .debug:       return L("调试", "Debug")
         #if HAS_CLOUD_SUBSCRIPTION
         case .account:     return L("账户", "Account")
         #endif
@@ -111,8 +111,6 @@ struct SettingsView: View {
     @State private var isContentMounted = false
     @State private var bypassNextCloseGuard = false
     @AppStorage("tf_language") private var language = AppLanguage.systemDefault
-    @AppStorage(DebugSettingsAvailability.defaultsKey)
-    private var debugPanelEnabled = DebugSettingsAvailability.defaultEnabled
     #if HAS_CLOUD_SUBSCRIPTION
     @State private var showDeviceConflict = false
     @AppStorage("tf_app_edition") private var editionRaw: String?
@@ -233,11 +231,6 @@ struct SettingsView: View {
                 }
             }
         }
-        .onChange(of: debugPanelEnabled) { _, isEnabled in
-            if !isEnabled && selectedTab == .debug {
-                requestNavigation(to: .preferences)
-            }
-        }
     }
 
     // MARK: - Sidebar
@@ -269,10 +262,10 @@ struct SettingsView: View {
 
             Spacer()
 
-            if debugPanelEnabled {
+            #if TYPE4ME_DEV_BUILD
                 navItem(.debug)
                     .padding(.horizontal, 10)
-            }
+            #endif
             #if HAS_CLOUD_SUBSCRIPTION
             if edition == .member {
                 navItem(.account)
@@ -453,11 +446,11 @@ struct SettingsView: View {
         case .preferences, .appearance, .models, .modes, .about:
             settingsHubPage
         case .debug:
-            if debugPanelEnabled {
-                tabPage { DebugSettingsTab() }
-            } else {
-                settingsHubPage
-            }
+            #if TYPE4ME_DEV_BUILD
+            tabPage { DebugSettingsTab() }
+            #else
+            settingsHubPage
+            #endif
             #if HAS_CLOUD_SUBSCRIPTION
         case .account:
             tabPage { AccountTab() }

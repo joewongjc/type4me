@@ -306,8 +306,6 @@ struct HistoryTab: View {
     @State private var searchText = ""
     @State private var copiedId: String?
     @State private var qualityScores: [String: Int] = [:]
-    @AppStorage(DebugSettingsAvailability.defaultsKey)
-    private var developerModeEnabled = DebugSettingsAvailability.defaultEnabled
     @State private var expandedRecordIds: Set<String> = []
     @State private var statistics: HistoryStore.Statistics?
     @State private var usageBreakdown: [HistoryStore.UsageBreakdown] = []
@@ -1126,7 +1124,7 @@ struct HistoryTab: View {
         isHovered: Bool,
         isExpanded: Bool
     ) -> some View {
-        let isMarkedBad = developerModeEnabled && (qualityScores[record.id] ?? 0) < 0
+        let isMarkedBad = (qualityScores[record.id] ?? 0) < 0
 
         if isHovered || copiedId == record.id {
             HStack(spacing: 5) {
@@ -1150,14 +1148,12 @@ struct HistoryTab: View {
                     }
                 }
 
-                if developerModeEnabled {
-                    historyRecordAction(
-                        icon: isMarkedBad ? "hand.thumbsdown.fill" : "hand.thumbsdown",
-                        tooltip: isMarkedBad ? L("取消差评标记", "Unmark as bad") : L("标记为差", "Mark as bad"),
-                        color: isMarkedBad ? TF.settingsAccentRed : TF.settingsTextSecondary
-                    ) {
-                        toggleBadRecord(record.id)
-                    }
+                historyRecordAction(
+                    icon: isMarkedBad ? "hand.thumbsdown.fill" : "hand.thumbsdown",
+                    tooltip: isMarkedBad ? L("取消差评标记", "Unmark as bad") : L("标记为差", "Mark as bad"),
+                    color: isMarkedBad ? TF.settingsAccentRed : TF.settingsTextSecondary
+                ) {
+                    toggleBadRecord(record.id)
                 }
 
                 historyRecordAction(

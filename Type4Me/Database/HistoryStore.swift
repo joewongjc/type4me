@@ -72,16 +72,30 @@ actor HistoryStore {
             );
             """
             sqlite3_exec(db, feedbackTableSQL, nil, nil, nil)
-            // A previous development build created this table before scores
-            // were introduced. Add the column for those existing databases;
-            // the ALTER is a no-op (an expected error) when it already exists.
-            sqlite3_exec(
-                db,
-                "ALTER TABLE recognition_feedback ADD COLUMN quality_score INTEGER NOT NULL DEFAULT 0;",
-                nil,
-                nil,
-                nil
-            )
+            // A previous development build used row existence itself to mean
+            // bad feedback. Migrate that legacy schema explicitly so those
+            // rows retain their meaning instead of becoming neutral scores.
+            var feedbackHasQualityScore = false
+            var feedbackColumns: OpaquePointer?
+            if sqlite3_prepare_v2(db, "PRAGMA table_info(recognition_feedback);", -1, &feedbackColumns, nil) == SQLITE_OK {
+                while sqlite3_step(feedbackColumns) == SQLITE_ROW {
+                    if let name = sqlite3_column_text(feedbackColumns, 1), String(cString: name) == "quality_score" {
+                        feedbackHasQualityScore = true
+                        break
+                    }
+                }
+                sqlite3_finalize(feedbackColumns)
+            }
+            if !feedbackHasQualityScore,
+               sqlite3_exec(
+                   db,
+                   "ALTER TABLE recognition_feedback ADD COLUMN quality_score INTEGER NOT NULL DEFAULT 0;",
+                   nil,
+                   nil,
+                   nil
+               ) == SQLITE_OK {
+                sqlite3_exec(db, "UPDATE recognition_feedback SET quality_score = -1;", nil, nil, nil)
+            }
             sqlite3_exec(db, "CREATE INDEX IF NOT EXISTS idx_feedback_record_id ON recognition_feedback(record_id);", nil, nil, nil)
 
             let revisionTableSQL = """

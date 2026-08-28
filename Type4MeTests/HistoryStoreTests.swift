@@ -282,9 +282,17 @@ final class HistoryStoreTests: XCTestCase {
         );
         """
         XCTAssertEqual(sqlite3_exec(db, createLegacyTable, nil, nil, nil), SQLITE_OK)
+        let legacyTimestamp = ISO8601DateFormatter().string(from: Date())
+        let insertLegacyFeedback = """
+        INSERT INTO recognition_feedback (record_id, marked_at)
+        VALUES ('legacy-feedback-record', '\(legacyTimestamp)');
+        """
+        XCTAssertEqual(sqlite3_exec(db, insertLegacyFeedback, nil, nil, nil), SQLITE_OK)
         sqlite3_close(db)
 
         let migratedStore = HistoryStore(path: legacyPath)
+        let migratedScores = await migratedStore.fetchQualityScores()
+        XCTAssertEqual(migratedScores["legacy-feedback-record"], -1)
         let record = HistoryRecord(
             id: "legacy-feedback-record", createdAt: Date(), durationSeconds: 1,
             rawText: "legacy feedback", processingMode: nil, processedText: nil,
