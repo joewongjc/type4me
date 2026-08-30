@@ -1,11 +1,11 @@
 # Type4Me Compact 实时识别文本产品设计
 
-> 分支：`feat/compact-live-transcript`
 > 文档类型：产品设计
-> 文档状态：设计中
+> 文档状态：当前有效（已实现，持续验证）
 > 设计日期：2026-08-27
-> 基线：`main` @ `8c3f0c0`
-> 关联开发设计：`docs/features/compact-live-transcript/development-design.md`
+> 最后校验：2026-08-30
+> 实现基线：`a90f8d2`
+> 关联开发设计：[development-design.md](development-design.md)
 > 说明：本文档是独立功能设计，不修改或替代 `docs/features/compact-recording-indicator/` 下的既有文档。
 
 ## 1. 背景

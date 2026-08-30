@@ -1,10 +1,11 @@
 # Type4Me Gemini ASR Provider 开发设计
 
-> 分支：`feat/gemini-transcribe-asr`
 > 文档类型：开发设计
-> 文档状态：已 review（2026-08-27），待实现
-> 对应产品设计：`docs/features/gemini-transcribe-asr/product-design.md`
+> 文档状态：当前有效（已实现，持续验证）
 > 设计日期：2026-08-27
+> 最后校验：2026-08-30
+> 实现基线：`c82aa2b`
+> 对应产品设计：[product-design.md](product-design.md)
 > 官方 Live Transcription 文档：https://ai.google.dev/gemini-api/docs/live-api/live-transcribe
 > 官方 API Reference：https://ai.google.dev/api/generate-content
 
