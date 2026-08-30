@@ -100,8 +100,8 @@ struct SettingsTooltipBubble: View {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .stroke(Color.black.opacity(0.06), lineWidth: 1)
             )
-            .shadow(color: Color.black.opacity(0.05), radius: 3, x: 0, y: 2)
-            .shadow(color: Color.black.opacity(0.06), radius: 16, x: 0, y: 4)
+            .shadow(color: Color.black.opacity(0.03), radius: 2, x: 0, y: 1)
+            .shadow(color: Color.black.opacity(0.03), radius: 8, x: 0, y: 2)
             .fixedSize(horizontal: true, vertical: false)
             .allowsHitTesting(false)
     }
@@ -262,6 +262,7 @@ protocol SettingsCardHelpers {}
 
 enum SettingsControlWidth {
     static let toggle: CGFloat = 52
+    static let inlineSegmented: CGFloat = 140
     static let standard: CGFloat = 240
     static let provider: CGFloat = 320
     static let input: CGFloat = 360
@@ -359,10 +360,12 @@ extension SettingsCardHelpers {
         _ label: String,
         subtitle: String? = nil,
         controlWidth: CGFloat = SettingsControlWidth.standard,
+        isIndented: Bool = false,
         @ViewBuilder control: () -> Control
     ) -> some View {
         SettingsOptionRowLayout(controlWidth: controlWidth) {
             settingsOptionLabel(label, subtitle: subtitle)
+                .padding(.leading, isIndented ? 18 : 0)
             control()
                 .frame(maxWidth: .infinity, alignment: .trailing)
         }
@@ -372,12 +375,14 @@ extension SettingsCardHelpers {
         _ label: String,
         subtitle: String? = nil,
         isOn: Binding<Bool>,
-        isEnabled: Bool = true
+        isEnabled: Bool = true,
+        isIndented: Bool = false
     ) -> some View {
         settingsOptionRow(
             label,
             subtitle: subtitle,
-            controlWidth: SettingsControlWidth.toggle
+            controlWidth: SettingsControlWidth.toggle,
+            isIndented: isIndented
         ) {
             Toggle("", isOn: isOn)
                 .labelsHidden()
@@ -386,6 +391,7 @@ extension SettingsCardHelpers {
                 .tint(.black)
                 .disabled(!isEnabled)
         }
+        .opacity(isEnabled ? 1.0 : 0.45)
     }
 
     private func settingsOptionLabel(_ label: String, subtitle: String?) -> some View {
@@ -577,6 +583,14 @@ extension SettingsCardHelpers {
         )
     }
 
+    /// Compact Apple-style inline segmented picker for 2 (or few) options in a settings option row.
+    func settingsInlineSegmentedPicker(
+        selection: Binding<String>,
+        options: [(value: String, label: String)]
+    ) -> some View {
+        SettingsInlineSegmentedPicker(selection: selection, options: options)
+    }
+
     func primaryButton(_ title: String, action: @escaping () -> Void) -> some View {
         Button(title, action: action)
             .buttonStyle(.plain)
@@ -667,4 +681,80 @@ extension SettingsCardHelpers {
         return "\(prefix)••••\(suffix)"
     }
 
+}
+
+/// Apple-grade inline segmented capsule picker with smooth matched-geometry sliding spring pill.
+struct SettingsInlineSegmentedPicker: View {
+    @Binding var selection: String
+    let options: [(value: String, label: String)]
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Namespace private var selectionNamespace
+    @State private var hoveredValue: String?
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(options, id: \.value) { option in
+                let isSelected = selection == option.value
+                let isHovered = hoveredValue == option.value
+
+                Button {
+                    guard selection != option.value else { return }
+                    if reduceMotion {
+                        selection = option.value
+                    } else {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                            selection = option.value
+                        }
+                    }
+                } label: {
+                    Text(option.label)
+                        .font(.system(size: 11, weight: isSelected ? .semibold : .medium))
+                        .foregroundStyle(isSelected ? TF.settingsText : TF.settingsTextSecondary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 5)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(SettingsSegmentedButtonStyle())
+                .background {
+                    ZStack {
+                        if isSelected {
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(Color.white)
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                        .strokeBorder(Color.black.opacity(0.04), lineWidth: 0.5)
+                                }
+                                .shadow(color: Color.black.opacity(0.08), radius: 2, x: 0, y: 1)
+                                .matchedGeometryEffect(id: "selected_segment_pill", in: selectionNamespace)
+                        } else if isHovered {
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(Color.black.opacity(0.04))
+                        }
+                    }
+                }
+                .onHover { hovering in
+                    hoveredValue = hovering ? option.value : nil
+                }
+            }
+        }
+        .padding(2)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(TF.settingsCardAlt)
+        )
+        .animation(
+            reduceMotion ? .easeInOut(duration: 0.15) : .spring(response: 0.28, dampingFraction: 0.82),
+            value: selection
+        )
+        .fixedSize(horizontal: true, vertical: false)
+    }
+}
+
+private struct SettingsSegmentedButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
+            .animation(.spring(response: 0.18, dampingFraction: 0.8), value: configuration.isPressed)
+    }
 }

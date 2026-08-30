@@ -6,6 +6,9 @@ import SwiftUI
 
 struct AppearanceSettingsTab: View, SettingsCardHelpers {
 
+    @AppStorage(RecordingTheme.storageKey)
+    private var theme = RecordingTheme.defaultValue.rawValue
+
     @AppStorage(RecordingIndicatorStyle.storageKey)
     private var indicatorStyle = RecordingIndicatorStyle.defaultValue
 
@@ -51,6 +54,7 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
 
     private var presentation: FloatingBarPresentation {
         FloatingBarPresentation(
+            theme: RecordingTheme(rawValue: theme) ?? .dark,
             indicatorStyle: RecordingIndicatorStyle(rawValue: indicatorStyle) ?? .regular,
             visualStyle: RecordingVisualStyle(rawValue: visualStyle) ?? .siri,
             showsLiveTranscript: showLiveTranscript,
@@ -85,6 +89,8 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
             // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
             settingsGroupCard(L("录音显示", "Recording Display"), icon: "macwindow") {
+                themeRow
+                SettingsDivider()
                 indicatorStyleRow
                 SettingsDivider()
 
@@ -93,12 +99,6 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
                     SettingsDivider()
                 }
 
-                modeNameRow
-                SettingsDivider()
-                providerNameRow
-                SettingsDivider()
-                modelNameRow
-                SettingsDivider()
                 liveTranscriptRow
 
                 if !isCompact {
@@ -107,11 +107,19 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
                 }
 
                 SettingsDivider()
+                showCancelButtonRow
+                SettingsDivider()
+
                 showTooltipsRow
                 SettingsDivider()
-                showCancelButtonRow
+                modeNameRow
+                SettingsDivider()
+                providerNameRow
+                SettingsDivider()
+                modelNameRow
             }
             .animation(TF.springGentle, value: isCompact)
+            .animation(TF.springGentle, value: showTooltips)
 
             Spacer().frame(height: 16)
 
@@ -131,9 +139,24 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
 
     // MARK: - Row Builders
 
+    private var themeRow: some View {
+        settingsOptionRow(
+            L("外观主题", "Appearance Theme"),
+            controlWidth: SettingsControlWidth.inlineSegmented
+        ) {
+            settingsInlineSegmentedPicker(
+                selection: $theme,
+                options: RecordingTheme.allCases.map { ($0.rawValue, $0.displayName) }
+            )
+        }
+    }
+
     private var indicatorStyleRow: some View {
-        settingsOptionRow(L("指示条外观", "Indicator Style")) {
-            settingsDropdown(
+        settingsOptionRow(
+            L("指示条风格", "Indicator Style"),
+            controlWidth: SettingsControlWidth.inlineSegmented
+        ) {
+            settingsInlineSegmentedPicker(
                 selection: $indicatorStyle,
                 options: RecordingIndicatorStyle.allCases.map { ($0.rawValue, $0.displayName) }
             )
@@ -160,45 +183,10 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
         )
     }
 
-    private var modeNameRow: some View {
-        settingsToggleRow(
-            L("显示模式名称", "Show Mode Name"),
-            subtitle: L("在录音开始提示中显示当前模式", "Show the current mode in the recording-start tooltip"),
-            isOn: $showModeName
-        )
-    }
-
-    private var providerNameRow: some View {
-        settingsToggleRow(
-            L("显示服务商", "Show Provider"),
-            subtitle: L("在录音开始提示中显示语音识别服务商", "Show the speech provider in the recording-start tooltip"),
-            isOn: $showProviderName
-        )
-    }
-
-    private var modelNameRow: some View {
-        settingsToggleRow(
-            L("显示模型名称", "Show Model Name"),
-            subtitle: L("在录音开始提示中显示语音识别模型", "Show the speech model in the recording-start tooltip"),
-            isOn: $showModelName
-        )
-    }
-
     private var hoverPreviewRow: some View {
         settingsToggleRow(
             L("悬停文字预览", "Hover Text Preview"),
             isOn: $hoverTranscriptPreview
-        )
-    }
-
-    private var showTooltipsRow: some View {
-        settingsToggleRow(
-            L("显示 Tooltips", "Show Tooltips"),
-            subtitle: L(
-                "开启后在录音开始与悬停按钮时显示提示气泡",
-                "Show hints on recording start and button hover"
-            ),
-            isOn: $showTooltips
         )
     }
 
@@ -213,9 +201,53 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
         )
     }
 
+    private var showTooltipsRow: some View {
+        settingsToggleRow(
+            L("显示 Tooltips", "Show Tooltips"),
+            subtitle: L(
+                "开启后在录音开始与悬停按钮时显示提示气泡",
+                "Show hints on recording start and button hover"
+            ),
+            isOn: $showTooltips
+        )
+    }
+
+    private var modeNameRow: some View {
+        settingsToggleRow(
+            L("显示模式名称", "Show Mode Name"),
+            subtitle: L("在录音开始提示中显示当前模式", "Show the current mode in the recording-start tooltip"),
+            isOn: $showModeName,
+            isEnabled: showTooltips,
+            isIndented: true
+        )
+    }
+
+    private var providerNameRow: some View {
+        settingsToggleRow(
+            L("显示服务商", "Show Provider"),
+            subtitle: L("在录音开始提示中显示语音识别服务商", "Show the speech provider in the recording-start tooltip"),
+            isOn: $showProviderName,
+            isEnabled: showTooltips,
+            isIndented: true
+        )
+    }
+
+    private var modelNameRow: some View {
+        settingsToggleRow(
+            L("显示模型名称", "Show Model Name"),
+            subtitle: L("在录音开始提示中显示语音识别模型", "Show the speech model in the recording-start tooltip"),
+            isOn: $showModelName,
+            isEnabled: showTooltips,
+            isIndented: true
+        )
+    }
+
     private var stripPunctuationRow: some View {
-        settingsOptionRow(L("去句末标点", "Strip Trailing Punctuation")) {
-            settingsDropdown(
+        settingsOptionRow(
+            L("去句末标点", "Strip Trailing Punctuation"),
+            controlWidth: SettingsControlWidth.standard
+        ) {
+            settingsInlineSegmentedPicker(
                 selection: $stripTrailingPunctuation,
                 options: [
                     ("off", L("不去掉", "Off")),
@@ -232,9 +264,10 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
             subtitle: L(
                 "自动在中文与英文、数字和半角符号之间添加空格",
                 "Automatically add spaces between CJK text and half-width letters, numbers, and symbols"
-            )
+            ),
+            controlWidth: SettingsControlWidth.standard
         ) {
-            settingsDropdown(
+            settingsInlineSegmentedPicker(
                 selection: $cjkSpacingMode,
                 options: [
                     (CJKSpacingMode.pangu.rawValue, L("开启", "On")),

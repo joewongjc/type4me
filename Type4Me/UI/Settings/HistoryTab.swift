@@ -754,12 +754,16 @@ struct HistoryTab: View {
             Text(L("导出识别记录", "Export Records"))
                 .font(.system(size: 13, weight: .semibold))
 
-            Picker("", selection: $exportRangeAll) {
-                Text(L("全部记录", "All records")).tag(true)
-                Text(L("指定日期范围", "Date range")).tag(false)
-            }
-            .pickerStyle(.radioGroup)
-            .font(.system(size: 12))
+            SettingsInlineSegmentedPicker(
+                selection: Binding(
+                    get: { exportRangeAll ? "all" : "range" },
+                    set: { exportRangeAll = ($0 == "all") }
+                ),
+                options: [
+                    ("all", L("全部记录", "All records")),
+                    ("range", L("指定日期范围", "Date range")),
+                ]
+            )
 
             if !exportRangeAll {
                 HStack(spacing: 8) {

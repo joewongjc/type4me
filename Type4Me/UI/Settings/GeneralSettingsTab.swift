@@ -509,9 +509,10 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
     private var reviseHotkeyStyleRow: some View {
         settingsOptionRow(
             L("触发方式", "Trigger Style"),
-            subtitle: L("长按松开结束，或单击开始/结束", "Hold to speak, or tap to toggle")
+            subtitle: L("长按松开结束，或单击开始/结束", "Hold to speak, or tap to toggle"),
+            controlWidth: SettingsControlWidth.inlineSegmented
         ) {
-            settingsSegmentedPicker(
+            settingsInlineSegmentedPicker(
                 selection: Binding(
                     get: { (reviseSettings.hotkey?.style ?? .hold).rawValue },
                     set: { rawValue in
@@ -527,7 +528,6 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
                     (HotkeyStyle.toggle.rawValue, L("单击切换", "Toggle")),
                 ]
             )
-            .frame(width: 164)
         }
     }
 
@@ -558,11 +558,13 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
     }
 
     private var languageRow: some View {
-        settingsOptionRow(L("界面语言", "Primary Language")) {
-            settingsDropdown(
+        settingsOptionRow(
+            L("界面语言", "Primary Language"),
+            controlWidth: SettingsControlWidth.inlineSegmented
+        ) {
+            settingsInlineSegmentedPicker(
                 selection: $language,
-                options: AppLanguage.allCases.map { ($0.rawValue, $0.displayName) },
-                icon: "globe"
+                options: AppLanguage.allCases.map { ($0.rawValue, $0.displayName) }
             )
         }
     }

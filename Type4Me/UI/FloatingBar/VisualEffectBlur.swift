@@ -1,9 +1,14 @@
 import AppKit
 import SwiftUI
 
-/// A SwiftUI bridge for a dark HUD material that samples behind its window.
+/// A SwiftUI bridge for native HUD / Popover frosted glass that samples behind its window.
 struct VisualEffectBlur: NSViewRepresentable {
-    let cornerRadius: CGFloat
+    var cornerRadius: CGFloat = 0
+    var material: NSVisualEffectView.Material = .hudWindow
+    var blendingMode: NSVisualEffectView.BlendingMode = .behindWindow
+    var state: NSVisualEffectView.State = .active
+    var isEmphasized: Bool = false
+    var appearanceName: NSAppearance.Name? = .darkAqua
 
     func makeNSView(context: Context) -> NSVisualEffectView {
         let view = NSVisualEffectView()
@@ -17,13 +22,17 @@ struct VisualEffectBlur: NSViewRepresentable {
     }
 
     private func configure(_ view: NSVisualEffectView) {
-        view.material = .hudWindow
-        view.blendingMode = .behindWindow
-        view.state = .active
-        view.isEmphasized = false
+        view.material = material
+        view.blendingMode = blendingMode
+        view.state = state
+        view.isEmphasized = isEmphasized
         view.layer?.cornerRadius = cornerRadius
         view.layer?.cornerCurve = .continuous
-        view.layer?.masksToBounds = true
-        view.appearance = NSAppearance(named: .darkAqua)
+        view.layer?.masksToBounds = cornerRadius > 0
+        if let appearanceName {
+            view.appearance = NSAppearance(named: appearanceName)
+        } else {
+            view.appearance = nil
+        }
     }
 }
