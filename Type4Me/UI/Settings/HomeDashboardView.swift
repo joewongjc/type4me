@@ -46,13 +46,19 @@ struct HomeDashboardView: View {
     @State private var heatmapHoverGeneration = 0
     @State private var hoveredModeID: UUID?
     @State private var isModesButtonHovered = false
+    /// Live-editable mirror of `appState.availableModes`, kept in sync so the
+    /// Home card can reorder and edit hotkeys inline and persist back.
+    @State private var modes: [ProcessingMode] = []
+    @State private var recordingTarget: RecordingTarget?
+    @State private var draggingModeID: UUID?
+    /// Measured natural heights used to bottom-align the modes card with the
+    /// left column and scroll only when the mode list overflows.
+    @State private var primaryColumnHeight: CGFloat = 0
+    @State private var shortcutsHeaderHeight: CGFloat = 0
+    @State private var modeListContentHeight: CGFloat = 0
 
     private let historyStore = HistoryStore.shared
     private let assumedTypingSpeed = 40.0
-
-    /// Use the same live source as the menu bar so edits and reordering are
-    /// immediately reflected without waiting for persistence notifications.
-    private var modes: [ProcessingMode] { appState.availableModes }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -63,18 +69,45 @@ struct HomeDashboardView: View {
                 HStack(alignment: .top, spacing: 18) {
                     primaryColumn
                         .frame(minWidth: 350, maxWidth: .infinity)
-                    shortcutsCard
+                        .background(
+                            GeometryReader { proxy in
+                                Color.clear.preference(
+                                    key: PrimaryColumnHeightKey.self,
+                                    value: proxy.size.height
+                                )
+                            }
+                        )
+                    shortcutsCard(capHeight: primaryColumnHeight > 0 ? primaryColumnHeight : nil)
                         .frame(width: 200)
                 }
+                .onPreferenceChange(PrimaryColumnHeightKey.self) { primaryColumnHeight = $0 }
 
                 VStack(alignment: .leading, spacing: 18) {
                     primaryColumn
-                    shortcutsCard
+                    shortcutsCard(capHeight: nil)
                 }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .sheet(item: $recordingTarget) { target in
+            HotkeyRecordingSheet(
+                target: target,
+                checkConflict: ModeHotkeyEditing.makeConflictCheck(in: modes, target: target),
+                checkDuplicateInMode: ModeHotkeyEditing.makeDuplicateCheck(in: modes, target: target),
+                checkPrefixConflict: ModeHotkeyEditing.makePrefixConflictCheck(in: modes, target: target),
+                onConfirm: { code, mods, style in
+                    ModeHotkeyEditing.applyBinding(
+                        keyCode: code, modifiers: mods, style: style,
+                        to: &modes, for: target
+                    )
+                    persistHomeModes()
+                    recordingTarget = nil
+                },
+                onCancel: { recordingTarget = nil }
+            )
+        }
         .onAppear {
+            syncModes()
             if isActive { refreshDashboard() }
         }
         .onChange(of: isActive) { _, isNowActive in
@@ -84,9 +117,11 @@ struct HomeDashboardView: View {
             if isActive { refreshDashboard() }
         }
         .onReceive(NotificationCenter.default.publisher(for: .selectMode)) { _ in
+            syncModes()
             refreshDashboard()
         }
         .onReceive(NotificationCenter.default.publisher(for: .modesDidChange)) { _ in
+            syncModes()
             refreshDashboard()
         }
     }
@@ -453,17 +488,12 @@ struct HomeDashboardView: View {
 
     // MARK: - Shortcuts
 
-    private var shortcutsCard: some View {
+    private func shortcutsCard(capHeight: CGFloat?) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(L("我的模式", "My Modes"))
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(TF.settingsText)
-                    Text(L("按模式快速输入", "Dictate by mode"))
-                        .font(.system(size: 10))
-                        .foregroundStyle(TF.settingsTextTertiary)
-                }
+                Text(L("我的模式", "My Modes"))
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(TF.settingsText)
 
                 Spacer(minLength: 4)
 
@@ -481,157 +511,204 @@ struct HomeDashboardView: View {
                 }
             }
             .padding(15)
+            .background(
+                GeometryReader { proxy in
+                    Color.clear.preference(
+                        key: ShortcutsHeaderHeightKey.self,
+                        value: proxy.size.height
+                    )
+                }
+            )
 
             Divider().padding(.horizontal, 15)
 
-            if modes.isEmpty {
-                Text(L("还没有模式", "No modes yet"))
-                    .font(.system(size: 11))
-                    .foregroundStyle(TF.settingsTextTertiary)
-                    .frame(maxWidth: .infinity, minHeight: 96)
-            } else {
-                VStack(spacing: 0) {
-                    ForEach(Array(modes.prefix(6).enumerated()), id: \.element.id) { index, mode in
-                        shortcutRow(mode)
-                        if index < min(modes.count, 6) - 1 {
-                            Divider().padding(.leading, 15)
-                        }
-                    }
-
-                    if modes.count > 6 {
-                        Button(action: { openModesEditor(nil) }) {
-                            Text(L("查看全部 \(modes.count) 个模式", "View all \(modes.count) modes"))
-                                .font(.system(size: 10, weight: .semibold))
-                                .foregroundStyle(TF.settingsTextSecondary)
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 38)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
+            modeListSection(capHeight: capHeight)
         }
+        .onPreferenceChange(ShortcutsHeaderHeightKey.self) { shortcutsHeaderHeight = $0 }
         .dashboardCard()
     }
 
-    private func shortcutRow(_ mode: ProcessingMode) -> some View {
-        Button(action: { openModesEditor(mode.id) }) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 6) {
-                    Text(mode.localizedDisplayName)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(TF.settingsText)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.55)
-                        .allowsTightening(true)
-                        .layoutPriority(1)
-                    Spacer(minLength: 0)
-                    if mode.isBuiltin {
-                        Circle()
-                            .fill(TF.settingsAccentBlue.opacity(0.65))
-                            .frame(width: 5, height: 5)
-                            .help(L("内置模式", "Built-in mode"))
-                    }
-                }
+    @ViewBuilder
+    private func modeListSection(capHeight: CGFloat?) -> some View {
+        if modes.isEmpty {
+            Text(L("还没有模式", "No modes yet"))
+                .font(.system(size: 11))
+                .foregroundStyle(TF.settingsTextTertiary)
+                .frame(maxWidth: .infinity, minHeight: 96)
+        } else {
+            // Available list height when the card is capped to the left column:
+            // total cap minus the measured header (the 1pt divider is negligible).
+            let available = capHeight.map { max(0, $0 - shortcutsHeaderHeight) }
+            let shouldScroll = available.map { modeListContentHeight > $0 + 0.5 } ?? false
 
-                hotkeyBadge(mode)
+            if shouldScroll, let available {
+                ScrollView(.vertical, showsIndicators: false) {
+                    modeListContent
+                }
+                .scrollBounceBehavior(.basedOnSize)
+                .frame(height: available)
+            } else {
+                modeListContent
             }
-            .padding(.horizontal, 15)
-            .padding(.vertical, 12)
-            .frame(maxWidth: .infinity, minHeight: 62, alignment: .leading)
-            .background(hoveredModeID == mode.id ? TF.settingsRowHover : Color.clear)
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+    }
+
+    private var modeListContent: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(modes.enumerated()), id: \.element.id) { index, mode in
+                shortcutRow(mode)
+                if index < modes.count - 1 {
+                    Divider().padding(.leading, 15)
+                }
+            }
+        }
+        .background(
+            GeometryReader { proxy in
+                Color.clear.preference(
+                    key: ModeListContentHeightKey.self,
+                    value: proxy.size.height
+                )
+            }
+        )
+        .onPreferenceChange(ModeListContentHeightKey.self) { modeListContentHeight = $0 }
+        .onDrop(of: [.text], isTargeted: nil) { _ in
+            // Fallback: reset drag state when released over empty list space.
+            if draggingModeID != nil {
+                persistHomeModes()
+                draggingModeID = nil
+            }
+            return true
+        }
+    }
+
+    private func shortcutRow(_ mode: ProcessingMode) -> some View {
+        let isDragging = draggingModeID == mode.id
+        let hasBindings = !mode.hotkeyBindings.isEmpty
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Text(mode.localizedDisplayName)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(TF.settingsText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.55)
+                    .allowsTightening(true)
+                    .layoutPriority(1)
+
+                Spacer(minLength: 4)
+
+                Button { addBinding(mode) } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(TF.settingsTextTertiary)
+                        .frame(width: 22, height: 22)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(L("添加快捷键", "Add hotkey"))
+            }
+
+            if hasBindings {
+                HotkeySectionView(
+                    bindings: mode.hotkeyBindings,
+                    onEdit: { editBinding(mode, $0) },
+                    onDelete: { deleteBinding(mode.id, $0) },
+                    onAdd: { addBinding(mode) },
+                    showsHeader: false,
+                    showsAddButton: false
+                )
+            }
+        }
+        .padding(.horizontal, 15)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(hoveredModeID == mode.id ? TF.settingsRowHover : Color.clear)
+        .overlay(alignment: .leading) {
+            // Drag affordance pinned inside the row's left padding, so revealing
+            // it never shifts the name or the capsules below (both stay aligned).
+            dragDots
+                .padding(.leading, 3)
+                .opacity(hoveredModeID == mode.id || isDragging ? 1 : 0)
+                .allowsHitTesting(false)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture { openModesEditor(mode.id) }
         .help(L("管理「\(mode.localizedDisplayName)」", "Manage \"\(mode.localizedDisplayName)\""))
+        .opacity(isDragging ? 0.45 : 1)
         .onHover { hovering in
             withAnimation(.easeOut(duration: 0.1)) { hoveredModeID = hovering ? mode.id : nil }
         }
+        .onDrag {
+            draggingModeID = mode.id
+            return NSItemProvider(object: mode.id.uuidString as NSString)
+        } preview: {
+            Text(mode.localizedDisplayName)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(TF.settingsText)
+                .padding(.horizontal, 12)
+                .frame(height: 30)
+                .background(RoundedRectangle(cornerRadius: 7).fill(TF.settingsCard))
+        }
+        .onDrop(of: [.text], delegate: ModeDropDelegate(
+            targetId: mode.id,
+            modes: $modes,
+            draggingId: $draggingModeID,
+            onReorder: { persistHomeModes() }
+        ))
     }
 
-    @ViewBuilder
-    private func hotkeyBadge(_ mode: ProcessingMode) -> some View {
-        let bindings = mode.hotkeyBindings
-        if bindings.isEmpty {
-            Text(L("未设置", "Not set"))
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(TF.settingsTextTertiary)
-        } else if bindings.count == 1 {
-            hotkeyChip(bindings[0])
-        } else {
-            ViewThatFits(in: .horizontal) {
-                ForEach((1...bindings.count).reversed(), id: \.self) { count in
-                    hotkeyRowCandidate(bindings: bindings, visibleCount: count)
+    /// Six-dot drag affordance (2×3), matching the modes settings list handle.
+    private var dragDots: some View {
+        VStack(spacing: 2.5) {
+            ForEach(0..<3, id: \.self) { _ in
+                HStack(spacing: 2.5) {
+                    Circle().frame(width: 2.5, height: 2.5)
+                    Circle().frame(width: 2.5, height: 2.5)
                 }
             }
         }
+        .foregroundStyle(TF.settingsTextTertiary.opacity(0.55))
+        .frame(width: 12)
     }
 
-    private func hotkeyRowCandidate(bindings: [HotkeyBinding], visibleCount: Int) -> some View {
-        let visible = Array(bindings.prefix(visibleCount))
-        let overflow = bindings.count - visibleCount
-
-        return HStack(spacing: 5) {
-            ForEach(visible) { binding in
-                hotkeyChip(binding)
-            }
-            if overflow > 0 {
-                Text("+\(overflow)")
-                    .font(.system(size: 9, weight: .semibold, design: .rounded))
-                    .foregroundStyle(TF.settingsTextSecondary)
-            }
-        }
-        .fixedSize(horizontal: true, vertical: false)
+    // MARK: - Mode state + hotkey editing
+    /// Mirror `appState.availableModes` into local editable state. The Home card
+    /// mutates `modes` for reorder/hotkey edits and persists back through the
+    /// shared helper, which broadcasts `.modesDidChange` to re-sync every source.
+    private func syncModes() {
+        modes = appState.availableModes
     }
 
-    private func hotkeyChip(_ binding: HotkeyBinding) -> some View {
-        let accent = hotkeyStyleColor(binding.style)
-        let key = HotkeyRecorderView.keyDisplayName(keyCode: binding.keyCode, modifiers: binding.modifiers)
-        return HStack(spacing: 4) {
-            Image(systemName: hotkeyStyleIcon(binding.style))
-                .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(accent)
+    @discardableResult
+    private func persistHomeModes() -> Bool {
+        ModeHotkeyEditing.persistModes(modes, appState: appState)
+    }
 
-            Text(key)
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                .foregroundStyle(TF.settingsText)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-        }
-        .padding(.horizontal, 7)
-        .frame(height: 24)
-        .background(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(accent.opacity(0.12))
+    private func editBinding(_ mode: ProcessingMode, _ binding: HotkeyBinding) {
+        recordingTarget = RecordingTarget(
+            modeId: mode.id,
+            modeName: mode.localizedDisplayName,
+            editingBindingId: binding.id,
+            initialKeyCode: binding.keyCode,
+            initialModifiers: binding.modifiers,
+            initialStyle: binding.style
         )
-        .overlay(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .stroke(accent.opacity(0.35), lineWidth: 1)
+    }
+
+    private func addBinding(_ mode: ProcessingMode) {
+        recordingTarget = RecordingTarget(
+            modeId: mode.id,
+            modeName: mode.localizedDisplayName,
+            editingBindingId: nil,
+            initialKeyCode: nil,
+            initialModifiers: nil,
+            initialStyle: ProcessingMode.defaultHotkeyStyle
         )
-        .help(hotkeyChipTooltip(binding))
     }
 
-    private func hotkeyChipTooltip(_ binding: HotkeyBinding) -> String {
-        let key = HotkeyRecorderView.keyDisplayName(
-            keyCode: binding.keyCode, modifiers: binding.modifiers)
-        return "\(key) · \(hotkeyStyleLabel(binding.style))"
-    }
-
-    private func hotkeyStyleIcon(_ style: ProcessingMode.HotkeyStyle) -> String {
-        switch style {
-        case .hold:
-            return "hand.tap.fill"
-        case .toggle:
-            return "arrow.triangle.2.circlepath"
-        }
-    }
-
-    private func hotkeyStyleColor(_ style: ProcessingMode.HotkeyStyle) -> Color {
-        switch style {
-        case .hold:
-            return Color(red: 0.20, green: 0.60, blue: 0.86)
-        case .toggle:
-            return Color(red: 0.36, green: 0.56, blue: 0.32)
+    private func deleteBinding(_ modeId: UUID, _ binding: HotkeyBinding) {
+        if let idx = modes.firstIndex(where: { $0.id == modeId }) {
+            modes[idx].hotkeyBindings.removeAll { $0.id == binding.id }
+            persistHomeModes()
         }
     }
 
@@ -680,13 +757,6 @@ struct HomeDashboardView: View {
 
     private func formatNumber(_ value: Int) -> String {
         value.formatted(.number.grouping(.automatic))
-    }
-
-    private func hotkeyStyleLabel(_ style: ProcessingMode.HotkeyStyle) -> String {
-        switch style {
-        case .hold: return L("按住录制", "Hold")
-        case .toggle: return L("按下切换", "Toggle")
-        }
     }
 
     private func heatmapWeeks(weekCount: Int) -> [[HeatmapDay]] {
@@ -838,6 +908,35 @@ struct HomeDashboardView: View {
         let id: String
         let label: String
         let weekIndex: Int
+    }
+}
+
+// MARK: - Home layout measurement
+
+/// Natural height of the left column (usage + activity cards). Drives the
+/// bottom-alignment cap applied to the modes card in the wide layout.
+private struct PrimaryColumnHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+/// Measured height of the modes-card header (title + gear). Subtracted from the
+/// cap to size the scroll region so it ends flush with the left column.
+private struct ShortcutsHeaderHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+/// Natural height of the full mode list. Compared against the available cap to
+/// decide whether the list scrolls or lays out at its intrinsic height.
+private struct ModeListContentHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
 

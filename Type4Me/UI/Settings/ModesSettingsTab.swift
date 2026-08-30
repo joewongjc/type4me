@@ -21,20 +21,6 @@ private func fieldLabel(_ title: String, _ hint: String? = nil) -> some View {
     }
 }
 
-// MARK: - Recording Sheet Target
-
-private struct RecordingTarget: Identifiable {
-    /// Fresh identity per presentation so re-opening the sheet always re-presents.
-    let id = UUID()
-    let modeId: UUID
-    let modeName: String
-    /// Non-nil when editing an existing binding; nil when adding a new one.
-    let editingBindingId: UUID?
-    let initialKeyCode: Int?
-    let initialModifiers: UInt64?
-    let initialStyle: ProcessingMode.HotkeyStyle
-}
-
 // MARK: - Main View
 
 struct ModesSettingsTab: View {
@@ -44,6 +30,7 @@ struct ModesSettingsTab: View {
 
     @Environment(AppState.self) private var appState
     @Environment(AskAnythingCoordinator.self) private var askAnythingCoordinator
+    @Environment(AppNavigationModel.self) private var navigationModel
     @State private var modes: [ProcessingMode] = ModeStorage().load()
     @State private var selectedModeId: UUID?
     @State private var recordingTarget: RecordingTarget?
@@ -133,9 +120,13 @@ struct ModesSettingsTab: View {
         }
         .onAppear {
             selectedASRProvider = KeychainService.selectedASRProvider
+            consumePendingSelection()
             if selectedModeId == nil {
                 selectedModeId = modes.first?.id
             }
+        }
+        .onChange(of: navigationModel.pendingModeSelectionID) { _, _ in
+            consumePendingSelection()
         }
         .onReceive(NotificationCenter.default.publisher(for: .asrProviderDidChange)) { note in
             if let provider = note.object as? ASRProvider {
@@ -151,67 +142,14 @@ struct ModesSettingsTab: View {
         .sheet(item: $recordingTarget) { target in
             HotkeyRecordingSheet(
                 target: target,
-                checkConflict: { code, mods in
-                    guard let code else { return nil }
-                    // Cross-mode conflict: another mode owns an equivalent binding.
-                    return modes.first { other in
-                        guard other.id != target.modeId else { return false }
-                        return other.hotkeyBindings.contains { b in
-                            ModeBinding.hotkeysAreEquivalent(
-                                keyCode: code, modifiers: mods,
-                                otherKeyCode: b.keyCode, otherModifiers: b.modifiers
-                            )
-                        }
-                    }
-                },
-                checkDuplicateInMode: { code, mods in
-                    guard let code,
-                          let mode = modes.first(where: { $0.id == target.modeId })
-                    else { return false }
-                    return mode.hotkeyBindings.contains { b in
-                        b.id != target.editingBindingId
-                            && ModeBinding.hotkeysAreEquivalent(
-                                keyCode: code, modifiers: mods,
-                                otherKeyCode: b.keyCode, otherModifiers: b.modifiers
-                            )
-                    }
-                },
-                checkPrefixConflict: { code, mods in
-                    guard let code else { return nil }
-                    // Prefix conflict is per-binding: exclude only the binding being edited.
-                    return modes.first { other in
-                        other.hotkeyBindings.contains { b in
-                            !(other.id == target.modeId && b.id == target.editingBindingId)
-                                && ModeBinding.hasModifierPrefixConflict(
-                                    keyCode: code, modifiers: mods,
-                                    otherKeyCode: b.keyCode, otherModifiers: b.modifiers
-                                )
-                        }
-                    }
-                },
+                checkConflict: ModeHotkeyEditing.makeConflictCheck(in: modes, target: target),
+                checkDuplicateInMode: ModeHotkeyEditing.makeDuplicateCheck(in: modes, target: target),
+                checkPrefixConflict: ModeHotkeyEditing.makePrefixConflictCheck(in: modes, target: target),
                 onConfirm: { code, mods, style in
-                    // Global uniqueness: transfer by removing the single conflicting
-                    // binding from any other mode.
-                    for i in modes.indices where modes[i].id != target.modeId {
-                        modes[i].hotkeyBindings.removeAll { b in
-                            ModeBinding.hotkeysAreEquivalent(
-                                keyCode: code, modifiers: mods,
-                                otherKeyCode: b.keyCode, otherModifiers: b.modifiers
-                            )
-                        }
-                    }
-                    if let idx = modes.firstIndex(where: { $0.id == target.modeId }) {
-                        if let editId = target.editingBindingId,
-                           let bIdx = modes[idx].hotkeyBindings.firstIndex(where: { $0.id == editId }) {
-                            modes[idx].hotkeyBindings[bIdx].keyCode = code
-                            modes[idx].hotkeyBindings[bIdx].modifiers = mods
-                            modes[idx].hotkeyBindings[bIdx].style = style
-                        } else {
-                            modes[idx].hotkeyBindings.append(
-                                HotkeyBinding(keyCode: code, modifiers: mods, style: style)
-                            )
-                        }
-                    }
+                    ModeHotkeyEditing.applyBinding(
+                        keyCode: code, modifiers: mods, style: style,
+                        to: &modes, for: target
+                    )
                     persistModes()
                     recordingTarget = nil
                 },
@@ -300,6 +238,20 @@ struct ModesSettingsTab: View {
     }
 
     // MARK: - Selection with unsaved-changes guard
+
+    /// Consume a synchronous mode-selection request handed off by navigation
+    /// (from Home or the menu bar). Selecting here rather than via an async
+    /// notification avoids racing the `onAppear` first-mode fallback below.
+    private func consumePendingSelection() {
+        guard let id = navigationModel.pendingModeSelectionID else { return }
+        navigationModel.pendingModeSelectionID = nil
+        guard modes.contains(where: { $0.id == id }) else { return }
+        if selectedModeId == nil {
+            commitSelection(id)
+        } else {
+            attemptSelect(id)
+        }
+    }
 
     private func attemptSelect(_ id: UUID) {
         guard id != selectedModeId else { return }
@@ -895,21 +847,7 @@ struct ModesSettingsTab: View {
 
     @discardableResult
     private func persistModes() -> Bool {
-        do {
-            try ModeStorage().save(modes)
-        } catch {
-            NSLog("[Type4Me] Failed to persist mode order/settings: %@", error.localizedDescription)
-            DebugFileLogger.log("failed to persist mode order/settings: \(error)")
-            return false
-        }
-        appState.availableModes = modes
-        NotificationCenter.default.post(name: .modesDidChange, object: nil)
-        if let updatedCurrentMode = modes.first(where: { $0.id == appState.currentMode.id }) {
-            appState.currentMode = updatedCurrentMode
-        } else if let fallback = modes.first {
-            appState.currentMode = fallback
-        }
-        return true
+        ModeHotkeyEditing.persistModes(modes, appState: appState)
     }
 
     private func saveDraftBeforeLeaving() -> Bool {
@@ -944,45 +882,6 @@ struct ModesSettingsTab: View {
     }
 }
 
-// MARK: - Drop Delegate
-
-private struct ModeDropDelegate: DropDelegate {
-    let targetId: UUID
-    @Binding var modes: [ProcessingMode]
-    @Binding var draggingId: UUID?
-    let onReorder: () -> Void
-
-    func performDrop(info: DropInfo) -> Bool {
-        draggingId = nil
-        onReorder()
-        return true
-    }
-
-    func dropEntered(info: DropInfo) {
-        guard let dragId = draggingId,
-              dragId != targetId,
-              let fromIndex = modes.firstIndex(where: { $0.id == dragId }),
-              let toIndex = modes.firstIndex(where: { $0.id == targetId })
-        else { return }
-
-        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-            modes.move(
-                fromOffsets: IndexSet(integer: fromIndex),
-                toOffset: toIndex > fromIndex ? toIndex + 1 : toIndex
-            )
-        }
-        // `dropEntered` is the point where the visible order actually changes.
-        // Persist here instead of relying only on `performDrop`: AppKit may end a
-        // drag over row gaps or scroll-view edges without calling the row's
-        // `performDrop`, which previously left a reordered UI backed by stale disk data.
-        onReorder()
-    }
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
-    }
-}
-
 // MARK: - Hotkey Section (detail pane)
 
 /// A hotkey list styled to match the other detail-form fields: a small section
@@ -993,45 +892,72 @@ struct HotkeySectionView: View {
     let onEdit: (HotkeyBinding) -> Void
     let onDelete: (HotkeyBinding) -> Void
     let onAdd: () -> Void
+    /// Whether to show the "快捷键" label row (with its hint) above the capsules.
+    /// The Home card hides it to keep each mode row compact.
+    var showsHeader = true
+    /// Whether to render the inline dashed "add hotkey" capsule. The Home card
+    /// hides it and provides its own "+" in the mode-name row instead.
+    var showsAddButton = true
 
     @State private var hoveredId: UUID?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Text(L("快捷键", "Hotkeys"))
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(TF.settingsTextTertiary)
-                Text(L("键盘、鼠标或耳机按键", "Keyboard, mouse or headphone keys"))
-                    .font(.system(size: 10))
-                    .foregroundStyle(TF.settingsTextTertiary.opacity(0.7))
-                Spacer(minLength: 0)
+            if showsHeader {
+                HStack(spacing: 6) {
+                    Text(L("快捷键", "Hotkeys"))
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(TF.settingsTextTertiary)
+                    Text(L("键盘、鼠标或耳机按键", "Keyboard, mouse or headphone keys"))
+                        .font(.system(size: 10))
+                        .foregroundStyle(TF.settingsTextTertiary.opacity(0.7))
+                    Spacer(minLength: 0)
+                }
             }
 
             FlowLayout(spacing: 6, lineSpacing: 6) {
                 ForEach(bindings) { binding in
                     capsule(binding)
                 }
-                addCapsule
+                if showsAddButton {
+                    addCapsule
+                }
             }
         }
     }
 
     /// A read-style capsule matching the Home dashboard: color-coded style glyph
-    /// + key, tap to edit, hover to reveal a delete affordance.
+    /// + key, tap to edit, hover to reveal a delete affordance. Edit is the base
+    /// button and delete is an overlay button pinned inside the top-trailing
+    /// corner — as an in-bounds sibling on top it reliably receives its own taps,
+    /// and being an overlay it never changes the capsule's layout width (which
+    /// would otherwise push a neighboring "add" button to the next line and make
+    /// hover oscillate near a wrap boundary).
     private func capsule(_ binding: HotkeyBinding) -> some View {
         let accent = styleColor(binding.style)
         let hovered = hoveredId == binding.id
-        return HStack(spacing: 5) {
-            Image(systemName: styleIcon(binding.style))
-                .font(.system(size: 10, weight: .bold))
-                .foregroundStyle(accent)
+        return Button {
+            onEdit(binding)
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: styleIcon(binding.style))
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(accent)
 
-            Text(HotkeyRecorderView.keyDisplayName(
-                keyCode: binding.keyCode, modifiers: binding.modifiers))
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .foregroundStyle(TF.settingsText)
-
+                Text(HotkeyRecorderView.keyDisplayName(
+                    keyCode: binding.keyCode, modifiers: binding.modifiers))
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(TF.settingsText)
+            }
+            .padding(.horizontal, 9)
+            .frame(height: 28)
+            .background(Capsule().fill(accent.opacity(0.12)))
+            .overlay(Capsule().stroke(accent.opacity(0.35), lineWidth: 1))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .help(L("点击编辑 · \(styleLabel(binding.style))", "Click to edit · \(styleLabel(binding.style))"))
+        .overlay(alignment: .topTrailing) {
             if hovered {
                 Button {
                     onDelete(binding)
@@ -1039,22 +965,16 @@ struct HotkeySectionView: View {
                     Image(systemName: "xmark")
                         .font(.system(size: 8, weight: .bold))
                         .foregroundStyle(TF.settingsAccentRed)
-                        .frame(width: 15, height: 15)
-                        .background(Circle().fill(Color.white.opacity(0.85)))
+                        .frame(width: 16, height: 16)
+                        .background(Circle().fill(Color.white))
+                        .overlay(Circle().stroke(accent.opacity(0.4), lineWidth: 1))
                         .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
-                .help(L("删除", "Delete"))
+                .help(L("删除快捷键", "Delete hotkey"))
+                .transition(.scale.combined(with: .opacity))
             }
         }
-        .padding(.leading, 9)
-        .padding(.trailing, hovered ? 4 : 9)
-        .frame(height: 28)
-        .background(Capsule().fill(accent.opacity(0.12)))
-        .overlay(Capsule().stroke(accent.opacity(0.35), lineWidth: 1))
-        .contentShape(Capsule())
-        .onTapGesture { onEdit(binding) }
-        .help(L("点击编辑 · \(styleLabel(binding.style))", "Click to edit · \(styleLabel(binding.style))"))
         .onHover { h in
             withAnimation(.easeOut(duration: 0.12)) {
                 hoveredId = h ? binding.id : nil
@@ -1161,7 +1081,7 @@ private struct FlowLayout: Layout {
 
 // MARK: - Hotkey Recording Sheet
 
-private struct HotkeyRecordingSheet: View {
+struct HotkeyRecordingSheet: View {
 
     let target: RecordingTarget
     let checkConflict: (Int?, UInt64?) -> ProcessingMode?

@@ -90,6 +90,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 final class AppNavigationModel {
     var selectedTab: SettingsTab = .general
     var pendingAskAnythingSessionID: UUID?
+    var pendingModeSelectionID: UUID?
 }
 
 // MARK: - Settings View
@@ -97,7 +98,11 @@ final class AppNavigationModel {
 struct SettingsView: View {
 
     private enum PendingTransition {
-        case navigate(SettingsTab, afterCommit: (() -> Void)? = nil)
+        case navigate(
+            SettingsTab,
+            beforeCommit: (() -> Void)? = nil,
+            afterCommit: (() -> Void)? = nil
+        )
         case closeWindow
     }
 
@@ -186,9 +191,9 @@ struct SettingsView: View {
         }
         .onAppear {
             if VocabularyNavigationCenter.shared.hasPendingSettingsNavigation {
-                requestNavigation(to: .vocabulary) {
+                requestNavigation(to: .vocabulary, afterCommit: {
                     VocabularyNavigationCenter.shared.consumeSettingsNavigation()
-                }
+                })
             }
         }
         #if HAS_CLOUD_SUBSCRIPTION
@@ -217,21 +222,20 @@ struct SettingsView: View {
         }
         #endif
         .onReceive(NotificationCenter.default.publisher(for: .navigateToMode)) { note in
-            requestNavigation(to: .modes) {
-                if let modeId = note.object as? UUID {
-                    NotificationCenter.default.post(name: .selectMode, object: modeId)
-                }
-            }
+            let modeId = note.object as? UUID
+            requestNavigation(to: .modes, beforeCommit: {
+                navigationModel.pendingModeSelectionID = modeId
+            })
         }
         .onReceive(NotificationCenter.default.publisher(for: .navigateToHistory)) { _ in
             requestNavigation(to: .history)
         }
         .onReceive(NotificationCenter.default.publisher(for: .navigateToVocabulary)) { note in
-            requestNavigation(to: .vocabulary) {
+            requestNavigation(to: .vocabulary, afterCommit: {
                 if note.object is VocabularyNavigationRequest {
                     VocabularyNavigationCenter.shared.consumeSettingsNavigation()
                 }
-            }
+            })
         }
         .onChange(of: debugPanelEnabled) { _, isEnabled in
             if !isEnabled && selectedTab == .debug {
@@ -434,11 +438,9 @@ struct SettingsView: View {
                 HomeDottedWaveBackground()
                 tabPage {
                     HomeDashboardView(isActive: selectedTab == .general) { modeId in
-                        requestNavigation(to: .modes) {
-                            if let modeId {
-                                NotificationCenter.default.post(name: .selectMode, object: modeId)
-                            }
-                        }
+                        requestNavigation(to: .modes, beforeCommit: {
+                            navigationModel.pendingModeSelectionID = modeId
+                        })
                     }
                 }
             }
@@ -552,20 +554,31 @@ struct SettingsView: View {
 
     private func requestNavigation(
         to tab: SettingsTab,
+        beforeCommit: (() -> Void)? = nil,
         afterCommit: (() -> Void)? = nil
     ) {
         guard tab != selectedTab else {
+            beforeCommit?()
             afterCommit?()
             return
         }
         guard draftCoordinator.hasUnsavedChanges else {
-            commitNavigation(to: tab, afterCommit: afterCommit)
+            commitNavigation(to: tab, beforeCommit: beforeCommit, afterCommit: afterCommit)
             return
         }
-        pendingTransition = .navigate(tab, afterCommit: afterCommit)
+        pendingTransition = .navigate(
+            tab,
+            beforeCommit: beforeCommit,
+            afterCommit: afterCommit
+        )
     }
 
-    private func commitNavigation(to tab: SettingsTab, afterCommit: (() -> Void)?) {
+    private func commitNavigation(
+        to tab: SettingsTab,
+        beforeCommit: (() -> Void)?,
+        afterCommit: (() -> Void)?
+    ) {
+        beforeCommit?()
         selectedTab = tab
         if tab == .about {
             UpdateChecker.shared.markAsSeen(appState: appState)
@@ -593,8 +606,8 @@ struct SettingsView: View {
         guard let transition = pendingTransition else { return }
         pendingTransition = nil
         switch transition {
-        case .navigate(let tab, let afterCommit):
-            commitNavigation(to: tab, afterCommit: afterCommit)
+        case .navigate(let tab, let beforeCommit, let afterCommit):
+            commitNavigation(to: tab, beforeCommit: beforeCommit, afterCommit: afterCommit)
         case .closeWindow:
             bypassNextCloseGuard = true
             isContentMounted = false
