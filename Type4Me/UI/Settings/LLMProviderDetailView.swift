@@ -1,24 +1,15 @@
 import SwiftUI
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// MARK: - LLM Settings Card
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+struct LLMProviderDetailView: View, SettingsCardHelpers {
+    let provider: LLMProvider
+    let isDefault: Bool
+    let onSetAsDefault: (LLMProvider) -> Void
 
-struct LLMSettingsCard: View, SettingsCardHelpers {
-
-    let draftCoordinator: SettingsDraftCoordinator
-
-    @State private var selectedLLMProvider: LLMProvider = .doubao
     @State private var llmCredentialValues: [String: String] = [:]
-    @State private var savedLLMValues: [String: String] = [:]
-    @State private var editedFields: Set<String> = []
-    @State private var llmTestStatus: SettingsTestStatus = .idle
-    @State private var isEditingLLM = true
-    @State private var hasStoredLLM = false
-    @State private var testTask: Task<Void, Never>?
-    /// Tracks which credential fields are in "custom input" mode (value not in preset options).
     @State private var customModeFields: Set<String> = []
-    @State private var disableThinking = LLMThinkingPreference.isDisabled(for: .doubao)
+    @State private var llmTestStatus: SettingsTestStatus = .idle
+    @State private var testTask: Task<Void, Never>?
+    @State private var disableThinking = false
     @State private var fetchedModelOptions: [FieldOption] = []
     @State private var isFetchingModels = false
 
@@ -35,24 +26,28 @@ struct LLMSettingsCard: View, SettingsCardHelpers {
     }
 
     private var currentLLMFields: [CredentialField] {
-        LLMProviderRegistry.configType(for: selectedLLMProvider)?.credentialFields ?? []
+        LLMProviderRegistry.configType(for: provider)?.credentialFields ?? []
     }
 
-    /// Effective values: saved base + dirty edits overlaid.
     private var effectiveLLMValues: [String: String] {
-        LLMCredentialDraft.effectiveValues(
-            fields: currentLLMFields,
-            savedValues: savedLLMValues,
-            draftValues: llmCredentialValues,
-            editedFields: editedFields
-        )
+        var result = llmCredentialValues
+        let fields = currentLLMFields
+        for field in fields where result[field.key] == nil && !field.defaultValue.isEmpty {
+            result[field.key] = field.defaultValue
+        }
+        return result
     }
 
     private var hasLLMCredentials: Bool {
-        LLMCredentialDraft.hasRequiredValues(
-            fields: currentLLMFields,
-            values: effectiveLLMValues
-        )
+        if provider == .codexCLI || provider == .ollama {
+            return true
+        }
+        let fields = currentLLMFields
+        let required = fields.filter { !$0.isOptional }
+        let effective = effectiveLLMValues
+        return required.allSatisfy { field in
+            !(effective[field.key]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "").isEmpty
+        }
     }
 
     private var selectedLLMModel: String {
@@ -64,31 +59,125 @@ struct LLMSettingsCard: View, SettingsCardHelpers {
            !modelField.defaultValue.isEmpty {
             return modelField.defaultValue
         }
-        return selectedLLMProvider.modelOptions.first?.value ?? ""
+        return provider.modelOptions.first?.value ?? ""
     }
 
     private var selectedThinkingDisableField: ThinkingDisableField? {
-        selectedLLMProvider.thinkingDisableField(for: selectedLLMModel)
+        provider.thinkingDisableField(for: selectedLLMModel)
     }
 
-    // MARK: Body
+    // MARK: - Body
 
     var body: some View {
-        settingsGroupCard(L("LLM 文本处理", "LLM Settings"), icon: "gearshape.fill") {
-            llmProviderPicker
-            SettingsDivider()
+        VStack(alignment: .leading, spacing: 14) {
+            headerSection
+            configurationSection
+        }
+        .padding(.horizontal, 4)
+        .padding(.vertical, 2)
+        .onAppear {
+            loadCredentials()
+        }
+        .onChange(of: provider) { _, newProvider in
+            testTask?.cancel()
+            llmTestStatus = .idle
+            fetchedModelOptions = []
+            loadCredentials()
+        }
+    }
 
-            if selectedLLMProvider == .codexCLI {
-                codexRuntimeNotice
-                SettingsDivider()
+    // MARK: - Header Section
+
+    private var headerSection: some View {
+        HStack(alignment: .center, spacing: 12) {
+            BrandIconView(llm: provider, size: 32)
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(provider.displayName)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(TF.settingsText)
+
+                    if provider.isLocal {
+                        Text(L("本地", "Local"))
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(TF.settingsTextTertiary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 1.5)
+                            .background(Capsule().fill(TF.settingsCardAlt))
+                    } else if provider == .codexCLI {
+                        Text(L("本机运行时", "Local CLI"))
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(TF.settingsAccentBlue)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 1.5)
+                            .background(Capsule().fill(TF.settingsAccentBlue.opacity(0.1)))
+                    } else {
+                        Text(L("云端大模型", "Cloud LLM"))
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(TF.settingsTextTertiary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 1.5)
+                            .background(Capsule().fill(TF.settingsCardAlt))
+                    }
+                }
             }
 
-            if hasLLMCredentials && !isEditingLLM {
-                credentialSummaryCard(rows: llmSummaryRows)
-            } else {
+            Spacer()
+
+            // Set as Default Button / Active Badge
+            Button {
+                if !isDefault {
+                    onSetAsDefault(provider)
+                }
+            } label: {
+                HStack(spacing: 5) {
+                    if isDefault {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 12))
+                            .foregroundStyle(TF.settingsAccentBlue)
+                        Text(L("当前默认引擎", "Default Engine"))
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(TF.settingsAccentBlue)
+                    } else {
+                        Image(systemName: "circle")
+                            .font(.system(size: 12))
+                            .foregroundStyle(TF.settingsTextSecondary)
+                        Text(L("设为默认", "Set as Default"))
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(TF.settingsText)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(
+                    Capsule()
+                        .fill(isDefault ? TF.settingsAccentBlue.opacity(0.12) : TF.settingsCardAlt)
+                )
+                .overlay(
+                    Capsule()
+                        .strokeBorder(isDefault ? TF.settingsAccentBlue.opacity(0.3) : Color.black.opacity(0.06), lineWidth: 0.5)
+                )
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.bottom, 4)
+    }
+
+    // MARK: - Configuration Section
+
+    private var configurationSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            settingsGroupCard(L("参数配置", "Parameters"), icon: "slider.horizontal.3") {
+                if provider == .codexCLI {
+                    codexRuntimeNotice
+                    SettingsDivider()
+                }
+
                 dynamicCredentialFields
             }
 
+            // Test Connection Bar outside the card
             VStack(alignment: .trailing, spacing: 0) {
                 HStack(alignment: .top, spacing: 8) {
                     Spacer()
@@ -97,125 +186,10 @@ struct LLMSettingsCard: View, SettingsCardHelpers {
                         status: llmTestStatus,
                         isEnabled: hasLLMCredentials
                     ) { testLLMConnection() }
-                    if hasLLMCredentials && !isEditingLLM {
-                        secondaryButton(L("修改", "Edit")) {
-                            testTask?.cancel()
-                            llmTestStatus = .idle
-                            llmCredentialValues = [:]
-                            editedFields = []
-                            isEditingLLM = true
-                            syncCustomModeFields()
-                        }
-                    } else {
-                        if hasLLMCredentials && hasStoredLLM {
-                            secondaryButton(L("取消", "Cancel")) {
-                                testTask?.cancel()
-                                llmTestStatus = .idle
-                                loadLLMCredentials()
-                            }
-                        }
-                        primaryButton(L("保存", "Save")) { saveLLMCredentials() }
-                            .disabled(!hasLLMCredentials)
-                    }
                 }
                 testStatusMessage(status: llmTestStatus)
             }
-            .padding(.top, 12)
-        }
-        .task {
-            loadLLMCredentials()
-        }
-        .onAppear {
-            draftCoordinator.register(
-                .llmCredentials,
-                isDirty: { !editedFields.isEmpty },
-                save: saveLLMCredentials,
-                discard: loadLLMCredentials
-            )
-        }
-        .onDisappear {
-            draftCoordinator.unregister(.llmCredentials)
-        }
-    }
-
-    private var thinkingToggleAvailable: Bool {
-        selectedThinkingDisableField != nil
-    }
-
-    private var thinkingModeBinding: Binding<Bool> {
-        Binding(
-            get: {
-                thinkingToggleAvailable && disableThinking
-            },
-            set: { newValue in
-                guard thinkingToggleAvailable else { return }
-                disableThinking = newValue
-                LLMThinkingPreference.setDisabled(disableThinking, for: selectedLLMProvider)
-            }
-        )
-    }
-
-    private var thinkingToggleDescription: String {
-        if selectedLLMProvider == .kimi,
-           selectedLLMModel.lowercased().hasPrefix("kimi-k2.7-code") {
-            return L("K2.7 始终思考，不发送 thinking 参数", "K2.7 always thinks; no thinking parameter is sent")
-        }
-
-        switch selectedThinkingDisableField {
-        case .thinking:
-            return L("发送 thinking: disabled", "Sends thinking: disabled")
-        case .enableThinking:
-            return L("发送 enable_thinking: false", "Sends enable_thinking: false")
-        case .reasoningEffort:
-            return L("发送 reasoning_effort: none", "Sends reasoning_effort: none")
-        case .reasoning:
-            return L("发送 reasoning.effort: none", "Sends reasoning.effort: none")
-        case .think:
-            return L("发送 think: false", "Sends think: false")
-        case nil where selectedLLMProvider.needsReasoningSplit:
-            return L("不支持关闭，已自动分离 reasoning 内容", "Cannot disable; reasoning is separated")
-        default:
-            return L("暂无可靠关闭参数，仅隐藏返回中的 <think>", "No reliable disable parameter; hides returned <think>")
-        }
-    }
-
-    private var thinkingModeRow: some View {
-        settingsToggleRow(
-            L("禁用思考", "Disable Thinking"),
-            subtitle: thinkingToggleDescription,
-            isOn: thinkingModeBinding,
-            isEnabled: thinkingToggleAvailable
-        )
-    }
-
-    // MARK: - Provider Picker
-
-    private var llmProviderPicker: some View {
-        settingsOptionRow(
-            L("服务商", "Provider"),
-            controlWidth: SettingsControlWidth.provider
-        ) {
-            settingsDropdown(
-                selection: Binding(
-                    get: { selectedLLMProvider.rawValue },
-                    set: { if let p = LLMProvider(rawValue: $0) { selectedLLMProvider = p } }
-                ),
-                options: LLMProvider.allCases.map { ($0.rawValue, $0.displayName) }
-            )
-        }
-        .onChange(of: selectedLLMProvider) { _, newProvider in
-            testTask?.cancel()
-            llmTestStatus = .idle
-            isEditingLLM = true
-            fetchedModelOptions = []
-            loadLLMCredentialsForProvider(newProvider)
-
-            // Auto-switch only when the target already has a saved config.
-            // Defaults alone (notably Codex CLI's model) must not change the
-            // active provider until the user explicitly saves.
-            if hasStoredLLM && hasLLMCredentials {
-                KeychainService.selectedLLMProvider = newProvider
-            }
+            .padding(.top, 4)
         }
     }
 
@@ -228,10 +202,10 @@ struct LLMSettingsCard: View, SettingsCardHelpers {
         .foregroundStyle(TF.settingsTextSecondary)
         .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.bottom, 6)
+        .padding(.vertical, 6)
     }
 
-    // MARK: - Credential Fields
+    // MARK: - Dynamic Credential Fields
 
     private var dynamicCredentialFields: some View {
         let items = arrangedCredentialItems()
@@ -253,7 +227,7 @@ struct LLMSettingsCard: View, SettingsCardHelpers {
 
         if let modelField {
             items.append(.credential(modelField))
-            if selectedLLMProvider != .codexCLI {
+            if provider != .codexCLI {
                 items.append(.thinkingMode)
             }
         } else {
@@ -261,7 +235,6 @@ struct LLMSettingsCard: View, SettingsCardHelpers {
         }
 
         items.append(contentsOf: nonModelFields.dropFirst(2).map { .credential($0) })
-
         return items
     }
 
@@ -278,7 +251,6 @@ struct LLMSettingsCard: View, SettingsCardHelpers {
     @ViewBuilder
     private func credentialFieldRow(_ field: CredentialField) -> some View {
         if !field.options.isEmpty && field.allowCustomInput {
-            // Combobox: preset dropdown + "Custom" entry that reveals a text field.
             let mergedOptions = field.key == "model" && !fetchedModelOptions.isEmpty
                 ? fetchedModelOptions
                 : field.options
@@ -289,25 +261,24 @@ struct LLMSettingsCard: View, SettingsCardHelpers {
                         return CredentialField.customValue
                     }
                     let val = llmCredentialValues[field.key] ?? ""
-                    return val.isEmpty ? (savedLLMValues[field.key] ?? field.defaultValue) : val
+                    return val.isEmpty ? field.defaultValue : val
                 },
                 set: { newValue in
                     if newValue == CredentialField.customValue {
                         customModeFields.insert(field.key)
                         llmCredentialValues[field.key] = ""
-                        editedFields.insert(field.key)
                     } else {
                         customModeFields.remove(field.key)
                         llmCredentialValues[field.key] = newValue
-                        editedFields.insert(field.key)
                     }
+                    autoSave()
                 }
             )
             let customBinding = Binding<String>(
                 get: { llmCredentialValues[field.key] ?? "" },
                 set: {
                     llmCredentialValues[field.key] = $0
-                    editedFields.insert(field.key)
+                    autoSave()
                 }
             )
             settingsOptionRow(field.label, controlWidth: SettingsControlWidth.input) {
@@ -336,7 +307,7 @@ struct LLMSettingsCard: View, SettingsCardHelpers {
                     if customModeFields.contains(field.key) {
                         FixedWidthTextField(text: customBinding, placeholder: field.placeholder)
                             .padding(.horizontal, 12)
-                            .frame(height: 36)
+                            .frame(width: SettingsControlWidth.input, height: 36)
                             .background(RoundedRectangle(cornerRadius: 8).fill(TF.settingsCardAlt))
                     }
                 }
@@ -345,11 +316,11 @@ struct LLMSettingsCard: View, SettingsCardHelpers {
             let pickerBinding = Binding<String>(
                 get: {
                     let val = llmCredentialValues[field.key] ?? ""
-                    return val.isEmpty ? (savedLLMValues[field.key] ?? field.defaultValue) : val
+                    return val.isEmpty ? field.defaultValue : val
                 },
                 set: {
                     llmCredentialValues[field.key] = $0
-                    editedFields.insert(field.key)
+                    autoSave()
                 }
             )
             settingsPickerField(field.label, selection: pickerBinding, options: field.options)
@@ -358,73 +329,83 @@ struct LLMSettingsCard: View, SettingsCardHelpers {
                 get: { llmCredentialValues[field.key] ?? "" },
                 set: {
                     llmCredentialValues[field.key] = $0
-                    editedFields.insert(field.key)
+                    autoSave()
                 }
             )
-            let savedVal = savedLLMValues[field.key] ?? ""
-            let placeholder = savedVal.isEmpty ? field.placeholder : maskedSecret(savedVal)
-            settingsSecureField(field.label, text: binding, prompt: placeholder)
+            settingsSecureField(field.label, text: binding, prompt: field.placeholder)
         } else {
-            // Non-secure text field: show saved/default value as actual text, not placeholder.
             let binding = Binding<String>(
                 get: {
                     let val = llmCredentialValues[field.key] ?? ""
-                    if val.isEmpty {
-                        return savedLLMValues[field.key] ?? field.defaultValue
-                    }
-                    return val
+                    return val.isEmpty ? field.defaultValue : val
                 },
                 set: {
                     llmCredentialValues[field.key] = $0
-                    editedFields.insert(field.key)
+                    autoSave()
                 }
             )
             settingsField(field.label, text: binding, prompt: field.placeholder)
         }
     }
 
-    private var llmSummaryRows: [(String, String)] {
-        var rows: [(String, String)] = []
-        for field in currentLLMFields {
-            let val = llmCredentialValues[field.key] ?? ""
-            guard !val.isEmpty else { continue }
-            let display = field.isSecure ? maskedSecret(val) : val
-            rows.append((field.label, display))
-        }
-        return rows
+    // MARK: - Thinking Mode Row
+
+    private var thinkingToggleAvailable: Bool {
+        selectedThinkingDisableField != nil
     }
 
-    // MARK: - Data
-
-    /// Detects which combobox fields hold values not matching any preset option,
-    /// and puts them into custom input mode so the UI shows the text field.
-    private func syncCustomModeFields() {
-        var custom: Set<String> = []
-        for field in currentLLMFields where field.allowCustomInput && !field.options.isEmpty {
-            let val = llmCredentialValues[field.key]
-                ?? savedLLMValues[field.key]
-                ?? field.defaultValue
-            if !val.isEmpty && !field.options.contains(where: { $0.value == val }) {
-                custom.insert(field.key)
+    private var thinkingModeBinding: Binding<Bool> {
+        Binding(
+            get: {
+                thinkingToggleAvailable && disableThinking
+            },
+            set: { newValue in
+                guard thinkingToggleAvailable else { return }
+                disableThinking = newValue
+                LLMThinkingPreference.setDisabled(disableThinking, for: provider)
             }
+        )
+    }
+
+    private var thinkingToggleDescription: String {
+        if provider == .kimi,
+           selectedLLMModel.lowercased().hasPrefix("kimi-k2.7-code") {
+            return L("K2.7 始终思考，不发送 thinking 参数", "K2.7 always thinks; no thinking parameter is sent")
         }
-        customModeFields = custom
+
+        switch selectedThinkingDisableField {
+        case .thinking:
+            return L("发送 thinking: disabled", "Sends thinking: disabled")
+        case .enableThinking:
+            return L("发送 enable_thinking: false", "Sends enable_thinking: false")
+        case .reasoningEffort:
+            return L("发送 reasoning_effort: none", "Sends reasoning_effort: none")
+        case .reasoning:
+            return L("发送 reasoning.effort: none", "Sends reasoning.effort: none")
+        case .think:
+            return L("发送 think: false", "Sends think: false")
+        case nil where provider.needsReasoningSplit:
+            return L("不支持关闭，已自动分离 reasoning 内容", "Cannot disable; reasoning is separated")
+        default:
+            return L("暂无可靠关闭参数，仅隐藏返回中的 <think>", "No reliable disable parameter; hides returned <think>")
+        }
     }
 
-    private func loadLLMCredentials() {
-        selectedLLMProvider = KeychainService.selectedLLMProvider
-        loadLLMCredentialsForProvider(selectedLLMProvider)
+    private var thinkingModeRow: some View {
+        settingsToggleRow(
+            L("禁用思考", "Disable Thinking"),
+            subtitle: thinkingToggleDescription,
+            isOn: thinkingModeBinding,
+            isEnabled: thinkingToggleAvailable
+        )
     }
 
-    private func loadLLMCredentialsForProvider(_ provider: LLMProvider) {
-        testTask?.cancel()
-        editedFields = []
+    // MARK: - Credential Loading & Auto-save
+
+    private func loadCredentials() {
         disableThinking = LLMThinkingPreference.isDisabled(for: provider)
         if let values = KeychainService.loadLLMCredentials(for: provider) {
             llmCredentialValues = values
-            savedLLMValues = values
-            hasStoredLLM = true
-            isEditingLLM = !hasLLMCredentials
         } else {
             var defaults: [String: String] = [:]
             let fields = LLMProviderRegistry.configType(for: provider)?.credentialFields ?? []
@@ -432,44 +413,41 @@ struct LLMSettingsCard: View, SettingsCardHelpers {
                 defaults[field.key] = field.defaultValue
             }
             llmCredentialValues = defaults
-            savedLLMValues = [:]
-            hasStoredLLM = false
-            isEditingLLM = true
         }
         syncCustomModeFields()
     }
 
-    @discardableResult
-    private func saveLLMCredentials() -> Bool {
-        guard hasLLMCredentials else {
-            llmTestStatus = .failed(L("配置无效", "Invalid config"))
-            return false
+    private func syncCustomModeFields() {
+        var custom: Set<String> = []
+        for field in currentLLMFields where field.allowCustomInput && !field.options.isEmpty {
+            let val = llmCredentialValues[field.key] ?? field.defaultValue
+            if !val.isEmpty && !field.options.contains(where: { $0.value == val }) {
+                custom.insert(field.key)
+            }
         }
+        customModeFields = custom
+    }
+
+    private func autoSave() {
         let values = effectiveLLMValues
         do {
-            try KeychainService.saveLLMCredentials(for: selectedLLMProvider, values: values)
-            KeychainService.selectedLLMProvider = selectedLLMProvider
-            llmCredentialValues = values
-            savedLLMValues = values
-            editedFields = []
-            hasStoredLLM = true
-            isEditingLLM = false
-            llmTestStatus = .saved
-            return true
+            try KeychainService.saveLLMCredentials(for: provider, values: values)
         } catch {
-            llmTestStatus = .failed(L("保存失败", "Save failed"))
-            return false
+            NSLog("[LLMProviderDetailView] Auto-save failed: %@", String(describing: error))
         }
     }
+
+    // MARK: - Test Connection & Fetch Models
 
     private func testLLMConnection() {
         testTask?.cancel()
         llmTestStatus = .testing
         let testValues = effectiveLLMValues
-        let provider = selectedLLMProvider
+        let currentProvider = provider
+
         testTask = Task {
             do {
-                guard let configType = LLMProviderRegistry.configType(for: provider),
+                guard let configType = LLMProviderRegistry.configType(for: currentProvider),
                       let config = configType.init(credentials: testValues)
                 else {
                     guard !Task.isCancelled else { return }
@@ -477,14 +455,14 @@ struct LLMSettingsCard: View, SettingsCardHelpers {
                     return
                 }
                 let llmConfig = config.toLLMConfig()
-                let client = LLMClientFactory.make(for: provider)
+                let client = LLMClientFactory.make(for: currentProvider)
                 let reply = try await client.process(text: "hi", prompt: "{text}", config: llmConfig)
                 guard !Task.isCancelled else { return }
                 llmTestStatus = .success
-                NSLog("[Settings] LLM test OK (%@): %d chars", provider.rawValue, reply.count)
+                NSLog("[LLMProviderDetailView] LLM test OK (%@): %d chars", currentProvider.rawValue, reply.count)
             } catch {
                 guard !Task.isCancelled else { return }
-                NSLog("[Settings] LLM test failed (%@): %@", provider.rawValue, String(describing: error))
+                NSLog("[LLMProviderDetailView] LLM test failed (%@): %@", currentProvider.rawValue, String(describing: error))
                 llmTestStatus = .failed(error.localizedDescription)
             }
         }
@@ -494,11 +472,12 @@ struct LLMSettingsCard: View, SettingsCardHelpers {
         guard !isFetchingModels else { return }
         isFetchingModels = true
         let values = effectiveLLMValues
-        let provider = selectedLLMProvider
+        let currentProvider = provider
+
         testTask = Task {
             defer { isFetchingModels = false }
             do {
-                guard let configType = LLMProviderRegistry.configType(for: provider),
+                guard let configType = LLMProviderRegistry.configType(for: currentProvider),
                       let config = configType.init(credentials: values)
                 else { return }
                 let llmConfig = config.toLLMConfig()
@@ -515,10 +494,10 @@ struct LLMSettingsCard: View, SettingsCardHelpers {
                     .sorted { $0.value < $1.value }
                 guard !Task.isCancelled else { return }
                 fetchedModelOptions = models
-                NSLog("[Settings] Fetched %d models for %@", models.count, provider.rawValue)
+                NSLog("[LLMProviderDetailView] Fetched %d models for %@", models.count, currentProvider.rawValue)
             } catch {
                 guard !Task.isCancelled else { return }
-                NSLog("[Settings] Model fetch failed (%@): %@", provider.rawValue, String(describing: error))
+                NSLog("[LLMProviderDetailView] Model fetch failed (%@): %@", currentProvider.rawValue, String(describing: error))
             }
         }
     }

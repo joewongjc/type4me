@@ -337,14 +337,14 @@ private struct SettingsOptionRowLayout: Layout {
         if usesHorizontalLayout(availableWidth: availableWidth) {
             let labelWidth = availableWidth - horizontalSpacing - controlWidth
             let labelSize = subviews[0].sizeThatFits(
-                ProposedViewSize(width: labelWidth, height: proposal.height)
+                ProposedViewSize(width: labelWidth, height: nil)
             )
             let controlSize = subviews[1].sizeThatFits(
-                ProposedViewSize(width: controlWidth, height: proposal.height)
+                ProposedViewSize(width: controlWidth, height: nil)
             )
             return CGSize(
                 width: availableWidth,
-                height: max(minimumRowHeight, labelSize.height, controlSize.height)
+                height: max(minimumRowHeight, labelSize.height + 20, controlSize.height + 20)
             )
         }
 
@@ -370,15 +370,25 @@ private struct SettingsOptionRowLayout: Layout {
 
         if usesHorizontalLayout(availableWidth: bounds.width) {
             let labelWidth = bounds.width - horizontalSpacing - controlWidth
+            let labelSize = subviews[0].sizeThatFits(
+                ProposedViewSize(width: labelWidth, height: nil)
+            )
+            let controlSize = subviews[1].sizeThatFits(
+                ProposedViewSize(width: controlWidth, height: nil)
+            )
+
+            // When control is multi-line (e.g. dropdown + custom textfield),
+            // align label with the vertical center of the top 36pt row.
+            let labelY = bounds.minY + 18 + 10
             subviews[0].place(
-                at: CGPoint(x: bounds.minX, y: bounds.midY),
+                at: CGPoint(x: bounds.minX, y: labelY),
                 anchor: .leading,
-                proposal: ProposedViewSize(width: labelWidth, height: bounds.height)
+                proposal: ProposedViewSize(width: labelWidth, height: labelSize.height)
             )
             subviews[1].place(
-                at: CGPoint(x: bounds.maxX, y: bounds.midY),
-                anchor: .trailing,
-                proposal: ProposedViewSize(width: controlWidth, height: bounds.height)
+                at: CGPoint(x: bounds.maxX, y: bounds.minY + 10),
+                anchor: .topTrailing,
+                proposal: ProposedViewSize(width: controlWidth, height: controlSize.height)
             )
         } else {
             let contentWidth = bounds.width
@@ -515,10 +525,7 @@ extension SettingsCardHelpers {
 
     func settingsSecureField(_ label: String, text: Binding<String>, prompt: String) -> some View {
         settingsOptionRow(label, controlWidth: SettingsControlWidth.input) {
-            FixedWidthSecureField(text: text, placeholder: prompt)
-                .padding(.horizontal, 12)
-                .frame(height: 36)
-                .background(RoundedRectangle(cornerRadius: 8).fill(TF.settingsCardAlt))
+            SettingsSecureInputField(text: text, prompt: prompt)
         }
     }
 
@@ -727,6 +734,41 @@ extension SettingsCardHelpers {
         return "\(prefix)••••\(suffix)"
     }
 
+}
+
+// MARK: - Secure Input Field with Eye Toggle
+
+struct SettingsSecureInputField: View {
+    @Binding var text: String
+    var prompt: String
+    @State private var isRevealed = false
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if isRevealed {
+                FixedWidthTextField(text: $text, placeholder: prompt)
+            } else {
+                FixedWidthSecureField(text: $text, placeholder: prompt)
+            }
+
+            Button {
+                withAnimation(.easeOut(duration: 0.12)) {
+                    isRevealed.toggle()
+                }
+            } label: {
+                Image(systemName: isRevealed ? "eye.slash.fill" : "eye.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(isRevealed ? TF.settingsAccentBlue : TF.settingsTextTertiary)
+                    .frame(width: 22, height: 22)
+            }
+            .buttonStyle(.plain)
+            .settingsTooltip(isRevealed ? L("隐藏密码", "Hide password") : L("查看明文", "Show password"))
+        }
+        .padding(.leading, 12)
+        .padding(.trailing, 8)
+        .frame(height: 36)
+        .background(RoundedRectangle(cornerRadius: 8).fill(TF.settingsCardAlt))
+    }
 }
 
 /// Apple-grade inline segmented capsule picker with smooth matched-geometry sliding spring pill.

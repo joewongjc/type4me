@@ -191,6 +191,9 @@ EOF
 mkdir -p "$APP_PATH/Contents/Resources/Sounds"
 cp "$PROJECT_DIR/Type4Me/Resources/Sounds/"*.wav "$APP_PATH/Contents/Resources/Sounds/" 2>/dev/null || true
 
+mkdir -p "$APP_PATH/Contents/Resources/Icons"
+cp "$PROJECT_DIR/Type4Me/Resources/Icons/"*.png "$APP_PATH/Contents/Resources/Icons/" 2>/dev/null || true
+
 # --- Models and local ASR server (local variant only) ---
 if [ "$VARIANT" = "local" ]; then
     MODELS_DIR="$APP_PATH/Contents/Resources/Models"

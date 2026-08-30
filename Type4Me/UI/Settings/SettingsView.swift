@@ -452,16 +452,16 @@ struct SettingsView: View {
         case .models:
             #if HAS_CLOUD_SUBSCRIPTION
             if edition != .member {
-                settingsScrollableContent {
-                    ModelSettingsTab(showsHeader: false, draftCoordinator: draftCoordinator)
-                }
+                ModelSettingsTab(showsHeader: false, draftCoordinator: draftCoordinator)
+                    .padding(.horizontal, 38)
+                    .padding(.bottom, 34)
             } else {
                 settingsScrollableContent { GeneralSettingsTab(showsHeader: false) }
             }
             #else
-            settingsScrollableContent {
-                ModelSettingsTab(showsHeader: false, draftCoordinator: draftCoordinator)
-            }
+            ModelSettingsTab(showsHeader: false, draftCoordinator: draftCoordinator)
+                .padding(.horizontal, 38)
+                .padding(.bottom, 34)
             #endif
         case .modes:
             ModesSettingsTab(showsHeader: false, draftCoordinator: draftCoordinator)
