@@ -505,8 +505,8 @@ extension SettingsCardHelpers {
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
-    func settingsField(_ label: String, text: Binding<String>, prompt: String) -> some View {
-        settingsOptionRow(label, controlWidth: SettingsControlWidth.input) {
+    func settingsField(_ label: String, subtitle: String? = nil, text: Binding<String>, prompt: String) -> some View {
+        settingsOptionRow(label, subtitle: subtitle, controlWidth: SettingsControlWidth.input) {
             FixedWidthTextField(text: text, placeholder: prompt)
                 .padding(.horizontal, 12)
                 .frame(height: 36)
@@ -844,5 +844,13 @@ private struct SettingsSegmentedButtonStyle: ButtonStyle {
         configuration.label
             .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
             .animation(.spring(response: 0.18, dampingFraction: 0.8), value: configuration.isPressed)
+    }
+}
+
+struct SettingsListRowButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
+            .animation(.spring(response: 0.16, dampingFraction: 0.75), value: configuration.isPressed)
     }
 }

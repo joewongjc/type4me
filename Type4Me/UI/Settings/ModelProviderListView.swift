@@ -123,7 +123,7 @@ struct ModelProviderListView: View {
                     )
             )
         }
-        .buttonStyle(ModelProviderRowButtonStyle())
+        .buttonStyle(SettingsListRowButtonStyle())
         .onHover { hovering in
             withAnimation(.easeOut(duration: 0.12)) {
                 hoveredASR = hovering ? provider : nil
@@ -207,21 +207,11 @@ struct ModelProviderListView: View {
                     )
             )
         }
-        .buttonStyle(ModelProviderRowButtonStyle())
+        .buttonStyle(SettingsListRowButtonStyle())
         .onHover { hovering in
             withAnimation(.easeOut(duration: 0.12)) {
                 hoveredLLM = hovering ? provider : nil
             }
         }
-    }
-}
-
-// MARK: - Row Button Style
-
-private struct ModelProviderRowButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
-            .animation(.spring(response: 0.16, dampingFraction: 0.75), value: configuration.isPressed)
     }
 }
