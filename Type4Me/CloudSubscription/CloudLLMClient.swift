@@ -46,7 +46,12 @@ actor CloudLLMClient: LLMClient {
         session.invalidateAndCancel()
     }
 
-    func process(text: String, prompt: String, config: LLMConfig) async throws -> String {
+    func process(
+        text: String,
+        prompt: String,
+        config: LLMConfig,
+        inputBoundary: LLMInputBoundary
+    ) async throws -> String {
         guard let token = await CloudAuthManager.shared.accessToken() else {
             throw CloudLLMError.notAuthenticated
         }
@@ -65,8 +70,27 @@ actor CloudLLMClient: LLMClient {
             let mode: String
         }
 
+        let effectivePrompt: String
+        if case .isolatedTranscript = inputBoundary {
+            let prepared = LLMPreparedPrompt.make(
+                text: text,
+                prompt: prompt,
+                inputBoundary: inputBoundary
+            )
+            effectivePrompt = """
+            <transformation_instructions>
+            \(prepared.system ?? prompt)
+            </transformation_instructions>
+
+            <input_data>
+            \(prepared.user)
+            </input_data>
+            """
+        } else {
+            effectivePrompt = prompt
+        }
         request.httpBody = try JSONEncoder().encode(
-            LLMRequest(text: text, prompt: prompt, mode: "cloud")
+            LLMRequest(text: text, prompt: effectivePrompt, mode: "cloud")
         )
 
         let (data, response) = try await session.data(for: request)

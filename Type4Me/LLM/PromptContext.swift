@@ -112,6 +112,13 @@ struct PromptContext: Sendable {
         return result
     }
 
+    /// Expand only app-controlled prompt variables that are safe to keep in a
+    /// system message. User-controlled selection and clipboard values remain
+    /// as placeholders so the LLM layer can place them in user/data blocks.
+    func expandTrustedContextVariables(_ prompt: String) -> String {
+        prompt.replacingOccurrences(of: "{tools_json}", with: ActionRegistry.toolsJSON())
+    }
+
     // MARK: - Private
 
     /// Read selected text with a hard timeout to prevent hangs.

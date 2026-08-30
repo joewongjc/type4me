@@ -101,6 +101,20 @@ final class PromptContextTests: XCTestCase {
         XCTAssertEqual(result, "Selected={clipboard}")
     }
 
+    func testTrustedContextExpansionKeepsExternalValuesAsPlaceholders() {
+        let ctx = PromptContext(selectedText: "untrusted selection", clipboardText: "untrusted clipboard")
+        let result = ctx.expandTrustedContextVariables(
+            "Text={text} Selected={selected} Clipboard={clipboard}"
+        )
+
+        XCTAssertEqual(
+            result,
+            "Text={text} Selected={selected} Clipboard={clipboard}"
+        )
+        XCTAssertFalse(result.contains(ctx.selectedText))
+        XCTAssertFalse(result.contains(ctx.clipboardText))
+    }
+
     func testSelectionAskPromptIncludesSelectedTextAndPreservesQuestionPlaceholder() {
         let ctx = PromptContext(selectedText: "Update Keychain partition lists", clipboardText: "")
         let prompt = SelectionAskPromptBuilder.requestText(mode: .selectionAsk, context: ctx)

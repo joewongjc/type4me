@@ -1695,6 +1695,7 @@ actor RecognitionSession {
                         rememberHistoryLLM(runtime)
                         let llmConfig = runtime.config
                         let prompt = await promptForCurrentMode(text: finalASRText)
+                        let inputBoundary = llmInputBoundaryForCurrentMode()
                         let client = runtime.client
                         state = .postProcessing
                         if finalASRText != speculativeLLMText {
@@ -1705,7 +1706,10 @@ actor RecognitionSession {
                         earlyLLMTask = Task {
                             do {
                                 let result = try await client.process(
-                                    text: finalASRText, prompt: prompt, config: llmConfig
+                                    text: finalASRText,
+                                    prompt: prompt,
+                                    config: llmConfig,
+                                    inputBoundary: inputBoundary
                                 )
                                 DebugFileLogger.log("stop: fresh LLM done \(result.count) chars +\(ContinuousClock.now - stopT0)")
                                 return TimedLLMResult(
@@ -1938,6 +1942,7 @@ actor RecognitionSession {
                     DebugFileLogger.log("stop: sync LLM firing mode=\(currentMode.name) model=\(llmConfig.model) with \(finalText.count) chars")
                     let client = runtime.client
                     let prompt = await promptForCurrentMode(text: finalText)
+                    let inputBoundary = llmInputBoundaryForCurrentMode()
                     let textForLLM = finalText
 
                     let requestStartedAt = Date()
@@ -1946,7 +1951,10 @@ actor RecognitionSession {
                         let llmTask = Task {
                             do {
                                 let result = try await client.process(
-                                    text: textForLLM, prompt: prompt, config: llmConfig
+                                    text: textForLLM,
+                                    prompt: prompt,
+                                    config: llmConfig,
+                                    inputBoundary: inputBoundary
                                 )
                                 return TimedLLMResult(
                                     text: result.isEmpty ? nil : result,
@@ -2773,6 +2781,7 @@ actor RecognitionSession {
 
         speculativeLLMText = text
         let prompt = await promptForCurrentMode(text: text)
+        let inputBoundary = llmInputBoundaryForCurrentMode()
 
         let client = runtime.client
         DebugFileLogger.log("speculative LLM: firing mode=\(currentMode.name) model=\(llmConfig.model) with \(text.count) chars")
@@ -2780,7 +2789,10 @@ actor RecognitionSession {
         speculativeLLMTask = Task {
             do {
                 let result = try await client.process(
-                    text: text, prompt: prompt, config: llmConfig
+                    text: text,
+                    prompt: prompt,
+                    config: llmConfig,
+                    inputBoundary: inputBoundary
                 )
                 guard !Task.isCancelled else {
                     _ = self.speculativeThrottle.requestCompleted(input: text)
@@ -2892,6 +2904,17 @@ actor RecognitionSession {
         }
     }
 
+    private func llmInputBoundaryForCurrentMode() -> LLMInputBoundary {
+        guard currentMode.id == ProcessingMode.formalWritingId else {
+            return .inline
+        }
+        return .isolatedTranscript(LLMInputContext(
+            prompt: currentMode.prompt,
+            selectedText: promptContext.selectedText,
+            clipboardText: promptContext.clipboardText
+        ))
+    }
+
     private func promptForCurrentMode(text: String? = nil) async -> String {
         await resolvePromptContextIfNeeded(generation: sessionGeneration)
 
@@ -2901,6 +2924,9 @@ actor RecognitionSession {
             return context.prompt
         }
         guard currentMode.id == ProcessingMode.intelliSenseId else {
+            if currentMode.id == ProcessingMode.formalWritingId {
+                return promptContext.expandTrustedContextVariables(currentMode.prompt)
+            }
             return promptContext.expandContextVariables(currentMode.prompt)
         }
         if intelliSenseCrossModeFallback {

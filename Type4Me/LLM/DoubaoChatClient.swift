@@ -37,10 +37,19 @@ actor DoubaoChatClient: LLMClient {
 
     /// Process text through Doubao ARK API (OpenAI-compatible streaming).
     /// Returns the full LLM response as a single string.
-    func process(text: String, prompt: String, config: LLMConfig) async throws -> String {
+    func process(
+        text: String,
+        prompt: String,
+        config: LLMConfig,
+        inputBoundary: LLMInputBoundary
+    ) async throws -> String {
         let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedText.isEmpty else { return text }
-        let finalPrompt = prompt.replacingOccurrences(of: "{text}", with: trimmedText)
+        let preparedPrompt = LLMPreparedPrompt.make(
+            text: trimmedText,
+            prompt: prompt,
+            inputBoundary: inputBoundary
+        )
 
         guard let url = URL(string: "\(config.baseURL)/chat/completions") else {
             throw LLMError.invalidURL
@@ -56,7 +65,7 @@ actor DoubaoChatClient: LLMClient {
         let disableField = disableThinking ? provider.thinkingDisableField(for: config.model) : nil
         let body = ChatRequest(
             model: config.model,
-            messages: [ChatMessage(role: "user", content: finalPrompt)],
+            messages: chatMessages(for: preparedPrompt),
             stream: true,
             thinking: disableField == .thinking ? ThinkingConfig(type: "disabled") : nil,
             enable_thinking: disableField == .enableThinking ? false : nil,
@@ -79,11 +88,16 @@ actor DoubaoChatClient: LLMClient {
         text: String,
         prompt: String,
         config: LLMConfig,
+        inputBoundary: LLMInputBoundary,
         onDelta: @escaping @Sendable (String) async -> Void
     ) async throws -> String {
         let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedText.isEmpty else { return text }
-        let finalPrompt = prompt.replacingOccurrences(of: "{text}", with: trimmedText)
+        let preparedPrompt = LLMPreparedPrompt.make(
+            text: trimmedText,
+            prompt: prompt,
+            inputBoundary: inputBoundary
+        )
 
         guard let url = URL(string: "\(config.baseURL)/chat/completions") else {
             throw LLMError.invalidURL
@@ -99,7 +113,7 @@ actor DoubaoChatClient: LLMClient {
         let disableField = disableThinking ? provider.thinkingDisableField : nil
         let body = ChatRequest(
             model: config.model,
-            messages: [ChatMessage(role: "user", content: finalPrompt)],
+            messages: chatMessages(for: preparedPrompt),
             stream: true,
             thinking: disableField == .thinking ? ThinkingConfig(type: "disabled") : nil,
             enable_thinking: disableField == .enableThinking ? false : nil,
@@ -114,6 +128,15 @@ actor DoubaoChatClient: LLMClient {
         let result = try await streamChat(request: request, model: config.model, onDelta: onDelta)
         logger.info("LLM streaming result: \(result.count) chars")
         return result.strippingThinkTags()
+    }
+
+    private func chatMessages(for prompt: LLMPreparedPrompt) -> [ChatMessage] {
+        var messages: [ChatMessage] = []
+        if let system = prompt.system {
+            messages.append(ChatMessage(role: "system", content: system))
+        }
+        messages.append(ChatMessage(role: "user", content: prompt.user))
+        return messages
     }
 
     // MARK: - Streaming (SSE)
