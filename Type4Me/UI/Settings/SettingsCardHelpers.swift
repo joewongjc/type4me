@@ -8,6 +8,26 @@ enum SettingsTooltipPlacement: Sendable {
     case bottom
 }
 
+/// Identifies which window hosts a tooltip, so the process-wide coordinator never
+/// renders a Settings-relative bubble inside another window (and vice versa).
+enum SettingsTooltipHostScope: String, Sendable, Equatable {
+    case settings
+    case selectionAsk
+
+    var coordinateSpaceName: String { "TooltipHostCoordinateSpace.\(rawValue)" }
+}
+
+private struct SettingsTooltipHostScopeKey: EnvironmentKey {
+    static let defaultValue: SettingsTooltipHostScope = .settings
+}
+
+extension EnvironmentValues {
+    var settingsTooltipHostScope: SettingsTooltipHostScope {
+        get { self[SettingsTooltipHostScopeKey.self] }
+        set { self[SettingsTooltipHostScopeKey.self] = newValue }
+    }
+}
+
 /// Global coordinator for rendering tooltips at the root window layer.
 /// This completely decouples tooltips from child view hierarchies and prevents
 /// them from ever being clipped by parent ScrollViews, cards, or `.clipShape()` containers.
@@ -18,6 +38,7 @@ final class SettingsTooltipCoordinator {
 
     struct TooltipState: Equatable {
         let id: UUID
+        let scope: SettingsTooltipHostScope
         let text: String
         var targetRect: CGRect
         let placement: SettingsTooltipPlacement
@@ -30,7 +51,13 @@ final class SettingsTooltipCoordinator {
     private var hideTask: Task<Void, Never>?
     private var currentHoverID: UUID?
 
-    func show(id: UUID, text: String, targetRect: CGRect, placement: SettingsTooltipPlacement) {
+    func show(
+        id: UUID,
+        scope: SettingsTooltipHostScope,
+        text: String,
+        targetRect: CGRect,
+        placement: SettingsTooltipPlacement
+    ) {
         currentHoverID = id
         hideTask?.cancel()
         hideTask = nil
@@ -41,6 +68,7 @@ final class SettingsTooltipCoordinator {
             guard !Task.isCancelled, currentHoverID == id else { return }
             activeTooltip = TooltipState(
                 id: id,
+                scope: scope,
                 text: text,
                 targetRect: targetRect,
                 placement: placement
@@ -57,9 +85,11 @@ final class SettingsTooltipCoordinator {
     }
 
     func hide(id: UUID) {
-        if currentHoverID == id {
-            currentHoverID = nil
-        }
+        // A hover-enter for another trigger can arrive before this trigger's
+        // hover-exit. Ignore the stale exit so it cannot cancel the new owner's
+        // pending show and strand `activeTooltip` with `isPresented == false`.
+        guard currentHoverID == id || currentHoverID == nil else { return }
+        currentHoverID = nil
         showTask?.cancel()
         showTask = nil
 
@@ -109,12 +139,18 @@ struct SettingsTooltipBubble: View {
 
 /// Root host overlay mounted at the top-level window layer.
 struct SettingsTooltipRootHost: View {
+    let scope: SettingsTooltipHostScope
+
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let coordinator = SettingsTooltipCoordinator.shared
 
+    init(scope: SettingsTooltipHostScope = .settings) {
+        self.scope = scope
+    }
+
     var body: some View {
         GeometryReader { windowGeo in
-            if let tooltip = coordinator.activeTooltip {
+            if let tooltip = coordinator.activeTooltip, tooltip.scope == scope {
                 SettingsTooltipBubble(text: tooltip.text)
                     .scaleEffect(
                         reduceMotion ? 1.0 : (coordinator.isPresented ? 1.0 : 0.98),
@@ -173,6 +209,7 @@ private struct SettingsFluidTooltipModifier: ViewModifier {
     let placement: SettingsTooltipPlacement
     let isEnabled: Bool
 
+    @Environment(\.settingsTooltipHostScope) private var scope
     @State private var id = UUID()
     @State private var isHovered = false
 
@@ -184,10 +221,11 @@ private struct SettingsFluidTooltipModifier: ViewModifier {
                         .onChange(of: isHovered) { _, hovering in
                             guard isEnabled else { return }
                             if hovering {
-                                let frame = geo.frame(in: .named("SettingsWindowCoordinateSpace"))
+                                let frame = geo.frame(in: .named(scope.coordinateSpaceName))
                                 if frame.width > 0 && frame.height > 0 {
                                     SettingsTooltipCoordinator.shared.show(
                                         id: id,
+                                        scope: scope,
                                         text: text,
                                         targetRect: frame,
                                         placement: placement
@@ -197,7 +235,7 @@ private struct SettingsFluidTooltipModifier: ViewModifier {
                                 SettingsTooltipCoordinator.shared.hide(id: id)
                             }
                         }
-                        .onChange(of: geo.frame(in: .named("SettingsWindowCoordinateSpace"))) { _, newFrame in
+                        .onChange(of: geo.frame(in: .named(scope.coordinateSpaceName))) { _, newFrame in
                             if isHovered && isEnabled && newFrame.width > 0 {
                                 SettingsTooltipCoordinator.shared.updateTargetRect(id: id, targetRect: newFrame)
                             }
@@ -215,6 +253,14 @@ private struct SettingsFluidTooltipModifier: ViewModifier {
 }
 
 extension View {
+    /// Mounts a window-level tooltip host and scopes every `settingsTooltip` in the
+    /// subtree to it, so concurrently visible windows never render each other's bubbles.
+    func settingsTooltipHost(_ scope: SettingsTooltipHostScope) -> some View {
+        coordinateSpace(name: scope.coordinateSpaceName)
+            .overlay { SettingsTooltipRootHost(scope: scope) }
+            .environment(\.settingsTooltipHostScope, scope)
+    }
+
     /// Standard Settings Tooltip modifier with Apple-grade fluid animation and zero-clipping window-level host.
     func settingsTooltip(
         _ text: String,

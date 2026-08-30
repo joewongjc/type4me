@@ -89,13 +89,11 @@ struct LiquidGlassTabPicker<Item: Hashable, Label: View>: View {
 
     private func select(_ item: Item) {
         guard item != selection else { return }
-        if reduceMotion {
-            onSelectionChange(item)
-        } else {
-            withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
-                onSelectionChange(item)
-            }
-        }
+        // Keep the selection-pill animation local to this control. Wrapping the
+        // navigation mutation in `withAnimation` animates the whole settings page
+        // replacement; the `.animation(_:value: selection)` on the track already
+        // drives the matched-geometry pill on its own.
+        onSelectionChange(item)
     }
 
     private func updateHover(for item: Item, isHovering: Bool) {

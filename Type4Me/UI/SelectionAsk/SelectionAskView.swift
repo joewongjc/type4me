@@ -73,10 +73,7 @@ struct SelectionAskView: View {
             }
         }
         .id(language)
-        .coordinateSpace(name: "SettingsWindowCoordinateSpace")
-        .overlay {
-            SettingsTooltipRootHost()
-        }
+        .settingsTooltipHost(.selectionAsk)
     }
 
     private var header: some View {

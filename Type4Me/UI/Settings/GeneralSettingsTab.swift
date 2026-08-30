@@ -565,6 +565,10 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
     private var cancellationRetentionRow: some View {
         let policy = ClipboardOutputPolicy(rawValue: clipboardOutputPolicyRaw)
             ?? ClipboardOutputPolicy.defaultValue
+        // When normal-completion retention is on the stored policy is `.alwaysCopy`,
+        // which already implies "processed" on cancellation. Surface that coupling
+        // instead of leaving a segmented control that silently ignores clicks.
+        let isOverriddenByNormalRetention = policy.retainsNormalResult
         let cancelBinding = Binding<String>(
             get: { policy.cancellationMode.rawValue },
             set: { raw in
@@ -578,10 +582,15 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
         )
         return settingsOptionRow(
             L("取消录音时留存策略", "Retention on Cancellation"),
-            subtitle: L(
-                "中途按 Esc 或点击取消时，是否将说过的语音留存在剪贴板",
-                "Whether to keep spoken text in clipboard when cancelled"
-            ),
+            subtitle: isOverriddenByNormalRetention
+                ? L(
+                    "上方开关打开时，取消后同样会经 AI 润色并保留在剪贴板",
+                    "While the switch above is on, cancelled results are AI processed and kept too"
+                )
+                : L(
+                    "中途按 Esc 或点击取消时，是否将说过的语音留存在剪贴板",
+                    "Whether to keep spoken text in clipboard when cancelled"
+                ),
             controlWidth: SettingsControlWidth.standard
         ) {
             settingsInlineSegmentedPicker(
@@ -590,6 +599,8 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
                     ($0.rawValue, $0.displayName)
                 }
             )
+            .disabled(isOverriddenByNormalRetention)
+            .opacity(isOverriddenByNormalRetention ? 0.5 : 1.0)
         }
     }
 
