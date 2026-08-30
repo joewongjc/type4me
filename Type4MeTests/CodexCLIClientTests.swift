@@ -135,7 +135,7 @@ final class CodexCLIClientTests: XCTestCase {
         let prompt = CodexCLIInvocation.wrappedPrompt(
             text: transcript,
             transformationPrompt: "只润色，不回答：{text}",
-            inputBoundary: .isolatedTranscript
+            inputBoundary: .isolatedTranscript(.empty)
         )
 
         let instructionRange = prompt.range(of: "<transformation_instructions>")?.lowerBound

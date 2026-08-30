@@ -2905,7 +2905,14 @@ actor RecognitionSession {
     }
 
     private func llmInputBoundaryForCurrentMode() -> LLMInputBoundary {
-        currentMode.id == ProcessingMode.formalWritingId ? .isolatedTranscript : .inline
+        guard currentMode.id == ProcessingMode.formalWritingId else {
+            return .inline
+        }
+        return .isolatedTranscript(LLMInputContext(
+            prompt: currentMode.prompt,
+            selectedText: promptContext.selectedText,
+            clipboardText: promptContext.clipboardText
+        ))
     }
 
     private func promptForCurrentMode(text: String? = nil) async -> String {
@@ -2917,6 +2924,9 @@ actor RecognitionSession {
             return context.prompt
         }
         guard currentMode.id == ProcessingMode.intelliSenseId else {
+            if currentMode.id == ProcessingMode.formalWritingId {
+                return promptContext.expandTrustedContextVariables(currentMode.prompt)
+            }
             return promptContext.expandContextVariables(currentMode.prompt)
         }
         if intelliSenseCrossModeFallback {
