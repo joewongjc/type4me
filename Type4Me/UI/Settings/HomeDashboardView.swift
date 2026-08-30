@@ -265,7 +265,7 @@ struct HomeDashboardView: View {
                     RoundedRectangle(cornerRadius: 3, style: .continuous)
                         .fill(heatmapColor(level: level))
                         .frame(width: 12, height: 12)
-                        .help(legendTooltip(for: level))
+                        .fluidTooltip(legendTooltip(for: level))
                         .accessibilityLabel(legendTooltip(for: level))
                 }
                 Text(L("多", "More"))
@@ -505,7 +505,6 @@ struct HomeDashboardView: View {
                         .background(Circle().fill(isModesButtonHovered ? TF.settingsText : TF.settingsCardAlt))
                 }
                 .buttonStyle(.plain)
-                .help(L("管理模式与快捷键", "Manage modes and shortcuts"))
                 .onHover { hovering in
                     withAnimation(.easeOut(duration: 0.12)) { isModesButtonHovered = hovering }
                 }
@@ -604,7 +603,6 @@ struct HomeDashboardView: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help(L("添加快捷键", "Add hotkey"))
             }
 
             if hasBindings {
@@ -632,7 +630,6 @@ struct HomeDashboardView: View {
         }
         .contentShape(Rectangle())
         .onTapGesture { openModesEditor(mode.id) }
-        .help(L("管理「\(mode.localizedDisplayName)」", "Manage \"\(mode.localizedDisplayName)\""))
         .opacity(isDragging ? 0.45 : 1)
         .onHover { hovering in
             withAnimation(.easeOut(duration: 0.1)) { hoveredModeID = hovering ? mode.id : nil }

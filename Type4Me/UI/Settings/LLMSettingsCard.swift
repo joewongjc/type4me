@@ -325,7 +325,7 @@ struct LLMSettingsCard: View, SettingsCardHelpers {
                                 }
                             }
                             .buttonStyle(.plain)
-                            .help(L("从 API 获取模型列表", "Fetch models from API"))
+                            .settingsTooltip(L("从 API 获取模型列表", "Fetch models from API"))
                             .disabled(isFetchingModels || !hasLLMCredentials)
                         }
                         settingsDropdown(

@@ -9,6 +9,42 @@ private enum FloatingBarTopOverlay: Equatable {
     case mode
 }
 
+// MARK: - Thinking States Text Swap Transition
+
+private struct TextSwapTransitionModifier: ViewModifier {
+    let y: CGFloat
+    let blur: CGFloat
+    let opacity: Double
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        content
+            .offset(y: reduceMotion ? 0 : y)
+            .blur(radius: reduceMotion ? 0 : blur)
+            .opacity(opacity)
+    }
+}
+
+extension AnyTransition {
+    /// Transitions.dev Thinking States text swap animation:
+    /// - 150ms ease-in-out duration
+    /// - Outgoing text translates up by 8pt with 2pt blur and fades to 0
+    /// - Incoming text enters from 8pt below with 2pt blur and fades to 1
+    static var textSwap: AnyTransition {
+        .asymmetric(
+            insertion: .modifier(
+                active: TextSwapTransitionModifier(y: 8, blur: 2, opacity: 0),
+                identity: TextSwapTransitionModifier(y: 0, blur: 0, opacity: 1)
+            ),
+            removal: .modifier(
+                active: TextSwapTransitionModifier(y: -8, blur: 2, opacity: 0),
+                identity: TextSwapTransitionModifier(y: 0, blur: 0, opacity: 1)
+            )
+        )
+    }
+}
+
 func recordingActionHorizontalOffset(
     _ action: RecordingControlAction,
     capsuleWidth: CGFloat,
@@ -55,6 +91,7 @@ protocol FloatingBarState: AnyObject, Observable {
 }
 
 struct FloatingBarPresentation: Equatable {
+    var theme: RecordingTheme = .dark
     var indicatorStyle: RecordingIndicatorStyle = .regular
     var visualStyle: RecordingVisualStyle = .siri
     var showsLiveTranscript: Bool = true
@@ -70,7 +107,7 @@ struct FloatingBarPresentation: Equatable {
     }
 }
 
-/// Dark-themed floating transcription bar.
+/// Dark or Light themed floating transcription bar.
 ///
 /// Design: state changes are immediate; recording starts directly in the full
 /// listening UI even while the audio service is still preparing internally.
@@ -107,6 +144,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
     @State private var showsModeHint = false
     @State private var modeHintTask: Task<Void, Never>?
     @State private var recordingActionLocked = false
+    @AppStorage(RecordingTheme.storageKey) private var theme = RecordingTheme.defaultValue
     @AppStorage(RecordingIndicatorStyle.storageKey) private var indicatorStyle = RecordingIndicatorStyle.defaultValue
     @AppStorage(LiveTranscriptDisplayPreference.storageKey) private var showLiveTranscript = LiveTranscriptDisplayPreference.defaultValue
     @AppStorage("tf_hoverTranscriptPreview") private var hoverTranscriptPreview = true
@@ -122,6 +160,12 @@ struct FloatingBarView<S: FloatingBarState>: View {
     @AppStorage("tf_language") private var language = AppLanguage.systemDefault
 
     // MARK: - Presentation Resolution
+
+    private var effectiveTheme: RecordingTheme {
+        presentationOverride?.theme
+            ?? RecordingTheme(rawValue: theme.rawValue)
+            ?? .dark
+    }
 
     private var effectiveIndicatorStyle: RecordingIndicatorStyle {
         presentationOverride?.indicatorStyle
@@ -453,7 +497,6 @@ struct FloatingBarView<S: FloatingBarState>: View {
             .overlay {
                 capsuleBorder
             }
-            .shadow(color: Color.black.opacity(0.12), radius: 8)
             // Critically damped (dampingFraction 1.0) so the width never
             // overshoots and settles back leftward between characters. An
             // underdamped spring makes the right edge/cancel button wiggle
@@ -486,20 +529,28 @@ struct FloatingBarView<S: FloatingBarState>: View {
 
     @ViewBuilder
     private var compactPhaseContent: some View {
-        switch state.barPhase {
-        case .preparing, .recording:
-            compactRecordingContent
-        case .processing:
-            compactStatusContent(phase: .processing, text: state.effectiveProcessingLabel)
-        case .recovering:
-            compactStatusContent(phase: .recovering, text: state.effectiveProcessingLabel)
-        case .done:
-            compactDoneContent
-        case .error:
-            compactStatusContent(phase: .error, text: state.feedbackMessage)
-        case .hidden:
-            EmptyView()
+        ZStack {
+            switch state.barPhase {
+            case .preparing, .recording:
+                compactRecordingContent
+                    .transition(.opacity.animation(.easeInOut(duration: 0.18)))
+            case .processing:
+                compactStatusContent(phase: .processing, text: state.effectiveProcessingLabel)
+                    .transition(.textSwap.animation(.easeInOut(duration: 0.15)))
+            case .recovering:
+                compactStatusContent(phase: .recovering, text: state.effectiveProcessingLabel)
+                    .transition(.opacity.animation(.easeInOut(duration: 0.18)))
+            case .done:
+                compactDoneContent
+                    .transition(.textSwap.animation(.easeInOut(duration: 0.15)))
+            case .error:
+                compactStatusContent(phase: .error, text: state.feedbackMessage)
+                    .transition(.opacity.animation(.easeInOut(duration: 0.18)))
+            case .hidden:
+                EmptyView()
+            }
         }
+        .animation(.easeInOut(duration: 0.15), value: state.barPhase)
     }
 
     @ViewBuilder
@@ -511,13 +562,13 @@ struct FloatingBarView<S: FloatingBarState>: View {
                     .transition(.opacity.animation(.easeInOut(duration: 0.18)))
             case .processing:
                 processingContent
-                    .transition(.opacity.animation(.easeInOut(duration: 0.18)))
+                    .transition(.textSwap.animation(.easeInOut(duration: 0.15)))
             case .recovering:
                 recoveringContent
                     .transition(.opacity.animation(.easeInOut(duration: 0.18)))
             case .done:
                 doneContent
-                    .transition(.opacity.animation(.easeInOut(duration: 0.18)))
+                    .transition(.textSwap.animation(.easeInOut(duration: 0.15)))
             case .error:
                 errorContent
                     .transition(.opacity.animation(.easeInOut(duration: 0.18)))
@@ -525,7 +576,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
                 EmptyView()
             }
         }
-        .animation(.easeInOut(duration: 0.18), value: state.barPhase)
+        .animation(.easeInOut(duration: 0.15), value: state.barPhase)
     }
 
     private var compactRecordingControls: some View {
@@ -533,7 +584,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
             compactRecordingButton(.finish)
                 .frame(width: 32, height: TF.compactIndicatorHeight)
 
-            CompactAudioIndicator(meter: state.audioLevel)
+            CompactAudioIndicator(meter: state.audioLevel, theme: effectiveTheme)
                 .frame(maxWidth: .infinity, maxHeight: TF.compactIndicatorHeight)
 
             if effectiveShowsCancelButton {
@@ -550,7 +601,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
     private var compactRecordingContent: some View {
         if effectiveShowsLiveTranscript {
             VStack(spacing: 0) {
-                CompactLiveTranscriptRow(text: state.transcriptionText)
+                CompactLiveTranscriptRow(text: state.transcriptionText, theme: effectiveTheme)
                 compactRecordingControls
             }
             .frame(width: TF.compactIndicatorWidth, height: TF.compactTranscriptExpandedHeight)
@@ -566,7 +617,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
 
             Text(text)
                 .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.white)
+                .foregroundStyle(effectiveTheme == .light ? TF.floatingTextLight : .white)
                 .lineLimit(1)
                 .truncationMode(.tail)
         }
@@ -582,7 +633,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
 
             Text(state.feedbackMessage)
                 .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.white)
+                .foregroundStyle(effectiveTheme == .light ? TF.floatingTextLight : .white)
                 .lineLimit(1)
                 .truncationMode(.tail)
 
@@ -596,10 +647,10 @@ struct FloatingBarView<S: FloatingBarState>: View {
                         Text(L("撤销", "Undo"))
                             .font(.system(size: 10, weight: .medium))
                     }
-                    .foregroundStyle(TF.floatingBackground)
+                    .foregroundStyle(effectiveTheme == .light ? Color.white : TF.floatingBackground)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(TF.compactIndicatorActive)
+                    .background(effectiveTheme == .light ? TF.floatingTextLight : TF.compactIndicatorActive)
                     .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
@@ -651,9 +702,11 @@ struct FloatingBarView<S: FloatingBarState>: View {
     }
 
     private func compactRecordingButton(_ action: RecordingControlAction) -> some View {
-        ZStack {
+        let controlFill = effectiveTheme == .light ? TF.floatingTextLight : TF.compactIndicatorActive
+        let glyphFill = effectiveTheme == .light ? TF.floatingBackgroundLight : TF.floatingBackground
+        return ZStack {
             Circle()
-                .fill(TF.compactIndicatorActive)
+                .fill(controlFill)
                 .frame(
                     width: TF.compactIndicatorControlVisualSize,
                     height: TF.compactIndicatorControlVisualSize
@@ -661,12 +714,12 @@ struct FloatingBarView<S: FloatingBarState>: View {
                 .overlay {
                     if action == .finish {
                         RoundedRectangle(cornerRadius: 1, style: .continuous)
-                            .fill(TF.floatingBackground)
+                            .fill(glyphFill)
                             .frame(width: 6, height: 6)
                     } else {
                         Image(systemName: "xmark")
                             .font(.system(size: 8, weight: .heavy))
-                            .foregroundStyle(TF.floatingBackground)
+                            .foregroundStyle(glyphFill)
                     }
                 }
         }
@@ -752,11 +805,12 @@ struct FloatingBarView<S: FloatingBarState>: View {
         if effectiveShowsLiveTranscript && !state.segments.isEmpty {
             Text(state.transcriptionText)
                 .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(TF.floatingText)
+                .foregroundStyle(effectiveTheme == .light ? TF.floatingTextLight : TF.floatingText)
         } else {
             LiquidGlassText(
                 text: recordingDisplayText,
                 style: recordingVisualStyle,
+                theme: effectiveTheme,
                 audioEnergy: state.audioLevel.current
             )
         }
@@ -782,6 +836,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
                 .id("recording_orb_button")
             } else {
                 LiquidGlassCancelButton(
+                    theme: effectiveTheme,
                     isHovered: hoveredAction == .cancel,
                     isPressed: pressedAction == .cancel || recordingActionLocked,
                     dragOffset: pressedAction == .cancel ? cancelDragOffset : .zero
@@ -838,6 +893,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
         LiquidGlassText(
             text: state.effectiveProcessingLabel,
             style: recordingVisualStyle,
+            theme: effectiveTheme,
             audioEnergy: 0.25
         )
         .frame(maxWidth: .infinity)
@@ -853,6 +909,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
             LiquidGlassText(
                 text: state.effectiveProcessingLabel,
                 style: recordingVisualStyle,
+                theme: effectiveTheme,
                 audioEnergy: 0.25
             )
             .lineLimit(1)
@@ -867,7 +924,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
                 HStack(spacing: 8) {
                     Text(state.feedbackMessage)
                         .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(effectiveTheme == .light ? TF.floatingTextLight : .white)
                         .lineLimit(1)
                     Button(action: {
                         state.performReviseUndo()
@@ -878,10 +935,10 @@ struct FloatingBarView<S: FloatingBarState>: View {
                             Text(L("撤销", "Undo"))
                                 .font(.system(size: 12, weight: .medium))
                         }
-                        .foregroundStyle(TF.floatingBackground)
+                        .foregroundStyle(effectiveTheme == .light ? Color.white : TF.floatingBackground)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
-                        .background(TF.floatingControlLight)
+                        .background(effectiveTheme == .light ? TF.floatingTextLight : TF.floatingControlLight)
                         .clipShape(Capsule())
                     }
                     .buttonStyle(.plain)
@@ -894,14 +951,14 @@ struct FloatingBarView<S: FloatingBarState>: View {
                         .foregroundStyle(icon.color)
                     Text(state.feedbackMessage)
                         .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(effectiveTheme == .light ? TF.floatingTextLight : .white)
                         .lineLimit(1)
                 }
                 .padding(.horizontal, 14)
             } else {
                 Text(state.feedbackMessage)
                     .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(effectiveTheme == .light ? TF.floatingTextLight : .white)
                     .frame(maxWidth: .infinity)
             }
         }
@@ -919,7 +976,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
 
             Text(state.feedbackMessage)
                 .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(.white)
+                .foregroundStyle(effectiveTheme == .light ? TF.floatingTextLight : .white)
                 .lineLimit(1)
         }
         .padding(.horizontal, 14)
@@ -943,9 +1000,12 @@ struct FloatingBarView<S: FloatingBarState>: View {
     // MARK: - Background & Border
 
     private var capsuleBackground: some View {
-        ZStack {
-            TF.floatingBackground
-
+        RecordingGlassSurface(
+            cornerRadius: barCornerRadius,
+            theme: effectiveTheme,
+            tintOpacity: effectiveTheme == .light ? 0.68 : 0.32
+        )
+        .overlay {
             if state.barPhase == .error {
                 LinearGradient(
                     colors: [TF.settingsAccentRed.opacity(0.16), .clear],
@@ -956,26 +1016,29 @@ struct FloatingBarView<S: FloatingBarState>: View {
         }
     }
 
+    @ViewBuilder
     private var capsuleBorder: some View {
-        barShape
-            .strokeBorder(borderColor, lineWidth: 0.5)
-    }
-
-    private var borderColor: Color {
         switch state.barPhase {
         case .preparing, .recording, .processing, .recovering:
-            TF.floatingBorder
+            barShape.strokeBorder(
+                effectiveTheme == .light ? TF.recordingLightGlassRim : TF.recordingGlassRim,
+                lineWidth: 0.8
+            )
         case .done:
-            switch state.feedbackKind {
-            case .macActionUnsure:
-                TF.amber.opacity(0.40)
-            case .macActionSuccess, .macActionFailure, .standard:
-                TF.success.opacity(0.40)
-            }
+            barShape.strokeBorder(feedbackBorderColor, lineWidth: 0.5)
         case .error:
-            TF.settingsAccentRed.opacity(0.45)
+            barShape.strokeBorder(TF.settingsAccentRed.opacity(0.45), lineWidth: 0.5)
         case .hidden:
-            .clear
+            EmptyView()
+        }
+    }
+
+    private var feedbackBorderColor: Color {
+        switch state.feedbackKind {
+        case .macActionUnsure:
+            TF.amber.opacity(0.40)
+        case .macActionSuccess, .macActionFailure, .standard:
+            TF.success.opacity(0.40)
         }
     }
 
@@ -1124,6 +1187,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
             TranscriptPopup(
                 text: state.transcriptionText,
                 height: transcriptPopupHeight,
+                theme: effectiveTheme,
                 onHoverChanged: updateTranscriptHover
             )
         case .mode:
@@ -1150,7 +1214,8 @@ struct FloatingBarView<S: FloatingBarState>: View {
         if effectiveShowsModelName, let model = state.recordingModelName, !model.isEmpty {
             components.append(model)
         }
-        return components.isEmpty ? nil : components.joined(separator: " · ")
+        guard !components.isEmpty else { return nil }
+        return components.joined(separator: " · ")
     }
 
     private func alignedActionHint(_ action: RecordingControlAction) -> some View {
@@ -1181,49 +1246,44 @@ struct FloatingBarView<S: FloatingBarState>: View {
             if action == .cancel {
                 Text("esc")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(TF.floatingText)
+                    .foregroundStyle(effectiveTheme == .light ? TF.floatingTextSecondaryLight : TF.floatingText)
                     .padding(.horizontal, 7)
                     .padding(.vertical, 2)
-                    .background(Capsule().fill(TF.recordingTooltipBadge))
+                    .background(
+                        Capsule()
+                            .fill(effectiveTheme == .light ? Color.black.opacity(0.06) : TF.recordingTooltipBadge)
+                    )
+                    .overlay(
+                        Capsule().stroke(
+                            effectiveTheme == .light ? Color.black.opacity(0.12) : Color.white.opacity(0.18),
+                            lineWidth: 0.5
+                        )
+                    )
             }
         }
         .font(.system(size: 14, weight: .semibold))
-        .foregroundStyle(TF.floatingText)
+        .foregroundStyle(effectiveTheme == .light ? TF.floatingTextLight : TF.floatingText)
         .lineLimit(1)
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
-        .background(
-            RoundedRectangle(cornerRadius: TF.transcriptPopupCorner, style: .continuous)
-                .fill(TF.floatingBackground)
-                .overlay {
-                    RoundedRectangle(cornerRadius: TF.transcriptPopupCorner, style: .continuous)
-                        .strokeBorder(TF.floatingBorder, lineWidth: 0.5)
-                }
-        )
+        .background(FrostedGlassBubbleBackground(theme: effectiveTheme))
         .frame(maxWidth: TF.recordingTooltipMaxWidth)
         .fixedSize(horizontal: true, vertical: false)
-        .shadow(color: Color.black.opacity(0.35), radius: 6, x: 0, y: 2)
+        .shadow(color: Color.black.opacity(effectiveTheme == .light ? 0.05 : 0.20), radius: 3, x: 0, y: 1.5)
     }
 
     private func hintBubble(text: String) -> some View {
         Text(text)
             .font(.system(size: 14, weight: .semibold))
-            .foregroundStyle(TF.floatingText)
+            .foregroundStyle(effectiveTheme == .light ? TF.floatingTextLight : TF.floatingText)
             .lineLimit(1)
             .truncationMode(.tail)
             .padding(.horizontal, 12)
             .padding(.vertical, 9)
             .frame(maxWidth: TF.barWidth + TF.recordingTooltipOverhang * 2)
-            .background(
-                RoundedRectangle(cornerRadius: TF.transcriptPopupCorner, style: .continuous)
-                    .fill(TF.floatingBackground)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: TF.transcriptPopupCorner, style: .continuous)
-                            .strokeBorder(TF.floatingBorder, lineWidth: 0.5)
-                    }
-            )
+            .background(FrostedGlassBubbleBackground(theme: effectiveTheme))
             .fixedSize(horizontal: true, vertical: false)
-            .shadow(color: Color.black.opacity(0.35), radius: 6, x: 0, y: 2)
+            .shadow(color: Color.black.opacity(effectiveTheme == .light ? 0.05 : 0.20), radius: 3, x: 0, y: 1.5)
     }
 
     private func showModeHint() {
@@ -1288,9 +1348,67 @@ struct FloatingBarView<S: FloatingBarState>: View {
     }
 }
 
+/// A dark or light HUD material that samples behind the transparent panel.
+private struct RecordingGlassSurface: View {
+    let cornerRadius: CGFloat
+    var theme: RecordingTheme = .dark
+    let tintOpacity: Double
+
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    private var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+    }
+
+    var body: some View {
+        if reduceTransparency {
+            theme == .light ? TF.floatingBackgroundLight : TF.floatingBackground
+        } else {
+            ZStack {
+                VisualEffectBlur(
+                    cornerRadius: cornerRadius,
+                    appearanceName: theme == .light ? .aqua : .darkAqua
+                )
+                .allowsHitTesting(false)
+
+                if theme == .light {
+                    Color.white.opacity(tintOpacity)
+                } else {
+                    Color.black.opacity(tintOpacity)
+                }
+            }
+            .clipShape(shape)
+        }
+    }
+}
+
+private struct FrostedGlassBubbleBackground: View {
+    let cornerRadius: CGFloat = TF.transcriptPopupCorner
+    var theme: RecordingTheme = .dark
+
+    private var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+    }
+
+    var body: some View {
+        RecordingGlassSurface(
+            cornerRadius: cornerRadius,
+            theme: theme,
+            tintOpacity: theme == .light ? 0.75 : 0.40
+        )
+        .overlay {
+            shape.strokeBorder(
+                theme == .light ? TF.floatingBorderLight : TF.floatingBorder,
+                lineWidth: 0.5
+            )
+        }
+    }
+}
+
 private struct TranscriptPopup: View {
     let text: String
     let height: CGFloat
+    var theme: RecordingTheme = .dark
     let onHoverChanged: (Bool) -> Void
 
     var body: some View {
@@ -1298,7 +1416,7 @@ private struct TranscriptPopup: View {
             ScrollView(.vertical) {
                 Text(text)
                     .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(TF.floatingText)
+                    .foregroundStyle(theme == .light ? TF.floatingTextLight : TF.floatingText)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(12)
 
@@ -1308,19 +1426,12 @@ private struct TranscriptPopup: View {
             }
             .scrollIndicators(.hidden)
             .frame(width: TF.transcriptPopupWidth, height: height)
-            .background(
-                RoundedRectangle(cornerRadius: TF.transcriptPopupCorner, style: .continuous)
-                    .fill(TF.floatingBackground)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: TF.transcriptPopupCorner, style: .continuous)
-                            .strokeBorder(TF.floatingBorder, lineWidth: 0.5)
-                    }
-            )
+            .background(FrostedGlassBubbleBackground(theme: theme))
             .overlay {
                 FloatingBarHoverTracker(onHoverChanged: onHoverChanged)
             }
             .clipShape(RoundedRectangle(cornerRadius: TF.transcriptPopupCorner, style: .continuous))
-            .shadow(color: Color.black.opacity(0.35), radius: 6, x: 0, y: 2)
+            .shadow(color: Color.black.opacity(theme == .light ? 0.05 : 0.20), radius: 4, x: 0, y: 2)
             .onAppear { proxy.scrollTo("transcript-end", anchor: .bottom) }
             .onChange(of: text) { _, _ in
                 proxy.scrollTo("transcript-end", anchor: .bottom)

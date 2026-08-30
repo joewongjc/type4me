@@ -320,7 +320,7 @@ struct ModesSettingsTab: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help(L("删除模式", "Delete mode"))
+                .settingsTooltip(L("删除模式", "Delete mode"))
             }
         }
         .padding(.leading, 8)
@@ -971,7 +971,7 @@ struct HotkeySectionView: View {
                         .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
-                .help(L("删除快捷键", "Delete hotkey"))
+                .settingsTooltip(L("删除", "Delete"))
                 .transition(.scale.combined(with: .opacity))
             }
         }
@@ -1215,29 +1215,19 @@ struct HotkeyRecordingSheet: View {
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(TF.settingsTextTertiary)
 
-                HStack(spacing: 0) {
-                    ForEach([ProcessingMode.HotkeyStyle.hold, .toggle], id: \.self) { style in
-                        let selected = hotkeyStyle == style
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.15)) { hotkeyStyle = style }
-                        } label: {
-                            Text(style == .hold ? L("按住录制", "Hold to record") : L("按下切换", "Toggle"))
-                                .font(.system(size: 11, weight: selected ? .semibold : .regular))
-                                .foregroundStyle(selected ? .white : TF.settingsTextSecondary)
-                                .frame(maxWidth: .infinity, minHeight: 26)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 5)
-                                        .fill(selected ? TF.settingsNavActive : .clear)
-                                )
-                                .contentShape(Rectangle())
+                SettingsInlineSegmentedPicker(
+                    selection: Binding(
+                        get: { hotkeyStyle.rawValue },
+                        set: { raw in
+                            if let s = ProcessingMode.HotkeyStyle(rawValue: raw) {
+                                hotkeyStyle = s
+                            }
                         }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(2)
-                .background(
-                    RoundedRectangle(cornerRadius: 7)
-                        .fill(TF.settingsBg)
+                    ),
+                    options: [
+                        (ProcessingMode.HotkeyStyle.hold.rawValue, L("按住录制", "Hold to record")),
+                        (ProcessingMode.HotkeyStyle.toggle.rawValue, L("按下切换", "Toggle")),
+                    ]
                 )
             }
 

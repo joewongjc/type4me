@@ -36,7 +36,7 @@ enum RecordingIndicatorStyle: String, CaseIterable {
         case .regular:
             return L("常规", "Regular")
         case .compact:
-            return L("紧凑型", "Compact")
+            return L("紧凑", "Compact")
         }
     }
 

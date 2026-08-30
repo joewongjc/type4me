@@ -4,10 +4,26 @@ import XCTest
 @MainActor
 final class AppearancePreviewTests: XCTestCase {
 
-    // MARK: - FloatingBarPresentation Override & Fallback Tests
+    func testRecordingTheme_allCases() {
+        XCTAssertEqual(RecordingTheme.allCases.count, 2)
+        XCTAssertEqual(RecordingTheme.dark.rawValue, "dark")
+        XCTAssertEqual(RecordingTheme.light.rawValue, "light")
+        XCTAssertEqual(RecordingTheme.storageKey, "tf_recordingTheme")
+        XCTAssertEqual(RecordingTheme.defaultValue, .dark)
+
+        XCTAssertEqual(RecordingTheme.dark.displayName, L("暗色", "Dark"))
+        XCTAssertEqual(RecordingTheme.light.displayName, L("明亮", "Light"))
+    }
+
+    func testRecordingIndicatorStyle_allCases() {
+        XCTAssertEqual(RecordingIndicatorStyle.allCases.count, 2)
+        XCTAssertEqual(RecordingIndicatorStyle.regular.displayName, L("常规", "Regular"))
+        XCTAssertEqual(RecordingIndicatorStyle.compact.displayName, L("紧凑", "Compact"))
+    }
 
     func testFloatingBarPresentationInit() {
         let presentation = FloatingBarPresentation(
+            theme: .light,
             indicatorStyle: .regular,
             visualStyle: .voiceWave,
             showsLiveTranscript: false,
@@ -19,6 +35,7 @@ final class AppearancePreviewTests: XCTestCase {
             showsModelName: true
         )
 
+        XCTAssertEqual(presentation.theme, .light)
         XCTAssertEqual(presentation.indicatorStyle, .regular)
         XCTAssertEqual(presentation.visualStyle, .voiceWave)
         XCTAssertFalse(presentation.showsLiveTranscript)
@@ -33,6 +50,7 @@ final class AppearancePreviewTests: XCTestCase {
 
     func testFloatingBarPresentation_defaults() {
         let presentation = FloatingBarPresentation()
+        XCTAssertEqual(presentation.theme, .dark)
         XCTAssertEqual(presentation.indicatorStyle, .regular)
         XCTAssertEqual(presentation.visualStyle, .siri)
         XCTAssertTrue(presentation.showsLiveTranscript)

@@ -100,7 +100,9 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
                 SettingsDivider()
                 dockIconRow
                 SettingsDivider()
-                preserveClipboardRow
+                keepOnNormalInputRow
+                SettingsDivider()
+                cancellationRetentionRow
                 SettingsDivider()
                 languageRow
             }
@@ -123,7 +125,7 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
                             .foregroundStyle(TF.settingsTextTertiary)
                     }
                     .buttonStyle(.plain)
-                    .help(L("刷新权限状态", "Refresh permission status"))
+                    .settingsTooltip(L("刷新权限状态", "Refresh permission status"))
                 )
             ) {
                 permissionRow(
@@ -291,7 +293,7 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
                         .foregroundStyle(TF.settingsTextTertiary)
                 }
                 .buttonStyle(.plain)
-                .help(L("刷新麦克风列表", "Refresh microphone list"))
+                .settingsTooltip(L("刷新麦克风列表", "Refresh microphone list"))
                 microphonePreferenceDropdown
             }
         }
@@ -425,7 +427,7 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
                         .foregroundStyle(TF.settingsTextTertiary)
                 }
                 .buttonStyle(.plain)
-                .help(L("刷新输出设备列表", "Refresh output device list"))
+                .settingsTooltip(L("刷新输出设备列表", "Refresh output device list"))
                 settingsDropdown(
                     selection: $selectedSpeakerUID,
                     options: [("", L("系统默认", "System Default"))] + availableSpeakers.map { ($0.uid, $0.name) }
@@ -509,9 +511,10 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
     private var reviseHotkeyStyleRow: some View {
         settingsOptionRow(
             L("触发方式", "Trigger Style"),
-            subtitle: L("长按松开结束，或单击开始/结束", "Hold to speak, or tap to toggle")
+            subtitle: L("长按松开结束，或单击开始/结束", "Hold to speak, or tap to toggle"),
+            controlWidth: SettingsControlWidth.inlineSegmented
         ) {
-            settingsSegmentedPicker(
+            settingsInlineSegmentedPicker(
                 selection: Binding(
                     get: { (reviseSettings.hotkey?.style ?? .hold).rawValue },
                     set: { rawValue in
@@ -527,7 +530,6 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
                     (HotkeyStyle.toggle.rawValue, L("单击切换", "Toggle")),
                 ]
             )
-            .frame(width: 164)
         }
     }
 
@@ -536,17 +538,69 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
         NotificationCenter.default.post(name: .reviseSettingsDidChange, object: nil)
     }
 
-    private var preserveClipboardRow: some View {
+    private var keepOnNormalInputRow: some View {
         let policy = ClipboardOutputPolicy(rawValue: clipboardOutputPolicyRaw)
             ?? ClipboardOutputPolicy.defaultValue
+        let isRetained = Binding<Bool>(
+            get: { policy.retainsNormalResult },
+            set: { newValue in
+                let currentCancelMode = policy.cancellationMode
+                let newPolicy = ClipboardOutputPolicy.policy(
+                    retainsNormal: newValue,
+                    cancellationMode: currentCancelMode
+                )
+                clipboardOutputPolicyRaw = newPolicy.rawValue
+            }
+        )
+        return settingsToggleRow(
+            L("输入完成后保留在剪贴板", "Keep in Clipboard on Input"),
+            subtitle: L(
+                "关闭时，打字完成后自动恢复录音前的剪贴板内容",
+                "When off, original clipboard content is restored after typing"
+            ),
+            isOn: isRetained
+        )
+    }
+
+    private var cancellationRetentionRow: some View {
+        let policy = ClipboardOutputPolicy(rawValue: clipboardOutputPolicyRaw)
+            ?? ClipboardOutputPolicy.defaultValue
+        // When normal-completion retention is on the stored policy is `.alwaysCopy`,
+        // which already implies "processed" on cancellation. Surface that coupling
+        // instead of leaving a segmented control that silently ignores clicks.
+        let isOverriddenByNormalRetention = policy.retainsNormalResult
+        let cancelBinding = Binding<String>(
+            get: { policy.cancellationMode.rawValue },
+            set: { raw in
+                guard let mode = ClipboardOutputPolicy.CancellationRetentionMode(rawValue: raw) else { return }
+                let newPolicy = ClipboardOutputPolicy.policy(
+                    retainsNormal: policy.retainsNormalResult,
+                    cancellationMode: mode
+                )
+                clipboardOutputPolicyRaw = newPolicy.rawValue
+            }
+        )
         return settingsOptionRow(
-            L("剪贴板保留", "Clipboard Retention"),
-            subtitle: policy.detail
+            L("取消录音时留存策略", "Retention on Cancellation"),
+            subtitle: isOverriddenByNormalRetention
+                ? L(
+                    "上方开关打开时，取消后同样会经 AI 润色并保留在剪贴板",
+                    "While the switch above is on, cancelled results are AI processed and kept too"
+                )
+                : L(
+                    "中途按 Esc 或点击取消时，是否将说过的语音留存在剪贴板",
+                    "Whether to keep spoken text in clipboard when cancelled"
+                ),
+            controlWidth: SettingsControlWidth.standard
         ) {
-            settingsDropdown(
-                selection: $clipboardOutputPolicyRaw,
-                options: ClipboardOutputPolicy.allCases.map { ($0.rawValue, $0.displayName) }
+            settingsInlineSegmentedPicker(
+                selection: cancelBinding,
+                options: ClipboardOutputPolicy.CancellationRetentionMode.allCases.map {
+                    ($0.rawValue, $0.displayName)
+                }
             )
+            .disabled(isOverriddenByNormalRetention)
+            .opacity(isOverriddenByNormalRetention ? 0.5 : 1.0)
         }
     }
 
@@ -558,11 +612,13 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
     }
 
     private var languageRow: some View {
-        settingsOptionRow(L("界面语言", "Primary Language")) {
-            settingsDropdown(
+        settingsOptionRow(
+            L("界面语言", "Primary Language"),
+            controlWidth: SettingsControlWidth.inlineSegmented
+        ) {
+            settingsInlineSegmentedPicker(
                 selection: $language,
-                options: AppLanguage.allCases.map { ($0.rawValue, $0.displayName) },
-                icon: "globe"
+                options: AppLanguage.allCases.map { ($0.rawValue, $0.displayName) }
             )
         }
     }

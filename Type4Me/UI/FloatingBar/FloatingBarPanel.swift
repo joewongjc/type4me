@@ -65,7 +65,13 @@ final class FloatingBarPanel: NSPanel {
         ignoresMouseEvents = true
         acceptsMouseMovedEvents = true
         animationBehavior = .utilityWindow
-        appearance = NSAppearance(named: .darkAqua)
+        updateAppearance()
+    }
+
+    func updateAppearance() {
+        let themeRaw = UserDefaults.standard.string(forKey: RecordingTheme.storageKey) ?? RecordingTheme.defaultValue.rawValue
+        let theme = RecordingTheme(rawValue: themeRaw) ?? .dark
+        appearance = theme == .light ? NSAppearance(named: .aqua) : NSAppearance(named: .darkAqua)
     }
 
     override var canBecomeKey: Bool { false }
@@ -161,6 +167,7 @@ final class FloatingBarController {
 
     func show() {
         panelGeneration &+= 1
+        panel.updateAppearance()
 
         if anchorDisplayID == nil || state.barPhase == .preparing {
             anchorDisplayID = FloatingBarPanel.screenUnderMouse()

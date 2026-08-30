@@ -56,7 +56,7 @@ struct DebugSettingsTab: View, SettingsCardHelpers {
         settingsGroupCard(L("构建与运行环境", "Build & Runtime"), icon: "hammer.fill") {
             diagnosticRow(L("构建类型", "Build Type"), value: DebugSettingsAvailability.buildLabel, emphasized: true)
             SettingsDivider()
-            diagnosticRow(L("应用版本", "App Version"), value: "\(appVersion) (\(buildNumber))")
+            diagnosticRow(L("应用版本", "App Version"), value: AppBuildInfo.current.debugLabel)
             SettingsDivider()
             diagnosticRow(L("Bundle ID", "Bundle ID"), value: Bundle.main.bundleIdentifier ?? "—")
             SettingsDivider()
@@ -200,14 +200,6 @@ struct DebugSettingsTab: View, SettingsCardHelpers {
     private func refreshLog() {
         recentLog = DebugFileLogger.recentLines(200).joined(separator: "\n")
         refreshedAt = Date()
-    }
-
-    private var appVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
-    }
-
-    private var buildNumber: String {
-        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "—"
     }
 
     private var architecture: String {

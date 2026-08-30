@@ -106,4 +106,32 @@ final class ClipboardOutputPolicyTests: XCTestCase {
             ClipboardOutputPolicy.cancelProcessed.rawValue
         )
     }
+
+    func testCancellationRetentionModeAndPolicyMapping() {
+        XCTAssertEqual(ClipboardOutputPolicy.alwaysCopy.cancellationMode, .processed)
+        XCTAssertEqual(ClipboardOutputPolicy.cancelProcessed.cancellationMode, .processed)
+        XCTAssertEqual(ClipboardOutputPolicy.cancelRawTranscript.cancellationMode, .raw)
+        XCTAssertEqual(ClipboardOutputPolicy.neverCopy.cancellationMode, .none)
+
+        XCTAssertEqual(
+            ClipboardOutputPolicy.policy(retainsNormal: true, cancellationMode: .processed),
+            .alwaysCopy
+        )
+        XCTAssertEqual(
+            ClipboardOutputPolicy.policy(retainsNormal: true, cancellationMode: .raw),
+            .alwaysCopy
+        )
+        XCTAssertEqual(
+            ClipboardOutputPolicy.policy(retainsNormal: false, cancellationMode: .processed),
+            .cancelProcessed
+        )
+        XCTAssertEqual(
+            ClipboardOutputPolicy.policy(retainsNormal: false, cancellationMode: .raw),
+            .cancelRawTranscript
+        )
+        XCTAssertEqual(
+            ClipboardOutputPolicy.policy(retainsNormal: false, cancellationMode: .none),
+            .neverCopy
+        )
+    }
 }

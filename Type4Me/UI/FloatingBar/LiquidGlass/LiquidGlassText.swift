@@ -32,6 +32,7 @@ struct RecordingTextParts: Equatable {
 struct LiquidGlassText: View {
     let text: String
     let style: RecordingVisualStyle
+    var theme: RecordingTheme = .dark
     var audioEnergy: Float = 0
     var font: Font = .system(size: 14, weight: .medium)
 
@@ -79,25 +80,36 @@ struct LiquidGlassText: View {
             endPoint = UnitPoint(x: -1.7, y: 0.5)
         }
 
+        let textColor = theme == .light ? TF.floatingTextLight : Color.white
+        let gradientStops: [Gradient.Stop] = theme == .light ? [
+            .init(color: textColor, location: 0.0),
+            .init(color: textColor.opacity(0.60), location: 0.32),
+            .init(color: Color.white, location: 0.50),
+            .init(color: textColor.opacity(0.60), location: 0.68),
+            .init(color: textColor, location: 1.0),
+        ] : [
+            .init(color: Color.white.opacity(0.40), location: 0.0),
+            .init(color: Color.white.opacity(0.65), location: 0.35),
+            .init(color: Color.white, location: 0.50),
+            .init(color: Color.white.opacity(0.65), location: 0.65),
+            .init(color: Color.white.opacity(0.40), location: 1.0),
+        ]
+
         return Text(text)
             .font(font)
             .lineLimit(1)
             .foregroundStyle(
                 LinearGradient(
-                    stops: [
-                        .init(color: Color.white.opacity(0.40), location: 0.0),
-                        .init(color: Color.white.opacity(0.60), location: 0.30),
-                        .init(color: Color.white, location: 0.50),
-                        .init(color: Color.white.opacity(0.60), location: 0.70),
-                        .init(color: Color.white.opacity(0.40), location: 1.0),
-                    ],
+                    stops: gradientStops,
                     startPoint: startPoint,
                     endPoint: endPoint
                 )
             )
             .shadow(
-                color: Color.white.opacity(isSweeping ? Double(0.20 + energy * 0.30) : 0.0),
-                radius: CGFloat(1.5 + energy * 1.5)
+                color: theme == .light
+                    ? Color.white.opacity(isSweeping ? Double(0.85 + energy * 0.15) : 0.0)
+                    : Color.white.opacity(isSweeping ? Double(0.30 + energy * 0.30) : 0.0),
+                radius: CGFloat(2.0 + energy * 1.5)
             )
             .onAppear {
                 startTime = CACurrentMediaTime()

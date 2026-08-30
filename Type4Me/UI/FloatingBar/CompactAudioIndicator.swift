@@ -66,6 +66,7 @@ private final class CompactAudioHistoryModel {
 struct CompactAudioIndicator: View {
 
     let meter: AudioLevelMeter
+    var theme: RecordingTheme = .dark
 
     @State private var history = CompactAudioHistoryModel()
 
@@ -84,6 +85,9 @@ struct CompactAudioIndicator: View {
                 let rightEdge = size.width - 1.0 - fraction * pitch
                 let totalColumns = Int(ceil((size.width + pitch) / pitch)) + 1
 
+                let activeColor = theme == .light ? TF.floatingTextLight : TF.compactIndicatorActive
+                let inactiveColor = theme == .light ? Color.black.opacity(0.18) : TF.compactIndicatorInactive
+
                 for i in 0..<totalColumns {
                     let x = rightEdge - CGFloat(i) * pitch
                     guard x >= -barWidth && x <= size.width else { continue }
@@ -94,11 +98,11 @@ struct CompactAudioIndicator: View {
                     if i < history.samples.count {
                         let sample = history.samples[i]
                         barHeight = sample.height
-                        barColor = sample.isActive ? TF.compactIndicatorActive : TF.compactIndicatorInactive
+                        barColor = sample.isActive ? activeColor : inactiveColor
                     } else {
                         // Unreached / idle track dots
                         barHeight = minHeight
-                        barColor = TF.compactIndicatorInactive
+                        barColor = inactiveColor
                     }
 
                     let y = (size.height - barHeight) / 2

@@ -16,6 +16,7 @@ func compactTranscriptOffset(textWidth: CGFloat, viewportWidth: CGFloat) -> CGFl
 struct CompactLiveTranscriptRow: View {
 
     let text: String
+    var theme: RecordingTheme = .dark
 
     private static let measurementFont = NSFont.systemFont(
         ofSize: TF.compactTranscriptFontSize,
@@ -43,7 +44,7 @@ struct CompactLiveTranscriptRow: View {
         HStack(spacing: 0) {
             Text(text)
                 .font(.system(size: TF.compactTranscriptFontSize, weight: .medium))
-                .foregroundStyle(TF.floatingText)
+                .foregroundStyle(theme == .light ? TF.floatingTextLight : TF.floatingText)
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
                 .offset(x: offset)

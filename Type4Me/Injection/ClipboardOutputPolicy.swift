@@ -59,6 +59,53 @@ enum ClipboardOutputPolicy: String, CaseIterable, Identifiable {
         self == .alwaysCopy || self == .cancelProcessed
     }
 
+    /// User-facing cancellation retention modes for granular Settings UI.
+    enum CancellationRetentionMode: String, CaseIterable, Identifiable {
+        case processed
+        case raw
+        case none
+
+        var id: String { rawValue }
+
+        var displayName: String {
+            switch self {
+            case .processed: return L("AI 润色", "AI Processed")
+            case .raw: return L("原始文本", "Raw Text")
+            case .none: return L("不留存", "None")
+            }
+        }
+    }
+
+    /// Derived cancellation retention mode from the composite policy.
+    var cancellationMode: CancellationRetentionMode {
+        switch self {
+        case .alwaysCopy, .cancelProcessed:
+            return .processed
+        case .cancelRawTranscript:
+            return .raw
+        case .neverCopy:
+            return .none
+        }
+    }
+
+    /// Map individual normal and cancellation preferences back to the canonical storage policy.
+    static func policy(
+        retainsNormal: Bool,
+        cancellationMode: CancellationRetentionMode
+    ) -> ClipboardOutputPolicy {
+        if retainsNormal {
+            return .alwaysCopy
+        }
+        switch cancellationMode {
+        case .processed:
+            return .cancelProcessed
+        case .raw:
+            return .cancelRawTranscript
+        case .none:
+            return .neverCopy
+        }
+    }
+
     /// Resolve clipboard retention from the frozen completion intent.
     func retainsResult(forCancellation isCancelled: Bool) -> Bool {
         isCancelled ? retainsCancelledResult : retainsNormalResult

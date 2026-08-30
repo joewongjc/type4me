@@ -126,96 +126,6 @@ enum DateFilter: Equatable, Hashable {
 
 // MARK: - History Controls
 
-/// Presents record-action tooltips in a tiny non-activating AppKit panel.
-/// Because the panel is not a child of the ScrollView, it can extend beyond
-/// the list viewport without clipping or per-frame scroll geometry work.
-@MainActor
-private final class HistoryFloatingTooltipController {
-    static let shared = HistoryFloatingTooltipController()
-
-    private var panel: NSPanel?
-    private var activeOwner: UUID?
-
-    func show(text: String, owner: UUID) {
-        hide()
-
-        let hostingView = NSHostingView(rootView: SettingsTooltipBubble(text: text))
-        hostingView.layoutSubtreeIfNeeded()
-        var size = hostingView.fittingSize
-        size.width = max(size.width, 44)
-        size.height = 34
-        hostingView.frame = NSRect(origin: .zero, size: size)
-
-        let tooltipPanel = NSPanel(
-            contentRect: NSRect(origin: .zero, size: size),
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered,
-            defer: false
-        )
-        tooltipPanel.backgroundColor = .clear
-        tooltipPanel.isOpaque = false
-        tooltipPanel.hasShadow = true
-        tooltipPanel.level = .floating
-        tooltipPanel.ignoresMouseEvents = true
-        tooltipPanel.collectionBehavior = [.transient, .ignoresCycle]
-        tooltipPanel.contentView = hostingView
-
-        let mouse = NSEvent.mouseLocation
-        let screenFrame = NSScreen.screens
-            .first(where: { $0.frame.contains(mouse) })?
-            .visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
-        var origin = NSPoint(
-            x: mouse.x - size.width / 2,
-            y: mouse.y - size.height - 18
-        )
-        origin.x = min(max(origin.x, screenFrame.minX + 8), screenFrame.maxX - size.width - 8)
-        if origin.y < screenFrame.minY + 8 {
-            origin.y = mouse.y + 18
-        }
-        origin.y = min(
-            max(origin.y, screenFrame.minY + 8),
-            screenFrame.maxY - size.height - 8
-        )
-
-        tooltipPanel.setFrameOrigin(origin)
-        tooltipPanel.orderFrontRegardless()
-        panel = tooltipPanel
-        activeOwner = owner
-    }
-
-    func hide(owner: UUID? = nil) {
-        if let owner, owner != activeOwner { return }
-        panel?.orderOut(nil)
-        panel = nil
-        activeOwner = nil
-    }
-}
-
-private struct HistoryFloatingTooltipModifier: ViewModifier {
-    let text: String
-    @State private var owner = UUID()
-
-    func body(content: Content) -> some View {
-        content
-            .onHover { hovering in
-                if hovering {
-                    HistoryFloatingTooltipController.shared.show(text: text, owner: owner)
-                } else {
-                    HistoryFloatingTooltipController.shared.hide(owner: owner)
-                }
-            }
-            .onDisappear {
-                HistoryFloatingTooltipController.shared.hide(owner: owner)
-            }
-    }
-}
-
-private extension View {
-    func historyFloatingTooltip(_ text: String) -> some View {
-        modifier(HistoryFloatingTooltipModifier(text: text))
-    }
-}
-
 private struct HistoryToolbarButton: View {
     let icon: String
     let tooltip: String
@@ -844,12 +754,16 @@ struct HistoryTab: View {
             Text(L("导出识别记录", "Export Records"))
                 .font(.system(size: 13, weight: .semibold))
 
-            Picker("", selection: $exportRangeAll) {
-                Text(L("全部记录", "All records")).tag(true)
-                Text(L("指定日期范围", "Date range")).tag(false)
-            }
-            .pickerStyle(.radioGroup)
-            .font(.system(size: 12))
+            SettingsInlineSegmentedPicker(
+                selection: Binding(
+                    get: { exportRangeAll ? "all" : "range" },
+                    set: { exportRangeAll = ($0 == "all") }
+                ),
+                options: [
+                    ("all", L("全部记录", "All records")),
+                    ("range", L("指定日期范围", "Date range")),
+                ]
+            )
 
             if !exportRangeAll {
                 HStack(spacing: 8) {
@@ -1400,7 +1314,6 @@ struct HistoryTab: View {
         action: @escaping () -> Void
     ) -> some View {
         Button {
-            HistoryFloatingTooltipController.shared.hide()
             action()
         } label: {
             Image(systemName: icon)
@@ -1413,7 +1326,7 @@ struct HistoryTab: View {
                 )
         }
         .buttonStyle(.plain)
-        .historyFloatingTooltip(tooltip)
+        .settingsTooltip(tooltip)
     }
 
     // MARK: - Statistics UI

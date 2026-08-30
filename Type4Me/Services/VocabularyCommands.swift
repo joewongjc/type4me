@@ -1,6 +1,6 @@
 import Foundation
 
-enum VocabularySection: String, Sendable {
+enum VocabularySection: String, Sendable, Hashable {
     case hotwords
     case snippets
 }

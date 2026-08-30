@@ -72,8 +72,8 @@ struct SelectionAskView: View {
                     .zIndex(100)
             }
         }
-        .animation(.easeOut(duration: 0.08), value: isOpenInType4MeHovered)
         .id(language)
+        .settingsTooltipHost(.selectionAsk)
     }
 
     private var header: some View {
