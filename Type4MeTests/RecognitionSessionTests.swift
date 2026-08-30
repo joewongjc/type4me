@@ -36,6 +36,24 @@ final class RecognitionSessionTests: XCTestCase {
         await session.setState(.idle)
     }
 
+    func testASRConnectFailureIsReportedOnlyForCurrentRecordingSession() {
+        XCTAssertTrue(RecognitionSession.shouldReportASRConnectFailure(
+            expectedGeneration: 3,
+            currentGeneration: 3,
+            state: .recording
+        ))
+        XCTAssertFalse(RecognitionSession.shouldReportASRConnectFailure(
+            expectedGeneration: 3,
+            currentGeneration: 3,
+            state: .finishing
+        ))
+        XCTAssertFalse(RecognitionSession.shouldReportASRConnectFailure(
+            expectedGeneration: 3,
+            currentGeneration: 4,
+            state: .recording
+        ))
+    }
+
     func testRecoveryHotkeyRequiresSecondPressToInterrupt() async {
         let session = RecognitionSession()
         await session.setState(.recovering)
