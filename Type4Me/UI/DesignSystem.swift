@@ -49,6 +49,16 @@ enum TF {
     /// Recording indicator palette from the floating-bar design specification.
     static let floatingBackground = Color(red: 17 / 255, green: 18 / 255, blue: 20 / 255) // #111214
     static let floatingBorder = Color(red: 38 / 255, green: 39 / 255, blue: 41 / 255) // #262729
+    /// A translucent highlight that takes on the material beneath it instead of reading as a flat white rule.
+    static let recordingGlassRim = LinearGradient(
+        colors: [
+            .white.opacity(0.80),
+            .white.opacity(0.48),
+            .white.opacity(0.30),
+        ],
+        startPoint: .top,
+        endPoint: .bottom
+    )
     static let floatingControl = Color(red: 51 / 255, green: 51 / 255, blue: 51 / 255)
     static let floatingControlLight = Color(red: 251 / 255, green: 251 / 255, blue: 251 / 255)
     static let floatingText = Color.white

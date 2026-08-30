@@ -489,7 +489,6 @@ struct FloatingBarView<S: FloatingBarState>: View {
             .overlay {
                 capsuleBorder
             }
-            .shadow(color: Color.black.opacity(0.12), radius: 8)
             // Critically damped (dampingFraction 1.0) so the width never
             // overshoots and settles back leftward between characters. An
             // underdamped spring makes the right edge/cancel button wiggle
@@ -987,9 +986,8 @@ struct FloatingBarView<S: FloatingBarState>: View {
     // MARK: - Background & Border
 
     private var capsuleBackground: some View {
-        ZStack {
-            TF.floatingBackground
-
+        RecordingGlassSurface(cornerRadius: barCornerRadius, tintOpacity: 0.32)
+        .overlay {
             if state.barPhase == .error {
                 LinearGradient(
                     colors: [TF.settingsAccentRed.opacity(0.16), .clear],
@@ -1000,26 +998,26 @@ struct FloatingBarView<S: FloatingBarState>: View {
         }
     }
 
+    @ViewBuilder
     private var capsuleBorder: some View {
-        barShape
-            .strokeBorder(borderColor, lineWidth: 0.5)
-    }
-
-    private var borderColor: Color {
         switch state.barPhase {
         case .preparing, .recording, .processing, .recovering:
-            TF.floatingBorder
+            barShape.strokeBorder(TF.recordingGlassRim, lineWidth: 0.8)
         case .done:
-            switch state.feedbackKind {
-            case .macActionUnsure:
-                TF.amber.opacity(0.40)
-            case .macActionSuccess, .macActionFailure, .standard:
-                TF.success.opacity(0.40)
-            }
+            barShape.strokeBorder(feedbackBorderColor, lineWidth: 0.5)
         case .error:
-            TF.settingsAccentRed.opacity(0.45)
+            barShape.strokeBorder(TF.settingsAccentRed.opacity(0.45), lineWidth: 0.5)
         case .hidden:
-            .clear
+            EmptyView()
+        }
+    }
+
+    private var feedbackBorderColor: Color {
+        switch state.feedbackKind {
+        case .macActionUnsure:
+            TF.amber.opacity(0.40)
+        case .macActionSuccess, .macActionFailure, .standard:
+            TF.success.opacity(0.40)
         }
     }
 
@@ -1236,14 +1234,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
         .lineLimit(1)
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
-        .background(
-            RoundedRectangle(cornerRadius: TF.transcriptPopupCorner, style: .continuous)
-                .fill(TF.floatingBackground)
-                .overlay {
-                    RoundedRectangle(cornerRadius: TF.transcriptPopupCorner, style: .continuous)
-                        .strokeBorder(TF.floatingBorder, lineWidth: 0.5)
-                }
-        )
+        .background(FrostedGlassBubbleBackground())
         .frame(maxWidth: TF.recordingTooltipMaxWidth)
         .fixedSize(horizontal: true, vertical: false)
         .shadow(color: Color.black.opacity(0.35), radius: 6, x: 0, y: 2)
@@ -1258,14 +1249,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 9)
             .frame(maxWidth: TF.barWidth + TF.recordingTooltipOverhang * 2)
-            .background(
-                RoundedRectangle(cornerRadius: TF.transcriptPopupCorner, style: .continuous)
-                    .fill(TF.floatingBackground)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: TF.transcriptPopupCorner, style: .continuous)
-                            .strokeBorder(TF.floatingBorder, lineWidth: 0.5)
-                    }
-            )
+            .background(FrostedGlassBubbleBackground())
             .fixedSize(horizontal: true, vertical: false)
             .shadow(color: Color.black.opacity(0.35), radius: 6, x: 0, y: 2)
     }
@@ -1332,6 +1316,46 @@ struct FloatingBarView<S: FloatingBarState>: View {
     }
 }
 
+/// A dark HUD material that samples behind the transparent panel.
+private struct RecordingGlassSurface: View {
+    let cornerRadius: CGFloat
+    let tintOpacity: Double
+
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    private var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+    }
+
+    var body: some View {
+        if reduceTransparency {
+            TF.floatingBackground
+        } else {
+            ZStack {
+                VisualEffectBlur(cornerRadius: cornerRadius)
+                    .allowsHitTesting(false)
+                Color.black.opacity(tintOpacity)
+            }
+            .clipShape(shape)
+        }
+    }
+}
+
+private struct FrostedGlassBubbleBackground: View {
+    let cornerRadius: CGFloat = TF.transcriptPopupCorner
+
+    private var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+    }
+
+    var body: some View {
+        RecordingGlassSurface(cornerRadius: cornerRadius, tintOpacity: 0.40)
+            .overlay {
+                shape.strokeBorder(TF.floatingBorder, lineWidth: 0.5)
+            }
+    }
+}
+
 private struct TranscriptPopup: View {
     let text: String
     let height: CGFloat
@@ -1352,14 +1376,7 @@ private struct TranscriptPopup: View {
             }
             .scrollIndicators(.hidden)
             .frame(width: TF.transcriptPopupWidth, height: height)
-            .background(
-                RoundedRectangle(cornerRadius: TF.transcriptPopupCorner, style: .continuous)
-                    .fill(TF.floatingBackground)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: TF.transcriptPopupCorner, style: .continuous)
-                            .strokeBorder(TF.floatingBorder, lineWidth: 0.5)
-                    }
-            )
+            .background(FrostedGlassBubbleBackground())
             .overlay {
                 FloatingBarHoverTracker(onHoverChanged: onHoverChanged)
             }
