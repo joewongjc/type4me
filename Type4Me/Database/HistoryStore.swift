@@ -4,6 +4,7 @@ import Type4MeReviseCore
 
 extension Notification.Name {
     static let historyStoreDidChange = Notification.Name("Type4Me.historyStoreDidChange")
+    static let historyFeedbackDidChange = Notification.Name("Type4Me.historyFeedbackDidChange")
 }
 actor HistoryStore {
 
@@ -57,6 +58,45 @@ actor HistoryStore {
             );
             """
             sqlite3_exec(db, sql, nil, nil, nil)
+
+            // Keep quality feedback separate from recognition_history so
+            // marking a transcription bad does not change the history schema.
+            let feedbackTableSQL = """
+            CREATE TABLE IF NOT EXISTS recognition_feedback (
+                record_id TEXT PRIMARY KEY,
+                quality_score INTEGER NOT NULL DEFAULT 0,
+                marked_at TEXT NOT NULL,
+                FOREIGN KEY(record_id)
+                    REFERENCES recognition_history(id)
+                    ON DELETE CASCADE
+            );
+            """
+            sqlite3_exec(db, feedbackTableSQL, nil, nil, nil)
+            // A previous development build used row existence itself to mean
+            // bad feedback. Migrate that legacy schema explicitly so those
+            // rows retain their meaning instead of becoming neutral scores.
+            var feedbackHasQualityScore = false
+            var feedbackColumns: OpaquePointer?
+            if sqlite3_prepare_v2(db, "PRAGMA table_info(recognition_feedback);", -1, &feedbackColumns, nil) == SQLITE_OK {
+                while sqlite3_step(feedbackColumns) == SQLITE_ROW {
+                    if let name = sqlite3_column_text(feedbackColumns, 1), String(cString: name) == "quality_score" {
+                        feedbackHasQualityScore = true
+                        break
+                    }
+                }
+                sqlite3_finalize(feedbackColumns)
+            }
+            if !feedbackHasQualityScore,
+               sqlite3_exec(
+                   db,
+                   "ALTER TABLE recognition_feedback ADD COLUMN quality_score INTEGER NOT NULL DEFAULT 0;",
+                   nil,
+                   nil,
+                   nil
+               ) == SQLITE_OK {
+                sqlite3_exec(db, "UPDATE recognition_feedback SET quality_score = -1;", nil, nil, nil)
+            }
+            sqlite3_exec(db, "CREATE INDEX IF NOT EXISTS idx_feedback_record_id ON recognition_feedback(record_id);", nil, nil, nil)
 
             let revisionTableSQL = """
             CREATE TABLE IF NOT EXISTS recognition_revisions (
@@ -417,6 +457,34 @@ actor HistoryStore {
         }
     }
 
+    func fetchQualityScores() -> [String: Int] {
+        let sql = "SELECT record_id, quality_score FROM recognition_feedback;"
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [:] }
+        defer { sqlite3_finalize(stmt) }
+
+        var scores: [String: Int] = [:]
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            scores[column(stmt, 0)] = Int(sqlite3_column_int(stmt, 1))
+        }
+        return scores
+    }
+
+    @discardableResult
+    func setRecordQualityScore(recordID: String, score: Int) -> Bool {
+        let sql = "INSERT OR REPLACE INTO recognition_feedback (record_id, quality_score, marked_at) VALUES (?, ?, ?);"
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return false }
+        defer { sqlite3_finalize(stmt) }
+
+        bind(stmt, 1, recordID)
+        sqlite3_bind_int(stmt, 2, Int32(clamping: score))
+        bind(stmt, 3, ISO8601DateFormatter().string(from: Date()))
+        guard sqlite3_step(stmt) == SQLITE_DONE else { return false }
+        postFeedbackDidChangeNotification()
+        return true
+    }
+
     @discardableResult
     func updateUserEditObservation(
         recordID: String,
@@ -576,6 +644,12 @@ actor HistoryStore {
         let last30DaysDuration: Double
         let allTimeDuration: Double
         let recordCount: Int
+        let badCount: Int
+
+        var badPercentage: Double {
+            guard recordCount > 0 else { return 0 }
+            return Double(badCount) / Double(recordCount)
+        }
 
         var id: String { modelName }
     }
@@ -677,8 +751,11 @@ actor HistoryStore {
             COALESCE(SUM(CASE WHEN created_at >= ? THEN duration_seconds ELSE 0 END), 0),
             COALESCE(SUM(CASE WHEN created_at >= ? THEN duration_seconds ELSE 0 END), 0),
             COALESCE(SUM(duration_seconds), 0),
-            COUNT(*)
+            COUNT(*),
+            COALESCE(SUM(CASE WHEN COALESCE(feedback.quality_score, 0) < 0 THEN 1 ELSE 0 END), 0)
         FROM recognition_history
+        LEFT JOIN recognition_feedback AS feedback
+            ON feedback.record_id = recognition_history.id
         WHERE \(Self.activeStatusSQLCondition)
         GROUP BY 1
         ORDER BY CASE WHEN model_name = ? THEN 1 ELSE 0 END,
@@ -704,7 +781,8 @@ actor HistoryStore {
                 last7DaysDuration: sqlite3_column_double(stmt, 2),
                 last30DaysDuration: sqlite3_column_double(stmt, 3),
                 allTimeDuration: sqlite3_column_double(stmt, 4),
-                recordCount: Int(sqlite3_column_int(stmt, 5))
+                recordCount: Int(sqlite3_column_int(stmt, 5)),
+                badCount: Int(sqlite3_column_int(stmt, 6))
             ))
         }
         return rows
@@ -999,6 +1077,12 @@ actor HistoryStore {
     private func postDidChangeNotification() {
         Task { @MainActor in
             NotificationCenter.default.post(name: .historyStoreDidChange, object: nil)
+        }
+    }
+
+    private func postFeedbackDidChangeNotification() {
+        Task { @MainActor in
+            NotificationCenter.default.post(name: .historyFeedbackDidChange, object: nil)
         }
     }
 }

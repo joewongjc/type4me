@@ -2,16 +2,6 @@ import AppKit
 import SwiftUI
 
 enum DebugSettingsAvailability {
-    static let defaultsKey = "tf_debug_panel"
-
-    static var defaultEnabled: Bool {
-        #if TYPE4ME_DEV_BUILD
-        true
-        #else
-        false
-        #endif
-    }
-
     static var buildLabel: String {
         #if TYPE4ME_DEV_BUILD
         return "DEV"
@@ -21,8 +11,7 @@ enum DebugSettingsAvailability {
     }
 }
 
-/// Developer diagnostics enabled by default in builds produced by
-/// `scripts/dev-run.sh`. DEV users can hide the entry from Advanced settings.
+/// Developer diagnostics exposed only by DEV builds.
 struct DebugSettingsTab: View, SettingsCardHelpers {
     @State private var recentLog = ""
     @State private var refreshedAt = Date()
@@ -32,11 +21,11 @@ struct DebugSettingsTab: View, SettingsCardHelpers {
 
     var body: some View {
         SettingsSectionHeader(
-            label: "DEBUG",
+            label: "DEVELOPER",
             title: L("调试与诊断", "Debug & Diagnostics"),
             description: L(
-                "查看当前构建、运行环境、系统权限与实时日志，快速定位开发版本中的问题。",
-                "Inspect the current build, runtime, permissions, and recent logs while diagnosing development builds."
+                "查看当前构建、运行环境、系统权限与实时日志，快速定位 Type4Me 的问题。",
+                "Inspect the current build, runtime, permissions, and recent logs while diagnosing Type4Me."
             )
         )
 
