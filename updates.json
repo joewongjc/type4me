@@ -1,6 +1,17 @@
 {
-  "latest": "2.3.0",
+  "latest": "2.4.0",
   "releases": [
+    {
+      "version": "2.4.0",
+      "date": "2026-08-30",
+      "notes": "- 新增 Gemini 3.5 Transcribe 实时语音识别，支持 Smart / Verbatim、语言提示和热词\n- 新增阶跃星辰 WebSocket 实时语音识别，连接准备期间自动缓存并补发音频\n- 录音浮窗新增浅色主题与 macOS 原生毛玻璃材质\n- 首页“我的模式”支持就地管理快捷键与排序\n- Compact 指示条支持显示实时识别文本\n- 历史记录展示实际模式、服务商和模型，并支持识别质量反馈统计\n- 修复语音润色误回答问句或执行命令的问题\n- 改进 Deepgram 自定义模型、兼容端点鉴权与设置交互",
+      "cloud_dmg_url": "https://github.com/joewongjc/type4me/releases/download/v2.4.0/Type4Me-v2.4.0-cloud.dmg",
+      "cloud_dmg_size": 11872688,
+      "cloud_dmg_sha256": "7bf25e5c123858d142b4b81523a282fc76c9fc40ddd8bf578e1b4bf17c96e057",
+      "local_dmg_url": "https://github.com/joewongjc/type4me/releases/download/v2.4.0/Type4Me-v2.4.0-local-apple-silicon.dmg",
+      "local_dmg_size": 716876232,
+      "local_dmg_sha256": "433828da5fe9aeea9f275598479dac902fa5b7d9ace1dea2e4bd72241411744a"
+    },
     {
       "version": "2.3.0",
       "date": "2026-08-26",
