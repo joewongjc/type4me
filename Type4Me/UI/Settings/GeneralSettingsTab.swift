@@ -100,7 +100,9 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
                 SettingsDivider()
                 dockIconRow
                 SettingsDivider()
-                preserveClipboardRow
+                keepOnNormalInputRow
+                SettingsDivider()
+                cancellationRetentionRow
                 SettingsDivider()
                 languageRow
             }
@@ -536,16 +538,57 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
         NotificationCenter.default.post(name: .reviseSettingsDidChange, object: nil)
     }
 
-    private var preserveClipboardRow: some View {
+    private var keepOnNormalInputRow: some View {
         let policy = ClipboardOutputPolicy(rawValue: clipboardOutputPolicyRaw)
             ?? ClipboardOutputPolicy.defaultValue
+        let isRetained = Binding<Bool>(
+            get: { policy.retainsNormalResult },
+            set: { newValue in
+                let currentCancelMode = policy.cancellationMode
+                let newPolicy = ClipboardOutputPolicy.policy(
+                    retainsNormal: newValue,
+                    cancellationMode: currentCancelMode
+                )
+                clipboardOutputPolicyRaw = newPolicy.rawValue
+            }
+        )
+        return settingsToggleRow(
+            L("输入完成后保留在剪贴板", "Keep in Clipboard on Input"),
+            subtitle: L(
+                "关闭时，打字完成后自动恢复录音前的剪贴板内容",
+                "When off, original clipboard content is restored after typing"
+            ),
+            isOn: isRetained
+        )
+    }
+
+    private var cancellationRetentionRow: some View {
+        let policy = ClipboardOutputPolicy(rawValue: clipboardOutputPolicyRaw)
+            ?? ClipboardOutputPolicy.defaultValue
+        let cancelBinding = Binding<String>(
+            get: { policy.cancellationMode.rawValue },
+            set: { raw in
+                guard let mode = ClipboardOutputPolicy.CancellationRetentionMode(rawValue: raw) else { return }
+                let newPolicy = ClipboardOutputPolicy.policy(
+                    retainsNormal: policy.retainsNormalResult,
+                    cancellationMode: mode
+                )
+                clipboardOutputPolicyRaw = newPolicy.rawValue
+            }
+        )
         return settingsOptionRow(
-            L("剪贴板保留", "Clipboard Retention"),
-            subtitle: policy.detail
+            L("取消录音时留存策略", "Retention on Cancellation"),
+            subtitle: L(
+                "中途按 Esc 或点击取消时，是否将说过的语音留存在剪贴板",
+                "Whether to keep spoken text in clipboard when cancelled"
+            ),
+            controlWidth: SettingsControlWidth.standard
         ) {
-            settingsDropdown(
-                selection: $clipboardOutputPolicyRaw,
-                options: ClipboardOutputPolicy.allCases.map { ($0.rawValue, $0.displayName) }
+            settingsInlineSegmentedPicker(
+                selection: cancelBinding,
+                options: ClipboardOutputPolicy.CancellationRetentionMode.allCases.map {
+                    ($0.rawValue, $0.displayName)
+                }
             )
         }
     }

@@ -346,7 +346,7 @@ struct SettingsView: View {
                     )
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(SidebarNavButtonStyle())
         .onHover { isHovering in
             withAnimation(.easeOut(duration: 0.12)) {
                 hoveredTab = isHovering ? tab : nil
@@ -930,5 +930,13 @@ struct SettingsDivider: View {
         Rectangle()
             .fill(Color.black.opacity(0.045))
             .frame(height: 1)
+    }
+}
+
+private struct SidebarNavButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.985 : 1.0)
+            .animation(.spring(response: 0.16, dampingFraction: 0.8), value: configuration.isPressed)
     }
 }
