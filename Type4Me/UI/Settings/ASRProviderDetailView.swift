@@ -199,12 +199,7 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
         .onAppear {
             loadCredentials()
             refreshModelStatus()
-            draftCoordinator?.register(
-                .asrCredentials,
-                isDirty: { isDirty },
-                save: { saveCredentials() },
-                discard: { revertCredentials() }
-            )
+            registerDraftParticipant()
         }
         .onDisappear {
             draftCoordinator?.unregister(.asrCredentials)
@@ -215,7 +210,17 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
             volcResourceHint = nil
             loadCredentials()
             refreshModelStatus()
+            registerDraftParticipant()
         }
+    }
+
+    private func registerDraftParticipant() {
+        draftCoordinator?.register(
+            .asrCredentials,
+            isDirty: { isDirty },
+            save: { saveCredentials() },
+            discard: { revertCredentials() }
+        )
     }
     // MARK: - Header Section
 

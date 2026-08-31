@@ -88,12 +88,7 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
         .padding(.vertical, 2)
         .onAppear {
             loadCredentials()
-            draftCoordinator?.register(
-                .llmCredentials,
-                isDirty: { isDirty },
-                save: { saveCredentials() },
-                discard: { revertCredentials() }
-            )
+            registerDraftParticipant()
         }
         .onDisappear {
             draftCoordinator?.unregister(.llmCredentials)
@@ -103,7 +98,17 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
             llmTestStatus = .idle
             fetchedModelOptions = []
             loadCredentials()
+            registerDraftParticipant()
         }
+    }
+
+    private func registerDraftParticipant() {
+        draftCoordinator?.register(
+            .llmCredentials,
+            isDirty: { isDirty },
+            save: { saveCredentials() },
+            discard: { revertCredentials() }
+        )
     }
     // MARK: - Header Section
 

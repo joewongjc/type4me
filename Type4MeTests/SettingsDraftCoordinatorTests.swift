@@ -67,4 +67,35 @@ final class SettingsDraftCoordinatorTests: XCTestCase {
         coordinator.unregister(.modes)
         XCTAssertTrue(coordinator.saveAll())
     }
+
+    func testReRegisterParticipantOverridesPreviousClosures() {
+        let coordinator = SettingsDraftCoordinator()
+        var savedProvider: String?
+
+        // Initial registration for OpenAI
+        coordinator.register(
+            .llmCredentials,
+            isDirty: { true },
+            save: {
+                savedProvider = "openai"
+                return true
+            },
+            discard: {}
+        )
+
+        // Re-registration when switching to Gemini
+        coordinator.register(
+            .llmCredentials,
+            isDirty: { true },
+            save: {
+                savedProvider = "gemini"
+                return true
+            },
+            discard: {}
+        )
+
+        XCTAssertTrue(coordinator.hasUnsavedChanges)
+        XCTAssertTrue(coordinator.saveAll())
+        XCTAssertEqual(savedProvider, "gemini", "Re-registering participant must override the previous save closure")
+    }
 }

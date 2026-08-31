@@ -57,6 +57,7 @@ struct ModelSettingsTab: View, SettingsCardHelpers {
                                 draftCoordinator: draftCoordinator,
                                 onSetAsDefault: handleSetDefaultASR
                             )
+                            .id(selectedASRProvider)
                         case .llm:
                             LLMProviderDetailView(
                                 provider: selectedLLMProvider,
@@ -64,6 +65,7 @@ struct ModelSettingsTab: View, SettingsCardHelpers {
                                 draftCoordinator: draftCoordinator,
                                 onSetAsDefault: handleSetDefaultLLM
                             )
+                            .id(selectedLLMProvider)
                         }
                     }
                     .padding(.leading, 16)
