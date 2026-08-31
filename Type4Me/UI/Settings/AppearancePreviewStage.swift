@@ -20,6 +20,7 @@ struct AppearancePreviewStage: View {
 
     let presentation: FloatingBarPresentation
     let formattingOptions: TextOutputFormattingOptions
+    var showsGlassCalibrationBackdrop = false
 
     @State private var demoState = DemoState()
     @State private var previewPhase: PreviewPhase = .recording
@@ -92,8 +93,7 @@ struct AppearancePreviewStage: View {
             VStack(spacing: 0) {
                 // Recording Canvas
                 ZStack {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(TF.settingsCardAlt.opacity(0.6))
+                    recordingCanvasBackdrop
 
                     if presentation.showsRecordingIndicator {
                         FloatingBarView(
@@ -108,6 +108,7 @@ struct AppearancePreviewStage: View {
                 }
                 .frame(height: 210)
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .animation(.easeInOut(duration: 0.2), value: showsGlassCalibrationBackdrop)
 
                 SettingsDivider()
                     .padding(.vertical, 10)
@@ -164,6 +165,75 @@ struct AppearancePreviewStage: View {
         }
         .onDisappear {
             demoState.stop()
+        }
+    }
+
+    @ViewBuilder
+    private var recordingCanvasBackdrop: some View {
+        if showsGlassCalibrationBackdrop {
+            HStack(spacing: 0) {
+                calibrationPanel(
+                    label: L("深色", "Dark"),
+                    foreground: .white.opacity(0.55),
+                    background: AnyShapeStyle(
+                        LinearGradient(
+                            colors: [Color(red: 0.03, green: 0.04, blue: 0.06), Color(red: 0.10, green: 0.12, blue: 0.17)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                )
+                calibrationPanel(
+                    label: L("彩色", "Color"),
+                    foreground: .white.opacity(0.62),
+                    background: AnyShapeStyle(
+                        LinearGradient(
+                            colors: [Color(red: 0.14, green: 0.43, blue: 0.94), Color(red: 0.72, green: 0.22, blue: 0.63)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                )
+                calibrationPanel(
+                    label: L("浅色", "Light"),
+                    foreground: .black.opacity(0.42),
+                    background: AnyShapeStyle(
+                        LinearGradient(
+                            colors: [Color.white, Color(red: 0.88, green: 0.91, blue: 0.95)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                )
+            }
+            .transition(.opacity)
+        } else {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(TF.settingsCardAlt.opacity(0.6))
+                .transition(.opacity)
+        }
+    }
+
+    private func calibrationPanel(
+        label: String,
+        foreground: Color,
+        background: AnyShapeStyle
+    ) -> some View {
+        ZStack {
+            Rectangle().fill(background)
+
+            VStack(spacing: 12) {
+                Text(label)
+                    .font(.system(size: 12, weight: .semibold))
+                HStack(spacing: 5) {
+                    ForEach(0..<3, id: \.self) { index in
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(foreground.opacity(index == 1 ? 0.7 : 0.35))
+                            .frame(width: index == 1 ? 28 : 18, height: 4)
+                    }
+                }
+            }
+            .foregroundStyle(foreground)
         }
     }
 

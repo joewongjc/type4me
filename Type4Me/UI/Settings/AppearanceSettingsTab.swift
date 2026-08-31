@@ -45,6 +45,11 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
     @AppStorage(CornerQuotePreference.storageKey)
     private var useCornerQuotes = CornerQuotePreference.defaultValue
 
+    @AppStorage(RecordingGlassTuning.transparencyKey)
+    private var glassTransparency = RecordingGlassTuning.defaultTransparency
+    @AppStorage(RecordingSolidColor.storageKey)
+    private var solidColorHex = RecordingSolidColor.defaultHex
+
     @AppStorage("tf_language")
     private var language = AppLanguage.systemDefault
 
@@ -52,9 +57,20 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
         indicatorStyle == RecordingIndicatorStyle.compact.rawValue
     }
 
+    private var showsGlassCalibrationBackdrop: Bool {
+        theme == RecordingTheme.light.rawValue
+    }
+
+    private var solidColorBinding: Binding<Color> {
+        Binding(
+            get: { RecordingSolidColor(hex: solidColorHex).color },
+            set: { solidColorHex = RecordingSolidColor.hex(from: $0) }
+        )
+    }
+
     private var presentation: FloatingBarPresentation {
         FloatingBarPresentation(
-            theme: RecordingTheme(rawValue: theme) ?? .dark,
+            theme: RecordingTheme(rawValue: theme) ?? RecordingTheme.defaultValue,
             indicatorStyle: RecordingIndicatorStyle(rawValue: indicatorStyle) ?? .regular,
             visualStyle: RecordingVisualStyle(rawValue: visualStyle) ?? .siri,
             showsLiveTranscript: showLiveTranscript,
@@ -63,7 +79,8 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
             showsCancelButton: showCancelButton,
             showsModeName: showModeName,
             showsProviderName: showProviderName,
-            showsModelName: showModelName
+            showsModelName: showModelName,
+            samplesGlassWithinWindow: true
         )
     }
 
@@ -79,7 +96,8 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
         VStack(alignment: .leading, spacing: 0) {
             AppearancePreviewStage(
                 presentation: presentation,
-                formattingOptions: formattingOptions
+                formattingOptions: formattingOptions,
+                showsGlassCalibrationBackdrop: showsGlassCalibrationBackdrop
             )
 
             Spacer().frame(height: 16)
@@ -90,6 +108,8 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
 
             settingsGroupCard(L("录音显示", "Recording Display"), icon: "macwindow") {
                 themeRow
+                SettingsDivider()
+                themeDetailRow
                 SettingsDivider()
                 indicatorStyleRow
                 SettingsDivider()
@@ -120,6 +140,7 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
             }
             .animation(TF.springGentle, value: isCompact)
             .animation(TF.springGentle, value: showTooltips)
+            .animation(TF.springGentle, value: theme)
 
             Spacer().frame(height: 16)
 
@@ -138,6 +159,61 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
     }
 
     // MARK: - Row Builders
+
+    @ViewBuilder
+    private var themeDetailRow: some View {
+        if theme == RecordingTheme.light.rawValue {
+            glassTransparencyRow
+        } else {
+            solidColorRow
+        }
+    }
+
+    private var glassTransparencyRow: some View {
+        glassSliderRow(
+            L("玻璃透明度", "Glass Transparency"),
+            subtitle: L("只调整毛玻璃版本的透明程度", "Adjusts transparency for the Frosted Glass theme only"),
+            value: $glassTransparency
+        )
+    }
+
+    private var solidColorRow: some View {
+        settingsOptionRow(
+            L("背景颜色", "Background Color"),
+            subtitle: L("纯色不使用毛玻璃", "Solid does not use glass"),
+            controlWidth: 150
+        ) {
+            HStack(spacing: 10) {
+                ColorPicker(
+                    L("背景颜色", "Background Color"),
+                    selection: solidColorBinding,
+                    supportsOpacity: false
+                )
+                .labelsHidden()
+                Text(RecordingSolidColor(hex: solidColorHex).hex)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(TF.settingsTextSecondary)
+                    .frame(width: 62, alignment: .trailing)
+            }
+        }
+    }
+
+    private func glassSliderRow(
+        _ label: String,
+        subtitle: String,
+        value: Binding<Double>
+    ) -> some View {
+        settingsOptionRow(label, subtitle: subtitle, controlWidth: 260) {
+            HStack(spacing: 10) {
+                Slider(value: value, in: 0...1)
+                    .controlSize(.small)
+                Text(value.wrappedValue.formatted(.percent.precision(.fractionLength(0))))
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(TF.settingsTextSecondary)
+                    .frame(width: 42, alignment: .trailing)
+            }
+        }
+    }
 
     private var themeRow: some View {
         settingsOptionRow(

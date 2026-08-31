@@ -3,6 +3,35 @@ import SwiftUI
 /// Cached font for text measurement (module-level to avoid generic-type static restriction).
 private let floatingBarFont = NSFont.systemFont(ofSize: 14, weight: .medium)
 
+/// Natural popup height for the complete transcript. Deliberately has no cap:
+/// the hover preview grows with its text instead of becoming a second scroller.
+func transcriptPopupContentHeight(for text: String, width: CGFloat) -> CGFloat {
+    let textWidth = max(1, width - 24)
+    let bounds = (text as NSString).boundingRect(
+        with: NSSize(width: textWidth, height: .greatestFiniteMagnitude),
+        options: [.usesLineFragmentOrigin, .usesFontLeading],
+        attributes: [.font: floatingBarFont]
+    )
+    return max(1, ceil(bounds.height) + 24)
+}
+
+func recordingBaseCapsuleWidth(textWidth: CGFloat, showsCancelButton: Bool) -> CGFloat {
+    let minimumWidth = showsCancelButton
+        ? TF.barWidthCompact
+        : TF.recordingSingleButtonMinimumWidth
+    let chromeWidth = showsCancelButton
+        ? TF.recordingChromeWidth
+        : TF.recordingSingleButtonChromeWidth
+    return max(minimumWidth, textWidth + chromeWidth)
+}
+
+func recordingModeHintWidth(textWidth: CGFloat) -> CGFloat {
+    min(
+        TF.barWidth + TF.recordingTooltipOverhang * 2,
+        max(24, textWidth + 24)
+    )
+}
+
 private enum FloatingBarTopOverlay: Equatable {
     case transcript
     case action(RecordingControlAction)
@@ -56,11 +85,11 @@ func recordingActionHorizontalOffset(
     } else if action == .finish {
         distanceFromCenter = capsuleWidth / 2
             - TF.recordingLeadingInset
-            - TF.recordingFinishControlSize / 2
+            - TF.recordingControlSlotSize / 2
     } else {
         distanceFromCenter = capsuleWidth / 2
             - TF.recordingTrailingInset
-            - TF.recordingCancelControlSize / 2
+            - TF.recordingControlSlotSize / 2
     }
     return action == .finish ? -distanceFromCenter : distanceFromCenter
 }
@@ -91,7 +120,7 @@ protocol FloatingBarState: AnyObject, Observable {
 }
 
 struct FloatingBarPresentation: Equatable {
-    var theme: RecordingTheme = .dark
+    var theme: RecordingTheme = RecordingTheme.defaultValue
     var indicatorStyle: RecordingIndicatorStyle = .regular
     var visualStyle: RecordingVisualStyle = .siri
     var showsLiveTranscript: Bool = true
@@ -101,13 +130,14 @@ struct FloatingBarPresentation: Equatable {
     var showsModeName: Bool = RecordingMetadataDisplayPreference.showModeNameDefault
     var showsProviderName: Bool = RecordingMetadataDisplayPreference.showProviderNameDefault
     var showsModelName: Bool = RecordingMetadataDisplayPreference.showModelNameDefault
+    var samplesGlassWithinWindow: Bool = false
 
     var showsRecordingIndicator: Bool {
         true
     }
 }
 
-/// Dark or Light themed floating transcription bar.
+/// Frosted-glass or solid-color floating transcription bar.
 ///
 /// Design: state changes are immediate; recording starts directly in the full
 /// listening UI even while the audio service is still preparing internally.
@@ -144,7 +174,10 @@ struct FloatingBarView<S: FloatingBarState>: View {
     @State private var showsModeHint = false
     @State private var modeHintTask: Task<Void, Never>?
     @State private var recordingActionLocked = false
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @AppStorage(RecordingTheme.storageKey) private var theme = RecordingTheme.defaultValue
+    @AppStorage(RecordingSolidColor.storageKey)
+    private var solidColorHex = RecordingSolidColor.defaultHex
     @AppStorage(RecordingIndicatorStyle.storageKey) private var indicatorStyle = RecordingIndicatorStyle.defaultValue
     @AppStorage(LiveTranscriptDisplayPreference.storageKey) private var showLiveTranscript = LiveTranscriptDisplayPreference.defaultValue
     @AppStorage("tf_hoverTranscriptPreview") private var hoverTranscriptPreview = true
@@ -161,10 +194,20 @@ struct FloatingBarView<S: FloatingBarState>: View {
 
     // MARK: - Presentation Resolution
 
-    private var effectiveTheme: RecordingTheme {
+    private var selectedTheme: RecordingTheme {
         presentationOverride?.theme
             ?? RecordingTheme(rawValue: theme.rawValue)
-            ?? .dark
+            ?? RecordingTheme.defaultValue
+    }
+
+    /// Components still use the existing light/dark palette contract, while
+    /// the selected theme now describes surface type (glass or solid). For a
+    /// custom solid color, derive foreground contrast from its luminance.
+    private var effectiveTheme: RecordingTheme {
+        guard !selectedTheme.usesGlass else { return .light }
+        return RecordingSolidColor(hex: solidColorHex).usesDarkForeground
+            ? .light
+            : .dark
     }
 
     private var effectiveIndicatorStyle: RecordingIndicatorStyle {
@@ -324,7 +367,10 @@ struct FloatingBarView<S: FloatingBarState>: View {
 
     private var baseRecordingWidth: CGFloat {
         let placeholder = state.activityKind == .revise ? L("说说你想怎么改", "Say how to revise") : L("倾听中", "Listening")
-        return max(TF.barWidthCompact, measureText(placeholder) + currentRecordingChromeWidth)
+        return recordingBaseCapsuleWidth(
+            textWidth: measureText(placeholder),
+            showsCancelButton: effectiveShowsCancelButton
+        )
     }
 
     /// Monotonic target width for the recording capsule during a live-transcript
@@ -428,10 +474,14 @@ struct FloatingBarView<S: FloatingBarState>: View {
                 topOverlay(overlay)
             }
 
-            if shouldRenderCapsule {
-                capsuleBar
-                    .id("floating_capsule_bar")
-            }
+            // Keep the capsule subtree mounted while the panel is ordered out.
+            // This lets SwiftUI, AppKit glass, and the Metal orb initialize at
+            // launch instead of competing for the first visible recording frame.
+            capsuleBar
+                .id("floating_capsule_bar")
+                .opacity(shouldRenderCapsule ? 1 : 0)
+                .allowsHitTesting(shouldRenderCapsule)
+                .frame(maxWidth: .infinity, alignment: .center)
         }
         .padding(TF.floatingPanelShadowInset)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
@@ -460,6 +510,12 @@ struct FloatingBarView<S: FloatingBarState>: View {
             } else {
                 recordingPeakWidth = baseRecordingWidth
             }
+        }
+        .onChange(of: effectiveShowsCancelButton) { _, _ in
+            // Keep the Settings preview and a currently visible recording in
+            // sync with the symmetric one-/two-button geometry.
+            recordingPeakWidth = baseRecordingWidth
+            updateRecordingPeakWidthIfNeeded()
         }
         .onChange(of: effectiveIndicatorStyle) { _, newStyle in
             if newStyle == .regular {
@@ -490,13 +546,46 @@ struct FloatingBarView<S: FloatingBarState>: View {
         barContent
             .frame(width: capsuleWidth, height: capsuleHeight)
             .clipShape(barShape)
-            .background {
-                capsuleBackground
+            .modifier(
+                RecordingSurfaceModifier(
+                    cornerRadius: barCornerRadius,
+                    theme: selectedTheme,
+                    blendingMode: presentationOverride?.samplesGlassWithinWindow == true
+                        ? .withinWindow
+                        : .behindWindow
+                )
+            )
+            .overlay {
+                if state.barPhase == .error {
+                    LinearGradient(
+                        colors: [TF.settingsAccentRed.opacity(0.16), .clear],
+                        startPoint: .leading,
+                        endPoint: UnitPoint(x: 0.45, y: 0.5)
+                    )
                     .clipShape(barShape)
+                    .allowsHitTesting(false)
+                }
             }
             .overlay {
                 capsuleBorder
             }
+            // AppKit's panel shadow is intentionally disabled because it would
+            // follow the rectangular NSPanel rather than the animated capsule.
+            // A tight contact shadow defines the glass edge; the wider ambient
+            // shadow separates the translucent surface from bright content
+            // underneath without turning the rim into a heavy outline.
+            .shadow(
+                color: capsuleContactShadowColor,
+                radius: TF.recordingCapsuleContactShadowRadius,
+                x: 0,
+                y: TF.recordingCapsuleContactShadowYOffset
+            )
+            .shadow(
+                color: capsuleAmbientShadowColor,
+                radius: TF.recordingCapsuleAmbientShadowRadius,
+                x: 0,
+                y: TF.recordingCapsuleAmbientShadowYOffset
+            )
             // Critically damped (dampingFraction 1.0) so the width never
             // overshoots and settles back leftward between characters. An
             // underdamped spring makes the right edge/cancel button wiggle
@@ -556,10 +645,15 @@ struct FloatingBarView<S: FloatingBarState>: View {
     @ViewBuilder
     private var regularPhaseContent: some View {
         ZStack {
+            // Deliberately unconditional: the MTKView stays alive across phase
+            // changes and is already prepared before the first visible frame.
+            recordingContent
+                .opacity(state.barPhase == .preparing || state.barPhase == .recording ? 1 : 0)
+                .allowsHitTesting(state.barPhase == .preparing || state.barPhase == .recording)
+
             switch state.barPhase {
-            case .preparing, .recording:
-                recordingContent
-                    .transition(.opacity.animation(.easeInOut(duration: 0.18)))
+            case .preparing, .recording, .hidden:
+                EmptyView()
             case .processing:
                 processingContent
                     .transition(.textSwap.animation(.easeInOut(duration: 0.15)))
@@ -572,8 +666,6 @@ struct FloatingBarView<S: FloatingBarState>: View {
             case .error:
                 errorContent
                     .transition(.opacity.animation(.easeInOut(duration: 0.18)))
-            case .hidden:
-                EmptyView()
             }
         }
         .animation(.easeInOut(duration: 0.15), value: state.barPhase)
@@ -749,16 +841,25 @@ struct FloatingBarView<S: FloatingBarState>: View {
 
     private var recordingContent: some View {
         HStack(spacing: TF.recordingControlGap) {
+            // Match the 1.8/1.9 layout model: only controls that are actually
+            // visible participate in the row. Equal slots keep the text lane
+            // centered with two controls; removing cancel also removes its
+            // entire slot instead of leaving a large blank area on the right.
             recordingButton(.finish)
+                .frame(width: TF.recordingControlSlotSize)
 
             recordingText
+                .padding(
+                    .trailing,
+                    effectiveShowsCancelButton ? 0 : TF.recordingSingleButtonMirroredTextBuffer
+                )
 
             if effectiveShowsCancelButton {
                 recordingButton(.cancel)
+                    .frame(width: TF.recordingControlSlotSize)
             }
         }
-        .padding(.leading, TF.recordingLeadingInset)
-        .padding(.trailing, TF.recordingTrailingInset)
+        .padding(.horizontal, TF.recordingEdgeInset)
     }
 
     private var isLiveTranscriptTrailingAligned: Bool {
@@ -766,11 +867,9 @@ struct FloatingBarView<S: FloatingBarState>: View {
     }
 
     private var recordingText: some View {
-        // The text is an overlay on a flexible Color.clear so it never
-        // participates in the HStack layout: it can never push the cancel
-        // button, and the cancel button can never overlap it. The clear region
-        // is exactly the space between the two controls; the text is masked to
-        // it, so overflow only fades on the leading edge.
+        // The text stays inside a flexible lane between the controls. This is
+        // the spatial model used by the stable 1.8/1.9 bar: the row's real
+        // contents determine the available lane instead of phantom controls.
         Color.clear
             .overlay(alignment: isLiveTranscriptTrailingAligned ? .trailing : .center) {
                 recordingTextContent
@@ -785,8 +884,14 @@ struct FloatingBarView<S: FloatingBarState>: View {
                             startPoint: .leading,
                             endPoint: .trailing
                         )
-                        .frame(width: 14)
+                        .frame(width: TF.recordingTranscriptFadeWidth)
                         Rectangle()
+                        LinearGradient(
+                            colors: [.white, .clear],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                        .frame(width: TF.recordingTranscriptFadeWidth)
                     }
                 } else {
                     Rectangle()
@@ -831,7 +936,8 @@ struct FloatingBarView<S: FloatingBarState>: View {
                     style: recordingVisualStyle,
                     audioEnergy: state.audioLevel.current,
                     isHovered: hoveredAction == .finish,
-                    isPressed: pressedAction == .finish || recordingActionLocked
+                    isPressed: pressedAction == .finish || recordingActionLocked,
+                    isActive: state.barPhase == .preparing || state.barPhase == .recording
                 )
                 .id("recording_orb_button")
             } else {
@@ -999,31 +1105,29 @@ struct FloatingBarView<S: FloatingBarState>: View {
 
     // MARK: - Background & Border
 
-    private var capsuleBackground: some View {
-        RecordingGlassSurface(
-            cornerRadius: barCornerRadius,
-            theme: effectiveTheme,
-            tintOpacity: effectiveTheme == .light ? 0.68 : 0.32
-        )
-        .overlay {
-            if state.barPhase == .error {
-                LinearGradient(
-                    colors: [TF.settingsAccentRed.opacity(0.16), .clear],
-                    startPoint: .leading,
-                    endPoint: UnitPoint(x: 0.45, y: 0.5)
-                )
-            }
-        }
-    }
-
     @ViewBuilder
     private var capsuleBorder: some View {
         switch state.barPhase {
         case .preparing, .recording, .processing, .recovering:
-            barShape.strokeBorder(
-                effectiveTheme == .light ? TF.recordingLightGlassRim : TF.recordingGlassRim,
-                lineWidth: 0.8
-            )
+            ZStack {
+                // Neutral separation remains visible when the glass is over a
+                // white window, where the highlight portion of the rim alone
+                // would disappear.
+                barShape.strokeBorder(
+                    Color.black.opacity(effectiveTheme == .light ? 0.10 : 0.16),
+                    lineWidth: TF.recordingCapsuleRimWidth
+                )
+
+                barShape.strokeBorder(
+                    effectiveTheme == .light ? TF.recordingLightGlassRim : TF.recordingGlassRim,
+                    lineWidth: TF.recordingCapsuleRimWidth
+                )
+                .opacity(
+                    reduceTransparency
+                        ? 1.0
+                        : (effectiveTheme == .light ? 0.72 : 0.52)
+                )
+            }
         case .done:
             barShape.strokeBorder(feedbackBorderColor, lineWidth: 0.5)
         case .error:
@@ -1031,6 +1135,14 @@ struct FloatingBarView<S: FloatingBarState>: View {
         case .hidden:
             EmptyView()
         }
+    }
+
+    private var capsuleContactShadowColor: Color {
+        Color.black.opacity(effectiveTheme == .light ? 0.18 : 0.30)
+    }
+
+    private var capsuleAmbientShadowColor: Color {
+        Color.black.opacity(effectiveTheme == .light ? 0.18 : 0.26)
     }
 
     private var feedbackBorderColor: Color {
@@ -1115,15 +1227,13 @@ struct FloatingBarView<S: FloatingBarState>: View {
         switch overlay {
         case .transcript:
             return NSSize(
-                width: TF.transcriptPopupWidth,
+                width: capsuleWidth,
                 height: transcriptPopupHeight
             )
         case .mode:
-            let font = NSFont.systemFont(ofSize: 14, weight: .semibold)
-            let maxWidth = TF.barWidth + TF.recordingTooltipOverhang * 2
             return NSSize(
-                width: min(maxWidth, measureText(recordingMetadataText ?? "", font: font) + 24),
-                height: ceil(font.boundingRectForFont.height) + 18
+                width: modeHintWidth,
+                height: ceil(modeHintFont.boundingRectForFont.height) + 18
             )
         case .action(let action):
             return actionHintSize(action)
@@ -1131,15 +1241,10 @@ struct FloatingBarView<S: FloatingBarState>: View {
     }
 
     private var transcriptPopupHeight: CGFloat {
-        let textWidth = TF.transcriptPopupWidth - 24
-        let bounds = (state.transcriptionText as NSString).boundingRect(
-            with: NSSize(width: textWidth, height: .greatestFiniteMagnitude),
-            options: [.usesLineFragmentOrigin, .usesFontLeading],
-            attributes: [.font: floatingBarFont]
+        transcriptPopupContentHeight(
+            for: state.transcriptionText,
+            width: capsuleWidth
         )
-        // TranscriptPopup adds 12 pt vertical padding on both sides and a
-        // one-point scroll anchor after the text.
-        return min(TF.transcriptPopupMaxHeight, max(1, ceil(bounds.height) + 25))
     }
 
     private func actionHintSize(_ action: RecordingControlAction) -> NSSize {
@@ -1186,13 +1291,13 @@ struct FloatingBarView<S: FloatingBarState>: View {
         case .transcript:
             TranscriptPopup(
                 text: state.transcriptionText,
-                height: transcriptPopupHeight,
-                theme: effectiveTheme,
+                width: capsuleWidth,
+                theme: selectedTheme,
+                foregroundTheme: effectiveTheme,
                 onHoverChanged: updateTranscriptHover
             )
         case .mode:
             hintBubble(text: recordingMetadataText ?? "")
-                .transaction { $0.animation = nil }
         case .action(.finish):
             alignedActionHint(.finish)
         case .action(.cancel):
@@ -1266,7 +1371,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
         .lineLimit(1)
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
-        .background(FrostedGlassBubbleBackground(theme: effectiveTheme))
+        .background(RecordingSurfaceBubbleBackground(theme: selectedTheme))
         .frame(maxWidth: TF.recordingTooltipMaxWidth)
         .fixedSize(horizontal: true, vertical: false)
         .shadow(color: Color.black.opacity(effectiveTheme == .light ? 0.05 : 0.20), radius: 3, x: 0, y: 1.5)
@@ -1278,12 +1383,25 @@ struct FloatingBarView<S: FloatingBarState>: View {
             .foregroundStyle(effectiveTheme == .light ? TF.floatingTextLight : TF.floatingText)
             .lineLimit(1)
             .truncationMode(.tail)
+            .frame(width: max(1, modeHintWidth - 24), alignment: .center)
             .padding(.horizontal, 12)
             .padding(.vertical, 9)
-            .frame(maxWidth: TF.barWidth + TF.recordingTooltipOverhang * 2)
-            .background(FrostedGlassBubbleBackground(theme: effectiveTheme))
-            .fixedSize(horizontal: true, vertical: false)
+            .background(RecordingSurfaceBubbleBackground(theme: selectedTheme))
             .shadow(color: Color.black.opacity(effectiveTheme == .light ? 0.05 : 0.20), radius: 3, x: 0, y: 1.5)
+            .animation(
+                .spring(response: TF.recordingCapsuleSpringResponse, dampingFraction: 1.0),
+                value: modeHintWidth
+            )
+    }
+
+    private var modeHintFont: NSFont {
+        NSFont.systemFont(ofSize: 14, weight: .semibold)
+    }
+
+    private var modeHintWidth: CGFloat {
+        recordingModeHintWidth(
+            textWidth: measureText(recordingMetadataText ?? "", font: modeHintFont)
+        )
     }
 
     private func showModeHint() {
@@ -1348,41 +1466,71 @@ struct FloatingBarView<S: FloatingBarState>: View {
     }
 }
 
-/// A dark or light HUD material that samples behind the transparent panel.
-private struct RecordingGlassSurface: View {
+/// Selects either native AppKit glass or the user-defined solid surface without
+/// changing the content hierarchy, so live theme changes remain immediate.
+private struct RecordingSurfaceModifier: ViewModifier {
     let cornerRadius: CGFloat
     var theme: RecordingTheme = .dark
-    let tintOpacity: Double
+    var blendingMode: NSVisualEffectView.BlendingMode = .behindWindow
 
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @AppStorage(RecordingGlassTuning.transparencyKey)
+    private var transparency = RecordingGlassTuning.defaultTransparency
+    @AppStorage(RecordingSolidColor.storageKey)
+    private var solidColorHex = RecordingSolidColor.defaultHex
 
     private var shape: RoundedRectangle {
         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
     }
 
-    var body: some View {
-        if reduceTransparency {
-            theme == .light ? TF.floatingBackgroundLight : TF.floatingBackground
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if !theme.usesGlass {
+            content.background(
+                RecordingSolidColor(hex: solidColorHex).color,
+                in: shape
+            )
+        } else if reduceTransparency {
+            content.background(
+                TF.floatingBackgroundLight,
+                in: shape
+            )
         } else {
-            ZStack {
-                VisualEffectBlur(
-                    cornerRadius: cornerRadius,
-                    appearanceName: theme == .light ? .aqua : .darkAqua
-                )
-                .allowsHitTesting(false)
-
-                if theme == .light {
-                    Color.white.opacity(tintOpacity)
-                } else {
-                    Color.black.opacity(tintOpacity)
+            content.background {
+                ZStack {
+                    VisualEffectBlur(
+                        cornerRadius: cornerRadius,
+                        blendingMode: blendingMode,
+                        appearanceName: .aqua,
+                        blurEffect: .frosted,
+                        transparency: transparency,
+                        tintColor: nil
+                    )
                 }
+                .clipShape(shape)
+                .allowsHitTesting(false)
             }
-            .clipShape(shape)
         }
     }
 }
 
-private struct FrostedGlassBubbleBackground: View {
+/// Background-only adapter for transient bubbles using the same stable material.
+private struct RecordingSurface: View {
+    let cornerRadius: CGFloat
+    var theme: RecordingTheme = .dark
+
+    var body: some View {
+        Color.clear
+            .modifier(
+                RecordingSurfaceModifier(
+                    cornerRadius: cornerRadius,
+                    theme: theme
+                )
+            )
+    }
+}
+
+private struct RecordingSurfaceBubbleBackground: View {
     let cornerRadius: CGFloat = TF.transcriptPopupCorner
     var theme: RecordingTheme = .dark
 
@@ -1390,15 +1538,24 @@ private struct FrostedGlassBubbleBackground: View {
         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
     }
 
+    @AppStorage(RecordingSolidColor.storageKey)
+    private var solidColorHex = RecordingSolidColor.defaultHex
+
+    private var borderColor: Color {
+        guard !theme.usesGlass else { return TF.floatingBorderLight }
+        return RecordingSolidColor(hex: solidColorHex).usesDarkForeground
+            ? Color.black.opacity(0.14)
+            : Color.white.opacity(0.18)
+    }
+
     var body: some View {
-        RecordingGlassSurface(
+        RecordingSurface(
             cornerRadius: cornerRadius,
-            theme: theme,
-            tintOpacity: theme == .light ? 0.75 : 0.40
+            theme: theme
         )
         .overlay {
             shape.strokeBorder(
-                theme == .light ? TF.floatingBorderLight : TF.floatingBorder,
+                borderColor,
                 lineWidth: 0.5
             )
         }
@@ -1407,36 +1564,24 @@ private struct FrostedGlassBubbleBackground: View {
 
 private struct TranscriptPopup: View {
     let text: String
-    let height: CGFloat
+    let width: CGFloat
     var theme: RecordingTheme = .dark
+    var foregroundTheme: RecordingTheme = .dark
     let onHoverChanged: (Bool) -> Void
 
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView(.vertical) {
-                Text(text)
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(theme == .light ? TF.floatingTextLight : TF.floatingText)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(12)
-
-                Color.clear
-                    .frame(height: 1)
-                    .id("transcript-end")
-            }
-            .scrollIndicators(.hidden)
-            .frame(width: TF.transcriptPopupWidth, height: height)
-            .background(FrostedGlassBubbleBackground(theme: theme))
+        Text(text)
+            .font(.system(size: 14, weight: .medium))
+            .foregroundStyle(foregroundTheme == .light ? TF.floatingTextLight : TF.floatingText)
+            .frame(width: max(1, width - 24), alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(12)
+            .background(RecordingSurfaceBubbleBackground(theme: theme))
             .overlay {
                 FloatingBarHoverTracker(onHoverChanged: onHoverChanged)
             }
             .clipShape(RoundedRectangle(cornerRadius: TF.transcriptPopupCorner, style: .continuous))
-            .shadow(color: Color.black.opacity(theme == .light ? 0.05 : 0.20), radius: 4, x: 0, y: 2)
-            .onAppear { proxy.scrollTo("transcript-end", anchor: .bottom) }
-            .onChange(of: text) { _, _ in
-                proxy.scrollTo("transcript-end", anchor: .bottom)
-            }
-        }
+            .shadow(color: Color.black.opacity(foregroundTheme == .light ? 0.05 : 0.20), radius: 4, x: 0, y: 2)
     }
 }
 

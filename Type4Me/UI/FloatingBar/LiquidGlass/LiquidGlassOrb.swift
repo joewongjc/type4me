@@ -19,14 +19,17 @@ private final class LiquidOrbPipelineManager {
 
     let device: MTLDevice?
     let pipeline: MTLRenderPipelineState?
+    let commandQueue: MTLCommandQueue?
 
     private init() {
         guard let device = MTLCreateSystemDefaultDevice() else {
             self.device = nil
             self.pipeline = nil
+            self.commandQueue = nil
             return
         }
         self.device = device
+        self.commandQueue = device.makeCommandQueue()
         do {
             let library = try device.makeLibrary(source: orbMetalShaderSource, options: nil)
             guard let vertex = library.makeFunction(name: "vs_main"),
@@ -51,6 +54,16 @@ private final class LiquidOrbPipelineManager {
     }
 }
 
+extension LiquidGlassOrb {
+    /// Compile the embedded shader and create its render pipeline after launch,
+    /// before the first recording indicator needs to draw it on the main thread.
+    static func prewarmRenderer() {
+        DispatchQueue.global(qos: .userInitiated).async {
+            _ = LiquidOrbPipelineManager.shared.pipeline
+        }
+    }
+}
+
 // MARK: - Metal MTKView Renderer
 
 private final class LiquidOrbRenderer: NSObject, MTKViewDelegate {
@@ -68,7 +81,7 @@ private final class LiquidOrbRenderer: NSObject, MTKViewDelegate {
     init?(view: MTKView, preset: OrbPreset) {
         guard let device = LiquidOrbPipelineManager.shared.device,
               let pipeline = LiquidOrbPipelineManager.shared.pipeline,
-              let queue = device.makeCommandQueue() else {
+              let queue = LiquidOrbPipelineManager.shared.commandQueue else {
             return nil
         }
         self.commandQueue = queue
@@ -200,6 +213,7 @@ struct LiquidGlassOrb: View {
     let audioEnergy: Float
     var isHovered: Bool = false
     var isPressed: Bool = false
+    var isActive: Bool = true
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -210,7 +224,7 @@ struct LiquidGlassOrb: View {
             LiquidOrbMetalSurface(
                 preset: style.preset,
                 audioEnergy: max(0.0, min(1.0, audioEnergy)),
-                isAnimated: style.isAnimated && !reduceMotion
+                isAnimated: isActive && style.isAnimated && !reduceMotion
             )
             .frame(width: orbSize, height: orbSize)
             .clipShape(Circle())

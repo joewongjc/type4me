@@ -176,6 +176,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         CJKSpacingMode.migrateIfNeeded()
         ClipboardOutputPolicy.migrateIfNeeded()
         RecordingVisualStyle.migrateLegacyPreferenceIfNeeded()
+        RecordingGlassTuning.migrateLegacyPreferencesIfNeeded()
+        LiquidGlassOrb.prewarmRenderer()
 
         // Sync hotwords to Volcengine cloud table (async, non-blocking)
         VolcHotwordSyncManager.syncIfNeeded()

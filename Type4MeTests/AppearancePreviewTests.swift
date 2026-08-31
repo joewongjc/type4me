@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 @testable import Type4Me
 
@@ -9,10 +10,12 @@ final class AppearancePreviewTests: XCTestCase {
         XCTAssertEqual(RecordingTheme.dark.rawValue, "dark")
         XCTAssertEqual(RecordingTheme.light.rawValue, "light")
         XCTAssertEqual(RecordingTheme.storageKey, "tf_recordingTheme")
-        XCTAssertEqual(RecordingTheme.defaultValue, .dark)
+        XCTAssertEqual(RecordingTheme.defaultValue, .light)
 
-        XCTAssertEqual(RecordingTheme.dark.displayName, L("暗色", "Dark"))
-        XCTAssertEqual(RecordingTheme.light.displayName, L("明亮", "Light"))
+        XCTAssertEqual(RecordingTheme.dark.displayName, L("纯色", "Solid"))
+        XCTAssertEqual(RecordingTheme.light.displayName, L("毛玻璃版本", "Frosted Glass"))
+        XCTAssertFalse(RecordingTheme.dark.usesGlass)
+        XCTAssertTrue(RecordingTheme.light.usesGlass)
     }
 
     func testRecordingIndicatorStyle_allCases() {
@@ -50,7 +53,7 @@ final class AppearancePreviewTests: XCTestCase {
 
     func testFloatingBarPresentation_defaults() {
         let presentation = FloatingBarPresentation()
-        XCTAssertEqual(presentation.theme, .dark)
+        XCTAssertEqual(presentation.theme, .light)
         XCTAssertEqual(presentation.indicatorStyle, .regular)
         XCTAssertEqual(presentation.visualStyle, .siri)
         XCTAssertTrue(presentation.showsLiveTranscript)
@@ -70,6 +73,117 @@ final class AppearancePreviewTests: XCTestCase {
         XCTAssertTrue(AppearancePreferenceDefaults.showCancelButtonDefault)
     }
 
+    func testRecordingGlassTuning_defaultsMatchCurrentSurface() {
+        let tuning = RecordingGlassTuning()
+
+        XCTAssertEqual(tuning.transparency, 0.10)
+        XCTAssertEqual(tuning.materialOpacity, 0.90)
+    }
+
+    func testRecordingGlassTuning_clampsCompositingValues() {
+        let tuning = RecordingGlassTuning(transparency: 1.4)
+
+        XCTAssertEqual(tuning.transparency, 1)
+        XCTAssertEqual(tuning.materialOpacity, 0)
+    }
+
+    func testRecordingSolidColorDefaultsToWhiteAndAdaptsContrast() {
+        let defaultColor = RecordingSolidColor(hex: RecordingSolidColor.defaultHex)
+        XCTAssertEqual(defaultColor.hex, "#FFFFFF")
+        XCTAssertTrue(defaultColor.usesDarkForeground)
+
+        let light = RecordingSolidColor(hex: "#F6F6F8")
+        XCTAssertEqual(light.hex, "#F6F6F8")
+        XCTAssertTrue(light.usesDarkForeground)
+
+        XCTAssertEqual(
+            RecordingSolidColor(hex: "not-a-color").hex,
+            RecordingSolidColor.defaultHex
+        )
+    }
+
+    func testRecordingGlassTuning_migratesLegacyOpacityToTransparency() throws {
+        let suiteName = "Type4MeTests.RecordingGlassTuning.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        defaults.set(0.7, forKey: "tf_recordingGlassMaterialOpacity")
+
+        RecordingGlassTuning.migrateLegacyPreferencesIfNeeded(userDefaults: defaults)
+
+        XCTAssertEqual(
+            defaults.double(forKey: RecordingGlassTuning.transparencyKey),
+            0.3,
+            accuracy: 0.001
+        )
+    }
+
+    func testVisualEffectBlurConfigurationAppliesNativeGlassControls() {
+        let visualEffect = VisualEffectBlur(
+            cornerRadius: 17,
+            blendingMode: .withinWindow,
+            appearanceName: .aqua,
+            blurEffect: .frosted,
+            transparency: 0.58,
+            tintColor: NSColor(white: 0.25, alpha: 0.4)
+        )
+        let view = RecordingGlassEffectHostView()
+
+        visualEffect.configure(view)
+
+        XCTAssertEqual(view.alphaValue, 0.42, accuracy: 0.001)
+        XCTAssertEqual(view.layer?.cornerRadius, 17)
+        XCTAssertEqual(view.appearance?.name, .aqua)
+        XCTAssertEqual(view.appliedBlurEffect, .frosted)
+        XCTAssertEqual(view.appliedTintColor, NSColor(white: 0.25, alpha: 0.4))
+        if #available(macOS 26.0, *) {
+            XCTAssertTrue(view.usesNativeLiquidGlass)
+            XCTAssertEqual(view.nativeGlassStyle, .regular)
+            XCTAssertEqual(view.nativeGlassTintColor, NSColor(white: 0.25, alpha: 0.4))
+        }
+
+        VisualEffectBlur(
+            blurEffect: .clear,
+            transparency: 0.58
+        ).configure(view)
+        XCTAssertEqual(view.appliedBlurEffect, .clear)
+        XCTAssertEqual(view.alphaValue, 0.42, accuracy: 0.001)
+        XCTAssertNil(view.appliedTintColor)
+        XCTAssertEqual(view.subviews.count, 1)
+        if #available(macOS 26.0, *) {
+            XCTAssertEqual(view.nativeGlassStyle, .clear)
+            XCTAssertNil(view.nativeGlassTintColor)
+        }
+    }
+
+    func testNativeGlassStyleUpdatesReuseHostAndPreserveCompositorInputs() {
+        guard #available(macOS 26.0, *) else { return }
+
+        let view = RecordingGlassEffectHostView()
+        let combinations: [(RecordingGlassBlurEffect, Double, CGFloat, CGFloat)] = [
+            (.clear, 0.15, 0.2, 0.35),
+            (.frosted, 0.65, 0.8, 0.75),
+        ]
+
+        for (blurEffect, transparency, luminance, tintStrength) in combinations {
+            let tint = NSColor(white: luminance, alpha: tintStrength)
+            VisualEffectBlur(
+                cornerRadius: 22,
+                blurEffect: blurEffect,
+                transparency: transparency,
+                tintColor: tint
+            ).configure(view)
+
+            XCTAssertEqual(
+                view.nativeGlassStyle,
+                blurEffect == .frosted ? .regular : .clear
+            )
+            XCTAssertEqual(view.alphaValue, 1 - transparency, accuracy: 0.001)
+            XCTAssertEqual(view.nativeGlassTintColor, tint)
+            XCTAssertEqual(view.layer?.cornerRadius, 22)
+            XCTAssertEqual(view.subviews.count, 1)
+        }
+    }
+
     func testRecordingMetadataDisplayPreferenceDefaults() {
         XCTAssertTrue(RecordingMetadataDisplayPreference.showModeNameDefault)
         XCTAssertFalse(RecordingMetadataDisplayPreference.showProviderNameDefault)
@@ -77,14 +191,64 @@ final class AppearancePreviewTests: XCTestCase {
     }
 
     func testRecordingChromeWidthDesignTokens() {
-        // Dual-button chrome: Finish(45) + Cancel(35) + LeadingInset(5) + TrailingInset(10) + Gap*2(16) + Safety(16) = 127
-        XCTAssertEqual(TF.recordingChromeWidth, 127)
-        // Single-button chrome: Finish(45) + LeadingInset(5) + TrailingInset(10) + Gap(8) + Safety(16) = 84
-        XCTAssertEqual(TF.recordingSingleButtonChromeWidth, 84)
-        // Difference is exactly one cancel control size (35) plus one control gap (8)
+        // Both controls use 45pt layout slots, even though cancel draws a 35pt
+        // circle. Equal slots keep the middle text lane centered.
+        XCTAssertEqual(TF.recordingControlSlotSize, 45)
+        XCTAssertEqual(TF.recordingChromeWidth, 138)
+        // With cancel hidden, its slot disappears; a 22pt trailing buffer
+        // mirrors the orb-side gap plus the 14pt text fade guard.
+        XCTAssertEqual(TF.recordingSingleButtonMirroredTextBuffer, 22)
+        XCTAssertEqual(TF.recordingSingleButtonChromeWidth, 107)
+        XCTAssertEqual(TF.recordingSingleButtonMinimumWidth, 110)
+        XCTAssertEqual(TF.recordingTranscriptFadeWidth, 14)
+    }
+
+    func testSingleButtonRecordingWidthRemovesTheMissingControlsSlot() {
+        let listeningTextWidth: CGFloat = 42
+        let dualButtonWidth = recordingBaseCapsuleWidth(
+            textWidth: listeningTextWidth,
+            showsCancelButton: true
+        )
+        let singleButtonWidth = recordingBaseCapsuleWidth(
+            textWidth: listeningTextWidth,
+            showsCancelButton: false
+        )
+
+        XCTAssertEqual(dualButtonWidth, 180)
+        XCTAssertEqual(singleButtonWidth, 149)
+        XCTAssertLessThan(singleButtonWidth, dualButtonWidth)
         XCTAssertEqual(
-            TF.recordingChromeWidth - TF.recordingSingleButtonChromeWidth,
-            TF.recordingCancelControlSize + TF.recordingControlGap
+            singleButtonWidth - listeningTextWidth,
+            TF.recordingSingleButtonChromeWidth
+        )
+
+        let textLaneWidth = singleButtonWidth
+            - TF.recordingEdgeInset * 2
+            - TF.recordingControlSlotSize
+            - TF.recordingControlGap
+            - TF.recordingSingleButtonMirroredTextBuffer
+        let laneSlack = (textLaneWidth - listeningTextWidth) / 2
+        XCTAssertEqual(laneSlack, 8)
+
+        // The reserved trailing area remains outside the text lane even after
+        // the capsule reaches its 400pt maximum width.
+        let maximumTextLaneWidth = TF.barWidth
+            - TF.recordingEdgeInset * 2
+            - TF.recordingControlSlotSize
+            - TF.recordingControlGap
+            - TF.recordingSingleButtonMirroredTextBuffer
+        XCTAssertEqual(maximumTextLaneWidth, 309)
+        XCTAssertEqual(
+            TF.recordingEdgeInset + TF.recordingSingleButtonMirroredTextBuffer,
+            30
+        )
+    }
+
+    func testRecordingModeHintWidthExpandsAroundAClampedCenter() {
+        XCTAssertEqual(recordingModeHintWidth(textWidth: 100), 124)
+        XCTAssertEqual(
+            recordingModeHintWidth(textWidth: 1_000),
+            TF.barWidth + TF.recordingTooltipOverhang * 2
         )
     }
 

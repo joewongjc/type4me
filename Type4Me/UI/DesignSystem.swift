@@ -124,12 +124,29 @@ enum TF {
     static let barHeight: CGFloat = 55
     static let barBottomOffset: CGFloat = 48
     static let floatingPanelShadowInset: CGFloat = 8
+    /// The floating panel disables AppKit's rectangular window shadow, so the
+    /// capsule needs its own shape-aware depth. Keep the ambient shadow inside
+    /// `floatingPanelShadowInset` to avoid clipping at the panel boundary.
+    static let recordingCapsuleRimWidth: CGFloat = 0.8
+    static let recordingCapsuleContactShadowRadius: CGFloat = 2
+    static let recordingCapsuleContactShadowYOffset: CGFloat = 1
+    static let recordingCapsuleAmbientShadowRadius: CGFloat = 7
+    static let recordingCapsuleAmbientShadowYOffset: CGFloat = 1
     static let recordingFinishControlSize: CGFloat = 45
     static let recordingCancelControlSize: CGFloat = 35
-    static let recordingLeadingInset: CGFloat = 5
-    static let recordingTrailingInset: CGFloat = 10
+    /// The regular recording row uses equal outer insets and equal control
+    /// slots. The cancel artwork remains smaller, but its slot mirrors the orb
+    /// so the middle text lane is truly centered when both controls are shown.
+    static let recordingLeadingInset: CGFloat = 8
+    static let recordingTrailingInset: CGFloat = 8
     static let recordingEdgeInset: CGFloat = recordingTrailingInset
     static let recordingControlGap: CGFloat = 8
+    static let recordingControlSlotSize: CGFloat = recordingFinishControlSize
+    static let recordingTranscriptFadeWidth: CGFloat = 14
+    /// Mirrors the orb-to-text gap and the text fade guard on the otherwise
+    /// empty trailing side of the one-button recording capsule.
+    static let recordingSingleButtonMirroredTextBuffer: CGFloat = recordingControlGap
+        + recordingTranscriptFadeWidth
     static let recordingTooltipGap: CGFloat = 5
     static let recordingTooltipMaxWidth: CGFloat = 180
     static let recordingCapsuleSpringResponse = 0.3
@@ -140,24 +157,23 @@ enum TF {
     )
     static let recordingTooltipOverhang: CGFloat = max(
         0,
-        recordingTooltipMaxWidth / 2 - recordingLeadingInset - recordingFinishControlSize / 2
+        recordingTooltipMaxWidth / 2 - recordingLeadingInset - recordingControlSlotSize / 2
     )
-    static let recordingChromeWidth: CGFloat = recordingFinishControlSize
-        + recordingCancelControlSize
-        + recordingLeadingInset
-        + recordingTrailingInset
+    static let recordingChromeWidth: CGFloat = recordingControlSlotSize * 2
+        + recordingEdgeInset * 2
         + recordingControlGap * 2
         + 16
-    static let recordingSingleButtonChromeWidth: CGFloat = recordingFinishControlSize
-        + recordingLeadingInset
-        + recordingTrailingInset
+    /// With no cancel button, reserve only the controls that actually exist.
+    /// The final 16pt is breathing room shared by the two outer edges.
+    static let recordingSingleButtonChromeWidth: CGFloat = recordingControlSlotSize
+        + recordingEdgeInset * 2
         + recordingControlGap
         + 16
+        + recordingSingleButtonMirroredTextBuffer
+    static let recordingSingleButtonMinimumWidth: CGFloat = barHeight * 2
 
     // MARK: Transcript Popup (hover preview above bar)
 
-    static let transcriptPopupWidth: CGFloat = 350
-    static let transcriptPopupMaxHeight: CGFloat = 120
     static let transcriptPopupCorner: CGFloat = cornerLG
     static let transcriptPopupGap: CGFloat = 10
 

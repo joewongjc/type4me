@@ -234,16 +234,35 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(TF.barWidthCompact, 180)
         XCTAssertEqual(TF.barWidth, 400)
         XCTAssertEqual(TF.floatingPanelShadowInset, 8)
+        XCTAssertEqual(TF.recordingCapsuleRimWidth, 0.8)
+        XCTAssertEqual(TF.recordingCapsuleContactShadowRadius, 2)
+        XCTAssertEqual(TF.recordingCapsuleContactShadowYOffset, 1)
+        XCTAssertEqual(TF.recordingCapsuleAmbientShadowRadius, 7)
+        XCTAssertEqual(TF.recordingCapsuleAmbientShadowYOffset, 1)
+        XCTAssertLessThanOrEqual(
+            TF.recordingCapsuleAmbientShadowRadius + TF.recordingCapsuleAmbientShadowYOffset,
+            TF.floatingPanelShadowInset
+        )
         XCTAssertEqual(TF.recordingFinishControlSize, 45)
         XCTAssertEqual(TF.recordingCancelControlSize, 35)
-        XCTAssertEqual(TF.recordingLeadingInset, 5)
-        XCTAssertEqual(TF.recordingTrailingInset, 10)
-        XCTAssertEqual(TF.recordingEdgeInset, 10)
+        XCTAssertEqual(TF.recordingLeadingInset, 8)
+        XCTAssertEqual(TF.recordingTrailingInset, 8)
+        XCTAssertEqual(TF.recordingEdgeInset, 8)
         XCTAssertEqual(TF.recordingTooltipGap, 5)
-        XCTAssertEqual(TF.transcriptPopupWidth, 350)
-        XCTAssertEqual(TF.transcriptPopupMaxHeight, 120)
         XCTAssertEqual(TF.transcriptPopupCorner, TF.cornerLG)
         XCTAssertEqual(TF.transcriptPopupGap, 10)
+    }
+
+    func testTranscriptPopupUsesFullNaturalHeightWithoutScrollCap() {
+        let longText = String(
+            repeating: "This transcript should remain fully visible without an internal scrollbar. ",
+            count: 18
+        )
+        let wideHeight = transcriptPopupContentHeight(for: longText, width: TF.barWidth)
+        let narrowHeight = transcriptPopupContentHeight(for: longText, width: TF.barWidthCompact)
+
+        XCTAssertGreaterThan(wideHeight, 120)
+        XCTAssertGreaterThan(narrowHeight, wideHeight)
     }
 
     func testFloatingPanelLayoutTracksOnlyVisibleBounds() {
@@ -269,11 +288,11 @@ final class AppStateTests: XCTestCase {
 
         let transcript = FloatingBarPanelLayout(
             contentSize: NSSize(
-                width: TF.transcriptPopupWidth,
+                width: TF.barWidth,
                 height: TF.barHeight + TF.transcriptPopupGap + 60
             )
         )
-        XCTAssertEqual(transcript.panelSize, NSSize(width: 366, height: 141))
+        XCTAssertEqual(transcript.panelSize, NSSize(width: 416, height: 141))
 
         let action = FloatingBarPanelLayout(
             contentSize: NSSize(width: TF.barWidthCompact, height: TF.barHeight + 5 + 35),
@@ -300,6 +319,9 @@ final class AppStateTests: XCTestCase {
             visibleFrame: visibleFrame
         )
         XCTAssertEqual(expandedFrame.minY, frame.minY)
+        XCTAssertEqual(expandedFrame.midX, frame.midX)
+        XCTAssertLessThan(expandedFrame.minX, frame.minX)
+        XCTAssertGreaterThan(expandedFrame.maxX, frame.maxX)
     }
 
     func testRecordingActionHintsAreCenteredOverTheirControls() {
@@ -315,8 +337,8 @@ final class AppStateTests: XCTestCase {
             usesCompactLayout: false
         )
 
-        XCTAssertEqual(width / 2 + finishOffset, TF.recordingLeadingInset + TF.recordingFinishControlSize / 2)
-        XCTAssertEqual(width / 2 + cancelOffset, width - TF.recordingTrailingInset - TF.recordingCancelControlSize / 2)
+        XCTAssertEqual(width / 2 + finishOffset, TF.recordingLeadingInset + TF.recordingControlSlotSize / 2)
+        XCTAssertEqual(width / 2 + cancelOffset, width - TF.recordingTrailingInset - TF.recordingControlSlotSize / 2)
         XCTAssertEqual(
             width / 2 + recordingActionHorizontalOffset(.finish, capsuleWidth: width, usesCompactLayout: true),
             16
@@ -345,8 +367,8 @@ final class AppStateTests: XCTestCase {
 
         let previewLayout = FloatingBarPanelLayout(
             contentSize: NSSize(
-                width: TF.transcriptPopupWidth,
-                height: TF.barHeight + TF.transcriptPopupGap + TF.transcriptPopupMaxHeight
+                width: TF.barWidth,
+                height: TF.barHeight + TF.transcriptPopupGap + 180
             ),
             capsuleSize: NSSize(width: TF.barWidthCompact, height: TF.barHeight)
         )
@@ -363,7 +385,7 @@ final class AppStateTests: XCTestCase {
         let wideCapsuleLayout = FloatingBarPanelLayout(
             contentSize: NSSize(
                 width: TF.barWidth,
-                height: TF.barHeight + TF.transcriptPopupGap + TF.transcriptPopupMaxHeight
+                height: TF.barHeight + TF.transcriptPopupGap + 240
             ),
             capsuleSize: NSSize(width: TF.barWidth, height: TF.barHeight)
         )

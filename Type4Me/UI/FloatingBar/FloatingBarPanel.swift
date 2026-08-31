@@ -70,8 +70,12 @@ final class FloatingBarPanel: NSPanel {
 
     func updateAppearance() {
         let themeRaw = UserDefaults.standard.string(forKey: RecordingTheme.storageKey) ?? RecordingTheme.defaultValue.rawValue
-        let theme = RecordingTheme(rawValue: themeRaw) ?? .dark
-        appearance = theme == .light ? NSAppearance(named: .aqua) : NSAppearance(named: .darkAqua)
+        let theme = RecordingTheme(rawValue: themeRaw) ?? RecordingTheme.defaultValue
+        let solidHex = UserDefaults.standard.string(forKey: RecordingSolidColor.storageKey)
+            ?? RecordingSolidColor.defaultHex
+        let usesLightAppearance = theme.usesGlass
+            || RecordingSolidColor(hex: solidHex).usesDarkForeground
+        appearance = NSAppearance(named: usesLightAppearance ? .aqua : .darkAqua)
     }
 
     override var canBecomeKey: Bool { false }
@@ -114,6 +118,7 @@ final class FloatingBarController {
     private var anchorDisplayID: CGDirectDisplayID?
     private var panelGeneration = 0
     private var panelShrinkTask: Task<Void, Never>?
+    private var panelShowTask: Task<Void, Never>?
 
     init(state: AppState) {
         self.state = state
@@ -136,9 +141,36 @@ final class FloatingBarController {
 
         panel.contentView = hosting
         panel.setFrame(frame, display: false)
+        hosting.layoutSubtreeIfNeeded()
+
+        // Ordering the transparent, non-activating panel once gives AppKit,
+        // WindowServer, the glass compositor, and MTKView a chance to allocate
+        // their first resources before the user starts recording.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+            self?.prewarmPanelCompositionIfIdle()
+        }
 
         state.onShowPanel = { [weak self] in self?.show() }
         state.onHidePanel = { [weak self] in self?.hide() }
+    }
+
+    private func prewarmPanelCompositionIfIdle() {
+        guard panelGeneration == 0,
+              state.barPhase == .hidden,
+              !panel.isVisible else { return }
+
+        panel.ignoresMouseEvents = true
+        panel.alphaValue = 0
+        panel.orderFrontRegardless()
+        panel.contentView?.layoutSubtreeIfNeeded()
+        panel.displayIfNeeded()
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            guard let self,
+                  self.panelGeneration == 0,
+                  self.state.barPhase == .hidden else { return }
+            self.panel.orderOut(nil)
+        }
     }
 
     func updatePanelLayout(_ layout: FloatingBarPanelLayout) {
@@ -167,6 +199,8 @@ final class FloatingBarController {
 
     func show() {
         panelGeneration &+= 1
+        let expectedGeneration = panelGeneration
+        panelShowTask?.cancel()
         panel.updateAppearance()
 
         if anchorDisplayID == nil || state.barPhase == .preparing {
@@ -174,6 +208,41 @@ final class FloatingBarController {
                 .flatMap(FloatingBarPanel.displayID)
         }
 
+        // A recording start mutates AppState and invokes this controller in the
+        // same main-thread turn. At that moment SwiftUI still reports the old
+        // hidden/narrow layout; the full metadata tooltip is calculated on the
+        // following layout pass. Keep the already-prewarmed panel transparent
+        // for that pass so users never see a narrow fallback window expand from
+        // one side before the centered tooltip is ready.
+        if panel.isVisible && panel.alphaValue > 0 {
+            presentPanel(expectedGeneration: expectedGeneration)
+            return
+        }
+
+        panel.ignoresMouseEvents = true
+        panel.alphaValue = 0
+        panel.orderFrontRegardless()
+        panelShowTask = Task { @MainActor [weak self] in
+            await Task.yield()
+            guard !Task.isCancelled, let self,
+                  self.panelGeneration == expectedGeneration,
+                  self.state.barPhase != .hidden
+            else { return }
+
+            self.panel.contentView?.layoutSubtreeIfNeeded()
+            await Task.yield()
+            guard !Task.isCancelled,
+                  self.panelGeneration == expectedGeneration,
+                  self.state.barPhase != .hidden
+            else { return }
+
+            self.presentPanel(expectedGeneration: expectedGeneration)
+            self.panelShowTask = nil
+        }
+    }
+
+    private func presentPanel(expectedGeneration: Int) {
+        guard panelGeneration == expectedGeneration else { return }
         let layout = layoutForShow()
         guard layout.hasVisibleContent else {
             panel.ignoresMouseEvents = true
@@ -181,9 +250,9 @@ final class FloatingBarController {
             return
         }
 
-        resizePanel(from: currentLayout, to: layout, display: panel.isVisible)
+        resizePanel(from: currentLayout, to: layout, display: false)
+        panel.contentView?.layoutSubtreeIfNeeded()
         panel.ignoresMouseEvents = false
-
         panel.contentView?.layer?.removeAllAnimations()
         panel.alphaValue = 0
         panel.orderFrontRegardless()
@@ -196,6 +265,8 @@ final class FloatingBarController {
 
     func hide() {
         guard panel.isVisible else { return }
+        panelShowTask?.cancel()
+        panelShowTask = nil
         cancelPendingPanelShrink()
         panel.ignoresMouseEvents = true
 
