@@ -135,45 +135,48 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
             Spacer()
 
             // Set as Default Button / Active Badge
-            Button {
-                if !isDefault {
-                    handleSetAsDefault()
+            if isDefault {
+                HStack(spacing: 4) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(TF.settingsAccentBlue)
+                    Text(L("默认引擎", "Default Engine"))
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(TF.settingsAccentBlue)
                 }
-            } label: {
-                HStack(spacing: 5) {
-                    if isDefault {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 12))
-                            .foregroundStyle(TF.settingsAccentBlue)
-                        Text(L("当前默认引擎", "Default Engine"))
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(TF.settingsAccentBlue)
-                    } else {
-                        Image(systemName: "circle")
-                            .font(.system(size: 12))
-                            .foregroundStyle(hasLLMCredentials ? TF.settingsTextSecondary : TF.settingsTextTertiary)
-                        Text(L("设为默认", "Set as Default"))
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(hasLLMCredentials ? TF.settingsText : TF.settingsTextTertiary)
-                    }
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(
-                    Capsule()
-                        .fill(isDefault ? TF.settingsAccentBlue.opacity(0.12) : TF.settingsCardAlt)
-                )
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Capsule().fill(TF.settingsAccentBlue.opacity(0.12)))
                 .overlay(
                     Capsule()
-                        .strokeBorder(isDefault ? TF.settingsAccentBlue.opacity(0.3) : Color.black.opacity(0.06), lineWidth: 0.5)
+                        .strokeBorder(TF.settingsAccentBlue.opacity(0.25), lineWidth: 0.5)
+                )
+            } else {
+                Button {
+                    handleSetAsDefault()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "star")
+                            .font(.system(size: 10, weight: .medium))
+                        Text(L("设为默认", "Set as Default"))
+                            .font(.system(size: 11, weight: .medium))
+                    }
+                    .foregroundStyle(hasLLMCredentials ? TF.settingsText : TF.settingsTextTertiary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Capsule().fill(TF.settingsCardAlt))
+                    .overlay(
+                        Capsule()
+                            .strokeBorder(Color.black.opacity(0.06), lineWidth: 0.5)
+                    )
+                }
+                .buttonStyle(SettingsListRowButtonStyle())
+                .disabled(!hasLLMCredentials)
+                .settingsTooltip(
+                    L("请先完善凭据", "Configure credentials first"),
+                    isEnabled: !hasLLMCredentials
                 )
             }
-            .buttonStyle(.plain)
-            .disabled(!isDefault && !hasLLMCredentials)
-            .settingsTooltip(
-                L("请先完善凭据", "Configure credentials first"),
-                isEnabled: !isDefault && !hasLLMCredentials
-            )
         }
         .padding(.bottom, 4)
     }
@@ -191,35 +194,37 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
                 dynamicCredentialFields
             }
 
-            // Action Bar outside the card (Save, Revert, Test Connection)
-            VStack(alignment: .trailing, spacing: 6) {
-                HStack(alignment: .center, spacing: 8) {
-                    Spacer()
+            // Integrated Action Bar
+            HStack(alignment: .center, spacing: 8) {
+                // Left: Feedback / Error message
+                testStatusMessage(status: llmTestStatus)
 
-                    if isDirty {
-                        secondaryButton(L("还原", "Revert")) {
+                Spacer(minLength: 8)
+
+                // Right: Action buttons with unified design language
+                if isDirty {
+                    revertButton {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
                             revertCredentials()
                         }
-
-                        Button(L("保存", "Save")) {
-                            saveCredentials()
-                        }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 7)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(hasLLMCredentials ? TF.settingsAccentBlue : TF.settingsCardAlt))
-                        .disabled(!hasLLMCredentials)
                     }
-
-                    testButton(
-                        L("测试连接", "Test"),
-                        status: llmTestStatus,
-                        isEnabled: hasLLMCredentials
-                    ) { testLLMConnection() }
+                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
                 }
-                testStatusMessage(status: llmTestStatus)
+
+                testButton(
+                    L("测试连接", "Test"),
+                    status: llmTestStatus,
+                    isEnabled: hasLLMCredentials
+                ) { testLLMConnection() }
+
+                if isDirty {
+                    primaryButton(L("保存", "Save"), isEnabled: true) {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                            _ = saveCredentials()
+                        }
+                    }
+                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                }
             }
             .padding(.top, 4)
         }
@@ -486,15 +491,10 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
 
     @discardableResult
     private func saveCredentials() -> Bool {
-        guard hasLLMCredentials else {
-            llmTestStatus = .failed(L("配置不完整", "Incomplete configuration"))
-            return false
-        }
         let values = effectiveLLMValues
         do {
             try KeychainService.saveLLMCredentials(for: provider, values: values)
-            savedLLMValues = values
-            llmCredentialValues = values
+            savedLLMValues = llmCredentialValues
             llmTestStatus = .saved
             return true
         } catch {
