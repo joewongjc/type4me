@@ -587,9 +587,9 @@ actor RecognitionSession {
         /// A live target was captured; it must be activated and confirmed frontmost
         /// (PID match) before pasting, otherwise fall back to the clipboard.
         case activateAndConfirm
-        /// A stop-time focused control was strictly confirmed. It must still be
-        /// the same frontmost AX element immediately before paste.
-        case injectIntoConfirmedEndTarget
+        /// A stop-time destination was captured with an explicit evidence tier.
+        /// Exact and best-effort opaque targets perform their own revalidation.
+        case injectIntoEndTarget
         /// The captured target terminated during transcription/processing. Never
         /// paste — whatever is frontmost now is a different app — retain the text
         /// in the clipboard for a deliberate manual paste.
@@ -600,10 +600,10 @@ actor RecognitionSession {
         preference: InjectionTargetPreference = .recordingStart,
         hasCapturedTarget: Bool,
         isTerminated: Bool,
-        hasConfirmedEndTarget: Bool = false
+        hasEndTarget: Bool = false
     ) -> InjectionTargetPlan {
         if preference == .recordingEnd {
-            return hasConfirmedEndTarget ? .injectIntoConfirmedEndTarget : .failSafeClipboard
+            return hasEndTarget ? .injectIntoEndTarget : .failSafeClipboard
         }
         guard hasCapturedTarget else { return .injectIntoCurrentFrontmost }
         return isTerminated ? .failSafeClipboard : .activateAndConfirm
@@ -711,7 +711,7 @@ actor RecognitionSession {
         case .idle:
             await startRecording()
         case .recording:
-            await stopRecording(confirmedEndTarget: captureAutomaticEndTarget())
+            await stopRecording(endTarget: captureAutomaticEndTarget())
         case .recovering:
             _ = await handleRecoveryHotkeyPress()
         default:
@@ -1199,15 +1199,15 @@ actor RecognitionSession {
         guard state == .recording else { return }
         DebugFileLogger.log("max recording duration reached (\(limit)s), auto-stopping")
         stoppedByMaxDuration = true
-        await stopRecording(confirmedEndTarget: captureAutomaticEndTarget())
+        await stopRecording(endTarget: captureAutomaticEndTarget())
     }
 
-    private func captureAutomaticEndTarget() -> TextInjectionEngine.ConfirmedInjectionTarget? {
+    private func captureAutomaticEndTarget() -> TextInjectionEngine.EndInjectionTarget? {
         guard injectionTargetPreference == .recordingEnd,
               currentMode.supportsOutputFormatting,
               completionIntent == .normal
         else { return nil }
-        return TextInjectionEngine.captureConfirmedInjectionTarget()
+        return TextInjectionEngine.captureEndInjectionTarget()
     }
 
     private func clearASRCleanupTask(generation: Int) {
@@ -1519,7 +1519,7 @@ actor RecognitionSession {
     }
 
     func stopRecording(
-        confirmedEndTarget: TextInjectionEngine.ConfirmedInjectionTarget? = nil
+        endTarget: TextInjectionEngine.EndInjectionTarget? = nil
     ) async {
         let myGeneration = sessionGeneration
         guard state == .recording else {
@@ -1530,12 +1530,12 @@ actor RecognitionSession {
         // Set state BEFORE any await to prevent a second stop from
         // slipping through the guard during the suspension point.
         state = .finishing
-        let confirmedEndTarget = injectionTargetPreference == .recordingEnd
+        let endTarget = injectionTargetPreference == .recordingEnd
             && currentMode.supportsOutputFormatting
             && completionIntent == .normal
-            ? confirmedEndTarget
+            ? endTarget
             : nil
-        prepareStopTimeTargetContext(confirmedEndTarget)
+        prepareStopTimeTargetContext(endTarget)
         if let translationContext = translationRequestContext,
            currentMode.id == ProcessingMode.translationModeId {
             onASREvent?(.processingLabelOverride(L(
@@ -2229,7 +2229,7 @@ actor RecognitionSession {
                             preference: targetPreference,
                             hasCapturedTarget: targetApp != nil,
                             isTerminated: targetApp?.isTerminated ?? false,
-                            hasConfirmedEndTarget: confirmedEndTarget != nil
+                            hasEndTarget: endTarget != nil
                         )
                         let allowInjection: Bool
                         switch plan {
@@ -2237,8 +2237,8 @@ actor RecognitionSession {
                             allowInjection = true
                         case .activateAndConfirm:
                             allowInjection = targetApp.map(RecognitionSession.activateAndConfirmFrontmost) ?? false
-                        case .injectIntoConfirmedEndTarget:
-                            allowInjection = confirmedEndTarget != nil
+                        case .injectIntoEndTarget:
+                            allowInjection = endTarget != nil
                         case .failSafeClipboard:
                             allowInjection = false
                         }
@@ -2250,13 +2250,13 @@ actor RecognitionSession {
                                     sourceText: rawText,
                                     sourceRecordID: recordId,
                                     modeID: modeID,
-                                    requiring: confirmedEndTarget
+                                    requiring: endTarget
                                 )
                             } else {
                                 result = TrackedInjectionResult(
                                     outcome: engine.inject(
                                         finalText,
-                                        requiring: confirmedEndTarget
+                                        requiring: endTarget
                                     ),
                                     observationContext: nil
                                 )
@@ -2678,7 +2678,7 @@ actor RecognitionSession {
                     DebugFileLogger.log("server-initiated stop from recording state")
                     Task {
                         await self.stopRecording(
-                            confirmedEndTarget: self.captureAutomaticEndTarget()
+                            endTarget: self.captureAutomaticEndTarget()
                         )
                     }
                 }
@@ -2830,11 +2830,11 @@ actor RecognitionSession {
     }
 
     private func prepareStopTimeTargetContext(
-        _ confirmedEndTarget: TextInjectionEngine.ConfirmedInjectionTarget?
+        _ endTarget: TextInjectionEngine.EndInjectionTarget?
     ) {
         guard injectionTargetPreference == .recordingEnd else { return }
 
-        let recordingEndTarget = confirmedEndTarget.map { target in
+        let recordingEndTarget = endTarget.map { target in
             TargetApplicationContext(
                 processIdentifier: target.processIdentifier,
                 bundleIdentifier: target.bundleIdentifier,

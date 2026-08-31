@@ -194,6 +194,8 @@ final class SystemReviseAccessibilityClient: ReviseAccessibilityClient, @uncheck
         else {
             throw ReviseAccessibilityError.actionFailed
         }
+        TextInjectionEngine.markAsSyntheticInput(keyDown)
+        TextInjectionEngine.markAsSyntheticInput(keyUp)
         keyDown.post(tap: .cghidEventTap)
         keyUp.post(tap: .cghidEventTap)
     }
@@ -207,6 +209,8 @@ final class SystemReviseAccessibilityClient: ReviseAccessibilityClient, @uncheck
         }
         keyDown.flags = .maskCommand
         keyUp.flags = .maskCommand
+        TextInjectionEngine.markAsSyntheticInput(keyDown)
+        TextInjectionEngine.markAsSyntheticInput(keyUp)
         keyDown.post(tap: .cghidEventTap)
         keyUp.post(tap: .cghidEventTap)
     }

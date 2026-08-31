@@ -186,15 +186,15 @@ final class InjectionTargetPlanTests: XCTestCase {
         )
     }
 
-    func testConfirmedRecordingEndTargetCanInject() {
+    func testCapturedRecordingEndTargetCanInject() {
         XCTAssertEqual(
             RecognitionSession.planInjectionTarget(
                 preference: .recordingEnd,
                 hasCapturedTarget: true,
                 isTerminated: false,
-                hasConfirmedEndTarget: true
+                hasEndTarget: true
             ),
-            .injectIntoConfirmedEndTarget
+            .injectIntoEndTarget
         )
     }
 
@@ -204,7 +204,7 @@ final class InjectionTargetPlanTests: XCTestCase {
                 preference: .recordingEnd,
                 hasCapturedTarget: true,
                 isTerminated: false,
-                hasConfirmedEndTarget: false
+                hasEndTarget: false
             ),
             .failSafeClipboard
         )
@@ -216,7 +216,7 @@ final class InjectionTargetPlanTests: XCTestCase {
                 preference: .recordingStart,
                 hasCapturedTarget: true,
                 isTerminated: false,
-                hasConfirmedEndTarget: true
+                hasEndTarget: true
             ),
             .activateAndConfirm
         )

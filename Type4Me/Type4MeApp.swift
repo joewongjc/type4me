@@ -764,7 +764,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private var shouldCapturePreciseEndTarget: Bool {
+    private var shouldCaptureEndTarget: Bool {
         activeInjectionTargetPreference == .recordingEnd
     }
 
@@ -895,11 +895,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if phase == .recording || phase == .preparing {
                     NSLog("[Type4Me] >>> HOTKEY: toggle desync – onStart while recording, redirecting to STOP (phase=%@)", String(describing: phase))
                     DebugFileLogger.log("hotkey toggle desync: onStart while recording, redirecting to stop phase=\(phase)")
-                    let capturesPreciseTarget = MainActor.assumeIsolated {
-                        self.shouldCapturePreciseEndTarget
+                    let capturesEndTarget = MainActor.assumeIsolated {
+                        self.shouldCaptureEndTarget
                     }
-                    let confirmedEndTarget = phase == .recording && capturesPreciseTarget
-                        ? TextInjectionEngine.captureConfirmedInjectionTarget()
+                    let endTarget = phase == .recording && capturesEndTarget
+                        ? TextInjectionEngine.captureEndInjectionTarget()
                         : nil
                     MainActor.assumeIsolated {
                         if phase == .preparing {
@@ -914,7 +914,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     } else {
                         Task {
                             await self.session.stopRecording(
-                                confirmedEndTarget: confirmedEndTarget
+                                endTarget: endTarget
                             )
                         }
                     }
@@ -979,11 +979,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     Task { _ = await self.session.handleRecoveryHotkeyPress() }
                     return
                 }
-                let capturesPreciseTarget = MainActor.assumeIsolated {
-                    self.shouldCapturePreciseEndTarget
+                let capturesEndTarget = MainActor.assumeIsolated {
+                    self.shouldCaptureEndTarget
                 }
-                let confirmedEndTarget = phase == .recording && capturesPreciseTarget
-                    ? TextInjectionEngine.captureConfirmedInjectionTarget()
+                let endTarget = phase == .recording && capturesEndTarget
+                    ? TextInjectionEngine.captureEndInjectionTarget()
                     : nil
                 MainActor.assumeIsolated {
                     if phase == .preparing {
@@ -997,7 +997,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 } else {
                     Task {
                         await self.session.stopRecording(
-                            confirmedEndTarget: confirmedEndTarget
+                            endTarget: endTarget
                         )
                     }
                 }
@@ -1150,11 +1150,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             DebugFileLogger.log(
                 "hotkey cross-mode finish start=\(startingMode.name) end=\(newMode.name) process=\(processingMode.name)"
             )
-            let capturesPreciseTarget = MainActor.assumeIsolated {
-                self.shouldCapturePreciseEndTarget
+            let capturesEndTarget = MainActor.assumeIsolated {
+                self.shouldCaptureEndTarget
             }
-            let confirmedEndTarget = capturesPreciseTarget
-                ? TextInjectionEngine.captureConfirmedInjectionTarget()
+            let endTarget = capturesEndTarget
+                ? TextInjectionEngine.captureEndInjectionTarget()
                 : nil
             MainActor.assumeIsolated {
                 if allowsModeSwitch {
@@ -1167,7 +1167,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     await self.session.switchMode(to: processingMode)
                 }
                 await self.session.stopRecording(
-                    confirmedEndTarget: confirmedEndTarget
+                    endTarget: endTarget
                 )
             }
         }
@@ -1318,13 +1318,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 appState.stopRecording()
                 Task { await session.cancelRecording() }
             } else {
-                let confirmedEndTarget = capturesManualEndTarget && shouldCapturePreciseEndTarget
-                    ? TextInjectionEngine.captureConfirmedInjectionTarget()
+                let endTarget = capturesManualEndTarget && shouldCaptureEndTarget
+                    ? TextInjectionEngine.captureEndInjectionTarget()
                     : nil
                 appState.stopRecording()
                 Task {
                     await session.stopRecording(
-                        confirmedEndTarget: confirmedEndTarget
+                        endTarget: endTarget
                     )
                 }
             }

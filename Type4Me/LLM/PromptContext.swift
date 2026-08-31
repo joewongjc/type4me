@@ -214,6 +214,8 @@ struct PromptContext: Sendable {
 
         keyDown.flags = .maskCommand
         keyUp.flags = .maskCommand
+        TextInjectionEngine.markAsSyntheticInput(keyDown)
+        TextInjectionEngine.markAsSyntheticInput(keyUp)
         keyDown.post(tap: .cghidEventTap)
         keyUp.post(tap: .cghidEventTap)
     }

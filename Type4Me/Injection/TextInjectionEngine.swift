@@ -34,36 +34,519 @@ private func confirmedTargetAXObserverCallback(
     state.invalidate(reason: "accessibilityFocusChanged(\(notification))")
 }
 
-private func confirmedTargetInputEventCallback(
-    _ proxy: CGEventTapProxy,
-    _ type: CGEventType,
-    _ event: CGEvent,
-    _ refcon: UnsafeMutableRawPointer?
-) -> Unmanaged<CGEvent>? {
-    guard let refcon else { return Unmanaged.passUnretained(event) }
-    let state = Unmanaged<ConfirmedTargetInvalidationState>
-        .fromOpaque(refcon)
-        .takeUnretainedValue()
-    if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-        state.invalidate(reason: "globalInputTapDisabled")
-    } else {
-        state.invalidate(reason: "userPointerInputAfterStop(\(type.rawValue))")
-    }
-    return Unmanaged.passUnretained(event)
-}
-
 final class TextInjectionEngine: @unchecked Sendable {
 
-    /// AX-opaque editors expose the focused window but not their private text
-    /// control. A pointer press can move that private focus and must invalidate
-    /// the captured destination. A key-down alone does not prove a destination
-    /// change, and the modifier used to stop recording can surface as a
-    /// synthesized key-down after capture.
-    static let opaqueTargetInvalidatingInputEventTypes: [CGEventType] = [
-        .leftMouseDown,
-        .rightMouseDown,
-        .otherMouseDown,
-    ]
+    /// Monotonic input epoch shared with `HotkeyManager`. The hotkey tap records
+    /// a potentially focus-changing event before dispatching its stop callback,
+    /// so a token captured by that callback includes the exact stop event but
+    /// excludes every later key or pointer press.
+    final class InputActivityMonitor: @unchecked Sendable {
+        struct Token: Equatable, Sendable {
+            fileprivate let generation: UInt64
+            fileprivate let sequence: UInt64
+        }
+
+        private struct ObservedInput: Equatable {
+            let typeRawValue: UInt32
+            let keyCode: Int64
+            let buttonNumber: Int64
+            let timestamp: UInt64
+            let rawFlags: UInt64
+            let modifiers: UInt64
+            let deviceModifiers: UInt64
+            let sourceUnixProcessID: Int64
+            let sourceUserData: Int64
+            let sourceStateID: Int64
+            let systemKeyType: Int
+            let systemKeyState: Int
+
+            init(type: CGEventType, event: CGEvent) {
+                typeRawValue = type.rawValue
+                keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+                buttonNumber = event.getIntegerValueField(.mouseEventButtonNumber)
+                timestamp = event.timestamp
+                rawFlags = event.flags.rawValue
+                modifiers = event.flags.rawValue & InputActivityMonitor.modifierMask
+                deviceModifiers = event.flags.rawValue & ModeBinding.allDeviceModifierMasks
+                sourceUnixProcessID = event.getIntegerValueField(.eventSourceUnixProcessID)
+                sourceUserData = event.getIntegerValueField(.eventSourceUserData)
+                sourceStateID = event.getIntegerValueField(.eventSourceStateID)
+                if type.rawValue == 14,
+                   let nsEvent = NSEvent(cgEvent: event),
+                   nsEvent.type == .systemDefined,
+                   nsEvent.subtype.rawValue == 8 {
+                    systemKeyType = Int((nsEvent.data1 >> 16) & 0xFFFF)
+                    systemKeyState = Int((nsEvent.data1 >> 8) & 0xFF)
+                } else {
+                    systemKeyType = -1
+                    systemKeyState = -1
+                }
+            }
+
+            var diagnosticSummary: String {
+                "type=\(typeRawValue),keyCode=\(keyCode),button=\(buttonNumber),"
+                    + "timestamp=\(timestamp),"
+                    + "rawFlags=\(rawFlags),modifiers=\(modifiers),"
+                    + "deviceModifiers=\(deviceModifiers),"
+                    + "sourcePID=\(sourceUnixProcessID),sourceUserData=\(sourceUserData),"
+                    + "sourceStateID=\(sourceStateID),"
+                    + "systemKeyType=\(systemKeyType),systemKeyState=\(systemKeyState)"
+            }
+        }
+
+        private struct SequenceChange {
+            let sequence: UInt64
+            let input: ObservedInput
+        }
+
+        private enum PendingRelease: Equatable {
+            case keyUp(keyCode: Int64)
+            case mouseUp(typeRawValue: UInt32, buttonNumber: Int64)
+            case systemKeyUp(keyType: Int)
+
+            func matches(_ input: ObservedInput) -> Bool {
+                switch self {
+                case .keyUp(let keyCode):
+                    return input.typeRawValue == CGEventType.keyUp.rawValue
+                        && input.keyCode == keyCode
+                case .mouseUp(let typeRawValue, let buttonNumber):
+                    return input.typeRawValue == typeRawValue
+                        && input.buttonNumber == buttonNumber
+                case .systemKeyUp(let keyType):
+                    return input.typeRawValue == 14
+                        && input.systemKeyType == keyType
+                        && input.systemKeyState == 0x0B
+                }
+            }
+        }
+
+        private struct StopGestureTail {
+            private static let maximumReleaseReconciliationEvents = 2
+            private static let fnSystemActionKeyCode: Int64 = 179
+
+            var pendingRelease: PendingRelease?
+            var remainingModifiers: UInt64
+            var remainingDeviceModifiers: UInt64
+            var releasedModifierKeyCode: Int64?
+            var remainingReleaseReconciliationEvents: Int
+            var pendingFnSystemActionTimestamp: UInt64?
+            let expiresAt: UInt64
+
+            init?(trigger: ObservedInput, now: UInt64) {
+                switch trigger.typeRawValue {
+                case CGEventType.keyDown.rawValue:
+                    pendingRelease = .keyUp(keyCode: trigger.keyCode)
+                case CGEventType.keyUp.rawValue:
+                    pendingRelease = nil
+                case CGEventType.leftMouseDown.rawValue:
+                    pendingRelease = .mouseUp(
+                        typeRawValue: CGEventType.leftMouseUp.rawValue,
+                        buttonNumber: trigger.buttonNumber
+                    )
+                case CGEventType.rightMouseDown.rawValue:
+                    pendingRelease = .mouseUp(
+                        typeRawValue: CGEventType.rightMouseUp.rawValue,
+                        buttonNumber: trigger.buttonNumber
+                    )
+                case CGEventType.otherMouseDown.rawValue:
+                    pendingRelease = .mouseUp(
+                        typeRawValue: CGEventType.otherMouseUp.rawValue,
+                        buttonNumber: trigger.buttonNumber
+                    )
+                case CGEventType.leftMouseUp.rawValue,
+                     CGEventType.rightMouseUp.rawValue,
+                     CGEventType.otherMouseUp.rawValue,
+                     CGEventType.flagsChanged.rawValue:
+                    pendingRelease = nil
+                case 14 where trigger.systemKeyState == 0x0A:
+                    pendingRelease = .systemKeyUp(keyType: trigger.systemKeyType)
+                case 14:
+                    pendingRelease = nil
+                default:
+                    return nil
+                }
+                remainingModifiers = trigger.modifiers
+                remainingDeviceModifiers = trigger.deviceModifiers
+                releasedModifierKeyCode = nil
+                remainingReleaseReconciliationEvents = 0
+                pendingFnSystemActionTimestamp = nil
+                expiresAt = now &+ 500_000_000
+                if trigger.typeRawValue == CGEventType.flagsChanged.rawValue,
+                   trigger.modifiers == 0,
+                   trigger.deviceModifiers == 0,
+                   ModeBinding.modifierEventFlag(for: Int(trigger.keyCode)) != nil {
+                    armReleaseReconciliation(for: trigger.keyCode)
+                }
+                guard pendingRelease != nil
+                    || remainingModifiers != 0
+                    || remainingDeviceModifiers != 0
+                    || remainingReleaseReconciliationEvents != 0
+                else { return nil }
+            }
+
+            mutating func consumeIfMatching(_ input: ObservedInput, now: UInt64) -> Bool {
+                guard now <= expiresAt else { return false }
+                if consumeFnSystemActionEchoIfMatching(input) {
+                    return true
+                }
+                if consumeReleaseReconciliationIfMatching(input) {
+                    return true
+                }
+                if let pendingRelease, pendingRelease.matches(input) {
+                    guard input.modifiers & ~remainingModifiers == 0,
+                          input.deviceModifiers & ~remainingDeviceModifiers == 0
+                    else { return false }
+                    self.pendingRelease = nil
+                    remainingModifiers = input.modifiers
+                    remainingDeviceModifiers = input.deviceModifiers
+                    return true
+                }
+
+                guard input.typeRawValue == CGEventType.flagsChanged.rawValue else {
+                    return false
+                }
+                let keyCode = Int(input.keyCode)
+                guard let standardFlag = ModeBinding.modifierEventFlag(for: keyCode) else {
+                    return false
+                }
+                let standardFlagRaw = standardFlag.rawValue
+                guard input.modifiers & ~remainingModifiers == 0,
+                      input.deviceModifiers & ~remainingDeviceModifiers == 0
+                else { return false }
+
+                if let deviceMask = ModeBinding.deviceModifierMask(for: keyCode),
+                   remainingDeviceModifiers != 0 {
+                    // Device-dependent bits preserve left/right identity. Only
+                    // release a physical modifier that belonged to the stop
+                    // chord; a newly pressed right/left sibling is never tail.
+                    guard remainingDeviceModifiers & deviceMask != 0,
+                          input.deviceModifiers & deviceMask == 0
+                    else { return false }
+                } else {
+                    // Fallback for Fn and events lacking device-dependent bits:
+                    // require this exact modifier class to disappear. Equal
+                    // aggregate flags are a new physical event, not release tail.
+                    let removedModifiers = remainingModifiers & ~input.modifiers
+                    guard removedModifiers == standardFlagRaw else { return false }
+                }
+                remainingModifiers = input.modifiers
+                remainingDeviceModifiers = input.deviceModifiers
+                if remainingModifiers == 0, remainingDeviceModifiers == 0 {
+                    armReleaseReconciliation(for: input.keyCode)
+                }
+                return true
+            }
+
+            private mutating func consumeFnSystemActionEchoIfMatching(
+                _ input: ObservedInput
+            ) -> Bool {
+                guard releasedModifierKeyCode == Int64(kVK_Function) else { return false }
+                if let pendingFnSystemActionTimestamp {
+                    guard Self.isFnSystemActionEcho(input, type: .keyUp),
+                          input.timestamp == pendingFnSystemActionTimestamp
+                    else { return false }
+                    self.pendingFnSystemActionTimestamp = nil
+                    releasedModifierKeyCode = nil
+                    remainingReleaseReconciliationEvents = 0
+                    return true
+                }
+
+                guard remainingReleaseReconciliationEvents
+                    == Self.maximumReleaseReconciliationEvents,
+                    Self.isFnSystemActionEcho(input, type: .keyDown),
+                    input.timestamp != 0
+                else { return false }
+                pendingFnSystemActionTimestamp = input.timestamp
+                remainingReleaseReconciliationEvents = 0
+                return true
+            }
+
+            private static func isFnSystemActionEcho(
+                _ input: ObservedInput,
+                type: CGEventType
+            ) -> Bool {
+                input.typeRawValue == type.rawValue
+                    && input.keyCode == fnSystemActionKeyCode
+                    && input.rawFlags == CGEventFlags.maskNonCoalesced.rawValue
+                    && input.modifiers == 0
+                    && input.deviceModifiers == 0
+                    && input.sourceUnixProcessID == 0
+                    && input.sourceUserData == 0
+                    && input.sourceStateID
+                        == Int64(CGEventSourceStateID.hidSystemState.rawValue)
+            }
+
+            private mutating func armReleaseReconciliation(for keyCode: Int64) {
+                releasedModifierKeyCode = keyCode
+                remainingReleaseReconciliationEvents = Self.maximumReleaseReconciliationEvents
+            }
+
+            private mutating func consumeReleaseReconciliationIfMatching(
+                _ input: ObservedInput
+            ) -> Bool {
+                guard remainingReleaseReconciliationEvents > 0,
+                      let releasedModifierKeyCode,
+                      input.modifiers == 0,
+                      input.deviceModifiers == 0
+                else { return false }
+
+                let isMatchingKeyUp = input.typeRawValue == CGEventType.keyUp.rawValue
+                    && input.keyCode == releasedModifierKeyCode
+                let isMatchingFlagsEcho = input.typeRawValue == CGEventType.flagsChanged.rawValue
+                    && (input.keyCode == releasedModifierKeyCode || input.keyCode == 255)
+                guard isMatchingKeyUp || isMatchingFlagsEcho else { return false }
+
+                remainingReleaseReconciliationEvents -= 1
+                if remainingReleaseReconciliationEvents == 0 {
+                    self.releasedModifierKeyCode = nil
+                }
+                return true
+            }
+
+            var isComplete: Bool {
+                pendingRelease == nil
+                    && remainingModifiers == 0
+                    && remainingDeviceModifiers == 0
+                    && remainingReleaseReconciliationEvents == 0
+                    && pendingFnSystemActionTimestamp == nil
+            }
+
+            var hasPendingRequiredEcho: Bool {
+                pendingFnSystemActionTimestamp != nil
+            }
+        }
+
+        private static let modifierMask = CGEventFlags.maskCommand.rawValue
+            | CGEventFlags.maskShift.rawValue
+            | CGEventFlags.maskAlternate.rawValue
+            | CGEventFlags.maskControl.rawValue
+            | CGEventFlags.maskSecondaryFn.rawValue
+
+        private let lock = NSLock()
+        private var generation: UInt64 = 0
+        private var sequence: UInt64 = 0
+        private var isAvailable = false
+        private var eventTap: CFMachPort?
+        private var assumesLiveForTesting = false
+        private var currentEvent: ObservedInput?
+        private var currentEventAuthorizedForStopCapture = false
+        private var allowedStopTail: StopGestureTail?
+        private var recentSequenceChanges: [SequenceChange] = []
+
+        func start(eventTap: CFMachPort) {
+            lock.lock()
+            generation &+= 1
+            isAvailable = true
+            self.eventTap = eventTap
+            assumesLiveForTesting = false
+            currentEvent = nil
+            currentEventAuthorizedForStopCapture = false
+            allowedStopTail = nil
+            recentSequenceChanges.removeAll(keepingCapacity: true)
+            lock.unlock()
+        }
+
+        func startForTesting() {
+            lock.lock()
+            generation &+= 1
+            isAvailable = true
+            eventTap = nil
+            assumesLiveForTesting = true
+            currentEvent = nil
+            currentEventAuthorizedForStopCapture = false
+            allowedStopTail = nil
+            recentSequenceChanges.removeAll(keepingCapacity: true)
+            lock.unlock()
+        }
+
+        func stop() {
+            lock.lock()
+            generation &+= 1
+            isAvailable = false
+            eventTap = nil
+            assumesLiveForTesting = false
+            currentEvent = nil
+            currentEventAuthorizedForStopCapture = false
+            allowedStopTail = nil
+            recentSequenceChanges.removeAll(keepingCapacity: true)
+            lock.unlock()
+        }
+
+        func beginEvent(type: CGEventType, event: CGEvent, isSynthetic: Bool) {
+            let input = ObservedInput(type: type, event: event)
+            lock.lock()
+            currentEvent = input
+            currentEventAuthorizedForStopCapture = false
+            guard !isSynthetic else {
+                lock.unlock()
+                return
+            }
+
+            let now = DispatchTime.now().uptimeNanoseconds
+            if var tail = allowedStopTail,
+               tail.consumeIfMatching(input, now: now) {
+                allowedStopTail = tail.isComplete ? nil : tail
+                lock.unlock()
+                DebugFileLogger.log(
+                    "opaque input continuity: consumed stop tail \(input.diagnosticSummary)"
+                )
+                return
+            }
+            allowedStopTail = nil
+            sequence &+= 1
+            recentSequenceChanges.append(SequenceChange(sequence: sequence, input: input))
+            if recentSequenceChanges.count > 8 {
+                recentSequenceChanges.removeFirst(recentSequenceChanges.count - 8)
+            }
+            lock.unlock()
+        }
+
+        func endEvent() {
+            lock.lock()
+            currentEvent = nil
+            currentEventAuthorizedForStopCapture = false
+            lock.unlock()
+        }
+
+        @discardableResult
+        func authorizeCurrentEventForStopCapture() -> Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            guard isLiveLocked(), currentEvent != nil else { return false }
+            currentEventAuthorizedForStopCapture = true
+            return true
+        }
+
+        func captureToken() -> Token? {
+            lock.lock()
+            defer { lock.unlock() }
+            guard isLiveLocked() else { return nil }
+            return Token(generation: generation, sequence: sequence)
+        }
+
+        func isUnchanged(since token: Token) -> Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            return validationFailureReasonLocked(since: token) == nil
+        }
+
+        func validationFailureReason(since token: Token) -> String? {
+            lock.lock()
+            defer { lock.unlock() }
+            return validationFailureReasonLocked(since: token)
+        }
+
+        @discardableResult
+        func allowCurrentStopGestureTail(since token: Token) -> Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            guard isLiveLocked(),
+                  generation == token.generation,
+                  sequence == token.sequence,
+                  currentEventAuthorizedForStopCapture,
+                  let currentEvent
+            else { return false }
+            allowedStopTail = StopGestureTail(
+                trigger: currentEvent,
+                now: DispatchTime.now().uptimeNanoseconds
+            )
+            return allowedStopTail != nil
+        }
+
+        private func isLiveLocked() -> Bool {
+            guard isAvailable else { return false }
+            if assumesLiveForTesting { return true }
+            guard let eventTap, CFMachPortIsValid(eventTap) else { return false }
+            return CGEvent.tapIsEnabled(tap: eventTap)
+        }
+
+        private func validationFailureReasonLocked(since token: Token) -> String? {
+            guard isAvailable else { return "monitorUnavailable" }
+            if !assumesLiveForTesting {
+                guard let eventTap else { return "eventTapMissing" }
+                guard CFMachPortIsValid(eventTap) else { return "eventTapInvalid" }
+                guard CGEvent.tapIsEnabled(tap: eventTap) else { return "eventTapDisabled" }
+            }
+            guard generation == token.generation else {
+                return "generationChanged(expected=\(token.generation),current=\(generation))"
+            }
+            if allowedStopTail?.hasPendingRequiredEcho == true {
+                return "stopTailIncomplete"
+            }
+            guard sequence == token.sequence else {
+                let changes = recentSequenceChanges
+                    .filter { $0.sequence > token.sequence }
+                    .map { "#\($0.sequence){\($0.input.diagnosticSummary)}" }
+                    .joined(separator: ";")
+                return "sequenceChanged(expected=\(token.sequence),current=\(sequence),events=[\(changes)])"
+            }
+            return nil
+        }
+    }
+
+    private static let inputActivityMonitor = InputActivityMonitor()
+
+    /// Physical keyboard/pointer events capable of changing a private first
+    /// responder. Only the exact release-only tail armed for the current stop
+    /// gesture is filtered by `InputActivityMonitor`.
+    static func canChangeOpaqueInputFocus(_ type: CGEventType) -> Bool {
+        switch type {
+        case .keyDown, .keyUp, .flagsChanged,
+             .leftMouseDown, .leftMouseUp,
+             .rightMouseDown, .rightMouseUp,
+             .otherMouseDown, .otherMouseUp,
+             .leftMouseDragged, .rightMouseDragged, .otherMouseDragged,
+             .scrollWheel:
+            return true
+        default:
+            return type.rawValue == 14
+        }
+    }
+
+    /// Per-process nonce: Type4Me can recognize its own generated shortcuts,
+    /// while another process cannot bypass continuity with a public magic value.
+    private static let syntheticInputEventMarker = Int64.random(in: 1...Int64.max)
+
+    static func markAsSyntheticInput(_ event: CGEvent) {
+        event.setIntegerValueField(
+            .eventSourceUserData,
+            value: syntheticInputEventMarker
+        )
+    }
+
+    static func isSyntheticInput(_ event: CGEvent) -> Bool {
+        event.getIntegerValueField(.eventSourceUserData) == syntheticInputEventMarker
+    }
+
+    static func globalInputMonitorDidStart(eventTap: CFMachPort) {
+        inputActivityMonitor.start(eventTap: eventTap)
+    }
+
+    static func globalInputMonitorDidStop() {
+        inputActivityMonitor.stop()
+    }
+
+    /// Called by `HotkeyManager` immediately before a binding callback. This is
+    /// the proof that a capture occurring inside the callback belongs to the
+    /// current hotkey event rather than an unrelated concurrent input event.
+    @discardableResult
+    static func authorizeCurrentGlobalInputForStopCapture() -> Bool {
+        inputActivityMonitor.authorizeCurrentEventForStopCapture()
+    }
+
+    static func beginGlobalInputEvent(type: CGEventType, event: CGEvent) {
+        guard canChangeOpaqueInputFocus(type) else { return }
+        inputActivityMonitor.beginEvent(
+            type: type,
+            event: event,
+            isSynthetic: isSyntheticInput(event)
+        )
+    }
+
+    static func endGlobalInputEvent(type: CGEventType) {
+        guard canChangeOpaqueInputFocus(type) else { return }
+        inputActivityMonitor.endEvent()
+    }
 
     fileprivate final class FocusContinuityGuard: @unchecked Sendable {
         private let state = ConfirmedTargetInvalidationState()
@@ -71,41 +554,12 @@ final class TextInjectionEngine: @unchecked Sendable {
         private var axObserver: AXObserver?
         private var axObserverContext: UnsafeMutableRawPointer?
         private var workspaceObservers: [NSObjectProtocol] = []
-        private var inputEventTap: CFMachPort?
-        private var inputEventTapSource: CFRunLoopSource?
-        private var inputEventTapContext: UnsafeMutableRawPointer?
         private let cleanupLock = NSLock()
         private var hasStopped = false
 
-        init(app: NSRunningApplication, observePointerInput: Bool = false) {
+        init(app: NSRunningApplication, requiresAXContinuity: Bool = true) {
             appElement = AXUIElementCreateApplication(app.processIdentifier)
             AXUIElementSetMessagingTimeout(appElement, 0.05)
-
-            if observePointerInput {
-                let eventMask = TextInjectionEngine
-                    .opaqueTargetInvalidatingInputEventTypes
-                    .reduce(CGEventMask(0)) {
-                    $0 | (CGEventMask(1) << $1.rawValue)
-                }
-                let context = Unmanaged.passRetained(state).toOpaque()
-                if let tap = CGEvent.tapCreate(
-                    tap: .cgSessionEventTap,
-                    place: .headInsertEventTap,
-                    options: .listenOnly,
-                    eventsOfInterest: eventMask,
-                    callback: confirmedTargetInputEventCallback,
-                    userInfo: context
-                ), let source = CFMachPortCreateRunLoopSource(nil, tap, 0) {
-                    inputEventTap = tap
-                    inputEventTapSource = source
-                    inputEventTapContext = context
-                    CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
-                    CGEvent.tapEnable(tap: tap, enable: true)
-                } else {
-                    Unmanaged<ConfirmedTargetInvalidationState>.fromOpaque(context).release()
-                    state.invalidate(reason: "globalInputTapUnavailable")
-                }
-            }
 
             let workspaceCenter = NSWorkspace.shared.notificationCenter
             workspaceObservers.append(workspaceCenter.addObserver(
@@ -139,7 +593,7 @@ final class TextInjectionEngine: @unchecked Sendable {
                 confirmedTargetAXObserverCallback,
                 &observer
             ) == .success, let observer else {
-                if !observePointerInput {
+                if requiresAXContinuity {
                     state.invalidate(reason: "continuityObserverUnavailable")
                 }
                 DebugFileLogger.log("end target continuity: AX observer unavailable")
@@ -163,7 +617,7 @@ final class TextInjectionEngine: @unchecked Sendable {
             }
             guard registeredNotifications > 0 else {
                 Unmanaged<ConfirmedTargetInvalidationState>.fromOpaque(context).release()
-                if !observePointerInput {
+                if requiresAXContinuity {
                     state.invalidate(reason: "continuityNotificationsUnavailable")
                 }
                 DebugFileLogger.log("end target continuity: AX notifications unavailable")
@@ -195,12 +649,6 @@ final class TextInjectionEngine: @unchecked Sendable {
             let context = axObserverContext
             axObserver = nil
             axObserverContext = nil
-            let eventTap = inputEventTap
-            let eventTapSource = inputEventTapSource
-            let eventTapContext = inputEventTapContext
-            inputEventTap = nil
-            inputEventTapSource = nil
-            inputEventTapContext = nil
             let observers = workspaceObservers
             workspaceObservers.removeAll()
             cleanupLock.unlock()
@@ -223,16 +671,6 @@ final class TextInjectionEngine: @unchecked Sendable {
             if let context {
                 Unmanaged<ConfirmedTargetInvalidationState>.fromOpaque(context).release()
             }
-            if let eventTapSource {
-                CFRunLoopRemoveSource(CFRunLoopGetMain(), eventTapSource, .commonModes)
-            }
-            if let eventTap {
-                CGEvent.tapEnable(tap: eventTap, enable: false)
-                CFMachPortInvalidate(eventTap)
-            }
-            if let eventTapContext {
-                Unmanaged<ConfirmedTargetInvalidationState>.fromOpaque(eventTapContext).release()
-            }
         }
 
         deinit {
@@ -240,13 +678,17 @@ final class TextInjectionEngine: @unchecked Sendable {
         }
     }
 
-    /// A strictly confirmed focused control captured at the instant the user
-    /// stops a recording. Unlike normal outcome detection, this never guesses
-    /// an editable control by traversing an application's accessibility tree.
-    struct ConfirmedInjectionTarget: @unchecked Sendable {
+    /// A stop-time destination with an explicit evidence tier. Exact AX targets
+    /// prove the focused editable element. Best-effort opaque targets only pin
+    /// the app/window and input epoch because their private editor is invisible
+    /// to Accessibility; callers must retain the dictated text in the clipboard.
+    struct EndInjectionTarget: @unchecked Sendable {
         fileprivate enum Evidence: @unchecked Sendable {
             case exactElement(AXUIElement)
-            case opaquePasteDestination(focusedWindow: AXUIElement)
+            case bestEffortOpaqueWindow(
+                focusedWindow: AXUIElement,
+                inputToken: InputActivityMonitor.Token
+            )
         }
 
         fileprivate let evidence: Evidence
@@ -270,8 +712,8 @@ final class TextInjectionEngine: @unchecked Sendable {
             continuityGuard.stop()
         }
 
-        fileprivate var usesOpaquePasteDestination: Bool {
-            if case .opaquePasteDestination = evidence { return true }
+        fileprivate var isBestEffortOpaque: Bool {
+            if case .bestEffortOpaqueWindow = evidence { return true }
             return false
         }
     }
@@ -285,6 +727,7 @@ final class TextInjectionEngine: @unchecked Sendable {
     private struct OpaquePasteDestinationLookup {
         let focusedWindow: AXUIElement?
         let sourceRole: String?
+        let pasteCommandEnabled: Bool?
         let rejectionReason: String
     }
 
@@ -331,13 +774,13 @@ final class TextInjectionEngine: @unchecked Sendable {
     /// Call ``finishClipboardRestore()`` afterward to restore the original clipboard.
     func inject(
         _ text: String,
-        requiring confirmedTarget: ConfirmedInjectionTarget? = nil
+        requiring endTarget: EndInjectionTarget? = nil
     ) -> InjectionOutcome {
         guard !text.isEmpty else { return .inserted }
         return injectViaClipboard(
             text,
             trackingMetadata: nil,
-            requiring: confirmedTarget
+            requiring: endTarget
         ).outcome
     }
 
@@ -348,7 +791,7 @@ final class TextInjectionEngine: @unchecked Sendable {
         sourceText: String,
         sourceRecordID: String,
         modeID: UUID,
-        requiring confirmedTarget: ConfirmedInjectionTarget? = nil
+        requiring endTarget: EndInjectionTarget? = nil
     ) -> TrackedInjectionResult {
         guard !text.isEmpty else {
             return TrackedInjectionResult(outcome: .inserted, observationContext: nil)
@@ -360,7 +803,7 @@ final class TextInjectionEngine: @unchecked Sendable {
                 sourceRecordID: sourceRecordID,
                 modeID: modeID
             ),
-            requiring: confirmedTarget
+            requiring: endTarget
         )
     }
 
@@ -386,11 +829,12 @@ final class TextInjectionEngine: @unchecked Sendable {
         }
     }
 
-    /// Capture the frontmost, truly focused editable control. This is purposely
-    /// stricter than `captureFocusedElementSnapshot()`, whose tree traversal
-    /// fallback is useful for paste outcome detection but cannot prove intent.
-    static func captureConfirmedInjectionTarget() -> ConfirmedInjectionTarget? {
+    /// Capture the stop-time destination. Exact AX fields remain the strong
+    /// path. An AX-opaque window is captured only as an explicitly best-effort
+    /// destination with a global input epoch that must remain unchanged.
+    static func captureEndInjectionTarget() -> EndInjectionTarget? {
         let captureStartedAt = ContinuousClock.now
+        let stopInputToken = inputActivityMonitor.captureToken()
         guard AXIsProcessTrusted() else {
             DebugFileLogger.log(
                 "end target capture rejected reason=accessibilityUntrusted "
@@ -417,13 +861,31 @@ final class TextInjectionEngine: @unchecked Sendable {
 
         let lookup = confirmedFocusedElement(in: frontmostApp, prepareIfNeeded: true)
         if let element = lookup.element {
+            if let stopInputToken,
+               !inputActivityMonitor.isUnchanged(since: stopInputToken) {
+                DebugFileLogger.log(
+                    "end target capture rejected reason=inputChangedDuringExactCapture "
+                        + "latency=\(ContinuousClock.now - captureStartedAt)"
+                )
+                return nil
+            }
+
             let continuityGuard = FocusContinuityGuard(app: frontmostApp)
+            if let stopInputToken,
+               !inputActivityMonitor.isUnchanged(since: stopInputToken) {
+                continuityGuard.stop()
+                DebugFileLogger.log(
+                    "end target capture rejected reason=inputChangedBeforeExactGuard "
+                        + "latency=\(ContinuousClock.now - captureStartedAt)"
+                )
+                return nil
+            }
             DebugFileLogger.log(
-                "end target capture confirmed pid=\(frontmostApp.processIdentifier) "
+                "end target capture exactConfirmed pid=\(frontmostApp.processIdentifier) "
                     + "source=\(lookup.source ?? "unknown") "
                     + "latency=\(ContinuousClock.now - captureStartedAt)"
             )
-            return ConfirmedInjectionTarget(
+            return EndInjectionTarget(
                 evidence: .exactElement(element),
                 processIdentifier: frontmostApp.processIdentifier,
                 bundleIdentifier: frontmostBundleIdentifier,
@@ -431,8 +893,19 @@ final class TextInjectionEngine: @unchecked Sendable {
             )
         }
 
-        let opaqueLookup = confirmedOpaquePasteDestination(in: frontmostApp)
-        guard let focusedWindow = opaqueLookup.focusedWindow else {
+        guard let stopInputToken else {
+            DebugFileLogger.log(
+                "end target capture rejected reason=\(lookup.rejectionReason) "
+                    + "opaque=inputMonitorUnavailable "
+                    + "latency=\(ContinuousClock.now - captureStartedAt)"
+            )
+            return nil
+        }
+
+        let opaqueLookup = bestEffortOpaquePasteDestination(in: frontmostApp)
+        guard let focusedWindow = opaqueLookup.focusedWindow,
+              inputActivityMonitor.isUnchanged(since: stopInputToken)
+        else {
             DebugFileLogger.log(
                 "end target capture rejected reason=\(lookup.rejectionReason) "
                     + "opaque=\(opaqueLookup.rejectionReason) "
@@ -441,23 +914,33 @@ final class TextInjectionEngine: @unchecked Sendable {
             return nil
         }
 
-        // Some custom editors (notably fully custom AppKit/WebKit surfaces)
-        // accept normal Paste but intentionally expose only their focused
-        // window to Accessibility. Preserve the user's exact stop-time intent
-        // by pinning that window and invalidating on subsequent pointer-driven
-        // focus changes. App/window and AX focus changes are tracked separately.
         let continuityGuard = FocusContinuityGuard(
             app: frontmostApp,
-            observePointerInput: true
+            requiresAXContinuity: false
+        )
+        guard inputActivityMonitor.isUnchanged(since: stopInputToken) else {
+            continuityGuard.stop()
+            DebugFileLogger.log(
+                "end target capture rejected reason=inputChangedBeforeOpaqueGuard "
+                    + "latency=\(ContinuousClock.now - captureStartedAt)"
+            )
+            return nil
+        }
+        let stopTailArmed = inputActivityMonitor.allowCurrentStopGestureTail(
+            since: stopInputToken
         )
         DebugFileLogger.log(
-            "end target capture confirmed pid=\(frontmostApp.processIdentifier) "
-                + "source=opaquePasteDestination "
+            "end target capture bestEffortOpaque pid=\(frontmostApp.processIdentifier) "
                 + "role=\(opaqueLookup.sourceRole ?? "unknown") "
+                + "pasteEnabled=\(opaqueLookup.pasteCommandEnabled.map(String.init) ?? "nil") "
+                + "stopTailArmed=\(stopTailArmed) "
                 + "latency=\(ContinuousClock.now - captureStartedAt)"
         )
-        return ConfirmedInjectionTarget(
-            evidence: .opaquePasteDestination(focusedWindow: focusedWindow),
+        return EndInjectionTarget(
+            evidence: .bestEffortOpaqueWindow(
+                focusedWindow: focusedWindow,
+                inputToken: stopInputToken
+            ),
             processIdentifier: frontmostApp.processIdentifier,
             bundleIdentifier: frontmostBundleIdentifier,
             continuityGuard: continuityGuard
@@ -496,9 +979,10 @@ final class TextInjectionEngine: @unchecked Sendable {
         )
     }
 
-    /// Revalidate immediately before paste. The app and exact focused AX control
-    /// must still match the stop-time snapshot; focus changes fail safe.
-    private static func isStillConfirmed(_ target: ConfirmedInjectionTarget) -> Bool {
+    /// Revalidate immediately before paste. Exact targets must retain the same
+    /// AX element. Best-effort opaque targets must retain the same app, window,
+    /// Paste command presence, and global input epoch.
+    private static func isStillValid(_ target: EndInjectionTarget) -> Bool {
         if let reason = target.continuityGuard.invalidationReason {
             DebugFileLogger.log(
                 "end target revalidate rejected reason=continuityInvalidated(\(reason))"
@@ -544,18 +1028,27 @@ final class TextInjectionEngine: @unchecked Sendable {
             )
             return false
 
-        case .opaquePasteDestination(let targetWindow):
-            guard let currentWindow = focusedWindow(in: frontmostApp),
+        case .bestEffortOpaqueWindow(
+            let targetWindow,
+            let inputToken
+        ):
+            if let reason = inputActivityMonitor.validationFailureReason(since: inputToken) {
+                DebugFileLogger.log(
+                    "end target revalidate rejected reason=opaqueInputChanged(\(reason))"
+                )
+                return false
+            }
+            let opaqueLookup = bestEffortOpaquePasteDestination(in: frontmostApp)
+            guard let currentWindow = opaqueLookup.focusedWindow,
                   CFEqual(currentWindow, targetWindow)
             else {
-                DebugFileLogger.log("end target revalidate rejected reason=opaqueWindowChanged")
+                DebugFileLogger.log(
+                    "end target revalidate rejected reason=opaqueWindowOrEvidenceChanged(\(opaqueLookup.rejectionReason))"
+                )
                 return false
             }
-            guard standardPasteCommandState(in: frontmostApp) != nil else {
-                DebugFileLogger.log("end target revalidate rejected reason=opaquePasteCommandMissing")
-                return false
-            }
-            return target.continuityGuard.invalidationReason == nil
+            return inputActivityMonitor.isUnchanged(since: inputToken)
+                && target.continuityGuard.invalidationReason == nil
         }
     }
 
@@ -623,18 +1116,18 @@ final class TextInjectionEngine: @unchecked Sendable {
         )
     }
 
-    /// Confirm an input destination in applications that deliberately hide
-    /// their internal editor from Accessibility. This is not a tree-search for
-    /// an arbitrary field: the application must report the focused window
-    /// itself as the focused element, expose a standard Cmd+V command,
-    /// and expose no ordinary editable descendant in that window.
-    private static func confirmedOpaquePasteDestination(
+    /// Identify a private editor only as a best-effort destination. The
+    /// focused window is not treated as proof of an editable control: command
+    /// state is preserved as weak evidence, and injection keeps the new text in
+    /// the clipboard regardless of whether Cmd+V is consumed.
+    private static func bestEffortOpaquePasteDestination(
         in frontmostApp: NSRunningApplication
     ) -> OpaquePasteDestinationLookup {
         guard let window = focusedWindow(in: frontmostApp) else {
             return OpaquePasteDestinationLookup(
                 focusedWindow: nil,
                 sourceRole: nil,
+                pasteCommandEnabled: nil,
                 rejectionReason: "focusedWindowUnavailable"
             )
         }
@@ -649,15 +1142,15 @@ final class TextInjectionEngine: @unchecked Sendable {
         let role = stringAttribute(kAXRoleAttribute as CFString, from: candidate)
         let subrole = stringAttribute(kAXSubroleAttribute as CFString, from: candidate)
         let matchesWindow = CFEqual(candidate, window)
-        let pasteCommandAvailable = standardPasteCommandState(in: frontmostApp) != nil
+        let pasteCommandEnabled = standardPasteCommandState(in: frontmostApp)
         let editorScan = scanForAccessibleEditableDescendant(in: window)
         let hasAccessibleEditor = editorScan == .found
         let editorScanComplete = editorScan != .indeterminate
 
-        guard shouldUseOpaquePasteDestination(
+        guard shouldUseBestEffortOpaqueDestination(
             role: role,
             subrole: subrole,
-            pasteCommandAvailable: pasteCommandAvailable,
+            pasteCommandPresent: pasteCommandEnabled != nil,
             hasAccessibleEditableDescendant: hasAccessibleEditor,
             editableDescendantScanComplete: editorScanComplete,
             focusedElementMatchesWindow: matchesWindow,
@@ -666,8 +1159,11 @@ final class TextInjectionEngine: @unchecked Sendable {
             return OpaquePasteDestinationLookup(
                 focusedWindow: nil,
                 sourceRole: role,
-                rejectionReason: "notConfirmed(role=\(role ?? "nil"),"
-                    + "pasteCommand=\(pasteCommandAvailable),editor=\(hasAccessibleEditor),"
+                pasteCommandEnabled: pasteCommandEnabled,
+                rejectionReason: "notEligible(role=\(role ?? "nil"),"
+                    + "pasteCommandPresent=\(pasteCommandEnabled != nil),"
+                    + "pasteEnabled=\(pasteCommandEnabled.map(String.init) ?? "nil"),"
+                    + "editor=\(hasAccessibleEditor),"
                     + "editorScanComplete=\(editorScanComplete),"
                     + "windowMatch=\(matchesWindow),pidMatch=\(pidMatches))"
             )
@@ -676,14 +1172,15 @@ final class TextInjectionEngine: @unchecked Sendable {
         return OpaquePasteDestinationLookup(
             focusedWindow: window,
             sourceRole: role,
+            pasteCommandEnabled: pasteCommandEnabled,
             rejectionReason: "none"
         )
     }
 
-    static func shouldUseOpaquePasteDestination(
+    static func shouldUseBestEffortOpaqueDestination(
         role: String?,
         subrole: String?,
-        pasteCommandAvailable: Bool,
+        pasteCommandPresent: Bool,
         hasAccessibleEditableDescendant: Bool,
         editableDescendantScanComplete: Bool = true,
         focusedElementMatchesWindow: Bool,
@@ -691,7 +1188,7 @@ final class TextInjectionEngine: @unchecked Sendable {
     ) -> Bool {
         guard elementPIDMatchesFrontmost,
               focusedElementMatchesWindow,
-              pasteCommandAvailable,
+              pasteCommandPresent,
               !hasAccessibleEditableDescendant,
               editableDescendantScanComplete,
               !isSecureRole(role: role, subrole: subrole)
@@ -780,10 +1277,10 @@ final class TextInjectionEngine: @unchecked Sendable {
     }
 
     /// `nil` means the application has no standard Cmd+V command, `false`
-    /// means the application reports it disabled, and `true` means enabled.
-    /// Opaque editors may report a permanently disabled state even while their
-    /// private first responder accepts Cmd+V, so only command existence is a
-    /// reliable capability signal; focus continuity is verified separately.
+    /// means it reports the command disabled, and `true` means enabled. Some
+    /// private editors accept Cmd+V while permanently reporting `false`, so the
+    /// state is weak evidence only and never upgrades an opaque window to an
+    /// exact target.
     private static func standardPasteCommandState(in app: NSRunningApplication) -> Bool? {
         let appElement = AXUIElementCreateApplication(app.processIdentifier)
         AXUIElementSetMessagingTimeout(appElement, 0.05)
@@ -954,10 +1451,17 @@ final class TextInjectionEngine: @unchecked Sendable {
     private func injectViaClipboard(
         _ text: String,
         trackingMetadata: (sourceText: String, sourceRecordID: String, modeID: UUID)?,
-        requiring confirmedTarget: ConfirmedInjectionTarget?
+        requiring endTarget: EndInjectionTarget?
     ) -> TrackedInjectionResult {
-        defer { confirmedTarget?.stopObserving() }
-        let shouldRestoreClipboard = clipboardRetention == .restoreOriginal
+        defer { endTarget?.stopObserving() }
+        let isBestEffortOpaque = endTarget?.isBestEffortOpaque == true
+        // An opaque editor cannot prove whether Cmd+V was consumed. Its result
+        // must therefore remain recoverable even when normal injections restore
+        // the user's original clipboard.
+        let shouldRestoreClipboard = Self.shouldRestoreClipboard(
+            retention: clipboardRetention,
+            isBestEffortOpaque: isBestEffortOpaque
+        )
         let savedClipboard = shouldRestoreClipboard ? ClipboardSnapshot.capture() : nil
 
         // If Type4Me is frontmost, yield focus so the target application receives paste
@@ -968,8 +1472,9 @@ final class TextInjectionEngine: @unchecked Sendable {
             usleep(50_000)
         }
 
-        // Snapshot focused element BEFORE paste for outcome detection
-        let before = captureFocusedElementSnapshot()
+        // Opaque targets cannot provide a meaningful field snapshot. Exact and
+        // ordinary paths keep the existing outcome/correction observation flow.
+        let before = isBestEffortOpaque ? nil : captureFocusedElementSnapshot()
 
         copyToClipboard(text, transient: shouldRestoreClipboard)
         let postWriteChangeCount = NSPasteboard.general.changeCount
@@ -978,7 +1483,7 @@ final class TextInjectionEngine: @unchecked Sendable {
         // Keep the strong end-target check inside the paste critical path. If
         // focus changed during processing or clipboard preparation, retain the
         // result for manual paste regardless of the normal clipboard policy.
-        if let confirmedTarget, !Self.isStillConfirmed(confirmedTarget) {
+        if let endTarget, !Self.isStillValid(endTarget) {
             copyToClipboard(text)
             pendingClipboardRestore = nil
             DebugFileLogger.log("injection guard: end target changed; paste skipped")
@@ -998,15 +1503,23 @@ final class TextInjectionEngine: @unchecked Sendable {
         }
         usleep(100_000)
 
-        // Snapshot AFTER paste and compare to detect if text landed
-        let after = captureFocusedElementSnapshot()
-        let detectedOutcome = confirmedTarget?.usesOpaquePasteDestination == true
-            ? InjectionOutcome.inserted
-            : inferInjectionOutcome(before: before, after: after, pastedText: text)
-        let outcome = Self.finalizeOutcome(
-            detectedOutcome,
-            retention: clipboardRetention
-        )
+        let after = isBestEffortOpaque ? nil : captureFocusedElementSnapshot()
+        let outcome: InjectionOutcome
+        if isBestEffortOpaque {
+            // This reports exactly what is known: Cmd+V was attempted and the
+            // result remains in the clipboard. Never claim `.inserted` here.
+            outcome = .pasteAttemptedClipboardRetained
+        } else {
+            let detectedOutcome = inferInjectionOutcome(
+                before: before,
+                after: after,
+                pastedText: text
+            )
+            outcome = Self.finalizeOutcome(
+                detectedOutcome,
+                retention: clipboardRetention
+            )
+        }
 
         // Defer restoration so the target app has time to consume Cmd+V.
         // Keep it pending for every result so a failed paste cannot leak text
@@ -1035,6 +1548,15 @@ final class TextInjectionEngine: @unchecked Sendable {
 
     /// A restore policy cannot truthfully report a clipboard fallback: its
     /// temporary pasteboard contents are restored after the paste attempt.
+    /// Selecting the recording-end target is an explicit opt-in whose setting
+    /// detail discloses that opaque attempts always retain a recoverable result.
+    static func shouldRestoreClipboard(
+        retention: ClipboardRetention,
+        isBestEffortOpaque: Bool
+    ) -> Bool {
+        retention == .restoreOriginal && !isBestEffortOpaque
+    }
+
     static func finalizeOutcome(
         _ detectedOutcome: InjectionOutcome,
         retention: ClipboardRetention
@@ -1054,6 +1576,8 @@ final class TextInjectionEngine: @unchecked Sendable {
 
         keyDown.flags = .maskCommand
         keyUp.flags = .maskCommand
+        Self.markAsSyntheticInput(keyDown)
+        Self.markAsSyntheticInput(keyUp)
 
         keyDown.post(tap: .cghidEventTap)
         keyUp.post(tap: .cghidEventTap)

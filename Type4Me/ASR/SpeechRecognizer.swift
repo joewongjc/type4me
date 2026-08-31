@@ -80,6 +80,9 @@ struct RecognitionTranscript: Sendable, Equatable {
 
 enum InjectionOutcome: Sendable, Equatable {
     case inserted
+    /// Cmd+V was sent to an AX-opaque editor, but insertion cannot be proven.
+    /// The dictated result intentionally remains in the clipboard.
+    case pasteAttemptedClipboardRetained
     case copiedToClipboard
     case notInserted
     case discarded
@@ -88,6 +91,11 @@ enum InjectionOutcome: Sendable, Equatable {
         switch self {
         case .inserted:
             return L("已完成", "Done")
+        case .pasteAttemptedClipboardRetained:
+            return L(
+                "已尝试输入，文本已保留到剪贴板",
+                "Paste attempted; text kept in clipboard"
+            )
         case .copiedToClipboard:
             return L("已粘贴到剪贴板", "Copied to clipboard")
         case .notInserted:
