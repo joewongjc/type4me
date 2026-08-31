@@ -64,35 +64,36 @@ struct LiquidGlassText: View {
         let elapsedInCycle = relativeTime.truncatingRemainder(dividingBy: cycleDuration)
 
         let isSweeping = isAnimated && (elapsedInCycle < sweepDuration)
-        let glintWidth: CGFloat = 0.15
+        let glintWidth: CGFloat = 0.18
+        let progress = isSweeping ? CGFloat(elapsedInCycle / sweepDuration) : 0.0
+        let sweepGlowFactor = isSweeping ? max(0.0, sin(Double(progress) * .pi)) : 0.0
 
         let startPoint: UnitPoint
         let endPoint: UnitPoint
 
         if isSweeping {
-            let progress = CGFloat(elapsedInCycle / sweepDuration)
-            let phase = -0.25 + progress * 1.5
+            let phase = -0.30 + progress * 1.6
             startPoint = UnitPoint(x: Double(phase - glintWidth), y: 0.5)
             endPoint = UnitPoint(x: Double(phase + glintWidth), y: 0.5)
         } else {
-            // Off-screen during the 2.0s idle period (text remains clean dark silver)
+            // Off-screen during the 2.0s idle period (text remains clean high-contrast silver at 0.70 opacity)
             startPoint = UnitPoint(x: -2.0, y: 0.5)
             endPoint = UnitPoint(x: -1.7, y: 0.5)
         }
 
-        let textColor = theme == .light ? TF.floatingTextLight : Color.white
+        let textColor = theme == .light ? TF.floatingTextLight : Color.white.opacity(0.70)
         let gradientStops: [Gradient.Stop] = theme == .light ? [
             .init(color: textColor, location: 0.0),
-            .init(color: textColor.opacity(0.60), location: 0.32),
+            .init(color: textColor.opacity(0.75), location: 0.32),
             .init(color: Color.white, location: 0.50),
-            .init(color: textColor.opacity(0.60), location: 0.68),
+            .init(color: textColor.opacity(0.75), location: 0.68),
             .init(color: textColor, location: 1.0),
         ] : [
-            .init(color: Color.white.opacity(0.40), location: 0.0),
-            .init(color: Color.white.opacity(0.65), location: 0.35),
+            .init(color: Color.white.opacity(0.70), location: 0.0),
+            .init(color: Color.white.opacity(0.85), location: 0.35),
             .init(color: Color.white, location: 0.50),
-            .init(color: Color.white.opacity(0.65), location: 0.65),
-            .init(color: Color.white.opacity(0.40), location: 1.0),
+            .init(color: Color.white.opacity(0.85), location: 0.65),
+            .init(color: Color.white.opacity(0.70), location: 1.0),
         ]
 
         return Text(text)
@@ -107,8 +108,8 @@ struct LiquidGlassText: View {
             )
             .shadow(
                 color: theme == .light
-                    ? Color.white.opacity(isSweeping ? Double(0.85 + energy * 0.15) : 0.0)
-                    : Color.white.opacity(isSweeping ? Double(0.30 + energy * 0.30) : 0.0),
+                    ? Color.white.opacity(sweepGlowFactor * (0.85 + Double(energy) * 0.15))
+                    : Color.white.opacity(sweepGlowFactor * (0.30 + Double(energy) * 0.30)),
                 radius: CGFloat(2.0 + energy * 1.5)
             )
             .onAppear {
