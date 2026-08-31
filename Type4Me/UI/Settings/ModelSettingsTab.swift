@@ -12,7 +12,6 @@ struct ModelSettingsTab: View, SettingsCardHelpers {
     @State private var defaultLLMProvider: LLMProvider = KeychainService.selectedLLMProvider
     @AppStorage("tf_sensevoiceEnabled") private var sensevoiceEnabled = true
     @AppStorage("tf_qwen3FinalEnabled") private var qwen3FinalEnabled = true
-
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if showsHeader {
@@ -35,7 +34,9 @@ struct ModelSettingsTab: View, SettingsCardHelpers {
                     selectedASR: $selectedASRProvider,
                     selectedLLM: $selectedLLMProvider,
                     defaultASR: defaultASRProvider,
-                    defaultLLM: defaultLLMProvider
+                    defaultLLM: defaultLLMProvider,
+                    onSelectASR: attemptASRChange,
+                    onSelectLLM: attemptLLMChange
                 )
                 .padding(.trailing, 14)
 
@@ -53,12 +54,14 @@ struct ModelSettingsTab: View, SettingsCardHelpers {
                             ASRProviderDetailView(
                                 provider: selectedASRProvider,
                                 isDefault: selectedASRProvider == defaultASRProvider,
+                                draftCoordinator: draftCoordinator,
                                 onSetAsDefault: handleSetDefaultASR
                             )
                         case .llm:
                             LLMProviderDetailView(
                                 provider: selectedLLMProvider,
                                 isDefault: selectedLLMProvider == defaultLLMProvider,
+                                draftCoordinator: draftCoordinator,
                                 onSetAsDefault: handleSetDefaultLLM
                             )
                         }
@@ -87,6 +90,47 @@ struct ModelSettingsTab: View, SettingsCardHelpers {
         }
     }
 
+    // MARK: - Transition & Selection Guards
+
+    private func attemptCategoryChange(_ newCategory: ModelCategory) {
+        guard newCategory != selectedCategory else { return }
+        if draftCoordinator.hasUnsavedChanges {
+            draftCoordinator.confirmUnsavedChanges { result in
+                if result != .cancelled {
+                    selectedCategory = newCategory
+                }
+            }
+        } else {
+            selectedCategory = newCategory
+        }
+    }
+
+    private func attemptASRChange(_ newProvider: ASRProvider) {
+        guard newProvider != selectedASRProvider else { return }
+        if draftCoordinator.hasUnsavedChanges {
+            draftCoordinator.confirmUnsavedChanges { result in
+                if result != .cancelled {
+                    selectedASRProvider = newProvider
+                }
+            }
+        } else {
+            selectedASRProvider = newProvider
+        }
+    }
+
+    private func attemptLLMChange(_ newProvider: LLMProvider) {
+        guard newProvider != selectedLLMProvider else { return }
+        if draftCoordinator.hasUnsavedChanges {
+            draftCoordinator.confirmUnsavedChanges { result in
+                if result != .cancelled {
+                    selectedLLMProvider = newProvider
+                }
+            }
+        } else {
+            selectedLLMProvider = newProvider
+        }
+    }
+
     // MARK: - Category Picker (Segmented Capsule)
 
     private var categoryPicker: some View {
@@ -94,7 +138,7 @@ struct ModelSettingsTab: View, SettingsCardHelpers {
             items: ModelCategory.allCases,
             selection: selectedCategory,
             onSelectionChange: { newCategory in
-                selectedCategory = newCategory
+                attemptCategoryChange(newCategory)
             }
         ) { category, isSelected, _ in
             HStack(spacing: 6) {

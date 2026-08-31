@@ -41,7 +41,6 @@ struct ModesSettingsTab: View, SettingsCardHelpers {
     /// from storage. Used to warn before switching away with unsaved changes.
     @State private var draftMode: ProcessingMode?
     @State private var draftDirty = false
-    @State private var pendingSelection: UUID?
     @State private var selectedASRProvider: ASRProvider = KeychainService.selectedASRProvider
     @State private var showClearAskAnythingConfirmation = false
     @State private var askAnythingSettingsError: String?
@@ -187,30 +186,6 @@ struct ModesSettingsTab: View, SettingsCardHelpers {
             }
         }
         .alert(
-            L("未保存的更改", "Unsaved Changes"),
-            isPresented: Binding(
-                get: { pendingSelection != nil },
-                set: { if !$0 { pendingSelection = nil } }
-            )
-        ) {
-            Button(L("保存", "Save")) {
-                if let draft = draftMode,
-                   let idx = modes.firstIndex(where: { $0.id == draft.id }) {
-                    modes[idx] = draft
-                    persistModes()
-                }
-                if let target = pendingSelection { commitSelection(target) }
-            }
-            Button(L("放弃更改", "Discard"), role: .destructive) {
-                if let target = pendingSelection { commitSelection(target) }
-            }
-            Button(L("取消", "Cancel"), role: .cancel) { pendingSelection = nil }
-        } message: {
-            let name = draftMode?.name ?? selectedMode?.name ?? ""
-            Text(L("「\(name)」有未保存的更改。切换前要保存吗？",
-                   "\"\(name)\" has unsaved changes. Save before switching?"))
-        }
-        .alert(
             L("清空随便问历史", "Clear Ask Anything History"),
             isPresented: $showClearAskAnythingConfirmation
         ) {
@@ -267,7 +242,11 @@ struct ModesSettingsTab: View, SettingsCardHelpers {
     private func attemptSelect(_ id: UUID) {
         guard id != selectedModeId else { return }
         if draftDirty {
-            pendingSelection = id
+            draftCoordinator.confirmUnsavedChanges { result in
+                if result != .cancelled {
+                    commitSelection(id)
+                }
+            }
         } else {
             commitSelection(id)
         }
@@ -276,10 +255,10 @@ struct ModesSettingsTab: View, SettingsCardHelpers {
     private func commitSelection(_ id: UUID) {
         draftDirty = false
         draftMode = nil
-        pendingSelection = nil
         var t = Transaction(); t.animation = nil
         withTransaction(t) { selectedModeId = id }
     }
+
 
     // MARK: - Mode Row
 
@@ -882,7 +861,6 @@ struct ModesSettingsTab: View, SettingsCardHelpers {
     private func discardDraftBeforeLeaving() {
         draftMode = nil
         draftDirty = false
-        pendingSelection = nil
     }
 
     private func deleteMode(_ id: UUID) {

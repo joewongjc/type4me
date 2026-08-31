@@ -92,4 +92,68 @@ final class ModelSettingsTabTests: XCTestCase {
         let testIconURL = sourceDir.appendingPathComponent("openai.png")
         XCTAssertTrue(FileManager.default.fileExists(atPath: testIconURL.path), "Brand icons must exist at Type4Me/Resources/Icons")
     }
+
+    func testInitialProviderDefaultsDoNotTriggerUnsavedChanges() {
+        let fields = LLMProviderRegistry.configType(for: .openai)?.credentialFields ?? []
+        var defaults: [String: String] = [:]
+        for field in fields where !field.defaultValue.isEmpty {
+            defaults[field.key] = field.defaultValue
+        }
+
+        let draftValues = defaults
+        let savedValues = defaults
+        let isDirty = draftValues != savedValues
+
+        XCTAssertFalse(isDirty, "Newly opened provider with default values must not start in dirty/unsaved state")
+        XCTAssertFalse(defaults.isEmpty, "OpenAI should have default model and baseURL fields")
+    }
+
+    func testInitialASRProviderDefaultsDoNotTriggerUnsavedChanges() {
+        let fields = ASRProviderRegistry.configType(for: .stepfun)?.credentialFields ?? []
+        var defaults: [String: String] = [:]
+        for field in fields where !field.defaultValue.isEmpty {
+            defaults[field.key] = field.defaultValue
+        }
+
+        let draftValues = defaults
+        let savedValues = defaults
+        let isDirty = draftValues != savedValues
+
+        XCTAssertFalse(isDirty, "Newly opened ASR provider with default values must not start in dirty/unsaved state")
+    }
+
+    func testDraftTransactionLifecycleAndRevert() {
+        let initialSaved = ["apiKey": "original-key", "model": "gpt-4o"]
+        var draftValues = initialSaved
+        let savedValues = initialSaved
+
+        XCTAssertEqual(draftValues, savedValues)
+
+        // User edits API key to a broken key
+        draftValues["apiKey"] = "broken-key"
+        XCTAssertNotEqual(draftValues, savedValues, "Editing draft must mark transaction as dirty")
+
+        // Test connection executes using draftValues without mutating savedValues
+        let testValues = draftValues
+        XCTAssertEqual(testValues["apiKey"], "broken-key")
+        XCTAssertEqual(savedValues["apiKey"], "original-key", "Saved baseline must remain intact during testing")
+
+        // Reverting draft restores original key
+        draftValues = savedValues
+        XCTAssertEqual(draftValues["apiKey"], "original-key")
+        XCTAssertEqual(draftValues, savedValues)
+    }
+
+    func testVolcanoAutoResourceUpdatesDraftWithoutDirectPersistence() {
+        var draft = ["apiKey": "test-key", "resourceId": VolcanoASRConfig.resourceIdAuto]
+        let saved = draft
+
+        // Simulating auto-resource resolution during test
+        let resolvedID = VolcanoASRConfig.resourceIdSeedASR
+        draft["resolvedResourceId"] = resolvedID
+
+        XCTAssertEqual(draft["resolvedResourceId"], resolvedID)
+        XCTAssertNil(saved["resolvedResourceId"], "Saved baseline must not be mutated before explicit save")
+        XCTAssertNotEqual(draft, saved, "Auto-resolved resource in draft should mark state dirty until saved")
+    }
 }

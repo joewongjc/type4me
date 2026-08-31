@@ -8,7 +8,8 @@ struct ModelProviderListView: View {
     @Binding var selectedLLM: LLMProvider
     let defaultASR: ASRProvider
     let defaultLLM: LLMProvider
-
+    var onSelectASR: ((ASRProvider) -> Void)? = nil
+    var onSelectLLM: ((LLMProvider) -> Void)? = nil
     @State private var hoveredASR: ASRProvider?
     @State private var hoveredLLM: LLMProvider?
 
@@ -62,7 +63,11 @@ struct ModelProviderListView: View {
 
         return Button {
             withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
-                selectedASR = provider
+                if let onSelectASR {
+                    onSelectASR(provider)
+                } else {
+                    selectedASR = provider
+                }
             }
         } label: {
             HStack(spacing: 8) {
@@ -159,7 +164,11 @@ struct ModelProviderListView: View {
 
         return Button {
             withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
-                selectedLLM = provider
+                if let onSelectLLM {
+                    onSelectLLM(provider)
+                } else {
+                    selectedLLM = provider
+                }
             }
         } label: {
             HStack(spacing: 8) {

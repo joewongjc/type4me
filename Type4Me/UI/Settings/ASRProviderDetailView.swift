@@ -3,10 +3,12 @@ import SwiftUI
 struct ASRProviderDetailView: View, SettingsCardHelpers {
     let provider: ASRProvider
     let isDefault: Bool
+    var draftCoordinator: SettingsDraftCoordinator? = nil
     let onSetAsDefault: (ASRProvider) -> Void
 
     @State private var asrCredentialValues: [String: String] = [:]
     @State private var savedASRValues: [String: String] = [:]
+    @State private var hasStoredCredentials = false
     @State private var customASRModeFields: Set<String> = []
     @State private var asrTestStatus: SettingsTestStatus = .idle
     @State private var testTask: Task<Void, Never>?
@@ -197,6 +199,15 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
         .onAppear {
             loadCredentials()
             refreshModelStatus()
+            draftCoordinator?.register(
+                .asrCredentials,
+                isDirty: { isDirty },
+                save: { saveCredentials() },
+                discard: { revertCredentials() }
+            )
+        }
+        .onDisappear {
+            draftCoordinator?.unregister(.asrCredentials)
         }
         .onChange(of: provider) { _, newProvider in
             testTask?.cancel()
@@ -206,7 +217,6 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
             refreshModelStatus()
         }
     }
-
     // MARK: - Header Section
 
     private var headerSection: some View {
@@ -719,6 +729,7 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
         if let values = KeychainService.loadASRCredentials(for: provider) {
             asrCredentialValues = values
             savedASRValues = values
+            hasStoredCredentials = true
         } else {
             var defaults: [String: String] = [:]
             let fields = ASRProviderRegistry.configType(for: provider)?.credentialFields ?? []
@@ -726,7 +737,8 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
                 defaults[field.key] = field.defaultValue
             }
             asrCredentialValues = defaults
-            savedASRValues = [:]
+            savedASRValues = defaults
+            hasStoredCredentials = false
         }
         syncCustomASRModeFields()
     }
@@ -749,6 +761,7 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
         do {
             try KeychainService.saveASRCredentials(for: provider, values: values)
             savedASRValues = asrCredentialValues
+            hasStoredCredentials = true
             asrTestStatus = .saved
             return true
         } catch {
@@ -762,11 +775,12 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
         asrCredentialValues = savedASRValues
         syncCustomASRModeFields()
         asrTestStatus = .idle
+        volcResourceHint = nil
     }
 
     private func handleSetAsDefault() {
         guard hasASRCredentials else { return }
-        if isDirty || (!isZeroCredentialProvider && !provider.isLocal && KeychainService.loadASRCredentials(for: provider) == nil) {
+        if isDirty || (!isZeroCredentialProvider && !provider.isLocal && !hasStoredCredentials) {
             guard saveCredentials() else { return }
         }
         onSetAsDefault(provider)
@@ -778,9 +792,6 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
         testTask?.cancel()
         asrTestStatus = .testing
         volcResourceHint = nil
-        if isDirty && hasASRCredentials {
-            _ = saveCredentials()
-        }
         let testValues = effectiveASRValues
         let currentProvider = provider
 
@@ -821,10 +832,7 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
         guard !Task.isCancelled else { return }
 
         if seedOK {
-            var values = baseValues
-            values["resourceId"] = VolcanoASRConfig.resourceIdAuto
-            values["resolvedResourceId"] = seedId
-            try? KeychainService.saveASRCredentials(for: .volcano, values: values)
+            asrCredentialValues["resolvedResourceId"] = seedId
             asrTestStatus = .success
             return
         }
@@ -833,10 +841,7 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
         guard !Task.isCancelled else { return }
 
         if bigOK {
-            var values = baseValues
-            values["resourceId"] = VolcanoASRConfig.resourceIdAuto
-            values["resolvedResourceId"] = bigId
-            try? KeychainService.saveASRCredentials(for: .volcano, values: values)
+            asrCredentialValues["resolvedResourceId"] = bigId
             asrTestStatus = .success
             volcResourceHint = L(
                 "当前使用大模型版本，开通「模型 2.0」可节省约 80% 费用，识别效果相同",

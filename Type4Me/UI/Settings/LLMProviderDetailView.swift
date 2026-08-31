@@ -3,10 +3,12 @@ import SwiftUI
 struct LLMProviderDetailView: View, SettingsCardHelpers {
     let provider: LLMProvider
     let isDefault: Bool
+    var draftCoordinator: SettingsDraftCoordinator? = nil
     let onSetAsDefault: (LLMProvider) -> Void
 
     @State private var llmCredentialValues: [String: String] = [:]
     @State private var savedLLMValues: [String: String] = [:]
+    @State private var hasStoredCredentials = false
     @State private var customModeFields: Set<String> = []
     @State private var llmTestStatus: SettingsTestStatus = .idle
     @State private var testTask: Task<Void, Never>?
@@ -86,6 +88,15 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
         .padding(.vertical, 2)
         .onAppear {
             loadCredentials()
+            draftCoordinator?.register(
+                .llmCredentials,
+                isDirty: { isDirty },
+                save: { saveCredentials() },
+                discard: { revertCredentials() }
+            )
+        }
+        .onDisappear {
+            draftCoordinator?.unregister(.llmCredentials)
         }
         .onChange(of: provider) { _, newProvider in
             testTask?.cancel()
@@ -94,7 +105,6 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
             loadCredentials()
         }
     }
-
     // MARK: - Header Section
 
     private var headerSection: some View {
@@ -466,6 +476,7 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
         if let values = KeychainService.loadLLMCredentials(for: provider) {
             llmCredentialValues = values
             savedLLMValues = values
+            hasStoredCredentials = true
         } else {
             var defaults: [String: String] = [:]
             let fields = LLMProviderRegistry.configType(for: provider)?.credentialFields ?? []
@@ -473,7 +484,8 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
                 defaults[field.key] = field.defaultValue
             }
             llmCredentialValues = defaults
-            savedLLMValues = [:]
+            savedLLMValues = defaults
+            hasStoredCredentials = false
         }
         syncCustomModeFields()
     }
@@ -495,6 +507,7 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
         do {
             try KeychainService.saveLLMCredentials(for: provider, values: values)
             savedLLMValues = llmCredentialValues
+            hasStoredCredentials = true
             llmTestStatus = .saved
             return true
         } catch {
@@ -512,7 +525,7 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
 
     private func handleSetAsDefault() {
         guard hasLLMCredentials else { return }
-        if isDirty || KeychainService.loadLLMCredentials(for: provider) == nil {
+        if isDirty || !hasStoredCredentials {
             guard saveCredentials() else { return }
         }
         onSetAsDefault(provider)
@@ -523,12 +536,8 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
     private func testLLMConnection() {
         testTask?.cancel()
         llmTestStatus = .testing
-        if isDirty && hasLLMCredentials {
-            _ = saveCredentials()
-        }
         let testValues = effectiveLLMValues
         let currentProvider = provider
-
         testTask = Task {
             do {
                 guard let configType = LLMProviderRegistry.configType(for: currentProvider),
