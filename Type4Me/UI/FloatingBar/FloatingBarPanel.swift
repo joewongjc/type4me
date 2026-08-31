@@ -14,10 +14,19 @@ struct FloatingBarPanelLayout: Equatable {
 
     var panelSize: NSSize {
         guard hasVisibleContent else { return NSSize(width: 1, height: 1) }
+        // The width is rounded up to an even number of points so that
+        // `midX - width / 2` always lands on the same pixel phase. AppKit rounds
+        // the window origin, so an odd width would round the other way and shift
+        // the (centered) capsule by half a point whenever an overlay appears.
         return NSSize(
-            width: ceil(contentSize.width + 2 * (horizontalOverflow + TF.floatingPanelShadowInset)),
+            width: Self.evenCeil(contentSize.width + 2 * (horizontalOverflow + TF.floatingPanelShadowInset)),
             height: ceil(contentSize.height + 2 * TF.floatingPanelShadowInset)
         )
+    }
+
+    private static func evenCeil(_ value: CGFloat) -> CGFloat {
+        let rounded = ceil(value)
+        return rounded.truncatingRemainder(dividingBy: 2) == 0 ? rounded : rounded + 1
     }
 
     static func fallback(
@@ -90,9 +99,11 @@ final class FloatingBarPanel: NSPanel {
     }
 
     static func bottomCenteredFrame(size: NSSize, visibleFrame: NSRect) -> NSRect {
+        // Pixel-aligned so the capsule cannot drift sideways when the panel is
+        // resized for an overlay; AppKit would otherwise round the origin itself.
         NSRect(
-            x: visibleFrame.midX - size.width / 2,
-            y: visibleFrame.minY + TF.barBottomOffset - TF.floatingPanelShadowInset,
+            x: (visibleFrame.midX - size.width / 2).rounded(),
+            y: (visibleFrame.minY + TF.barBottomOffset - TF.floatingPanelShadowInset).rounded(),
             width: size.width,
             height: size.height
         )

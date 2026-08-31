@@ -51,7 +51,15 @@ enum TF {
     static let floatingBorder = Color(red: 38 / 255, green: 39 / 255, blue: 41 / 255) // #262729
     static let floatingBackgroundLight = Color(red: 246 / 255, green: 246 / 255, blue: 248 / 255)
     static let floatingBorderLight = Color(red: 218 / 255, green: 218 / 255, blue: 222 / 255)
+    /// Contrast floor beneath dark Liquid Glass so the bar stays legible over
+    /// bright background content. Native glass alone is too transparent there.
+    ///
+    /// Do not move this above the glass or into `Glass.tint`: a scrim on top
+    /// makes the un-sampled first frames flash harder, and a tint inside the
+    /// glass style cannot hold the theme either.
+    static let glassDarkContrastFloor: Double = 0.18
     /// A translucent highlight that takes on the material beneath it instead of reading as a flat white rule.
+    /// Only used by the macOS 14/15 fallback; native Liquid Glass draws its own rim.
     static let recordingGlassRim = LinearGradient(
         colors: [
             .white.opacity(0.80),
@@ -62,6 +70,7 @@ enum TF {
         endPoint: .bottom
     )
     /// A translucent highlight for the light frosted glass theme.
+    /// Only used by the macOS 14/15 fallback; native Liquid Glass draws its own rim.
     static let recordingLightGlassRim = LinearGradient(
         colors: [
             .white.opacity(0.95),

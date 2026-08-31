@@ -144,6 +144,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
     @State private var showsModeHint = false
     @State private var modeHintTask: Task<Void, Never>?
     @State private var recordingActionLocked = false
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @AppStorage(RecordingTheme.storageKey) private var theme = RecordingTheme.defaultValue
     @AppStorage(RecordingIndicatorStyle.storageKey) private var indicatorStyle = RecordingIndicatorStyle.defaultValue
     @AppStorage(LiveTranscriptDisplayPreference.storageKey) private var showLiveTranscript = LiveTranscriptDisplayPreference.defaultValue
@@ -435,6 +436,10 @@ struct FloatingBarView<S: FloatingBarState>: View {
         }
         .padding(TF.floatingPanelShadowInset)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        // Scoped to this view tree only. `preferredColorScheme` would escape to
+        // the enclosing window and repaint the whole Settings window when the
+        // appearance preview embeds this bar.
+        .environment(\.colorScheme, effectiveTheme == .light ? .light : .dark)
         .onAppear {
             updateRecordingPeakWidthIfNeeded()
             onPanelLayoutChange?(panelLayout)
@@ -495,7 +500,10 @@ struct FloatingBarView<S: FloatingBarState>: View {
                     .clipShape(barShape)
             }
             .overlay {
+                // The feedback border only exists in `.done`/`.error`; fade it in
+                // and out so it doesn't snap into place when recording finishes.
                 capsuleBorder
+                    .animation(.easeInOut(duration: 0.15), value: state.barPhase)
             }
             // Critically damped (dampingFraction 1.0) so the width never
             // overshoots and settles back leftward between characters. An
@@ -1020,14 +1028,24 @@ struct FloatingBarView<S: FloatingBarState>: View {
     private var capsuleBorder: some View {
         switch state.barPhase {
         case .preparing, .recording, .processing, .recovering:
-            barShape.strokeBorder(
-                effectiveTheme == .light ? TF.recordingLightGlassRim : TF.recordingGlassRim,
-                lineWidth: 0.8
-            )
+            if usesNativeLiquidGlass(reduceTransparency: reduceTransparency) {
+                // Native Liquid Glass draws its own boundary refraction and rim
+                // lighting; a manual stroke on top of it reads as a hard outline.
+                EmptyView()
+            } else {
+                barShape.strokeBorder(
+                    effectiveTheme == .light ? TF.recordingLightGlassRim : TF.recordingGlassRim,
+                    lineWidth: 0.8
+                )
+            }
         case .done:
-            barShape.strokeBorder(feedbackBorderColor, lineWidth: 0.5)
+            barShape
+                .strokeBorder(feedbackBorderColor, lineWidth: 0.5)
+                .transition(.opacity)
         case .error:
-            barShape.strokeBorder(TF.settingsAccentRed.opacity(0.45), lineWidth: 0.5)
+            barShape
+                .strokeBorder(TF.settingsAccentRed.opacity(0.45), lineWidth: 0.5)
+                .transition(.opacity)
         case .hidden:
             EmptyView()
         }
@@ -1348,10 +1366,22 @@ struct FloatingBarView<S: FloatingBarState>: View {
     }
 }
 
-/// A dark or light HUD material that samples behind the transparent panel.
+/// Whether the native Liquid Glass path should be used. "Reduce transparency"
+/// opts out of every glass surface, so the border and tint fallbacks must be
+/// keyed off this instead of a bare availability check.
+private func usesNativeLiquidGlass(reduceTransparency: Bool) -> Bool {
+    guard !reduceTransparency else { return false }
+    if #available(macOS 26.0, *) { return true }
+    return false
+}
+
+/// Native Liquid Glass surface, with a frosted `NSVisualEffectView` fallback for
+/// macOS 14/15 and an opaque fallback when "reduce transparency" is on.
 private struct RecordingGlassSurface: View {
     let cornerRadius: CGFloat
     var theme: RecordingTheme = .dark
+    /// Only consumed by the macOS 14/15 fallback; the native glass path uses
+    /// `TF.glassDarkContrastFloor` instead.
     let tintOpacity: Double
 
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -1362,7 +1392,17 @@ private struct RecordingGlassSurface: View {
 
     var body: some View {
         if reduceTransparency {
-            theme == .light ? TF.floatingBackgroundLight : TF.floatingBackground
+            shape.fill(theme == .light ? TF.floatingBackgroundLight : TF.floatingBackground)
+        } else if #available(macOS 26.0, *) {
+            ZStack {
+                if theme == .dark {
+                    // Filled through `shape` rather than clipped from the outside:
+                    // an outer `clipShape` would also cut off the glass's own
+                    // edge highlight and halo.
+                    shape.fill(Color.black.opacity(TF.glassDarkContrastFloor))
+                }
+                Color.clear.glassEffect(.regular, in: shape)
+            }
         } else {
             ZStack {
                 VisualEffectBlur(
@@ -1386,6 +1426,8 @@ private struct FrostedGlassBubbleBackground: View {
     let cornerRadius: CGFloat = TF.transcriptPopupCorner
     var theme: RecordingTheme = .dark
 
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
     private var shape: RoundedRectangle {
         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
     }
@@ -1397,10 +1439,12 @@ private struct FrostedGlassBubbleBackground: View {
             tintOpacity: theme == .light ? 0.75 : 0.40
         )
         .overlay {
-            shape.strokeBorder(
-                theme == .light ? TF.floatingBorderLight : TF.floatingBorder,
-                lineWidth: 0.5
-            )
+            if !usesNativeLiquidGlass(reduceTransparency: reduceTransparency) {
+                shape.strokeBorder(
+                    theme == .light ? TF.floatingBorderLight : TF.floatingBorder,
+                    lineWidth: 0.5
+                )
+            }
         }
     }
 }
