@@ -40,6 +40,7 @@ private final class BrandIconCache: @unchecked Sendable {
         let sourceDir = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
+            .deletingLastPathComponent()
             .appendingPathComponent("Resources/Icons")
         let devURL = sourceDir.appendingPathComponent("\(name).png")
         if let img = NSImage(contentsOf: devURL) {

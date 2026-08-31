@@ -113,6 +113,7 @@ struct ModelSettingsTab: View, SettingsCardHelpers {
     // MARK: - Set Default Actions
 
     private func handleSetDefaultASR(_ provider: ASRProvider) {
+        guard ModelSettingsHelpers.hasConfiguredCredentials(for: provider) else { return }
         let oldProvider = defaultASRProvider
         KeychainService.selectedASRProvider = provider
         defaultASRProvider = provider
@@ -136,6 +137,7 @@ struct ModelSettingsTab: View, SettingsCardHelpers {
     }
 
     private func handleSetDefaultLLM(_ provider: LLMProvider) {
+        guard ModelSettingsHelpers.hasConfiguredCredentials(for: provider) else { return }
         KeychainService.selectedLLMProvider = provider
         defaultLLMProvider = provider
     }

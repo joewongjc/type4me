@@ -6,12 +6,17 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
     let onSetAsDefault: (LLMProvider) -> Void
 
     @State private var llmCredentialValues: [String: String] = [:]
+    @State private var savedLLMValues: [String: String] = [:]
     @State private var customModeFields: Set<String> = []
     @State private var llmTestStatus: SettingsTestStatus = .idle
     @State private var testTask: Task<Void, Never>?
     @State private var disableThinking = false
     @State private var fetchedModelOptions: [FieldOption] = []
     @State private var isFetchingModels = false
+
+    private var isDirty: Bool {
+        llmCredentialValues != savedLLMValues
+    }
 
     private enum LLMCredentialItem: Identifiable {
         case credential(CredentialField)
@@ -39,8 +44,12 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
     }
 
     private var hasLLMCredentials: Bool {
-        if provider == .codexCLI || provider == .ollama {
+        if provider == .codexCLI {
             return true
+        }
+        if provider == .ollama {
+            let model = (llmCredentialValues["model"] ?? savedLLMValues["model"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            return !model.isEmpty
         }
         let fields = currentLLMFields
         let required = fields.filter { !$0.isOptional }
@@ -128,7 +137,7 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
             // Set as Default Button / Active Badge
             Button {
                 if !isDefault {
-                    onSetAsDefault(provider)
+                    handleSetAsDefault()
                 }
             } label: {
                 HStack(spacing: 5) {
@@ -142,10 +151,10 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
                     } else {
                         Image(systemName: "circle")
                             .font(.system(size: 12))
-                            .foregroundStyle(TF.settingsTextSecondary)
+                            .foregroundStyle(hasLLMCredentials ? TF.settingsTextSecondary : TF.settingsTextTertiary)
                         Text(L("设为默认", "Set as Default"))
                             .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(TF.settingsText)
+                            .foregroundStyle(hasLLMCredentials ? TF.settingsText : TF.settingsTextTertiary)
                     }
                 }
                 .padding(.horizontal, 12)
@@ -160,6 +169,11 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
                 )
             }
             .buttonStyle(.plain)
+            .disabled(!isDefault && !hasLLMCredentials)
+            .settingsTooltip(
+                L("请先完善凭据", "Configure credentials first"),
+                isEnabled: !isDefault && !hasLLMCredentials
+            )
         }
         .padding(.bottom, 4)
     }
@@ -177,10 +191,28 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
                 dynamicCredentialFields
             }
 
-            // Test Connection Bar outside the card
-            VStack(alignment: .trailing, spacing: 0) {
-                HStack(alignment: .top, spacing: 8) {
+            // Action Bar outside the card (Save, Revert, Test Connection)
+            VStack(alignment: .trailing, spacing: 6) {
+                HStack(alignment: .center, spacing: 8) {
                     Spacer()
+
+                    if isDirty {
+                        secondaryButton(L("还原", "Revert")) {
+                            revertCredentials()
+                        }
+
+                        Button(L("保存", "Save")) {
+                            saveCredentials()
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 7)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(hasLLMCredentials ? TF.settingsAccentBlue : TF.settingsCardAlt))
+                        .disabled(!hasLLMCredentials)
+                    }
+
                     testButton(
                         L("测试连接", "Test"),
                         status: llmTestStatus,
@@ -208,53 +240,27 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
     // MARK: - Dynamic Credential Fields
 
     private var dynamicCredentialFields: some View {
-        let items = arrangedCredentialItems()
+        let items: [LLMCredentialItem] = currentLLMFields.map { .credential($0) } +
+            (thinkingToggleAvailable ? [.thinkingMode] : [])
+
         return VStack(spacing: 0) {
             ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                 if index > 0 { SettingsDivider() }
-                credentialItemRow(item)
+                switch item {
+                case .credential(let field):
+                    credentialFieldRow(field)
+                case .thinkingMode:
+                    thinkingModeRow
+                }
             }
-        }
-    }
-
-    private func arrangedCredentialItems() -> [LLMCredentialItem] {
-        let fields = currentLLMFields
-        let modelField = fields.first { $0.key == "model" }
-        let nonModelFields = fields.filter { $0.key != "model" }
-        var items: [LLMCredentialItem] = []
-
-        items.append(contentsOf: nonModelFields.prefix(2).map { .credential($0) })
-
-        if let modelField {
-            items.append(.credential(modelField))
-            if provider != .codexCLI {
-                items.append(.thinkingMode)
-            }
-        } else {
-            items.append(.thinkingMode)
-        }
-
-        items.append(contentsOf: nonModelFields.dropFirst(2).map { .credential($0) })
-        return items
-    }
-
-    @ViewBuilder
-    private func credentialItemRow(_ item: LLMCredentialItem) -> some View {
-        switch item {
-        case .credential(let field):
-            credentialFieldRow(field)
-        case .thinkingMode:
-            thinkingModeRow
         }
     }
 
     @ViewBuilder
     private func credentialFieldRow(_ field: CredentialField) -> some View {
-        if !field.options.isEmpty && field.allowCustomInput {
-            let mergedOptions = field.key == "model" && !fetchedModelOptions.isEmpty
-                ? fetchedModelOptions
-                : field.options
-            let allOptions = mergedOptions + [FieldOption(value: CredentialField.customValue, label: L("自定义…", "Custom…"))]
+        if field.key == "model", provider.isOpenAICompatible {
+            let options = fetchedModelOptions.isEmpty ? field.options : fetchedModelOptions
+            let allOptions = options + [FieldOption(value: CredentialField.customValue, label: L("其他模型…", "Other model…"))]
             let pickerBinding = Binding<String>(
                 get: {
                     if customModeFields.contains(field.key) {
@@ -271,33 +277,84 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
                         customModeFields.remove(field.key)
                         llmCredentialValues[field.key] = newValue
                     }
-                    autoSave()
                 }
             )
             let customBinding = Binding<String>(
                 get: { llmCredentialValues[field.key] ?? "" },
-                set: {
-                    llmCredentialValues[field.key] = $0
-                    autoSave()
-                }
+                set: { llmCredentialValues[field.key] = $0 }
             )
             settingsOptionRow(field.label, controlWidth: SettingsControlWidth.input) {
                 VStack(alignment: .trailing, spacing: 8) {
-                    HStack(spacing: 8) {
-                        if field.key == "model" {
+                    HStack(spacing: 6) {
+                        if isFetchingModels {
+                            ProgressView().controlSize(.small)
+                        } else {
                             Button {
                                 fetchModels()
                             } label: {
-                                if isFetchingModels {
-                                    ProgressView().controlSize(.mini)
-                                } else {
-                                    Image(systemName: "arrow.clockwise")
-                                        .font(.system(size: 11))
-                                }
+                                Image(systemName: "arrow.triangle.2.circlepath")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(TF.settingsTextSecondary)
                             }
                             .buttonStyle(.plain)
-                            .settingsTooltip(L("从 API 获取模型列表", "Fetch models from API"))
+                            .settingsTooltip(L("从服务商拉取最新模型列表", "Fetch latest models from provider"))
                             .disabled(isFetchingModels || !hasLLMCredentials)
+                        }
+                        settingsDropdown(
+                            selection: pickerBinding,
+                            options: allOptions.map { ($0.value, $0.label) }
+                        )
+                    }
+                    if customModeFields.contains(field.key) {
+                        FixedWidthTextField(text: customBinding, placeholder: field.placeholder)
+                            .padding(.horizontal, 12)
+                            .frame(width: SettingsControlWidth.input, height: 36)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(TF.settingsCardAlt))
+                    }
+                }
+            }
+        } else if !field.options.isEmpty && field.allowCustomInput {
+            let allOptions = field.options + [FieldOption(value: CredentialField.customValue, label: L("自定义…", "Custom…"))]
+            let pickerBinding = Binding<String>(
+                get: {
+                    if customModeFields.contains(field.key) {
+                        return CredentialField.customValue
+                    }
+                    let val = llmCredentialValues[field.key] ?? ""
+                    return val.isEmpty ? field.defaultValue : val
+                },
+                set: { newValue in
+                    if newValue == CredentialField.customValue {
+                        customModeFields.insert(field.key)
+                        llmCredentialValues[field.key] = ""
+                    } else {
+                        customModeFields.remove(field.key)
+                        llmCredentialValues[field.key] = newValue
+                    }
+                }
+            )
+            let customBinding = Binding<String>(
+                get: { llmCredentialValues[field.key] ?? "" },
+                set: { llmCredentialValues[field.key] = $0 }
+            )
+            settingsOptionRow(field.label, controlWidth: SettingsControlWidth.input) {
+                VStack(alignment: .trailing, spacing: 8) {
+                    HStack(spacing: 6) {
+                        if field.key == "model", provider.isOpenAICompatible {
+                            if isFetchingModels {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Button {
+                                    fetchModels()
+                                } label: {
+                                    Image(systemName: "arrow.triangle.2.circlepath")
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(TF.settingsTextSecondary)
+                                }
+                                .buttonStyle(.plain)
+                                .settingsTooltip(L("从服务商拉取最新模型列表", "Fetch latest models from provider"))
+                                .disabled(isFetchingModels || !hasLLMCredentials)
+                            }
                         }
                         settingsDropdown(
                             selection: pickerBinding,
@@ -320,7 +377,6 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
                 },
                 set: {
                     llmCredentialValues[field.key] = $0
-                    autoSave()
                 }
             )
             settingsPickerField(field.label, selection: pickerBinding, options: field.options)
@@ -329,7 +385,6 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
                 get: { llmCredentialValues[field.key] ?? "" },
                 set: {
                     llmCredentialValues[field.key] = $0
-                    autoSave()
                 }
             )
             settingsSecureField(field.label, text: binding, prompt: field.placeholder)
@@ -341,7 +396,6 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
                 },
                 set: {
                     llmCredentialValues[field.key] = $0
-                    autoSave()
                 }
             )
             settingsField(field.label, text: binding, prompt: field.placeholder)
@@ -400,12 +454,13 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
         )
     }
 
-    // MARK: - Credential Loading & Auto-save
+    // MARK: - Credential Loading & Save
 
     private func loadCredentials() {
         disableThinking = LLMThinkingPreference.isDisabled(for: provider)
         if let values = KeychainService.loadLLMCredentials(for: provider) {
             llmCredentialValues = values
+            savedLLMValues = values
         } else {
             var defaults: [String: String] = [:]
             let fields = LLMProviderRegistry.configType(for: provider)?.credentialFields ?? []
@@ -413,6 +468,7 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
                 defaults[field.key] = field.defaultValue
             }
             llmCredentialValues = defaults
+            savedLLMValues = [:]
         }
         syncCustomModeFields()
     }
@@ -428,13 +484,38 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
         customModeFields = custom
     }
 
-    private func autoSave() {
+    @discardableResult
+    private func saveCredentials() -> Bool {
+        guard hasLLMCredentials else {
+            llmTestStatus = .failed(L("配置不完整", "Incomplete configuration"))
+            return false
+        }
         let values = effectiveLLMValues
         do {
             try KeychainService.saveLLMCredentials(for: provider, values: values)
+            savedLLMValues = values
+            llmCredentialValues = values
+            llmTestStatus = .saved
+            return true
         } catch {
-            NSLog("[LLMProviderDetailView] Auto-save failed: %@", String(describing: error))
+            NSLog("[LLMProviderDetailView] Save failed: %@", String(describing: error))
+            llmTestStatus = .failed(L("保存失败", "Save failed"))
+            return false
         }
+    }
+
+    private func revertCredentials() {
+        llmCredentialValues = savedLLMValues
+        syncCustomModeFields()
+        llmTestStatus = .idle
+    }
+
+    private func handleSetAsDefault() {
+        guard hasLLMCredentials else { return }
+        if isDirty || KeychainService.loadLLMCredentials(for: provider) == nil {
+            guard saveCredentials() else { return }
+        }
+        onSetAsDefault(provider)
     }
 
     // MARK: - Test Connection & Fetch Models
@@ -442,6 +523,9 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
     private func testLLMConnection() {
         testTask?.cancel()
         llmTestStatus = .testing
+        if isDirty && hasLLMCredentials {
+            _ = saveCredentials()
+        }
         let testValues = effectiveLLMValues
         let currentProvider = provider
 

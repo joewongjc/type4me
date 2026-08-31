@@ -248,10 +248,14 @@ enum KeychainService {
     }
 
     static func loadLLMProviderConfig(for provider: LLMProvider) -> (any LLMProviderConfig)? {
-        guard let values = loadLLMCredentials(for: provider),
-              let configType = LLMProviderRegistry.configType(for: provider)
-        else { return nil }
-        return configType.init(credentials: values)
+        guard let configType = LLMProviderRegistry.configType(for: provider) else { return nil }
+        if let values = loadLLMCredentials(for: provider) {
+            return configType.init(credentials: values)
+        }
+        if provider == .codexCLI {
+            return configType.init(credentials: ["model": "gpt-5.6-luna"])
+        }
+        return nil
     }
 
     /// Load config for the currently selected LLM provider.

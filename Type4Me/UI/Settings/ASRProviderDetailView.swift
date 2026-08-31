@@ -6,10 +6,15 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
     let onSetAsDefault: (ASRProvider) -> Void
 
     @State private var asrCredentialValues: [String: String] = [:]
+    @State private var savedASRValues: [String: String] = [:]
     @State private var customASRModeFields: Set<String> = []
     @State private var asrTestStatus: SettingsTestStatus = .idle
     @State private var testTask: Task<Void, Never>?
     @State private var volcResourceHint: String?
+
+    private var isDirty: Bool {
+        asrCredentialValues != savedASRValues
+    }
 
     // Local model states
     @State private var localModelAvailable: Bool = ModelManager.isQwen3ASRBundled
@@ -54,6 +59,8 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
     }
 
     private var hasASRCredentials: Bool {
+        if isZeroCredentialProvider { return true }
+        if provider.isLocal { return ModelManager.isQwen3ASRBundled }
         let effective = effectiveASRValues
         if provider == .volcano {
             return VolcanoASRConfig(credentials: effective) != nil
@@ -268,7 +275,7 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
             // Set as Default Button / Active Badge
             Button {
                 if !isDefault {
-                    onSetAsDefault(provider)
+                    handleSetAsDefault()
                 }
             } label: {
                 HStack(spacing: 5) {
@@ -282,10 +289,10 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
                     } else {
                         Image(systemName: "circle")
                             .font(.system(size: 12))
-                            .foregroundStyle(TF.settingsTextSecondary)
+                            .foregroundStyle(hasASRCredentials ? TF.settingsTextSecondary : TF.settingsTextTertiary)
                         Text(L("设为默认", "Set as Default"))
                             .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(TF.settingsText)
+                            .foregroundStyle(hasASRCredentials ? TF.settingsText : TF.settingsTextTertiary)
                     }
                 }
                 .padding(.horizontal, 12)
@@ -300,6 +307,11 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
                 )
             }
             .buttonStyle(.plain)
+            .disabled(!isDefault && !hasASRCredentials)
+            .settingsTooltip(
+                L("请先完善凭据", "Configure credentials first"),
+                isEnabled: !isDefault && !hasASRCredentials
+            )
         }
         .padding(.bottom, 4)
     }
@@ -334,10 +346,28 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
                     .padding(.horizontal, 2)
             }
 
-            // Test Connection Bar outside the card
-            VStack(alignment: .trailing, spacing: 0) {
-                HStack(alignment: .top, spacing: 8) {
+            // Action Bar outside the card (Save, Revert, Test Connection)
+            VStack(alignment: .trailing, spacing: 6) {
+                HStack(alignment: .center, spacing: 8) {
                     Spacer()
+
+                    if isDirty {
+                        secondaryButton(L("还原", "Revert")) {
+                            revertCredentials()
+                        }
+
+                        Button(L("保存", "Save")) {
+                            saveCredentials()
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 7)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(hasASRCredentials ? TF.settingsAccentBlue : TF.settingsCardAlt))
+                        .disabled(!hasASRCredentials)
+                    }
+
                     testButton(
                         L("测试连接", "Test"),
                         status: asrTestStatus,
@@ -389,14 +419,12 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
                         customASRModeFields.remove(field.key)
                         asrCredentialValues[field.key] = newValue
                     }
-                    autoSave()
                 }
             )
             let customBinding = Binding<String>(
                 get: { asrCredentialValues[field.key] ?? "" },
                 set: {
                     asrCredentialValues[field.key] = $0
-                    autoSave()
                 }
             )
             settingsOptionRow(field.label, controlWidth: SettingsControlWidth.input) {
@@ -433,7 +461,6 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
                 },
                 set: {
                     asrCredentialValues[field.key] = $0
-                    autoSave()
                 }
             )
             settingsPickerField(field.label, selection: pickerBinding, options: field.options)
@@ -442,7 +469,6 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
                 get: { asrCredentialValues[field.key] ?? "" },
                 set: {
                     asrCredentialValues[field.key] = $0
-                    autoSave()
                 }
             )
             settingsSecureField(
@@ -458,7 +484,6 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
                 },
                 set: {
                     asrCredentialValues[field.key] = $0
-                    autoSave()
                 }
             )
             settingsField(field.label, text: binding, prompt: field.placeholder)
@@ -518,14 +543,23 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
                         }
                         Text(L("当前为云端识别版本，本地识别需要下载内嵌模型的完整版 DMG。",
                                "This is the cloud-only version. Download the full DMG with embedded model for local ASR."))
-                            .font(.system(size: 10))
+                            .font(.system(size: 11))
                             .foregroundStyle(TF.settingsTextSecondary)
                     }
                     .padding(.vertical, 8)
                 }
             }
 
-            if localModelAvailable {
+            if localModelAvailable && !sensevoiceEnabled && !qwen3FinalEnabled {
+                Text(L("至少需要启用一个本地引擎", "At least one local engine must be enabled"))
+                    .font(.system(size: 11))
+                    .foregroundStyle(TF.settingsAccentAmber)
+                    .padding(.horizontal, 2)
+            }
+
+            #if arch(arm64)
+            if hasQwen3ASR {
+                // Action Bar outside the card for local models
                 VStack(alignment: .trailing, spacing: 0) {
                     HStack {
                         Spacer()
@@ -535,6 +569,7 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
                 }
                 .padding(.top, 4)
             }
+            #endif
         }
     }
 
@@ -667,11 +702,12 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
         }
     }
 
-    // MARK: - Credential Loading & Auto-save
+    // MARK: - Credential Loading & Save
 
     private func loadCredentials() {
         if let values = KeychainService.loadASRCredentials(for: provider) {
             asrCredentialValues = values
+            savedASRValues = values
         } else {
             var defaults: [String: String] = [:]
             let fields = ASRProviderRegistry.configType(for: provider)?.credentialFields ?? []
@@ -679,6 +715,7 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
                 defaults[field.key] = field.defaultValue
             }
             asrCredentialValues = defaults
+            savedASRValues = [:]
         }
         syncCustomASRModeFields()
     }
@@ -695,13 +732,38 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
         customASRModeFields = custom
     }
 
-    private func autoSave() {
+    @discardableResult
+    private func saveCredentials() -> Bool {
+        guard hasASRCredentials else {
+            asrTestStatus = .failed(L("配置不完整", "Incomplete configuration"))
+            return false
+        }
         let values = effectiveASRValues
         do {
             try KeychainService.saveASRCredentials(for: provider, values: values)
+            savedASRValues = values
+            asrCredentialValues = values
+            asrTestStatus = .saved
+            return true
         } catch {
-            NSLog("[ASRProviderDetailView] Auto-save failed: %@", String(describing: error))
+            NSLog("[ASRProviderDetailView] Save failed: %@", String(describing: error))
+            asrTestStatus = .failed(L("保存失败", "Save failed"))
+            return false
         }
+    }
+
+    private func revertCredentials() {
+        asrCredentialValues = savedASRValues
+        syncCustomASRModeFields()
+        asrTestStatus = .idle
+    }
+
+    private func handleSetAsDefault() {
+        guard hasASRCredentials else { return }
+        if isDirty || (!isZeroCredentialProvider && !provider.isLocal && KeychainService.loadASRCredentials(for: provider) == nil) {
+            guard saveCredentials() else { return }
+        }
+        onSetAsDefault(provider)
     }
 
     // MARK: - Test Connection
@@ -710,6 +772,9 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
         testTask?.cancel()
         asrTestStatus = .testing
         volcResourceHint = nil
+        if isDirty && hasASRCredentials {
+            _ = saveCredentials()
+        }
         let testValues = effectiveASRValues
         let currentProvider = provider
 

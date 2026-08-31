@@ -77,4 +77,19 @@ final class ModelSettingsTabTests: XCTestCase {
         XCTAssertEqual(ModelSettingsHelpers.icon(for: LLMProvider.doubao), "sparkles")
         XCTAssertEqual(ModelSettingsHelpers.icon(for: LLMProvider.deepseek), "brain.fill")
     }
+
+    func testCodexCLIFallbackConfigWhenKeychainEmpty() {
+        let config = KeychainService.loadLLMProviderConfig(for: .codexCLI)
+        XCTAssertNotNil(config, "Codex CLI should safely resolve a default configuration even without Keychain values")
+        XCTAssertEqual(config?.toLLMConfig().model, "gpt-5.6-luna")
+    }
+
+    func testBrandIconDevPathResolution() {
+        let sourceDir = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent() // Type4MeTests
+            .deletingLastPathComponent() // Project root
+            .appendingPathComponent("Type4Me/Resources/Icons")
+        let testIconURL = sourceDir.appendingPathComponent("openai.png")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: testIconURL.path), "Brand icons must exist at Type4Me/Resources/Icons")
+    }
 }
