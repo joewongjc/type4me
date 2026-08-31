@@ -422,6 +422,9 @@ final class HotkeyManager: NSObject {
     private var healthCheckTimer: Timer?
     /// Timestamp of the last event received by the tap callback.
     fileprivate var lastEventTime: Date?
+    /// Set only while dispatching a binding callback from the current event.
+    /// Modifier-only releases consult this so the stop event itself is swallowed.
+    private var didDispatchBindingCallback = false
 
     /// Tokens for MPRemoteCommandCenter handlers (prevents Apple Music from auto-launching).
     private var mediaCommandTokens: [(command: MPRemoteCommand, token: Any)] = []
@@ -453,8 +456,16 @@ final class HotkeyManager: NSObject {
             (1 << CGEventType.keyDown.rawValue)
             | (1 << CGEventType.keyUp.rawValue)
             | (1 << CGEventType.flagsChanged.rawValue)
+            | (1 << CGEventType.leftMouseDown.rawValue)
+            | (1 << CGEventType.leftMouseUp.rawValue)
+            | (1 << CGEventType.rightMouseDown.rawValue)
+            | (1 << CGEventType.rightMouseUp.rawValue)
             | (1 << CGEventType.otherMouseDown.rawValue)
             | (1 << CGEventType.otherMouseUp.rawValue)
+            | (1 << CGEventType.leftMouseDragged.rawValue)
+            | (1 << CGEventType.rightMouseDragged.rawValue)
+            | (1 << CGEventType.otherMouseDragged.rawValue)
+            | (1 << CGEventType.scrollWheel.rawValue)
             | (hasMediaKeyBindings ? (1 << 14) : 0)  // kCGEventSystemDefined (NX_SYSDEFINED) for media/headphone keys
 
         let userInfo = Unmanaged.passUnretained(self).toOpaque()
@@ -476,6 +487,7 @@ final class HotkeyManager: NSObject {
         }
 
         guard let tap = tap else {
+            TextInjectionEngine.globalInputMonitorDidStop()
             return false
         }
 
@@ -491,6 +503,15 @@ final class HotkeyManager: NSObject {
         runLoopSource = source
         CFRunLoopAddSource(CFRunLoopGetCurrent(), source, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
+        guard CGEvent.tapIsEnabled(tap: tap) else {
+            TextInjectionEngine.globalInputMonitorDidStop()
+            CGEvent.tapEnable(tap: tap, enable: false)
+            CFRunLoopRemoveSource(CFRunLoopGetCurrent(), source, .commonModes)
+            eventTap = nil
+            runLoopSource = nil
+            return false
+        }
+        TextInjectionEngine.globalInputMonitorDidStart(eventTap: tap)
 
         startHealthCheck()
         updateMediaKeySession()
@@ -498,6 +519,7 @@ final class HotkeyManager: NSObject {
     }
 
     func stop() {
+        TextInjectionEngine.globalInputMonitorDidStop()
         deactivateMediaKeySession()
         healthCheckTimer?.invalidate()
         healthCheckTimer = nil
@@ -541,8 +563,11 @@ final class HotkeyManager: NSObject {
             // Check 2: Is the tap still enabled at the Mach port level?
             if !CGEvent.tapIsEnabled(tap: tap) {
                 NSLog("[Type4Me] Health check: tap disabled, re-enabling...")
+                TextInjectionEngine.globalInputMonitorDidStop()
                 CGEvent.tapEnable(tap: tap, enable: true)
-                if !CGEvent.tapIsEnabled(tap: tap) {
+                if CGEvent.tapIsEnabled(tap: tap) {
+                    TextInjectionEngine.globalInputMonitorDidStart(eventTap: tap)
+                } else {
                     NSLog("[Type4Me] Health check: tap re-enable failed, reinstalling tap...")
                     self.reinstallTap()
                 }
@@ -561,23 +586,58 @@ final class HotkeyManager: NSObject {
 
     fileprivate func handleEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         lastEventTime = Date()
+        didDispatchBindingCallback = false
 
         // Re-enable tap if system disabled it, and recover any stuck hold states.
         // When macOS disables the tap (main thread blocked >1s), keyUp events are lost.
         // We must check if held keys are still physically down; if not, fire onStop.
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            TextInjectionEngine.globalInputMonitorDidStop()
             DebugFileLogger.log(
                 "hotkey event tap disabled type=\(type.rawValue) recording=\(activeRecordingBindingId != nil)"
             )
+            // Any input released while the tap was disabled is unknowable.
+            // Keep the monitor unavailable while a stuck hold is recovered so
+            // that recovery-triggered stops cannot capture an opaque target.
+            recoverStuckHolds()
             if let tap = eventTap {
                 CGEvent.tapEnable(tap: tap, enable: true)
+                if CGEvent.tapIsEnabled(tap: tap) {
+                    TextInjectionEngine.globalInputMonitorDidStart(eventTap: tap)
+                }
             }
-            recoverStuckHolds()
+            return Unmanaged.passUnretained(event)
+        }
+
+        // Record the event before a matching stop hotkey invokes its callback.
+        // Capture may arm only this event's release-only tail; every unrelated
+        // later keyboard or pointer event invalidates an opaque target.
+        TextInjectionEngine.beginGlobalInputEvent(type: type, event: event)
+        defer { TextInjectionEngine.endGlobalInputEvent(type: type) }
+
+        // Type4Me's own Cmd+C / Delete / Cmd+V events must reach the target
+        // application but must never trigger a user-configured Type4Me hotkey.
+        if TextInjectionEngine.isSyntheticInput(event) {
             return Unmanaged.passUnretained(event)
         }
 
         // Pass all events through when suppressed (hotkey recording in progress)
         if isSuppressed {
+            return Unmanaged.passUnretained(event)
+        }
+
+        // Left/right presses are observed only for opaque-target continuity;
+        // they are never hotkeys here and must pass through untouched.
+        if type == .leftMouseDown || type == .leftMouseUp
+            || type == .rightMouseDown || type == .rightMouseUp {
+            return Unmanaged.passUnretained(event)
+        }
+
+        // Dragging and scrolling can move selection or dismiss a private
+        // editor without changing its AX window. They invalidate opaque
+        // targets above and otherwise pass through untouched.
+        if type == .leftMouseDragged || type == .rightMouseDragged
+            || type == .otherMouseDragged || type == .scrollWheel {
             return Unmanaged.passUnretained(event)
         }
 
@@ -671,7 +731,9 @@ final class HotkeyManager: NSObject {
                 rawFlags: event.flags.rawValue,
                 keyCode: keyCode
             )
-            return matchedCombo ? nil : Unmanaged.passUnretained(event)
+            return (matchedCombo || didDispatchBindingCallback)
+                ? nil
+                : Unmanaged.passUnretained(event)
         }
 
         for binding in bindings {
@@ -771,7 +833,7 @@ final class HotkeyManager: NSObject {
             } else if case .mode = activeRecordingOwner, case .mode(let targetModeId) = binding.owner {
                 // Different mode: finish the current recording through the app's policy.
                 clearActiveRecordingState()
-                onCrossModeFinish?(targetModeId)
+                dispatchCrossModeFinish(targetModeId)
             } else if case .globalAction(.revise) = activeRecordingOwner, case .mode = binding.owner {
                 // Cross-mode finish for revise: pressing any mode key stops the revise recording.
                 stopActiveRecording()
@@ -802,7 +864,7 @@ final class HotkeyManager: NSObject {
             } else if case .mode = activeRecordingOwner, case .mode(let targetModeId) = binding.owner {
                 // Different mode: finish the current recording through the app's policy.
                 clearActiveRecordingState()
-                onCrossModeFinish?(targetModeId)
+                dispatchCrossModeFinish(targetModeId)
             } else if case .globalAction(.revise) = activeRecordingOwner, case .mode = binding.owner {
                 // Cross-mode finish for revise: pressing any mode key stops the revise recording.
                 stopActiveRecording()
@@ -841,14 +903,31 @@ final class HotkeyManager: NSObject {
         activeRecordingBindingId = binding.bindingId
         activeRecordingModeId = binding.modeId
         activeRecordingOwner = binding.owner
-        binding.onStart()
+        // AppDelegate may detect that its session is already recording and
+        // reinterpret this nominal start callback as a stop. Route it through
+        // the same authorization gate so that desync recovery can still capture
+        // the actual hotkey event, without opening non-hotkey capture paths.
+        dispatchBindingCallback(binding.onStart)
     }
 
     /// Stop the active recording, invoking its binding's `onStop`.
     private func stopActiveRecording() {
         let active = activeRecordingBinding()
         clearActiveRecordingState()
-        active?.onStop()
+        if let active {
+            dispatchBindingCallback(active.onStop)
+        }
+    }
+
+    private func dispatchCrossModeFinish(_ targetModeId: UUID) {
+        guard let onCrossModeFinish else { return }
+        dispatchBindingCallback { onCrossModeFinish(targetModeId) }
+    }
+
+    private func dispatchBindingCallback(_ callback: () -> Void) {
+        didDispatchBindingCallback = true
+        TextInjectionEngine.authorizeCurrentGlobalInputForStopCapture()
+        callback()
     }
 
     /// Clear all active-recording bookkeeping. This is the single point where an in-flight
@@ -929,7 +1008,13 @@ final class HotkeyManager: NSObject {
         rawFlags: UInt64? = nil,
         keyCode: CGKeyCode? = nil
     ) -> Bool {
-        evaluateModifierBindings(currentFlags: flags, rawFlags: rawFlags, keyCode: keyCode)
+        didDispatchBindingCallback = false
+        let matched = evaluateModifierBindings(
+            currentFlags: flags,
+            rawFlags: rawFlags,
+            keyCode: keyCode
+        )
+        return matched || didDispatchBindingCallback
     }
 
     /// Drive the regular-key pre-dispatch reducer with a synthetic regular key-down.
@@ -1273,7 +1358,7 @@ final class HotkeyManager: NSObject {
         if activeRecordingBindingId == id {
             stopActiveRecording()
         } else {
-            binding.onStop()
+            dispatchBindingCallback(binding.onStop)
         }
     }
 
@@ -1312,7 +1397,7 @@ final class HotkeyManager: NSObject {
                     if activeRecordingBindingId == id {
                         stopActiveRecording()
                     } else {
-                        binding.onStop()
+                        dispatchBindingCallback(binding.onStop)
                     }
                 }
             }

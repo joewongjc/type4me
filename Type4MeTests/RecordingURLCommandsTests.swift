@@ -185,6 +185,42 @@ final class InjectionTargetPlanTests: XCTestCase {
             .failSafeClipboard
         )
     }
+
+    func testCapturedRecordingEndTargetCanInject() {
+        XCTAssertEqual(
+            RecognitionSession.planInjectionTarget(
+                preference: .recordingEnd,
+                hasCapturedTarget: true,
+                isTerminated: false,
+                hasEndTarget: true
+            ),
+            .injectIntoEndTarget
+        )
+    }
+
+    func testMissingRecordingEndTargetFailsSafeWithoutFallingBackToStartTarget() {
+        XCTAssertEqual(
+            RecognitionSession.planInjectionTarget(
+                preference: .recordingEnd,
+                hasCapturedTarget: true,
+                isTerminated: false,
+                hasEndTarget: false
+            ),
+            .failSafeClipboard
+        )
+    }
+
+    func testRecordingStartPreferenceIgnoresAnEndTargetSnapshot() {
+        XCTAssertEqual(
+            RecognitionSession.planInjectionTarget(
+                preference: .recordingStart,
+                hasCapturedTarget: true,
+                isTerminated: false,
+                hasEndTarget: true
+            ),
+            .activateAndConfirm
+        )
+    }
 }
 
 final class RecordingStartSourceAndGateTests: XCTestCase {
@@ -194,6 +230,14 @@ final class RecordingStartSourceAndGateTests: XCTestCase {
         XCTAssertEqual(RecordingStartSource.reviseHotkey.rawValue, "reviseHotkey")
         XCTAssertEqual(RecordingStartSource.reviseMenuBar.rawValue, "reviseMenuBar")
         XCTAssertEqual(RecordingStartSource.urlScheme.rawValue, "urlScheme")
+    }
+
+    func testOnlyOrdinaryManualSourcesAllowConfiguredInjectionTarget() {
+        XCTAssertTrue(RecordingStartSource.hotkey.allowsConfiguredInjectionTarget)
+        XCTAssertTrue(RecordingStartSource.menuBar.allowsConfiguredInjectionTarget)
+        XCTAssertFalse(RecordingStartSource.urlScheme.allowsConfiguredInjectionTarget)
+        XCTAssertFalse(RecordingStartSource.reviseHotkey.allowsConfiguredInjectionTarget)
+        XCTAssertFalse(RecordingStartSource.reviseMenuBar.allowsConfiguredInjectionTarget)
     }
 
     func testRecordingStartGateInvalidation() {
@@ -294,5 +338,3 @@ final class RecordingStartSourceAndGateTests: XCTestCase {
         }
     }
 }
-
-

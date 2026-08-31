@@ -20,6 +20,8 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
     @AppStorage("tf_language") private var language = AppLanguage.systemDefault
     @AppStorage(ClipboardOutputPolicy.storageKey)
     private var clipboardOutputPolicyRaw = ClipboardOutputPolicy.defaultValue.rawValue
+    @AppStorage(InjectionTargetPreference.storageKey)
+    private var injectionTargetPreferenceRaw = InjectionTargetPreference.defaultValue.rawValue
     @AppStorage("tf_showDockIcon") private var showDockIcon = true
     @AppStorage("tf_bypassProxy") private var bypassProxy = "off"
     @AppStorage("tf_micKeepAlive") private var micKeepAlive = false
@@ -69,6 +71,8 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
                 micKeepAliveRow
                 SettingsDivider()
                 crossModeFinishRow
+                SettingsDivider()
+                injectionTargetRow
             }
 
             Spacer().frame(height: 16)
@@ -588,6 +592,20 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
             )
             .disabled(isOverriddenByNormalRetention)
             .opacity(isOverriddenByNormalRetention ? 0.5 : 1.0)
+        }
+    }
+
+    private var injectionTargetRow: some View {
+        let preference = InjectionTargetPreference(rawValue: injectionTargetPreferenceRaw)
+            ?? InjectionTargetPreference.defaultValue
+        return settingsOptionRow(
+            L("手动录音写入目标", "Manual Recording Target"),
+            subtitle: preference.detail
+        ) {
+            settingsDropdown(
+                selection: $injectionTargetPreferenceRaw,
+                options: InjectionTargetPreference.allCases.map { ($0.rawValue, $0.displayName) }
+            )
         }
     }
 

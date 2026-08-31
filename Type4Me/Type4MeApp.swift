@@ -116,6 +116,13 @@ enum RecordingStartSource: String {
     case reviseHotkey
     case reviseMenuBar
     case urlScheme
+
+    /// Only ordinary user-controlled recording entry points may opt into the
+    /// recording-end target. Specialized and automated flows keep their current
+    /// target contract even if the global preference is changed.
+    var allowsConfiguredInjectionTarget: Bool {
+        self == .hotkey || self == .menuBar
+    }
 }
 
 // MARK: - App Delegate
@@ -137,7 +144,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.selectionAskController?.handleActiveRecordingAction(action) == true
         }
     ) { [weak self] action in
-        self?.performStandardRecordingAction(action)
+        self?.performStandardRecordingAction(action, capturesManualEndTarget: true)
     }
     private let hotkeyManager = HotkeyManager()
     private let session = RecognitionSession()
@@ -150,6 +157,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var recognitionEventTask: Task<Void, Never>?
     private var recognitionEventContinuation: AsyncStream<RecognitionEvent>.Continuation?
     private var inputDeviceChangeObservers: [NSObjectProtocol] = []
+    private var preciseTargetActivationObserver: NSObjectProtocol?
+    /// Frozen with the current manual recording so changing Settings mid-session
+    /// cannot change which stop behavior the hotkey uses.
+    private var activeInjectionTargetPreference: InjectionTargetPreference = .recordingStart
     private var effectiveInputDevice: AudioInputDevice?
     private var hasEstablishedInputDeviceBaseline = false
     lazy var menuBarControlCenterModel = MenuBarControlCenterModel(appState: appState)
@@ -201,6 +212,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         SoundFeedback.warmUp()
         AudioInputDeviceMonitor.shared.start()
         observeEffectiveInputDeviceChanges()
+        observePreciseTargetApplicationActivation()
         AudioKeepAliveManager.syncState()
 
         // Pre-warm audio subsystem and ASR connection so the first recording starts instantly
@@ -671,6 +683,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let selectedProvider = KeychainService.selectedASRProvider
         let resolvedMode = ASRProviderRegistry.resolvedMode(for: mode, provider: selectedProvider)
         let effectiveMode = appState.availableModes.first(where: { $0.id == resolvedMode.id }) ?? resolvedMode
+        let injectionTargetPreference = freezeInjectionTargetPreference(
+            for: source,
+            mode: effectiveMode
+        )
         if effectiveMode.executionKind == .selectionAsk {
             askAnythingCoordinator.prepareForExternalNewQuestion()
         }
@@ -700,9 +716,56 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             await self.session.startRecording(
                 mode: effectiveMode,
-                requestedAt: recordingRequestedAt
+                requestedAt: recordingRequestedAt,
+                injectionTargetPreference: injectionTargetPreference
             )
         }
+    }
+
+    private func injectionTargetPreference(
+        for source: RecordingStartSource,
+        mode: ProcessingMode
+    ) -> InjectionTargetPreference {
+        guard source.allowsConfiguredInjectionTarget, mode.supportsOutputFormatting else {
+            return .recordingStart
+        }
+        return InjectionTargetPreference.current()
+    }
+
+    private func freezeInjectionTargetPreference(
+        for source: RecordingStartSource,
+        mode: ProcessingMode
+    ) -> InjectionTargetPreference {
+        let preference = injectionTargetPreference(for: source, mode: mode)
+        activeInjectionTargetPreference = preference
+        if preference == .recordingEnd,
+           let frontmostApp = NSWorkspace.shared.frontmostApplication {
+            TextInjectionEngine.preparePreciseTargetCapture(for: frontmostApp)
+        }
+        return preference
+    }
+
+    private func observePreciseTargetApplicationActivation() {
+        let workspaceCenter = NSWorkspace.shared.notificationCenter
+        preciseTargetActivationObserver = workspaceCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            MainActor.assumeIsolated {
+                guard let self,
+                      self.activeInjectionTargetPreference == .recordingEnd,
+                      self.appState.barPhase == .preparing || self.appState.barPhase == .recording,
+                      let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey]
+                        as? NSRunningApplication
+                else { return }
+                TextInjectionEngine.preparePreciseTargetCapture(for: app)
+            }
+        }
+    }
+
+    private var shouldCaptureEndTarget: Bool {
+        activeInjectionTargetPreference == .recordingEnd
     }
 
     private func requestReviseRecordingStart(source: RecordingStartSource) {
@@ -832,6 +895,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if phase == .recording || phase == .preparing {
                     NSLog("[Type4Me] >>> HOTKEY: toggle desync – onStart while recording, redirecting to STOP (phase=%@)", String(describing: phase))
                     DebugFileLogger.log("hotkey toggle desync: onStart while recording, redirecting to stop phase=\(phase)")
+                    let capturesEndTarget = MainActor.assumeIsolated {
+                        self.shouldCaptureEndTarget
+                    }
+                    let endTarget = phase == .recording && capturesEndTarget
+                        ? TextInjectionEngine.captureEndInjectionTarget()
+                        : nil
                     MainActor.assumeIsolated {
                         if phase == .preparing {
                             self.recordingStartGate.invalidate()
@@ -843,7 +912,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     if phase == .preparing {
                         Task { await self.session.cancelRecording() }
                     } else {
-                        Task { await self.session.stopRecording() }
+                        Task {
+                            await self.session.stopRecording(
+                                endTarget: endTarget
+                            )
+                        }
                     }
                     return
                 }
@@ -858,11 +931,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     Task {
                         let action = await self.session.handleRecoveryHotkeyPress()
                         guard action == .interrupted else { return }
-                        await MainActor.run {
+                        let injectionTargetPreference = await MainActor.run {
                             self.appState.selectModeForRecording(effectiveMode)
                             self.appState.startRecording()
+                            return self.freezeInjectionTargetPreference(
+                                for: .hotkey,
+                                mode: effectiveMode
+                            )
                         }
-                        await self.session.startRecording(mode: effectiveMode)
+                        await self.session.startRecording(
+                            mode: effectiveMode,
+                            injectionTargetPreference: injectionTargetPreference
+                        )
                     }
                     return
                 }
@@ -899,6 +979,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     Task { _ = await self.session.handleRecoveryHotkeyPress() }
                     return
                 }
+                let capturesEndTarget = MainActor.assumeIsolated {
+                    self.shouldCaptureEndTarget
+                }
+                let endTarget = phase == .recording && capturesEndTarget
+                    ? TextInjectionEngine.captureEndInjectionTarget()
+                    : nil
                 MainActor.assumeIsolated {
                     if phase == .preparing {
                         self.recordingStartGate.invalidate()
@@ -909,7 +995,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if phase == .preparing {
                     Task { await self.session.cancelRecording() }
                 } else {
-                    Task { await self.session.stopRecording() }
+                    Task {
+                        await self.session.stopRecording(
+                            endTarget: endTarget
+                        )
+                    }
                 }
             }
             let onAbort: @Sendable () -> Void = { [weak self] in
@@ -1060,6 +1150,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             DebugFileLogger.log(
                 "hotkey cross-mode finish start=\(startingMode.name) end=\(newMode.name) process=\(processingMode.name)"
             )
+            let capturesEndTarget = MainActor.assumeIsolated {
+                self.shouldCaptureEndTarget
+            }
+            let endTarget = capturesEndTarget
+                ? TextInjectionEngine.captureEndInjectionTarget()
+                : nil
             MainActor.assumeIsolated {
                 if allowsModeSwitch {
                     self.appState.currentMode = processingMode
@@ -1070,7 +1166,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if allowsModeSwitch {
                     await self.session.switchMode(to: processingMode)
                 }
-                await self.session.stopRecording()
+                await self.session.stopRecording(
+                    endTarget: endTarget
+                )
             }
         }
 
@@ -1166,7 +1264,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await self.session.setSelectionAskRequestContext(requestContext)
             await self.session.startRecording(
                 mode: effectiveMode,
-                requestedAt: recordingRequestedAt
+                requestedAt: recordingRequestedAt,
+                injectionTargetPreference: .recordingStart
             )
         }
         return true
@@ -1201,7 +1300,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { await self.session.cancelRecording() }
     }
 
-    private func performStandardRecordingAction(_ action: RecordingControlAction) {
+    private func performStandardRecordingAction(
+        _ action: RecordingControlAction,
+        capturesManualEndTarget: Bool
+    ) {
         let phase = appState.barPhase
         guard phase == .preparing || phase == .recording else { return }
 
@@ -1216,8 +1318,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 appState.stopRecording()
                 Task { await session.cancelRecording() }
             } else {
+                let endTarget = capturesManualEndTarget && shouldCaptureEndTarget
+                    ? TextInjectionEngine.captureEndInjectionTarget()
+                    : nil
                 appState.stopRecording()
-                Task { await session.stopRecording() }
+                Task {
+                    await session.stopRecording(
+                        endTarget: endTarget
+                    )
+                }
             }
         case .cancel:
             if phase == .preparing {
@@ -1508,6 +1617,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         inputDeviceChangeObservers.forEach(NotificationCenter.default.removeObserver)
         inputDeviceChangeObservers.removeAll()
+        if let preciseTargetActivationObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(preciseTargetActivationObserver)
+            self.preciseTargetActivationObserver = nil
+        }
         recognitionEventContinuation?.finish()
         recognitionEventTask?.cancel()
         SystemVolumeManager.restore()
@@ -1610,7 +1723,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func requestURLRecordingStop() {
-        recordingControlCoordinator.perform(.finish)
+        performStandardRecordingAction(.finish, capturesManualEndTarget: false)
     }
 
     private func handleVocabularyURL(_ url: URL, acceptedSchemes: Set<String>) {
