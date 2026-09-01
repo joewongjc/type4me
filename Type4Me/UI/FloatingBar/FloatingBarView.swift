@@ -1395,14 +1395,10 @@ private struct RecordingGlassSurface: View {
             shape.fill(theme == .light ? TF.floatingBackgroundLight : TF.floatingBackground)
         } else if #available(macOS 26.0, *) {
             ZStack {
-                if theme == .dark {
-                    // Filled through `shape` rather than clipped from the outside:
-                    // an outer `clipShape` would also cut off the glass's own
-                    // edge highlight and halo.
-                    shape.fill(Color.black.opacity(TF.glassDarkContrastFloor))
-                }
+                shape.fill(theme == .dark ? Color.black.opacity(TF.glassDarkContrastFloor) : Color.clear)
                 Color.clear.glassEffect(.regular, in: shape)
             }
+            .id(theme)
         } else {
             ZStack {
                 VisualEffectBlur(

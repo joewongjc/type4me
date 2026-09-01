@@ -57,7 +57,7 @@ enum TF {
     /// Do not move this above the glass or into `Glass.tint`: a scrim on top
     /// makes the un-sampled first frames flash harder, and a tint inside the
     /// glass style cannot hold the theme either.
-    static let glassDarkContrastFloor: Double = 0.18
+    static let glassDarkContrastFloor: Double = 0.52
     /// A translucent highlight that takes on the material beneath it instead of reading as a flat white rule.
     /// Only used by the macOS 14/15 fallback; native Liquid Glass draws its own rim.
     static let recordingGlassRim = LinearGradient(

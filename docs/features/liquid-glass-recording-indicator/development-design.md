@@ -363,3 +363,14 @@ swift build -c release
 4. 替换 Regular `FloatingBarView` 背景和 Finish/文字路由，删除旧效果组件；
 5. 接入 Settings 与 Appearance Preview 的录音/处理阶段；
 6. 完成单元测试、全量构建、手工视觉/无障碍/性能验收和许可证打包检查。
+
+## 16. 外观主题与屏幕明暗采样技术调研
+
+在探索液态玻璃指示条「自适应」外观模式期间，团队对基于 Quartz 屏幕采样的像素级明暗计算方案进行了预研与真机验证。
+
+详见独立设计归档文档：[自适应主题与屏幕明暗采样技术调研与设计文档](adaptive-theme-and-screen-sampling-research.md)。
+
+技术要点与未采纳原因：
+1. **macOS 合成层隔离**：`NSVisualEffectView` 与 `.glassEffect()` 的物理折射在 WindowServer GPU 阶段执行，不向应用进程回传像素颜色；
+2. **TCC 权限阻碍**：通过 `CGWindowListCreateImage` 或 `ScreenCaptureKit` 抓取底层窗口像素必须向用户索要「屏幕录制权限（Screen Recording / TCC）」，带来严重的隐私打扰与信任风险；
+3. **架构决策**：彻底放弃屏幕抓取方案，保留纯粹的「暗色」与「明亮」双主题，零权限消耗，保障应用轻量与用户隐私。
