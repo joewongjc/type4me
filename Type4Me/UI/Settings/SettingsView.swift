@@ -273,6 +273,8 @@ struct SettingsView: View {
                 Text(tab.displayName)
                     .font(.system(size: 14, weight: isActive ? .semibold : .medium))
                     .foregroundStyle(TF.settingsText)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
                 Spacer()
                 if tab == .preferences {
                     Text(AppBuildInfo.current.compactLabel)
