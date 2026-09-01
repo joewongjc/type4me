@@ -25,8 +25,8 @@
 | Gemini 实时 ASR | [开发设计](features/gemini-transcribe-asr/development-design.md) | 开发设计 | 当前有效（已实现，持续验证） | 2026-08-27 | `c82aa2b` |
 | Compact 实时识别文本 | [产品设计](features/compact-live-transcript/product-design.md) | 产品设计 | 当前有效（已实现，持续验证） | 2026-08-27 | `a90f8d2` |
 | Compact 实时识别文本 | [开发设计](features/compact-live-transcript/development-design.md) | 开发设计 | 当前有效（已实现，持续验证） | 2026-08-27 | `a90f8d2` |
-| 液态玻璃录音指示条 | [产品设计](features/liquid-glass-recording-indicator/product-design.md) | 产品设计 | 当前有效（已实现，持续验证） | 2026-08-25 | `06c06a0` |
-| 液态玻璃录音指示条 | [开发设计](features/liquid-glass-recording-indicator/development-design.md) | 开发设计 | 当前有效（已实现，持续验证） | 2026-08-25 | `06c06a0` |
+| 液态玻璃录音指示条 | [产品设计](features/liquid-glass-recording-indicator/product-design.md) | 产品设计 | 当前有效（已实现，持续验证） | 2026-09-01 | `b67ee103`（PR #279） |
+| 液态玻璃录音指示条 | [开发设计](features/liquid-glass-recording-indicator/development-design.md) | 开发设计 | 当前有效（已实现，持续验证） | 2026-09-01 | `b67ee103`（PR #279） |
 | 录音外观增强 | [产品设计](features/appearance-settings-enhancements/product-design.md) | 产品设计 | 当前有效（已实现，持续验证） | 2026-08-25 | `06c06a0` |
 | 录音外观增强 | [开发设计](features/appearance-settings-enhancements/development-design.md) | 开发设计 | 当前有效（已实现，持续验证） | 2026-08-25 | `06c06a0` |
 | 改口 | [产品设计](features/revise/product-design.md) | 产品设计 | 设计完成，待实现 | 2026-08-18 | — |
