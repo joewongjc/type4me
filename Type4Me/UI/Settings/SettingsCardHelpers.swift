@@ -337,14 +337,14 @@ private struct SettingsOptionRowLayout: Layout {
         if usesHorizontalLayout(availableWidth: availableWidth) {
             let labelWidth = availableWidth - horizontalSpacing - controlWidth
             let labelSize = subviews[0].sizeThatFits(
-                ProposedViewSize(width: labelWidth, height: proposal.height)
+                ProposedViewSize(width: labelWidth, height: nil)
             )
             let controlSize = subviews[1].sizeThatFits(
-                ProposedViewSize(width: controlWidth, height: proposal.height)
+                ProposedViewSize(width: controlWidth, height: nil)
             )
             return CGSize(
                 width: availableWidth,
-                height: max(minimumRowHeight, labelSize.height, controlSize.height)
+                height: max(minimumRowHeight, labelSize.height + 20, controlSize.height + 20)
             )
         }
 
@@ -370,15 +370,25 @@ private struct SettingsOptionRowLayout: Layout {
 
         if usesHorizontalLayout(availableWidth: bounds.width) {
             let labelWidth = bounds.width - horizontalSpacing - controlWidth
+            let labelSize = subviews[0].sizeThatFits(
+                ProposedViewSize(width: labelWidth, height: nil)
+            )
+            let controlSize = subviews[1].sizeThatFits(
+                ProposedViewSize(width: controlWidth, height: nil)
+            )
+
+            // When control is multi-line (e.g. dropdown + custom textfield),
+            // align label with the vertical center of the top 36pt row.
+            let labelY = bounds.minY + 18 + 10
             subviews[0].place(
-                at: CGPoint(x: bounds.minX, y: bounds.midY),
+                at: CGPoint(x: bounds.minX, y: labelY),
                 anchor: .leading,
-                proposal: ProposedViewSize(width: labelWidth, height: bounds.height)
+                proposal: ProposedViewSize(width: labelWidth, height: labelSize.height)
             )
             subviews[1].place(
-                at: CGPoint(x: bounds.maxX, y: bounds.midY),
-                anchor: .trailing,
-                proposal: ProposedViewSize(width: controlWidth, height: bounds.height)
+                at: CGPoint(x: bounds.maxX, y: bounds.minY + 10),
+                anchor: .topTrailing,
+                proposal: ProposedViewSize(width: controlWidth, height: controlSize.height)
             )
         } else {
             let contentWidth = bounds.width
@@ -495,8 +505,8 @@ extension SettingsCardHelpers {
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
-    func settingsField(_ label: String, text: Binding<String>, prompt: String) -> some View {
-        settingsOptionRow(label, controlWidth: SettingsControlWidth.input) {
+    func settingsField(_ label: String, subtitle: String? = nil, text: Binding<String>, prompt: String) -> some View {
+        settingsOptionRow(label, subtitle: subtitle, controlWidth: SettingsControlWidth.input) {
             FixedWidthTextField(text: text, placeholder: prompt)
                 .padding(.horizontal, 12)
                 .frame(height: 36)
@@ -515,10 +525,7 @@ extension SettingsCardHelpers {
 
     func settingsSecureField(_ label: String, text: Binding<String>, prompt: String) -> some View {
         settingsOptionRow(label, controlWidth: SettingsControlWidth.input) {
-            FixedWidthSecureField(text: text, placeholder: prompt)
-                .padding(.horizontal, 12)
-                .frame(height: 36)
-                .background(RoundedRectangle(cornerRadius: 8).fill(TF.settingsCardAlt))
+            SettingsSecureInputField(text: text, prompt: prompt)
         }
     }
 
@@ -637,33 +644,93 @@ extension SettingsCardHelpers {
         SettingsInlineSegmentedPicker(selection: selection, options: options)
     }
 
-    func primaryButton(_ title: String, action: @escaping () -> Void) -> some View {
-        Button(title, action: action)
-            .buttonStyle(.plain)
-            .font(.system(size: 12, weight: .semibold))
+    func primaryButton(
+        _ title: String,
+        icon: String? = nil,
+        isEnabled: Bool = true,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                if let icon {
+                    Image(systemName: icon)
+                        .font(.system(size: 11, weight: .semibold))
+                }
+                Text(title)
+                    .font(.system(size: 12, weight: .semibold))
+            }
             .foregroundStyle(.white)
-            .padding(.horizontal, 16)
+            .padding(.horizontal, 14)
             .padding(.vertical, 7)
-            .background(RoundedRectangle(cornerRadius: 9).fill(TF.settingsAccentBlue))
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(isEnabled ? TF.settingsAccentBlue : TF.settingsCardAlt)
+            )
             .contentShape(Rectangle())
+        }
+        .buttonStyle(SettingsListRowButtonStyle())
+        .disabled(!isEnabled)
+        .opacity(isEnabled ? 1.0 : 0.55)
     }
 
-    func secondaryButton(_ title: String, action: @escaping () -> Void) -> some View {
-        Button(title, action: action)
-            .buttonStyle(.plain)
-            .font(.system(size: 12, weight: .medium))
+    func secondaryButton(
+        _ title: String,
+        icon: String? = nil,
+        isEnabled: Bool = true,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                if let icon {
+                    Image(systemName: icon)
+                        .font(.system(size: 11, weight: .medium))
+                }
+                Text(title)
+                    .font(.system(size: 12, weight: .medium))
+            }
             .foregroundStyle(TF.settingsText)
-            .padding(.horizontal, 16)
+            .padding(.horizontal, 14)
             .padding(.vertical, 7)
-            .background(RoundedRectangle(cornerRadius: 8).fill(TF.settingsCardAlt))
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(TF.settingsCardAlt)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(Color.black.opacity(0.06), lineWidth: 0.5)
+            )
             .contentShape(Rectangle())
+        }
+        .buttonStyle(SettingsListRowButtonStyle())
+        .disabled(!isEnabled)
+        .opacity(isEnabled ? 1.0 : 0.55)
+    }
+
+    func revertButton(action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: "arrow.uturn.backward")
+                    .font(.system(size: 10, weight: .medium))
+                Text(L("还原", "Revert"))
+                    .font(.system(size: 12, weight: .medium))
+            }
+            .foregroundStyle(TF.settingsTextSecondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.clear)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(SettingsListRowButtonStyle())
     }
 
     func saveButton(action: @escaping () -> Void) -> some View {
         primaryButton(L("保存", "Save"), action: action)
     }
 
-    /// A "test connection" button that shows its own status inline.
+    /// A "test connection" button that shows its own status inline with Apple design language.
     func testButton(
         _ title: String,
         status: SettingsTestStatus,
@@ -674,6 +741,8 @@ extension SettingsCardHelpers {
             HStack(spacing: 6) {
                 switch status {
                 case .idle:
+                    Image(systemName: "bolt.fill")
+                        .font(.system(size: 10))
                     Text(title)
                 case .testing:
                     ProgressView()
@@ -682,26 +751,33 @@ extension SettingsCardHelpers {
                     Text(title)
                 case .saved:
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 12))
+                        .font(.system(size: 11))
                     Text(L("已保存", "Saved"))
                 case .success:
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 12))
+                        .font(.system(size: 11))
                     Text(L("连接成功", "Connected"))
                 case .failed:
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 12))
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 10))
                     Text(L("重试", "Retry"))
                 }
             }
             .font(.system(size: 12, weight: .medium))
             .foregroundStyle(status.buttonForeground)
-            .padding(.horizontal, 16)
+            .padding(.horizontal, 14)
             .padding(.vertical, 7)
-            .background(RoundedRectangle(cornerRadius: 8).fill(status.buttonBackground))
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(status.buttonBackground)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(Color.black.opacity(0.06), lineWidth: 0.5)
+            )
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(SettingsListRowButtonStyle())
         .disabled(status == .testing || !isEnabled)
         .opacity(status == .testing || isEnabled ? 1 : 0.55)
     }
@@ -709,13 +785,16 @@ extension SettingsCardHelpers {
     @ViewBuilder
     func testStatusMessage(status: SettingsTestStatus) -> some View {
         if case .failed(let msg) = status {
-            Text(msg)
-                .font(.system(size: 10))
-                .foregroundStyle(TF.settingsAccentRed)
-                .multilineTextAlignment(.trailing)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .trailing)
-                .padding(.top, 6)
+            HStack(spacing: 4) {
+                Image(systemName: "exclamationmark.circle.fill")
+                    .font(.system(size: 10))
+                Text(msg)
+                    .font(.system(size: 11))
+                    .lineLimit(2)
+            }
+            .foregroundStyle(TF.settingsAccentRed)
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -727,6 +806,41 @@ extension SettingsCardHelpers {
         return "\(prefix)••••\(suffix)"
     }
 
+}
+
+// MARK: - Secure Input Field with Eye Toggle
+
+struct SettingsSecureInputField: View {
+    @Binding var text: String
+    var prompt: String
+    @State private var isRevealed = false
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if isRevealed {
+                FixedWidthTextField(text: $text, placeholder: prompt)
+            } else {
+                FixedWidthSecureField(text: $text, placeholder: prompt)
+            }
+
+            Button {
+                withAnimation(.easeOut(duration: 0.12)) {
+                    isRevealed.toggle()
+                }
+            } label: {
+                Image(systemName: isRevealed ? "eye.slash.fill" : "eye.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(isRevealed ? TF.settingsAccentBlue : TF.settingsTextTertiary)
+                    .frame(width: 22, height: 22)
+            }
+            .buttonStyle(.plain)
+            .settingsTooltip(isRevealed ? L("隐藏密码", "Hide password") : L("查看明文", "Show password"))
+        }
+        .padding(.leading, 12)
+        .padding(.trailing, 8)
+        .frame(height: 36)
+        .background(RoundedRectangle(cornerRadius: 8).fill(TF.settingsCardAlt))
+    }
 }
 
 /// Apple-grade inline segmented capsule picker with smooth matched-geometry sliding spring pill.
@@ -802,5 +916,13 @@ private struct SettingsSegmentedButtonStyle: ButtonStyle {
         configuration.label
             .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
             .animation(.spring(response: 0.18, dampingFraction: 0.8), value: configuration.isPressed)
+    }
+}
+
+struct SettingsListRowButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
+            .animation(.spring(response: 0.16, dampingFraction: 0.75), value: configuration.isPressed)
     }
 }

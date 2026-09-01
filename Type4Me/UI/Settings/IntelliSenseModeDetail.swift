@@ -89,26 +89,39 @@ struct IntelliSenseModeDetail: View, SettingsCardHelpers {
     }
 
     private var modeHeader: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 7) {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 14))
-                    .foregroundStyle(TF.settingsAccentAmber)
-                Text(mode.localizedDisplayName)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(TF.settingsText)
-                Text(L("内置", "BUILT-IN"))
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(TF.settingsTextTertiary)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 2)
-                    .background(Capsule().fill(TF.settingsCardAlt))
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(TF.settingsAccentAmber)
+                .frame(width: 32, height: 32)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(TF.settingsCardAlt)
+                )
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(mode.localizedDisplayName)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(TF.settingsText)
+
+                    Text(L("内置", "Built-in"))
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(TF.settingsTextTertiary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 1.5)
+                        .background(Capsule().fill(TF.settingsCardAlt))
+                }
+
+                Text(mode.localizedDisplayDescription)
+                    .font(.system(size: 11))
+                    .foregroundStyle(TF.settingsTextSecondary)
+                    .lineLimit(2)
             }
-            Text(mode.localizedDisplayDescription)
-                .font(.system(size: 12))
-                .foregroundStyle(TF.settingsTextSecondary)
-                .lineSpacing(3)
+
+            Spacer()
         }
+        .padding(.bottom, 4)
     }
 
     private func awarenessToggle(

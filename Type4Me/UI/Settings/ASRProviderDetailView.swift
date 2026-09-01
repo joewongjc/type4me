@@ -1,45 +1,22 @@
 import SwiftUI
 
-struct LocalASREngineSelection: Equatable {
-    var senseVoiceEnabled: Bool
-    var qwen3Enabled: Bool
+struct ASRProviderDetailView: View, SettingsCardHelpers {
+    let provider: ASRProvider
+    let isDefault: Bool
+    var draftCoordinator: SettingsDraftCoordinator? = nil
+    let onSetAsDefault: (ASRProvider) -> Void
 
-    func settingSenseVoice(_ enabled: Bool, qwen3Available: Bool) -> Self {
-        guard !enabled, !qwen3Enabled else {
-            return Self(senseVoiceEnabled: enabled, qwen3Enabled: qwen3Enabled)
-        }
-        guard qwen3Available else { return self }
-        return Self(senseVoiceEnabled: false, qwen3Enabled: true)
-    }
-
-    func settingQwen3(_ enabled: Bool) -> Self {
-        Self(
-            senseVoiceEnabled: enabled ? senseVoiceEnabled : true,
-            qwen3Enabled: enabled
-        )
-    }
-}
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// MARK: - ASR Settings Card
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-struct ASRSettingsCard: View, SettingsCardHelpers {
-
-    let draftCoordinator: SettingsDraftCoordinator
-
-    @State private var selectedASRProvider: ASRProvider = .volcano
     @State private var asrCredentialValues: [String: String] = [:]
     @State private var savedASRValues: [String: String] = [:]
-    @State private var editedFields: Set<String> = []
-    @State private var asrTestStatus: SettingsTestStatus = .idle
-    @State private var isEditingASR = true
-    @State private var hasStoredASR = false
-    /// Tracks option fields currently using a free-form value instead of a preset.
+    @State private var hasStoredCredentials = false
     @State private var customASRModeFields: Set<String> = []
+    @State private var asrTestStatus: SettingsTestStatus = .idle
     @State private var testTask: Task<Void, Never>?
-    /// Hint shown below ASR credentials when only bigasr works (not seed 2.0)
     @State private var volcResourceHint: String?
+
+    private var isDirty: Bool {
+        asrCredentialValues != savedASRValues
+    }
 
     // Local model states
     @State private var localModelAvailable: Bool = ModelManager.isQwen3ASRBundled
@@ -52,11 +29,11 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
     @State private var qwen3StartError: String?
 
     private var currentASRFields: [CredentialField] {
-        ASRProviderRegistry.configType(for: selectedASRProvider)?.credentialFields ?? []
+        ASRProviderRegistry.configType(for: provider)?.credentialFields ?? []
     }
 
     private var displayedASRFields: [CredentialField] {
-        guard selectedASRProvider == .volcano else { return currentASRFields }
+        guard provider == .volcano else { return currentASRFields }
         let authMode = VolcanoASRConfig.inferredAuthMode(in: effectiveASRValues)
         return currentASRFields.filter { field in
             switch field.key {
@@ -71,39 +48,39 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
     }
 
     private var isZeroCredentialProvider: Bool {
-        currentASRFields.isEmpty && !selectedASRProvider.isLocal
+        currentASRFields.isEmpty && !provider.isLocal
     }
 
-    /// Effective values: saved base + defaults for unsaved fields + dirty edits overlaid.
     private var effectiveASRValues: [String: String] {
-        var result = savedASRValues
-        // Fill in defaults for fields not yet saved (new provider scenario)
-        for (key, value) in asrCredentialValues where result[key] == nil {
-            result[key] = value
-        }
-        for key in editedFields {
-            result[key] = asrCredentialValues[key] ?? ""
+        var result = asrCredentialValues
+        let fields = currentASRFields
+        for field in fields where result[field.key] == nil && !field.defaultValue.isEmpty {
+            result[field.key] = field.defaultValue
         }
         return result
     }
 
     private var hasASRCredentials: Bool {
+        if isZeroCredentialProvider { return true }
+        if provider.isLocal { return ModelManager.isQwen3ASRBundled }
         let effective = effectiveASRValues
-        if selectedASRProvider == .volcano {
+        if provider == .volcano {
             return VolcanoASRConfig(credentials: effective) != nil
         }
         let required = currentASRFields.filter { !$0.isOptional }
         return required.allSatisfy { field in
-            !(effective[field.key] ?? "").isEmpty
+            !(effective[field.key]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "").isEmpty
         }
     }
 
     private var isASRProviderAvailable: Bool {
-        ASRProviderRegistry.entry(for: selectedASRProvider)?.isAvailable ?? false
+        ASRProviderRegistry.entry(for: provider)?.isAvailable ?? false
     }
 
+    // MARK: - Guide Links
+
     private var currentASRGuideLinks: [(prefix: String?, label: String, url: URL)] {
-        switch selectedASRProvider {
+        switch provider {
         case .volcano:
             return [
                 (L("配置指南", "Setup guide"), L("查看", "view"), URL(string: "https://my.feishu.cn/wiki/QdEnwBMfUi0mN4k3ucMcNYhUnXr")!),
@@ -151,7 +128,7 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
             ]
         case .stepfun, .stepfunBatch:
             return [
-                (L("接入文档", "Setup guide"), L("查看", "view"), URL(string: selectedASRProvider == .stepfun
+                (L("接入文档", "Setup guide"), L("查看", "view"), URL(string: provider == .stepfun
                     ? "https://platform.stepfun.com/docs/zh/api-reference/audio/asr-stream"
                     : "https://platform.stepfun.com/docs/zh/api-reference/audio/asr-sse")!),
                 ("API Key", L("获取", "get"), URL(string: "https://platform.stepfun.com/interface-key")!),
@@ -166,57 +143,8 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
         }
     }
 
-    @ViewBuilder
-    private func providerMenuItem(_ provider: ASRProvider) -> some View {
-        let isBatch = !ASRProviderRegistry.capabilities(for: provider).supportsRealtimeRecognition
-        Toggle(isOn: Binding(
-            get: { provider == selectedASRProvider },
-            set: { if $0 { selectedASRProvider = provider } }
-        )) {
-            if isBatch {
-                Text("\(provider.displayName) (\(L("非实时", "Batch")))")
-            } else {
-                Text(provider.displayName)
-            }
-        }
-    }
-
-    private func asrProviderDropdownLabel(_ provider: ASRProvider) -> some View {
-        let isBatch = !ASRProviderRegistry.capabilities(for: provider).supportsRealtimeRecognition
-        return HStack(spacing: 8) {
-            Text(provider.displayName)
-                .font(.system(size: 13))
-                .foregroundStyle(TF.settingsText)
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
-
-            if isBatch {
-                Text(L("非实时", "Batch"))
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(TF.settingsTextTertiary)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 1.5)
-                    .background(
-                        Capsule()
-                            .fill(TF.settingsCard)
-                    )
-            }
-
-            Image(systemName: "chevron.down")
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(TF.settingsTextTertiary)
-        }
-        .padding(.horizontal, 12)
-        .frame(minWidth: 88, minHeight: 36)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(TF.settingsCardAlt)
-        )
-        .fixedSize(horizontal: true, vertical: false)
-    }
-
     private var currentProviderNote: String? {
-        switch selectedASRProvider {
+        switch provider {
         case .volcano:
             return L(
                 "新版控制台使用 API Key；旧版控制台继续使用 App ID + Access Token。选择 API Key 时优先走新版鉴权。",
@@ -254,213 +182,225 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
         }
     }
 
-    // MARK: Body
+    // MARK: - Body
 
     var body: some View {
-        settingsGroupCard(L("语音识别引擎", "ASR Provider"), icon: "mic.fill") {
-            asrProviderPicker
-            if !currentASRGuideLinks.isEmpty {
-                HStack(spacing: 6) {
-                    ForEach(Array(currentASRGuideLinks.enumerated()), id: \.offset) { index, link in
-                        if index > 0 {
-                            Text("·").font(.system(size: 10)).foregroundStyle(TF.settingsTextTertiary)
-                        }
-                        if let prefix = link.prefix {
-                            Text(prefix).font(.system(size: 10)).foregroundStyle(TF.settingsTextTertiary)
-                        }
-                        Button {
-                            NSWorkspace.shared.open(link.url)
-                        } label: {
-                            HStack(spacing: 2) {
-                                Text(link.label)
-                                Image(systemName: "arrow.up.right")
-                                    .font(.system(size: 7))
-                            }
-                            .foregroundStyle(TF.settingsAccentBlue)
-                        }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 10, weight: .medium))
-                    }
-                }
-                .padding(.bottom, 4)
-            }
-            if let note = currentProviderNote {
-                Text(note)
-                    .font(.system(size: 10))
-                    .foregroundStyle(TF.settingsTextTertiary)
-                    .padding(.bottom, 4)
-            }
-            SettingsDivider()
+        VStack(alignment: .leading, spacing: 14) {
+            headerSection
 
-            if selectedASRProvider.isLocal {
+            if provider.isLocal {
                 localModelSection
             } else {
+                cloudModelSection
+            }
+        }
+        .padding(.horizontal, 4)
+        .padding(.vertical, 2)
+        .onAppear {
+            loadCredentials()
+            refreshModelStatus()
+            registerDraftParticipant()
+        }
+        .onDisappear {
+            draftCoordinator?.unregister(.asrCredentials)
+        }
+        .onChange(of: provider) { _, newProvider in
+            testTask?.cancel()
+            asrTestStatus = .idle
+            volcResourceHint = nil
+            loadCredentials()
+            refreshModelStatus()
+            registerDraftParticipant()
+        }
+    }
+
+    private func registerDraftParticipant() {
+        draftCoordinator?.register(
+            .asrCredentials,
+            isDirty: { isDirty },
+            save: { saveCredentials() },
+            discard: { revertCredentials() }
+        )
+    }
+    // MARK: - Header Section
+
+    private var headerSection: some View {
+        HStack(alignment: .center, spacing: 12) {
+            BrandIconView(asr: provider, size: 32)
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(provider.displayName)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(TF.settingsText)
+
+                    let isBatch = !ASRProviderRegistry.capabilities(for: provider).supportsRealtimeRecognition
+                    if isBatch {
+                        Text(L("非实时", "Batch"))
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(TF.settingsTextTertiary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 1.5)
+                            .background(Capsule().fill(TF.settingsCardAlt))
+                    } else if provider.isLocal {
+                        Text(L("本地", "Local"))
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(TF.settingsTextTertiary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 1.5)
+                            .background(Capsule().fill(TF.settingsCardAlt))
+                    } else {
+                        Text(L("实时流式", "Real-time Streaming"))
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(TF.settingsAccentBlue)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 1.5)
+                            .background(Capsule().fill(TF.settingsAccentBlue.opacity(0.1)))
+                    }
+                }
+
+                if !currentASRGuideLinks.isEmpty {
+                    HStack(spacing: 6) {
+                        ForEach(Array(currentASRGuideLinks.enumerated()), id: \.offset) { index, link in
+                            if index > 0 {
+                                Text("·").font(.system(size: 10)).foregroundStyle(TF.settingsTextTertiary)
+                            }
+                            if let prefix = link.prefix {
+                                Text(prefix).font(.system(size: 10)).foregroundStyle(TF.settingsTextTertiary)
+                            }
+                            Button {
+                                NSWorkspace.shared.open(link.url)
+                            } label: {
+                                HStack(spacing: 2) {
+                                    Text(link.label)
+                                    Image(systemName: "arrow.up.right")
+                                        .font(.system(size: 7))
+                                }
+                                .foregroundStyle(TF.settingsAccentBlue)
+                            }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 10, weight: .medium))
+                        }
+                    }
+                }
+            }
+
+            Spacer()
+
+            // Set as Default Button / Active Badge
+            if isDefault {
+                HStack(spacing: 4) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(TF.settingsAccentBlue)
+                    Text(L("默认引擎", "Default Engine"))
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(TF.settingsAccentBlue)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Capsule().fill(TF.settingsAccentBlue.opacity(0.12)))
+                .overlay(
+                    Capsule()
+                        .strokeBorder(TF.settingsAccentBlue.opacity(0.25), lineWidth: 0.5)
+                )
+            } else {
+                Button {
+                    handleSetAsDefault()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "star")
+                            .font(.system(size: 10, weight: .medium))
+                        Text(L("设为默认", "Set as Default"))
+                            .font(.system(size: 11, weight: .medium))
+                    }
+                    .foregroundStyle(hasASRCredentials ? TF.settingsText : TF.settingsTextTertiary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Capsule().fill(TF.settingsCardAlt))
+                    .overlay(
+                        Capsule()
+                            .strokeBorder(Color.black.opacity(0.06), lineWidth: 0.5)
+                    )
+                }
+                .buttonStyle(SettingsListRowButtonStyle())
+                .disabled(!hasASRCredentials)
+                .settingsTooltip(
+                    L("请先完善凭据", "Configure credentials first"),
+                    isEnabled: !hasASRCredentials
+                )
+            }
+        }
+        .padding(.bottom, 4)
+    }
+
+    // MARK: - Cloud Model Configuration
+
+    private var cloudModelSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            settingsGroupCard(L("参数配置", "Parameters"), icon: "slider.horizontal.3") {
+                if let note = currentProviderNote {
+                    Text(note)
+                        .font(.system(size: 10))
+                        .foregroundStyle(TF.settingsTextTertiary)
+                        .padding(.vertical, 6)
+                    SettingsDivider()
+                }
+
                 if isZeroCredentialProvider {
                     Text(L("此引擎无需 API 凭证，可直接测试和使用。", "This provider requires no API credentials and can be used directly."))
                         .font(.system(size: 11))
                         .foregroundStyle(TF.settingsTextSecondary)
                         .padding(.vertical, 8)
-                } else if hasASRCredentials && !isEditingASR {
-                    credentialSummaryCard(rows: asrSummaryRows)
                 } else {
                     dynamicCredentialFields
                 }
+            }
 
-                VStack(alignment: .trailing, spacing: 0) {
-                    HStack(alignment: .top, spacing: 8) {
-                        Spacer()
-                        testButton(
-                            L("测试连接", "Test"),
-                            status: asrTestStatus,
-                            isEnabled: hasASRCredentials && isASRProviderAvailable
-                        ) { testASRConnection() }
-                        if isZeroCredentialProvider {
-                            EmptyView()
-                        } else if hasASRCredentials && !isEditingASR {
-                            secondaryButton(L("修改", "Edit")) {
-                                testTask?.cancel()
-                                asrTestStatus = .idle
-                                asrCredentialValues = [:]
-                                editedFields = []
-                                syncCustomASRModeFields()
-                                isEditingASR = true
-                            }
-                        } else {
-                            if hasASRCredentials && hasStoredASR {
-                                secondaryButton(L("取消", "Cancel")) {
-                                    testTask?.cancel()
-                                    asrTestStatus = .idle
-                                    loadASRCredentials()
-                                }
-                            }
-                            primaryButton(L("保存", "Save")) { saveASRCredentials() }
-                                .disabled(!hasASRCredentials)
+            if let hint = volcResourceHint {
+                Text(hint)
+                    .font(.system(size: 11))
+                    .foregroundStyle(TF.settingsAccentAmber)
+                    .padding(.horizontal, 2)
+            }
+
+            // Integrated Action Bar
+            HStack(alignment: .center, spacing: 8) {
+                // Left: Feedback / Error message
+                testStatusMessage(status: asrTestStatus)
+
+                Spacer(minLength: 8)
+
+                // Right: Action buttons with unified design language
+                if isDirty {
+                    revertButton {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                            revertCredentials()
                         }
                     }
-                    testStatusMessage(status: asrTestStatus)
+                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
                 }
-                .padding(.top, 12)
 
-                if let hint = volcResourceHint {
-                    Text(hint)
-                        .font(.system(size: 11))
-                        .foregroundStyle(TF.settingsAccentAmber)
-                        .padding(.top, 4)
+                testButton(
+                    L("测试连接", "Test"),
+                    status: asrTestStatus,
+                    isEnabled: (hasASRCredentials || isZeroCredentialProvider) && isASRProviderAvailable
+                ) { testASRConnection() }
+
+                if isDirty {
+                    primaryButton(L("保存", "Save"), isEnabled: true) {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                            _ = saveCredentials()
+                        }
+                    }
+                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
                 }
             }
-        }
-        .task {
-            loadASRCredentials()
-            refreshModelStatus()
-        }
-        .onAppear {
-            draftCoordinator.register(
-                .asrCredentials,
-                isDirty: { !editedFields.isEmpty },
-                save: saveASRCredentials,
-                discard: loadASRCredentials
-            )
-        }
-        .onDisappear {
-            draftCoordinator.unregister(.asrCredentials)
+            .padding(.top, 4)
         }
     }
 
-    // MARK: - Provider Picker
-
-    private static let recommendedProviders: [ASRProvider] = [.volcano, .soniox]
-    #if HAS_SHERPA_ONNX
-    private static let localProviders: [ASRProvider] = ModelManager.isQwen3ASRBundled ? [.apple, .sherpa] : [.apple]
-    #else
-    private static let localProviders: [ASRProvider] = [.apple]
-    #endif
-
-    private var asrProviderPicker: some View {
-        settingsOptionRow(
-            L("识别引擎", "Provider"),
-            controlWidth: SettingsControlWidth.provider
-        ) {
-                let localSet = Set(Self.localProviders)
-                let availableSet = Set(ASRProvider.allCases
-                    .filter { p in
-                        guard localSet.contains(p) || (ASRProviderRegistry.entry(for: p)?.isAvailable ?? false) else { return false }
-                        #if HAS_CLOUD_SUBSCRIPTION
-                        if p == .cloud { return false }
-                        #endif
-                        return true
-                    })
-                let recommended = Self.recommendedProviders.filter { availableSet.contains($0) }
-                let local = Self.localProviders.filter { availableSet.contains($0) }
-                let others = ASRProvider.allCases
-                    .filter { availableSet.contains($0) && !Self.recommendedProviders.contains($0) && !Self.localProviders.contains($0) }
-                    .sorted { $0.displayName.localizedAlphabeticalCompare($1.displayName) == .orderedAscending }
-
-                Menu {
-                    if !recommended.isEmpty {
-                        Section(L("推荐", "Recommended")) {
-                            ForEach(recommended, id: \.rawValue) { provider in
-                                providerMenuItem(provider)
-                            }
-                        }
-                    }
-                    if !local.isEmpty {
-                        Section(L("本地", "Local")) {
-                            ForEach(local, id: \.rawValue) { provider in
-                                providerMenuItem(provider)
-                            }
-                        }
-                    }
-                    if !others.isEmpty {
-                        Section(L("其他", "Others")) {
-                            ForEach(others, id: \.rawValue) { provider in
-                                providerMenuItem(provider)
-                            }
-                        }
-                    }
-                } label: {
-                    asrProviderDropdownLabel(selectedASRProvider)
-                }
-                .buttonStyle(.plain)
-        }
-        .onChange(of: selectedASRProvider) { oldProvider, newProvider in
-            // Skip if this is the initial load (oldProvider is the @State default, not a real switch)
-            guard oldProvider == KeychainService.selectedASRProvider || oldProvider == newProvider else {
-                // Initial load: just sync credentials, don't start/stop servers
-                loadASRCredentialsForProvider(newProvider)
-                refreshModelStatus()
-                return
-            }
-
-            testTask?.cancel()
-            asrTestStatus = .idle
-            isEditingASR = true
-            KeychainService.selectedASRProvider = newProvider
-            loadASRCredentialsForProvider(newProvider)
-            refreshModelStatus()
-            // Stop servers when switching away from local ASR
-            if oldProvider == .sherpa && newProvider != .sherpa {
-                Task {
-                    await SenseVoiceServerManager.shared.stopQwen3()
-                    #if HAS_SHERPA_ONNX
-                    SenseVoiceASRClient.releaseCachedModels()
-                    #endif
-                    qwen3Running = false
-                    serverRunning = false
-                }
-            }
-            // Start local services when user explicitly switches to local ASR.
-            // Preserve the user's SenseVoice preview preference; if both engines
-            // were off, keep Qwen3 final enabled so local ASR still has an engine.
-            if newProvider == .sherpa {
-                if !sensevoiceEnabled && !qwen3FinalEnabled {
-                    qwen3FinalEnabled = true
-                }
-                startServer()
-            }
-        }
-    }
-
-    // MARK: - Credential Fields
+    // MARK: - Dynamic Credential Fields
 
     private var dynamicCredentialFields: some View {
         let fields = displayedASRFields
@@ -478,7 +418,7 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
             let allOptions = field.options + [
                 FieldOption(
                     value: CredentialField.customValue,
-                    label: selectedASRProvider == .deepgram
+                    label: provider == .deepgram
                         ? L("其他模型…", "Other model…")
                         : L("自定义…", "Custom…")
                 )
@@ -489,7 +429,7 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
                         return CredentialField.customValue
                     }
                     let val = asrCredentialValues[field.key] ?? ""
-                    return val.isEmpty ? (savedASRValues[field.key] ?? field.defaultValue) : val
+                    return val.isEmpty ? field.defaultValue : val
                 },
                 set: { newValue in
                     if newValue == CredentialField.customValue {
@@ -499,19 +439,12 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
                         customASRModeFields.remove(field.key)
                         asrCredentialValues[field.key] = newValue
                     }
-                    editedFields.insert(field.key)
                 }
             )
             let customBinding = Binding<String>(
-                get: {
-                    if let value = asrCredentialValues[field.key] {
-                        return value
-                    }
-                    return savedASRValues[field.key] ?? ""
-                },
+                get: { asrCredentialValues[field.key] ?? "" },
                 set: {
                     asrCredentialValues[field.key] = $0
-                    editedFields.insert(field.key)
                 }
             )
             settingsOptionRow(field.label, controlWidth: SettingsControlWidth.input) {
@@ -523,10 +456,10 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
                     if customASRModeFields.contains(field.key) {
                         FixedWidthTextField(text: customBinding, placeholder: field.placeholder)
                             .padding(.horizontal, 12)
-                            .frame(height: 36)
+                            .frame(width: SettingsControlWidth.input, height: 36)
                             .background(RoundedRectangle(cornerRadius: 8).fill(TF.settingsCardAlt))
 
-                        if field.key == "model", selectedASRProvider == .deepgram,
+                        if field.key == "model", provider == .deepgram,
                            DeepgramASRConfig.isFluxModel(customBinding.wrappedValue) {
                             Label(
                                 L("Flux 模型暂不支持；当前客户端使用 Deepgram V1 API。",
@@ -544,11 +477,10 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
             let pickerBinding = Binding<String>(
                 get: {
                     let val = asrCredentialValues[field.key] ?? ""
-                    return val.isEmpty ? (savedASRValues[field.key] ?? field.defaultValue) : val
+                    return val.isEmpty ? field.defaultValue : val
                 },
                 set: {
                     asrCredentialValues[field.key] = $0
-                    editedFields.insert(field.key)
                 }
             )
             settingsPickerField(field.label, selection: pickerBinding, options: field.options)
@@ -557,67 +489,29 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
                 get: { asrCredentialValues[field.key] ?? "" },
                 set: {
                     asrCredentialValues[field.key] = $0
-                    editedFields.insert(field.key)
                 }
             )
-            let savedVal = savedASRValues[field.key] ?? ""
             settingsSecureField(
                 field.label,
                 text: binding,
-                prompt: secureFieldPlaceholder(field: field, savedValue: savedVal)
+                prompt: field.placeholder
             )
         } else {
             let binding = Binding<String>(
                 get: {
                     let val = asrCredentialValues[field.key] ?? ""
-                    if val.isEmpty {
-                        return savedASRValues[field.key] ?? field.defaultValue
-                    }
-                    return val
+                    return val.isEmpty ? field.defaultValue : val
                 },
                 set: {
                     asrCredentialValues[field.key] = $0
-                    editedFields.insert(field.key)
                 }
             )
             settingsField(field.label, text: binding, prompt: field.placeholder)
         }
     }
 
-    private var deepgramUsesOfficialEndpoint: Bool {
-        let endpoint = effectiveASRValues["baseURL"]?.trimmingCharacters(in: .whitespacesAndNewlines)
-        return endpoint?.isEmpty == false ? endpoint == DeepgramASRConfig.defaultBaseURL : true
-    }
-
-    private func secureFieldPlaceholder(field: CredentialField, savedValue: String) -> String {
-        if field.key == "apiKey", selectedASRProvider == .deepgram,
-           !deepgramUsesOfficialEndpoint {
-            return L("API 密钥或令牌", "API key or token")
-        }
-        return savedValue.isEmpty ? field.placeholder : maskedSecret(savedValue)
-    }
-
-    private var asrSummaryRows: [(String, String)] {
-        var rows: [(String, String)] = []
-        for field in displayedASRFields {
-            let val = asrCredentialValues[field.key] ?? ""
-            guard !val.isEmpty else { continue }
-            let displayValue: String
-            if field.isSecure {
-                displayValue = maskedSecret(val)
-            } else if let option = field.options.first(where: { $0.value == val }) {
-                displayValue = option.label
-            } else {
-                displayValue = val
-            }
-            rows.append((field.label, displayValue))
-        }
-        return rows
-    }
-
     // MARK: - Local Model Section
 
-    /// Whether Qwen3-ASR server is available (dev or bundled).
     private var hasQwen3ASR: Bool {
         let home = NSHomeDirectory()
         let devQwen3 = (home as NSString).appendingPathComponent("projects/type4me/qwen3-asr-server/server.py")
@@ -630,8 +524,9 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
     }
 
     private var localModelSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if localModelAvailable {
+        VStack(alignment: .leading, spacing: 14) {
+            settingsGroupCard(L("本地引擎设置", "Local Engine Settings"), icon: "cpu") {
+                if localModelAvailable {
                     localEngineRow(
                         name: "SenseVoice",
                         subtitle: L("流式识别引擎", "Streaming Engine"),
@@ -657,28 +552,51 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
                         )
                     }
                     #endif
-
-                HStack {
-                    Spacer()
-                    testButton(L("测试连接", "Test"), status: asrTestStatus) { testLocalModel() }
-                }
-            } else {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "exclamationmark.triangle")
-                            .foregroundStyle(TF.settingsAccentAmber)
-                        Text(L("本地识别需要下载完整版", "Local ASR requires the full version"))
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(TF.settingsText)
+                } else {
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle")
+                                .foregroundStyle(TF.settingsAccentAmber)
+                            Text(L("本地识别需要下载完整版", "Local ASR requires the full version"))
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(TF.settingsText)
+                        }
+                        Text(L("当前为云端识别版本，本地识别需要下载内嵌模型的完整版 DMG。",
+                               "This is the cloud-only version. Download the full DMG with embedded model for local ASR."))
+                            .font(.system(size: 11))
+                            .foregroundStyle(TF.settingsTextSecondary)
                     }
-                    Text(L("当前为云端识别版本，本地识别需要下载内嵌模型的完整版 DMG。",
-                           "This is the cloud-only version. Download the full DMG with embedded model for local ASR."))
-                        .font(.system(size: 10))
-                        .foregroundStyle(TF.settingsTextSecondary)
+                    .padding(.vertical, 8)
                 }
             }
+
+            if localModelAvailable && !sensevoiceEnabled && !qwen3FinalEnabled {
+                Text(L("至少需要启用一个本地引擎", "At least one local engine must be enabled"))
+                    .font(.system(size: 11))
+                    .foregroundStyle(TF.settingsAccentAmber)
+                    .padding(.horizontal, 2)
+            }
+
+            // Integrated Action Bar for local models
+            HStack(alignment: .center, spacing: 10) {
+                testStatusMessage(status: asrTestStatus)
+
+                Spacer(minLength: 8)
+
+                #if arch(arm64)
+                if hasQwen3ASR {
+                    testButton(L("测试连接", "Test"), status: asrTestStatus) { testLocalModel() }
+                }
+                #endif
+
+                if !isDefault {
+                    primaryButton(L("设为默认", "Set as Default"), isEnabled: localModelAvailable) {
+                        handleSetAsDefault()
+                    }
+                }
+            }
+            .padding(.top, 4)
         }
-        .padding(.vertical, 4)
     }
 
     private func localEngineRow(
@@ -717,14 +635,16 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
 
             if let errorMessage, !isToggling, !isOn {
                 Text(errorMessage)
-                .font(.system(size: 10))
-                .foregroundStyle(TF.settingsAccentRed)
-                .lineLimit(3)
-                .textSelection(.enabled)
-                .padding(.bottom, 8)
+                    .font(.system(size: 10))
+                    .foregroundStyle(TF.settingsAccentRed)
+                    .lineLimit(3)
+                    .textSelection(.enabled)
+                    .padding(.bottom, 8)
             }
         }
     }
+
+    // MARK: - Server Actions
 
     private func refreshModelStatus() {
         localModelAvailable = ModelManager.isQwen3ASRBundled
@@ -732,24 +652,6 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
             let mgr = SenseVoiceServerManager.shared
             serverRunning = await mgr.isRunning
             qwen3Running = await mgr.qwen3Port != nil
-        }
-    }
-
-    private func startServer() {
-        // Called by start() flow or provider switch - starts both if enabled
-        svToggling = true
-        qwen3Toggling = hasQwen3ASR && qwen3FinalEnabled
-        Task {
-            let mgr = SenseVoiceServerManager.shared
-            do {
-                try await mgr.start()
-                serverRunning = await mgr.isRunning
-                qwen3Running = await mgr.qwen3Port != nil
-            } catch {
-                NSLog("[ASRSettings] Server start failed: %@", String(describing: error))
-            }
-            svToggling = false
-            qwen3Toggling = false
         }
     }
 
@@ -795,7 +697,7 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
                     if !sensevoiceEnabled {
                         sensevoiceEnabled = true
                     }
-                    qwen3StartError = extractStartError(error)
+                    qwen3StartError = String(describing: error)
                 }
             } else {
                 await mgr.stopQwen3()
@@ -805,36 +707,14 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
         }
     }
 
-    /// Pull a user-readable message from the server start error, including
-    /// stderr output captured by DebugFileLogger when available.
-    private func extractStartError(_ error: Error) -> String {
-        let desc = String(describing: error)
-        // Check recent debug log for the actual Python traceback
-        let recent = DebugFileLogger.recentLines(10)
-        if let metalLine = recent.first(where: { $0.contains("metallib") || $0.contains("ImportError") || $0.contains("Metal") }) {
-            return metalLine
-                .replacingOccurrences(of: "qwen3-asr-server: ", with: "")
-                .trimmingCharacters(in: .whitespaces)
-        }
-        if desc.contains("portDiscovery") {
-            return L("服务启动超时，请查看 Debug 日志", "Server start timed out. Check Debug logs.")
-        }
-        if desc.contains("Health check") {
-            return L("服务启动后健康检查失败", "Health check failed after server start.")
-        }
-        return L("启动失败: ", "Start failed: ") + desc.prefix(120)
-    }
-
     private func testLocalModel() {
         testTask?.cancel()
         asrTestStatus = .testing
         testTask = Task {
             let mgr = SenseVoiceServerManager.shared
             guard !Task.isCancelled else { return }
-
             let qwen3Healthy = await mgr.isHealthy()
             guard !Task.isCancelled else { return }
-
             if qwen3Healthy {
                 asrTestStatus = .success
             } else {
@@ -848,21 +728,13 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
         }
     }
 
-    // MARK: - Data
+    // MARK: - Credential Loading & Save
 
-    private func loadASRCredentials() {
-        selectedASRProvider = KeychainService.selectedASRProvider
-        loadASRCredentialsForProvider(selectedASRProvider)
-    }
-
-    private func loadASRCredentialsForProvider(_ provider: ASRProvider) {
-        testTask?.cancel()
-        editedFields = []
+    private func loadCredentials() {
         if let values = KeychainService.loadASRCredentials(for: provider) {
             asrCredentialValues = values
             savedASRValues = values
-            hasStoredASR = true
-            isEditingASR = !hasASRCredentials
+            hasStoredCredentials = true
         } else {
             var defaults: [String: String] = [:]
             let fields = ASRProviderRegistry.configType(for: provider)?.credentialFields ?? []
@@ -870,21 +742,17 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
                 defaults[field.key] = field.defaultValue
             }
             asrCredentialValues = defaults
-            savedASRValues = [:]
-            hasStoredASR = false
-            isEditingASR = true
+            savedASRValues = defaults
+            hasStoredCredentials = false
         }
         syncCustomASRModeFields()
     }
 
-    /// Shows the free-form field when a saved value is not one of the presets.
     private func syncCustomASRModeFields() {
         var custom: Set<String> = []
-        let fields = ASRProviderRegistry.configType(for: selectedASRProvider)?.credentialFields ?? []
+        let fields = ASRProviderRegistry.configType(for: provider)?.credentialFields ?? []
         for field in fields where field.allowCustomInput && !field.options.isEmpty {
-            let val = asrCredentialValues[field.key]
-                ?? savedASRValues[field.key]
-                ?? field.defaultValue
+            let val = asrCredentialValues[field.key] ?? field.defaultValue
             if !val.isEmpty && !field.options.contains(where: { $0.value == val }) {
                 custom.insert(field.key)
             }
@@ -893,51 +761,61 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
     }
 
     @discardableResult
-    private func saveASRCredentials() -> Bool {
-        guard hasASRCredentials else {
-            asrTestStatus = .failed(L("配置无效", "Invalid config"))
-            return false
-        }
+    private func saveCredentials() -> Bool {
         let values = effectiveASRValues
         do {
-            try KeychainService.saveASRCredentials(for: selectedASRProvider, values: values)
-            KeychainService.selectedASRProvider = selectedASRProvider
-            asrCredentialValues = values
-            savedASRValues = values
-            editedFields = []
-            hasStoredASR = true
-            isEditingASR = false
+            try KeychainService.saveASRCredentials(for: provider, values: values)
+            savedASRValues = asrCredentialValues
+            hasStoredCredentials = true
             asrTestStatus = .saved
             return true
         } catch {
+            NSLog("[ASRProviderDetailView] Save failed: %@", String(describing: error))
             asrTestStatus = .failed(L("保存失败", "Save failed"))
             return false
         }
     }
+
+    private func revertCredentials() {
+        asrCredentialValues = savedASRValues
+        syncCustomASRModeFields()
+        asrTestStatus = .idle
+        volcResourceHint = nil
+    }
+
+    private func handleSetAsDefault() {
+        guard hasASRCredentials else { return }
+        if isDirty || (!isZeroCredentialProvider && !provider.isLocal && !hasStoredCredentials) {
+            guard saveCredentials() else { return }
+        }
+        onSetAsDefault(provider)
+    }
+
+    // MARK: - Test Connection
 
     private func testASRConnection() {
         testTask?.cancel()
         asrTestStatus = .testing
         volcResourceHint = nil
         let testValues = effectiveASRValues
-        let provider = selectedASRProvider
+        let currentProvider = provider
+
         testTask = Task {
-            // Volcengine: auto-detect when "auto" is selected
-            if provider == .volcano && (testValues["resourceId"] ?? "") == VolcanoASRConfig.resourceIdAuto {
+            if currentProvider == .volcano && (testValues["resourceId"] ?? "") == VolcanoASRConfig.resourceIdAuto {
                 await testVolcanoWithAutoResource(baseValues: testValues)
                 return
             }
             do {
-                guard let configType = ASRProviderRegistry.configType(for: provider),
+                guard let configType = ASRProviderRegistry.configType(for: currentProvider),
                       let config = configType.init(credentials: testValues),
-                      ASRProviderRegistry.entry(for: provider)?.isAvailable == true
+                      ASRProviderRegistry.entry(for: currentProvider)?.isAvailable == true
                 else {
                     guard !Task.isCancelled else { return }
                     asrTestStatus = .failed(L("不支持", "Unsupported"))
                     return
                 }
                 try await ASRProviderRegistry.validateCredentials(
-                    for: provider,
+                    for: currentProvider,
                     config: config,
                     options: currentASRRequestOptions(enablePunc: false)
                 )
@@ -950,36 +828,25 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
         }
     }
 
-    /// Test both Volcengine resource IDs and pick the best one.
-    /// Saves with resourceId="auto" so the picker stays on "Auto", and stores the
-    /// resolved ID in "resolvedResourceId" for actual connections.
     private func testVolcanoWithAutoResource(baseValues: [String: String]) async {
         let options = currentASRRequestOptions(enablePunc: false)
         let seedId = VolcanoASRConfig.resourceIdSeedASR
         let bigId = VolcanoASRConfig.resourceIdBigASR
 
-        // Test Seed ASR 2.0 first (cheaper)
         let seedOK = await testVolcResource(baseValues: baseValues, resourceId: seedId, options: options)
         guard !Task.isCancelled else { return }
 
         if seedOK {
-            var values = baseValues
-            values["resourceId"] = VolcanoASRConfig.resourceIdAuto
-            values["resolvedResourceId"] = seedId
-            saveASRCredentialsQuietly(values)
+            asrCredentialValues["resolvedResourceId"] = seedId
             asrTestStatus = .success
             return
         }
 
-        // Seed 2.0 failed, try bigasr
         let bigOK = await testVolcResource(baseValues: baseValues, resourceId: bigId, options: options)
         guard !Task.isCancelled else { return }
 
         if bigOK {
-            var values = baseValues
-            values["resourceId"] = VolcanoASRConfig.resourceIdAuto
-            values["resolvedResourceId"] = bigId
-            saveASRCredentialsQuietly(values)
+            asrCredentialValues["resolvedResourceId"] = bigId
             asrTestStatus = .success
             volcResourceHint = L(
                 "当前使用大模型版本，开通「模型 2.0」可节省约 80% 费用，识别效果相同",
@@ -988,7 +855,6 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
             return
         }
 
-        // Both failed
         asrTestStatus = .failed(L("连接失败，请检查鉴权凭证", "Connection failed, check credentials"))
     }
 
@@ -1004,18 +870,6 @@ struct ASRSettingsCard: View, SettingsCardHelpers {
         } catch {
             return false
         }
-    }
-
-    private func saveASRCredentialsQuietly(_ values: [String: String]) {
-        do {
-            try KeychainService.saveASRCredentials(for: .volcano, values: values)
-            KeychainService.selectedASRProvider = .volcano
-            asrCredentialValues = values
-            savedASRValues = values
-            editedFields = []
-            hasStoredASR = true
-            isEditingASR = false
-        } catch {}
     }
 
     private static func describeConnectionError(_ error: Error) -> String {

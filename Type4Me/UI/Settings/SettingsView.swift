@@ -97,21 +97,12 @@ final class AppNavigationModel {
 
 struct SettingsView: View {
 
-    private enum PendingTransition {
-        case navigate(
-            SettingsTab,
-            beforeCommit: (() -> Void)? = nil,
-            afterCommit: (() -> Void)? = nil
-        )
-        case closeWindow
-    }
 
     @Environment(AppState.self) private var appState
     @Environment(AppNavigationModel.self) private var navigationModel
     @State private var hoveredTab: SettingsTab?
     @State private var draftCoordinator = SettingsDraftCoordinator()
     @State private var windowBox = WeakSettingsWindowBox()
-    @State private var pendingTransition: PendingTransition?
     @State private var isContentMounted = false
     @State private var bypassNextCloseGuard = false
     @AppStorage("tf_language") private var language = AppLanguage.systemDefault
@@ -160,33 +151,6 @@ struct SettingsView: View {
             onShouldClose: shouldCloseWindow
         ))
         .preferredColorScheme(.light)
-        .alert(
-            L("未保存的更改", "Unsaved Changes"),
-            isPresented: Binding(
-                get: { pendingTransition != nil },
-                set: { if !$0 { pendingTransition = nil } }
-            )
-        ) {
-            Button(L("保存", "Save")) {
-                guard draftCoordinator.saveAll() else {
-                    let transition = pendingTransition
-                    pendingTransition = nil
-                    DispatchQueue.main.async { pendingTransition = transition }
-                    return
-                }
-                commitPendingTransition()
-            }
-            Button(L("放弃更改", "Discard"), role: .destructive) {
-                draftCoordinator.discardAll()
-                commitPendingTransition()
-            }
-            Button(L("取消", "Cancel"), role: .cancel) {
-                pendingTransition = nil
-            }
-        } message: {
-            Text(L("当前页面有未保存的更改。离开前要保存吗？",
-                   "This page has unsaved changes. Save before leaving?"))
-        }
         .onAppear {
             if VocabularyNavigationCenter.shared.hasPendingSettingsNavigation {
                 requestNavigation(to: .vocabulary, afterCommit: {
@@ -452,16 +416,16 @@ struct SettingsView: View {
         case .models:
             #if HAS_CLOUD_SUBSCRIPTION
             if edition != .member {
-                settingsScrollableContent {
-                    ModelSettingsTab(showsHeader: false, draftCoordinator: draftCoordinator)
-                }
+                ModelSettingsTab(showsHeader: false, draftCoordinator: draftCoordinator)
+                    .padding(.horizontal, 38)
+                    .padding(.bottom, 34)
             } else {
                 settingsScrollableContent { GeneralSettingsTab(showsHeader: false) }
             }
             #else
-            settingsScrollableContent {
-                ModelSettingsTab(showsHeader: false, draftCoordinator: draftCoordinator)
-            }
+            ModelSettingsTab(showsHeader: false, draftCoordinator: draftCoordinator)
+                .padding(.horizontal, 38)
+                .padding(.bottom, 34)
             #endif
         case .modes:
             ModesSettingsTab(showsHeader: false, draftCoordinator: draftCoordinator)
@@ -527,11 +491,11 @@ struct SettingsView: View {
             commitNavigation(to: tab, beforeCommit: beforeCommit, afterCommit: afterCommit)
             return
         }
-        pendingTransition = .navigate(
-            tab,
-            beforeCommit: beforeCommit,
-            afterCommit: afterCommit
-        )
+        draftCoordinator.confirmUnsavedChanges(on: windowBox.window) { result in
+            if result != .cancelled {
+                commitNavigation(to: tab, beforeCommit: beforeCommit, afterCommit: afterCommit)
+            }
+        }
     }
 
     private func commitNavigation(
@@ -559,21 +523,14 @@ struct SettingsView: View {
             isContentMounted = false
             return true
         }
-        pendingTransition = .closeWindow
-        return false
-    }
-
-    private func commitPendingTransition() {
-        guard let transition = pendingTransition else { return }
-        pendingTransition = nil
-        switch transition {
-        case .navigate(let tab, let beforeCommit, let afterCommit):
-            commitNavigation(to: tab, beforeCommit: beforeCommit, afterCommit: afterCommit)
-        case .closeWindow:
-            bypassNextCloseGuard = true
-            isContentMounted = false
-            windowBox.window?.performClose(nil)
+        draftCoordinator.confirmUnsavedChanges(on: windowBox.window) { [weak windowBox] result in
+            if result != .cancelled {
+                bypassNextCloseGuard = true
+                isContentMounted = false
+                windowBox?.window?.performClose(nil)
+            }
         }
+        return false
     }
 }
 

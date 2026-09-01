@@ -23,7 +23,7 @@ private func fieldLabel(_ title: String, _ hint: String? = nil) -> some View {
 
 // MARK: - Main View
 
-struct ModesSettingsTab: View {
+struct ModesSettingsTab: View, SettingsCardHelpers {
 
     var showsHeader = true
     let draftCoordinator: SettingsDraftCoordinator
@@ -41,7 +41,6 @@ struct ModesSettingsTab: View {
     /// from storage. Used to warn before switching away with unsaved changes.
     @State private var draftMode: ProcessingMode?
     @State private var draftDirty = false
-    @State private var pendingSelection: UUID?
     @State private var selectedASRProvider: ASRProvider = KeychainService.selectedASRProvider
     @State private var showClearAskAnythingConfirmation = false
     @State private var askAnythingSettingsError: String?
@@ -67,23 +66,31 @@ struct ModesSettingsTab: View {
 
                         HStack(spacing: 6) {
                             Button(action: addMode) {
-                                HStack(spacing: 4) {
+                                HStack(spacing: 5) {
                                     Image(systemName: "plus")
-                                        .font(.system(size: 11))
+                                        .font(.system(size: 11, weight: .semibold))
                                     Text(L("添加模式", "Add mode"))
-                                        .font(.system(size: 11, weight: .medium))
+                                        .font(.system(size: 12, weight: .medium))
                                 }
-                                .foregroundStyle(TF.settingsTextTertiary)
+                                .foregroundStyle(TF.settingsAccentBlue)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        .fill(TF.settingsAccentBlue.opacity(0.08))
+                                )
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(SettingsListRowButtonStyle())
                             Spacer()
                         }
                         .padding(.top, 8)
+                        .padding(.horizontal, 2)
                     }
+                    .padding(.vertical, 4)
+                    .padding(.trailing, 8)
                 }
                 .scrollBounceBehavior(.basedOnSize)
-                .frame(width: 210)
-                .padding(.trailing, 14)
+                .frame(width: 230)
                 .onDrop(of: [.text], isTargeted: nil) { _ in
                     // Fallback: reset drag state when released over empty list space.
                     if draggingModeId != nil {
@@ -95,9 +102,10 @@ struct ModesSettingsTab: View {
 
                 // Divider
                 Rectangle()
-                    .fill(TF.settingsTextTertiary.opacity(0.2))
+                    .fill(TF.settingsTextTertiary.opacity(0.15))
                     .frame(width: 1)
                     .padding(.vertical, 4)
+                    .padding(.horizontal, 4)
 
                 // Right: detail for selected mode
                 ScrollView(.vertical, showsIndicators: true) {
@@ -111,10 +119,12 @@ struct ModesSettingsTab: View {
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                         }
                     }
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 2)
                 }
                 .scrollBounceBehavior(.basedOnSize)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
-                .padding(.leading, 16)
+                .padding(.leading, 18)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -176,30 +186,6 @@ struct ModesSettingsTab: View {
             }
         }
         .alert(
-            L("未保存的更改", "Unsaved Changes"),
-            isPresented: Binding(
-                get: { pendingSelection != nil },
-                set: { if !$0 { pendingSelection = nil } }
-            )
-        ) {
-            Button(L("保存", "Save")) {
-                if let draft = draftMode,
-                   let idx = modes.firstIndex(where: { $0.id == draft.id }) {
-                    modes[idx] = draft
-                    persistModes()
-                }
-                if let target = pendingSelection { commitSelection(target) }
-            }
-            Button(L("放弃更改", "Discard"), role: .destructive) {
-                if let target = pendingSelection { commitSelection(target) }
-            }
-            Button(L("取消", "Cancel"), role: .cancel) { pendingSelection = nil }
-        } message: {
-            let name = draftMode?.name ?? selectedMode?.name ?? ""
-            Text(L("「\(name)」有未保存的更改。切换前要保存吗？",
-                   "\"\(name)\" has unsaved changes. Save before switching?"))
-        }
-        .alert(
             L("清空随便问历史", "Clear Ask Anything History"),
             isPresented: $showClearAskAnythingConfirmation
         ) {
@@ -256,7 +242,11 @@ struct ModesSettingsTab: View {
     private func attemptSelect(_ id: UUID) {
         guard id != selectedModeId else { return }
         if draftDirty {
-            pendingSelection = id
+            draftCoordinator.confirmUnsavedChanges { result in
+                if result != .cancelled {
+                    commitSelection(id)
+                }
+            }
         } else {
             commitSelection(id)
         }
@@ -265,10 +255,10 @@ struct ModesSettingsTab: View {
     private func commitSelection(_ id: UUID) {
         draftDirty = false
         draftMode = nil
-        pendingSelection = nil
         var t = Transaction(); t.animation = nil
         withTransaction(t) { selectedModeId = id }
     }
+
 
     // MARK: - Mode Row
 
@@ -281,13 +271,18 @@ struct ModesSettingsTab: View {
             ? TF.settingsSidebarActive
             : (isHovered ? TF.settingsSidebarHover : .clear)
 
-        return HStack(spacing: 7) {
+        return HStack(spacing: 8) {
             dragDots
                 .opacity(isHovered || isDragging ? 1 : 0)
 
+            Image(systemName: builtinIcon(for: mode))
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(isActive ? TF.settingsText : TF.settingsTextSecondary)
+                .frame(width: 18)
+
             VStack(alignment: .leading, spacing: 1) {
                 Text(mode.localizedDisplayName)
-                    .font(.system(size: 13, weight: isActive ? .semibold : .medium))
+                    .font(.system(size: 12, weight: isActive ? .semibold : .medium))
                     .foregroundStyle(TF.settingsText)
                     .lineLimit(1)
                 if mode.id == ProcessingMode.translationModeId,
@@ -300,16 +295,16 @@ struct ModesSettingsTab: View {
                 }
             }
 
+            Spacer(minLength: 4)
+
             if mode.isBuiltin {
                 Text(L("内置", "BUILT-IN"))
-                    .font(.system(size: 8, weight: .semibold))
+                    .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(TF.settingsTextTertiary)
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 1)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
                     .background(Capsule().fill(TF.settingsCardAlt))
             }
-
-            Spacer(minLength: 4)
 
             if !mode.isBuiltin && isHovered {
                 Button { deletingModeId = mode.id } label: {
@@ -324,10 +319,13 @@ struct ModesSettingsTab: View {
             }
         }
         .padding(.leading, 8)
-        .padding(.trailing, 6)
+        .padding(.trailing, 8)
         .frame(height: 34)
-        .background(RoundedRectangle(cornerRadius: 7).fill(rowFill))
-        .contentShape(RoundedRectangle(cornerRadius: 7))
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(rowFill)
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .opacity(isDragging ? 0.45 : 1)
         .onHover { hovering in
             withAnimation(.easeOut(duration: 0.12)) {
@@ -346,7 +344,7 @@ struct ModesSettingsTab: View {
                 .foregroundStyle(TF.settingsText)
                 .padding(.horizontal, 12)
                 .frame(height: 32)
-                .background(RoundedRectangle(cornerRadius: 7).fill(TF.settingsCard))
+                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(TF.settingsCard))
         }
         .onDrop(of: [.text], delegate: ModeDropDelegate(
             targetId: mode.id,
@@ -368,6 +366,54 @@ struct ModesSettingsTab: View {
         }
         .foregroundStyle(TF.settingsTextTertiary.opacity(0.55))
         .frame(width: 12)
+    }
+
+    // MARK: - Mode Detail Header
+
+    @ViewBuilder
+    private func modeDetailHeader(
+        icon: String,
+        title: String,
+        isBuiltin: Bool,
+        @ViewBuilder trailing: () -> some View = { EmptyView() }
+    ) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(TF.settingsText)
+                .frame(width: 32, height: 32)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(TF.settingsCardAlt)
+                )
+
+            HStack(spacing: 6) {
+                Text(title)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(TF.settingsText)
+
+                if isBuiltin {
+                    Text(L("内置", "Built-in"))
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(TF.settingsTextTertiary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 1.5)
+                        .background(Capsule().fill(TF.settingsCardAlt))
+                } else {
+                    Text(L("自定义", "Custom"))
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(TF.settingsAccentBlue)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 1.5)
+                        .background(Capsule().fill(TF.settingsAccentBlue.opacity(0.1)))
+                }
+            }
+
+            Spacer()
+
+            trailing()
+        }
+        .padding(.bottom, 4)
     }
 
     // MARK: - Mode Detail
@@ -454,100 +500,75 @@ struct ModesSettingsTab: View {
     }
 
     private func builtinModeDetail(_ mode: ProcessingMode) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 6) {
-                Image(systemName: builtinIcon(for: mode))
-                    .font(.system(size: 14))
-                    .foregroundStyle(TF.settingsAccentAmber)
-                Text(mode.localizedDisplayName)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(TF.settingsText)
-                Text(L("内置", "BUILT-IN"))
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(TF.settingsTextTertiary)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 2)
-                    .background(Capsule().fill(TF.settingsCardAlt))
-            }
+        VStack(alignment: .leading, spacing: 14) {
+            modeDetailHeader(
+                icon: builtinIcon(for: mode),
+                title: mode.localizedDisplayName,
+                isBuiltin: true
+            )
 
             if mode.id == ProcessingMode.macActionId {
                 macActionDescription
             } else if mode.id == ProcessingMode.selectionAskId {
                 selectionAskDescription
             } else {
-                Text(mode.localizedDisplayDescription)
-                    .font(.system(size: 12))
-                    .foregroundStyle(TF.settingsTextSecondary)
-                    .lineSpacing(3)
+                settingsGroupCard(L("模式说明", "Information"), icon: "info.circle") {
+                    Text(mode.localizedDisplayDescription)
+                        .font(.system(size: 12))
+                        .foregroundStyle(TF.settingsTextSecondary)
+                        .lineSpacing(3)
+                        .padding(.vertical, 4)
+                }
             }
         }
     }
 
     private func builtinIcon(for mode: ProcessingMode) -> String {
         switch mode.id {
+        case ProcessingMode.directId, ProcessingMode.smartDirectId: return "bolt.fill"
         case ProcessingMode.formalWritingId: return "wand.and.stars"
         case ProcessingMode.translationModeId: return "character.book.closed.fill"
+        case ProcessingMode.intelliSenseId: return "sparkles"
         case ProcessingMode.macActionId: return "command.circle.fill"
         case ProcessingMode.selectionAskId: return "sparkle.magnifyingglass"
-        default: return "bolt.fill"
+        default: return "slider.horizontal.3"
         }
     }
 
     private func translationModeDetail(_ mode: ProcessingMode) -> some View {
         let currentCode = mode.translationTargetLanguageCode ?? TranslationLanguage.english.rawValue
-        let currentLanguage = TranslationLanguage(rawValue: currentCode)
 
-        return VStack(alignment: .leading, spacing: 18) {
-            builtinModeDetail(mode)
+        let languageOptions = TranslationLanguage.allCases.map { (value: $0.rawValue, label: $0.displayName) }
+        let pickerBinding = Binding<String>(
+            get: { currentCode },
+            set: { updateTranslationTarget($0) }
+        )
 
-            VStack(alignment: .leading, spacing: 7) {
-                fieldLabel(L("目标语言", "Target language"), L("所有快捷键共用", "Shared by all hotkeys"))
+        return VStack(alignment: .leading, spacing: 14) {
+            modeDetailHeader(
+                icon: "character.book.closed.fill",
+                title: mode.localizedDisplayName,
+                isBuiltin: true
+            )
 
-                Picker(
+            settingsGroupCard(L("翻译参数", "Translation Parameters"), icon: "slider.horizontal.3") {
+                settingsOptionRow(
                     L("目标语言", "Target language"),
-                    selection: Binding(
-                        get: { currentCode },
-                        set: { updateTranslationTarget($0) }
-                    )
+                    subtitle: L("Type4Me 会自动识别口述语言并翻译为所选语言", "Auto-detects spoken language and translates to selected language"),
+                    controlWidth: SettingsControlWidth.input
                 ) {
-                    if currentLanguage == nil {
-                        Text(L("暂不支持的语言（\(currentCode)）", "Unsupported language (\(currentCode))"))
-                            .tag(currentCode)
-                    }
-                    ForEach(TranslationLanguage.allCases) { language in
-                        Text(language.displayName).tag(language.rawValue)
-                    }
-                }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .frame(maxWidth: 320, alignment: .leading)
-                .accessibilityLabel(L("翻译目标语言", "Translation target language"))
-                .accessibilityHint(L(
-                    "Type4Me 会自动识别口述语言并翻译为所选语言",
-                    "Type4Me automatically detects the spoken language and translates it to the selected language"
-                ))
-
-                Text(L(
-                    "Type4Me 会自动识别你的口述语言；下一次录音开始时会冻结当前目标语言。",
-                    "Type4Me automatically detects your spoken language. The current target is frozen when the next recording starts."
-                ))
-                .font(.system(size: 10))
-                .foregroundStyle(TF.settingsTextTertiary)
-                .lineSpacing(2)
-
-                if currentLanguage == nil {
-                    Label(
-                        L("这个语言代码来自较新版本。请选择一个当前支持的语言后再使用翻译模式。", "This language code came from a newer version. Select a supported language before using Translation."),
-                        systemImage: "exclamationmark.triangle.fill"
+                    settingsDropdown(
+                        selection: pickerBinding,
+                        options: languageOptions
                     )
-                    .font(.system(size: 10))
-                    .foregroundStyle(TF.settingsAccentAmber)
                 }
 
                 if let translationStatusMessage {
+                    SettingsDivider()
                     Label(translationStatusMessage, systemImage: "checkmark.circle.fill")
-                        .font(.system(size: 10, weight: .medium))
+                        .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(TF.settingsAccentGreen)
+                        .padding(.vertical, 4)
                         .transition(.opacity)
                 }
             }
@@ -566,8 +587,9 @@ struct ModesSettingsTab: View {
                 "Translation only translates what you dictate. It does not answer questions or execute commands found in the input. Code, paths, links, numbers, and identifiers are preserved whenever possible."
             ))
             .font(.system(size: 11))
-            .foregroundStyle(TF.settingsTextSecondary)
-            .lineSpacing(3)
+            .foregroundStyle(TF.settingsTextTertiary)
+            .lineSpacing(2)
+            .padding(.horizontal, 2)
         }
         .padding(.bottom, 8)
     }
@@ -605,30 +627,32 @@ struct ModesSettingsTab: View {
     }
 
     private var selectionAskDescription: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(L(
-                "选中文本后按下热键开始录音，说出你的问题或指令，再按热键停止。Type4Me 会结合选中文本流式生成 Markdown 回答，不粘贴、不修改剪贴板。",
-                "Select text, press the hotkey to record your question or instruction, then press it again to stop. Type4Me streams a Markdown answer using the selected text without pasting or changing the clipboard."
-            ))
-                .font(.system(size: 12))
-                .foregroundStyle(TF.settingsTextSecondary)
-                .lineSpacing(3)
+        VStack(alignment: .leading, spacing: 14) {
+            settingsGroupCard(L("使用方式", "How it works"), icon: "sparkle.magnifyingglass") {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(L(
+                        "选中文本后按下热键开始录音，说出你的问题或指令，再按热键停止。Type4Me 会结合选中文本流式生成 Markdown 回答，不粘贴、不修改剪贴板。",
+                        "Select text, press the hotkey to record your question or instruction, then press it again to stop. Type4Me streams a Markdown answer using the selected text without pasting or changing the clipboard."
+                    ))
+                    .font(.system(size: 12))
+                    .foregroundStyle(TF.settingsTextSecondary)
+                    .lineSpacing(3)
 
-            VStack(alignment: .leading, spacing: 6) {
-                Text(L("使用方式", "How it works"))
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(TF.settingsText)
-                ForEach(selectionAskExamples, id: \.self) { item in
-                    HStack(alignment: .top, spacing: 8) {
-                        Text("•")
-                            .font(.system(size: 11))
-                            .foregroundStyle(TF.settingsTextTertiary)
-                        Text(item)
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(TF.settingsText)
-                            .lineSpacing(2)
+                    SettingsDivider()
+
+                    ForEach(selectionAskExamples, id: \.self) { item in
+                        HStack(alignment: .top, spacing: 8) {
+                            Text("•")
+                                .font(.system(size: 11))
+                                .foregroundStyle(TF.settingsTextTertiary)
+                            Text(item)
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(TF.settingsText)
+                                .lineSpacing(2)
+                        }
                     }
                 }
+                .padding(.vertical, 4)
             }
 
             askAnythingHistorySettings
@@ -636,71 +660,39 @@ struct ModesSettingsTab: View {
     }
 
     private var askAnythingHistorySettings: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text(L("会话历史", "Conversation History"))
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(TF.settingsText)
-                .padding(.bottom, 10)
-
-            HStack(alignment: .center, spacing: 16) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(L("保存会话历史", "Save conversation history"))
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(TF.settingsText)
-                    Text(L(
-                        "关闭后，新会话只在当前运行期间保留；已有历史不会被删除。",
-                        "When off, new conversations last only for this run; existing history is kept."
-                    ))
-                    .font(.system(size: 10))
-                    .foregroundStyle(TF.settingsTextTertiary)
-                }
-                Spacer(minLength: 16)
-                Toggle("", isOn: Binding(
+        settingsGroupCard(L("会话历史", "Conversation History"), icon: "clock.arrow.circlepath") {
+            settingsToggleRow(
+                L("保存会话历史", "Save conversation history"),
+                subtitle: L(
+                    "关闭后，新会话只在当前运行期间保留；已有历史不会被删除。",
+                    "When off, new conversations last only for this run; existing history is kept."
+                ),
+                isOn: Binding(
                     get: { askAnythingCoordinator.historyEnabled },
                     set: { askAnythingCoordinator.historyEnabled = $0 }
-                ))
-                .labelsHidden()
-                .toggleStyle(.switch)
-                .controlSize(.small)
-                .disabled(askAnythingCoordinator.activeBinding != nil
-                          || askAnythingCoordinator.isRecordingFollowUp)
-            }
-            .padding(.bottom, 12)
+                ),
+                isEnabled: askAnythingCoordinator.activeBinding == nil && !askAnythingCoordinator.isRecordingFollowUp
+            )
 
-            Rectangle()
-                .fill(TF.settingsBorder)
-                .frame(height: 1)
+            SettingsDivider()
 
-            HStack(alignment: .center, spacing: 16) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(L("清空全部历史", "Clear all history"))
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(TF.settingsText)
-                    Text(L(
-                        "永久删除所有会话、选中文本、问题和回答。",
-                        "Permanently delete all conversations, selected text, questions, and answers."
-                    ))
-                    .font(.system(size: 10))
-                    .foregroundStyle(TF.settingsTextTertiary)
-                }
-                Spacer(minLength: 16)
+            settingsOptionRow(
+                L("清空全部历史", "Clear all history"),
+                subtitle: L(
+                    "永久删除所有随便问会话、选中文本、问题和回答。",
+                    "Permanently delete all conversations, selected text, questions, and answers."
+                ),
+                controlWidth: SettingsControlWidth.standard
+            ) {
                 Button(L("清空…", "Clear…"), role: .destructive) {
                     showClearAskAnythingConfirmation = true
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
                 .tint(TF.settingsAccentRed)
-                .disabled(askAnythingCoordinator.activeBinding != nil
-                          || askAnythingCoordinator.isRecordingFollowUp)
+                .disabled(askAnythingCoordinator.activeBinding != nil || askAnythingCoordinator.isRecordingFollowUp)
             }
-            .padding(.top, 12)
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .fill(TF.settingsCardAlt)
-        )
     }
 
     private func clearAskAnythingHistory() async {
@@ -713,39 +705,39 @@ struct ModesSettingsTab: View {
     }
 
     private var macActionDescription: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(L(
-                "用语音直接触发 macOS 操作，不再粘贴文本。需要先在「高级 → LLM」中配置 LLM 提供商。",
-                "Trigger macOS actions by voice instead of typing text. Requires an LLM provider configured under Advanced → LLM."
-            ))
+        VStack(alignment: .leading, spacing: 14) {
+            settingsGroupCard(L("功能说明", "Description"), icon: "info.circle") {
+                Text(L(
+                    "用语音直接触发 macOS 操作，不再粘贴文本。需要先在「模型 → 文本处理」中配置大模型。",
+                    "Trigger macOS actions by voice instead of typing text. Requires an LLM provider configured under Models → Text Processing."
+                ))
                 .font(.system(size: 12))
                 .foregroundStyle(TF.settingsTextSecondary)
                 .lineSpacing(3)
+                .padding(.vertical, 4)
+            }
 
-            VStack(alignment: .leading, spacing: 6) {
-                Text(L("支持的操作", "Supported actions"))
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(TF.settingsText)
-                ForEach(macActionExamples, id: \.0) { phrase, action in
-                    HStack(alignment: .top, spacing: 8) {
-                        Text("•")
-                            .font(.system(size: 11))
-                            .foregroundStyle(TF.settingsTextTertiary)
-                        Text("\u{201C}\(phrase)\u{201D}")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(TF.settingsText)
-                        Text("→")
-                            .font(.system(size: 11))
-                            .foregroundStyle(TF.settingsTextTertiary)
-                        Text(action)
-                            .font(.system(size: 11))
-                            .foregroundStyle(TF.settingsTextSecondary)
+            settingsGroupCard(L("支持的操作", "Supported Actions"), icon: "command") {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(macActionExamples, id: \.0) { phrase, action in
+                        HStack(alignment: .top, spacing: 8) {
+                            Text("•")
+                                .font(.system(size: 11))
+                                .foregroundStyle(TF.settingsTextTertiary)
+                            Text("\u{201C}\(phrase)\u{201D}")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(TF.settingsText)
+                            Text("→")
+                                .font(.system(size: 11))
+                                .foregroundStyle(TF.settingsTextTertiary)
+                            Text(action)
+                                .font(.system(size: 11))
+                                .foregroundStyle(TF.settingsTextSecondary)
+                        }
                     }
                 }
+                .padding(.vertical, 4)
             }
-            .padding(10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 8).fill(TF.settingsCardAlt))
 
             Text(L(
                 "首次使用某些操作时，macOS 可能弹出「辅助功能 / 自动化」授权请求。未匹配到任何操作时会提示，不会粘贴任何文本。",
@@ -869,7 +861,6 @@ struct ModesSettingsTab: View {
     private func discardDraftBeforeLeaving() {
         draftMode = nil
         draftDirty = false
-        pendingSelection = nil
     }
 
     private func deleteMode(_ id: UUID) {
@@ -887,7 +878,7 @@ struct ModesSettingsTab: View {
 /// A hotkey list styled to match the other detail-form fields: a small section
 /// label plus a stack of low-chrome rows, each with a subtle color-coded style
 /// glyph and hover-revealed edit/delete actions consistent with other pages.
-struct HotkeySectionView: View {
+struct HotkeySectionView: View, SettingsCardHelpers {
     let bindings: [HotkeyBinding]
     let onEdit: (HotkeyBinding) -> Void
     let onDelete: (HotkeyBinding) -> Void
@@ -902,19 +893,26 @@ struct HotkeySectionView: View {
     @State private var hoveredId: UUID?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if showsHeader {
-                HStack(spacing: 6) {
-                    Text(L("快捷键", "Hotkeys"))
-                        .font(.system(size: 11, weight: .semibold))
+        if showsHeader {
+            settingsGroupCard(L("快捷键", "Hotkeys"), icon: "keyboard") {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(L("支持键盘组合键、鼠标按键或耳机按键", "Supports keyboard combinations, mouse or headphone keys"))
+                        .font(.system(size: 11))
                         .foregroundStyle(TF.settingsTextTertiary)
-                    Text(L("键盘、鼠标或耳机按键", "Keyboard, mouse or headphone keys"))
-                        .font(.system(size: 10))
-                        .foregroundStyle(TF.settingsTextTertiary.opacity(0.7))
-                    Spacer(minLength: 0)
-                }
-            }
 
+                    FlowLayout(spacing: 8, lineSpacing: 8) {
+                        ForEach(bindings) { binding in
+                            capsule(binding)
+                        }
+                        if showsAddButton {
+                            addCapsule
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+                .padding(.vertical, 4)
+            }
+        } else {
             FlowLayout(spacing: 6, lineSpacing: 6) {
                 ForEach(bindings) { binding in
                     capsule(binding)
@@ -1458,69 +1456,42 @@ struct HotkeyRecordingSheet: View {
 
 // MARK: - Output Formatting
 
-private struct PunctuationModeSection: View {
+private struct PunctuationModeSection: View, SettingsCardHelpers {
     @Binding var selection: ModePunctuationMode
 
-    private let options: [(ModePunctuationMode, String)] = [
-        (.inherit, L("跟随通用设置", "Follow General Settings")),
-        (.preserve, L("保留全部标点", "Keep All Punctuation")),
-        (.stripTrailing, L("去掉句末标点", "Remove Trailing Punctuation")),
-        (.questionsAndExclamationsOnly, L("仅保留问号和感叹号", "Keep Only ? and !")),
-        (.removeAll, L("去掉全部标点", "Remove All Punctuation")),
+    private let options: [(value: String, label: String)] = [
+        (ModePunctuationMode.inherit.rawValue, L("跟随通用设置", "Follow General Settings")),
+        (ModePunctuationMode.preserve.rawValue, L("保留全部标点", "Keep All Punctuation")),
+        (ModePunctuationMode.stripTrailing.rawValue, L("去掉句末标点", "Remove Trailing Punctuation")),
+        (ModePunctuationMode.questionsAndExclamationsOnly.rawValue, L("仅保留问号和感叹号", "Keep Only ? and !")),
+        (ModePunctuationMode.removeAll.rawValue, L("去掉全部标点", "Remove All Punctuation")),
     ]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(L("输出格式", "Output Format").uppercased())
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(TF.settingsTextTertiary)
-
-            Text(L("标点处理", "Punctuation"))
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(TF.settingsTextSecondary)
-
-            Menu {
-                ForEach(options, id: \.0) { option in
-                    Button {
-                        selection = option.0
-                    } label: {
-                        if option.0 == selection {
-                            Label(option.1, systemImage: "checkmark")
-                        } else {
-                            Text(option.1)
-                        }
-                    }
-                }
-            } label: {
-                HStack(spacing: 8) {
-                    Text(options.first(where: { $0.0 == selection })?.1 ?? selection.rawValue)
-                        .font(.system(size: 13))
-                        .foregroundStyle(TF.settingsText)
-                    Spacer()
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(TF.settingsTextTertiary)
-                }
-                .padding(.horizontal, 12)
-                .frame(height: 36)
-                .background(RoundedRectangle(cornerRadius: 8).fill(TF.settingsCardAlt))
+        settingsGroupCard(L("标点与格式", "Punctuation & Format"), icon: "text.quote") {
+            settingsOptionRow(
+                L("标点规则", "Punctuation rule"),
+                subtitle: L(
+                    "仅覆盖当前模式；“跟随通用设置”会继续使用通用设置中的句末标点规则。",
+                    "Applies only to this mode. Follow General Settings keeps using the global trailing-punctuation preference."
+                ),
+                controlWidth: SettingsControlWidth.input
+            ) {
+                settingsDropdown(
+                    selection: Binding(
+                        get: { selection.rawValue },
+                        set: { if let m = ModePunctuationMode(rawValue: $0) { selection = m } }
+                    ),
+                    options: options
+                )
             }
-            .buttonStyle(.plain)
-
-            Text(L(
-                "仅覆盖当前模式；“跟随通用设置”会继续使用通用设置中的句末标点规则。",
-                "Applies only to this mode. Follow General Settings keeps using the global trailing-punctuation preference."
-            ))
-            .font(.system(size: 10))
-            .foregroundStyle(TF.settingsTextTertiary)
-            .lineSpacing(2)
         }
     }
 }
 
 // MARK: - Mode Detail Inner
 
-private struct ModeDetailInner: View {
+private struct ModeDetailInner: View, SettingsCardHelpers {
 
     let mode: ProcessingMode
     let onSave: (ProcessingMode) -> Void
@@ -1559,130 +1530,48 @@ private struct ModeDetailInner: View {
         ("50", L("50 字以下", "Under 50 chars")),
     ]
 
-    private var shortTextExemptionSection: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(L("短文本跳过", "Short Text Skip").uppercased())
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(TF.settingsTextTertiary)
-            exemptionDropdown
-            Text(L("文本少于该字数时跳过润色，直接使用识别结果",
-                     "Skip polishing for texts shorter than this threshold"))
-                .font(.system(size: 10))
-                .foregroundStyle(TF.settingsTextTertiary)
-        }
-    }
-
-    private var exemptionDropdown: some View {
-        let currentLabel = exemptionOptions.first(where: { $0.value == shortTextExemption })?.label ?? shortTextExemption
-        return Menu {
-            ForEach(exemptionOptions, id: \.value) { option in
-                Button {
-                    shortTextExemption = option.value
-                } label: {
-                    if option.value == shortTextExemption {
-                        Label(option.label, systemImage: "checkmark")
-                    } else {
-                        Text(option.label)
-                    }
-                }
-            }
-        } label: {
-            HStack(spacing: 8) {
-                Text(currentLabel)
-                    .font(.system(size: 13))
-                    .foregroundStyle(TF.settingsText)
-                Spacer()
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(TF.settingsTextTertiary)
-            }
-            .padding(.horizontal, 12)
-            .frame(height: 36)
-            .background(RoundedRectangle(cornerRadius: 8).fill(TF.settingsCardAlt))
-        }
-        .buttonStyle(.plain)
-    }
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Header + save
-            HStack(spacing: 6) {
-                Text(name.isEmpty ? L("新模式", "New Mode") : name)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(TF.settingsText)
+        VStack(alignment: .leading, spacing: 14) {
+            headerBar
 
-                Spacer()
+            // Basic Info Card
+            settingsGroupCard(L("基本信息", "Basic Info"), icon: "slider.horizontal.3") {
+                settingsField(
+                    L("模式名称", "Mode name"),
+                    text: $name,
+                    prompt: L("例如：邮件润色", "e.g. Email Polish")
+                )
 
-                if saveStatus == .saved {
-                    HStack(spacing: 4) {
-                        Circle().fill(TF.settingsAccentGreen).frame(width: 6, height: 6)
-                        Text(L("已保存", "Saved")).font(.system(size: 10)).foregroundStyle(TF.settingsAccentGreen)
-                    }
-                    .transition(.opacity)
+                SettingsDivider()
+
+                settingsField(
+                    L("描述说明", "Description"),
+                    subtitle: L("仅在首页展示，不发送给大模型", "Shown on Home, not sent to the model"),
+                    text: $modeDescription,
+                    prompt: L("简要说明此模式的用途", "Briefly explain what this mode does")
+                )
+
+                SettingsDivider()
+
+                settingsField(
+                    L("处理标签", "Processing label"),
+                    subtitle: L("录音完成后在悬浮栏展示的文案", "Status label shown in floating bar"),
+                    text: $processingLabel,
+                    prompt: L("处理中", "Processing")
+                )
+
+                SettingsDivider()
+
+                settingsOptionRow(
+                    L("短文本跳过", "Short text skip"),
+                    subtitle: L("文本少于该字数时跳过润色，直接输出识别结果", "Skip polishing when character count is below threshold"),
+                    controlWidth: SettingsControlWidth.input
+                ) {
+                    settingsDropdown(
+                        selection: $shortTextExemption,
+                        options: exemptionOptions
+                    )
                 }
-                Button(L("保存", "Save")) {
-                    var updated = mode
-                    updated.name = name
-                    updated.description = modeDescription
-                    updated.processingLabel = processingLabel
-                    updated.prompt = prompt
-                    updated.shortTextExemption = Int(shortTextExemption) ?? 0
-                    updated.punctuationMode = punctuationMode
-                    onSave(updated)
-                    withAnimation { saveStatus = .saved }
-                    onDraftChange(updated, false)
-                }
-                .buttonStyle(.plain)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 5)
-                .background(RoundedRectangle(cornerRadius: 6).fill(
-                    isDirty ? TF.settingsNavActive : TF.settingsTextTertiary
-                ))
-                .disabled(!isDirty)
-            }
-            VStack(alignment: .leading, spacing: 4) {
-                fieldLabel(L("名称", "Name"))
-                TextField(L("模式名称", "Mode name"), text: $name)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 13))
-                    .padding(.horizontal, 12)
-                    .frame(height: 36)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(TF.settingsCardAlt))
-            }
-
-            // Description
-            VStack(alignment: .leading, spacing: 4) {
-                fieldLabel(L("描述", "Description"),
-                           L("显示在首页，不发送给模型", "Shown on Home, not sent to the model"))
-                TextField(L("简要说明这个模式的用途", "Briefly explain what this mode does"), text: $modeDescription)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 13))
-                    .padding(.horizontal, 12)
-                    .frame(height: 36)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(TF.settingsCardAlt))
-            }
-
-            // Processing label + short text skip (compact, side by side)
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    fieldLabel(L("处理标签", "Processing label"),
-                               L("浮窗文案，如「翻译中」", "Bar text, e.g. \"Translating\""))
-                    TextField(L("处理中", "Processing"), text: $processingLabel)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 13))
-                        .padding(.horizontal, 12)
-                        .frame(height: 36)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(TF.settingsCardAlt))
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    fieldLabel(L("短文本跳过", "Short text skip"),
-                               L("少于字数跳过润色", "Skip polishing under N chars"))
-                    exemptionDropdown
-                }
-                .frame(width: 176)
             }
 
             if mode.supportsOutputFormatting {
@@ -1696,22 +1585,24 @@ private struct ModeDetailInner: View {
                 onAdd: onAddBinding
             )
 
-            // Prompt
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Text(L("Prompt 模板", "Prompt Template"))
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(TF.settingsTextTertiary)
-                    Group {
-                        Text("{text}") + Text("  ") + Text("{selected}") + Text("  ") + Text("{clipboard}")
+            // Prompt Template Card
+            settingsGroupCard(L("Prompt 模板", "Prompt Template"), icon: "text.alignleft") {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 6) {
+                        Text(L("支持变量：", "Variables: "))
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(TF.settingsTextSecondary)
+                        Text("{text}  {selected}  {clipboard}")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(TF.settingsAccentBlue)
                     }
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(TF.settingsTextTertiary.opacity(0.6))
+
+                    AutoSizingTextEditor(text: $prompt)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(TF.settingsCardAlt))
                 }
-                AutoSizingTextEditor(text: $prompt)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(TF.settingsCardAlt))
+                .padding(.vertical, 4)
             }
 
             Spacer()
@@ -1724,6 +1615,80 @@ private struct ModeDetailInner: View {
         .onChange(of: prompt) { _, _ in reportDraft() }
         .onChange(of: shortTextExemption) { _, _ in reportDraft() }
         .onChange(of: punctuationMode) { _, _ in reportDraft() }
+    }
+
+    private var headerBar: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: "slider.horizontal.3")
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(TF.settingsText)
+                .frame(width: 32, height: 32)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(TF.settingsCardAlt)
+                )
+
+            HStack(spacing: 6) {
+                Text(name.isEmpty ? L("新模式", "New Mode") : name)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(TF.settingsText)
+
+                Text(L("自定义", "Custom"))
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(TF.settingsAccentBlue)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1.5)
+                    .background(Capsule().fill(TF.settingsAccentBlue.opacity(0.1)))
+            }
+
+            Spacer()
+
+            if saveStatus == .saved {
+                HStack(spacing: 4) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(TF.settingsAccentGreen)
+                    Text(L("已保存", "Saved"))
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(TF.settingsAccentGreen)
+                }
+                .transition(.opacity)
+            }
+
+            saveButton
+        }
+        .padding(.bottom, 4)
+    }
+
+    private var saveButton: some View {
+        Button {
+            var updated = mode
+            updated.name = name
+            updated.description = modeDescription
+            updated.processingLabel = processingLabel
+            updated.prompt = prompt
+            updated.shortTextExemption = Int(shortTextExemption) ?? 0
+            updated.punctuationMode = punctuationMode
+            onSave(updated)
+            withAnimation { saveStatus = .saved }
+            onDraftChange(updated, false)
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "square.and.arrow.down")
+                    .font(.system(size: 11))
+                Text(L("保存", "Save"))
+                    .font(.system(size: 12, weight: .medium))
+            }
+            .foregroundStyle(isDirty ? Color.white : TF.settingsTextTertiary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 5)
+            .background(
+                Capsule()
+                    .fill(isDirty ? TF.settingsAccentBlue : TF.settingsCardAlt)
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(!isDirty)
     }
 
     private func reportDraft() {
@@ -1752,7 +1717,7 @@ private struct ModeDetailInner: View {
 
 // MARK: - Formal Writing Detail Inner
 
-private struct FormalWritingDetailInner: View {
+private struct FormalWritingDetailInner: View, SettingsCardHelpers {
 
     let mode: ProcessingMode
     @State private var shortTextExemption = "0"
@@ -1796,149 +1761,52 @@ private struct FormalWritingDetailInner: View {
         ("50", L("50 字以下", "Under 50 chars")),
     ]
 
-    private var shortTextExemptionSection: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(L("短文本跳过", "Short Text Skip").uppercased())
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(TF.settingsTextTertiary)
-            exemptionDropdown
-            Text(L("文本少于该字数时跳过润色，直接使用识别结果",
-                     "Skip polishing for texts shorter than this threshold"))
-                .font(.system(size: 10))
-                .foregroundStyle(TF.settingsTextTertiary)
-        }
-    }
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Header + actions
-            HStack(spacing: 6) {
-                Image(systemName: "wand.and.stars")
-                    .font(.system(size: 14))
-                    .foregroundStyle(TF.settingsAccentAmber)
-                Text(mode.localizedDisplayName)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(TF.settingsText)
-                Text(L("内置", "BUILT-IN"))
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(TF.settingsTextTertiary)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 2)
-                    .background(Capsule().fill(TF.settingsCardAlt))
+        VStack(alignment: .leading, spacing: 14) {
+            headerBar
 
-                Spacer()
+            // Basic Info Card
+            settingsGroupCard(L("基本信息", "Basic Info"), icon: "slider.horizontal.3") {
+                settingsField(
+                    L("名称", "Name"),
+                    text: $name,
+                    prompt: L("模式名称", "Mode name")
+                )
 
-                if !isLatestPrompt {
-                    Button {
-                        promptBeforeUpdate = prompt
-                        prompt = ProcessingMode.formalWritingPromptTemplate
-                    } label: {
-                        HStack(spacing: 3) {
-                            Image(systemName: "arrow.triangle.2.circlepath")
-                                .font(.system(size: 9))
-                            Text(L("还原为官方版", "Restore to official"))
-                                .font(.system(size: 10))
-                        }
-                        .foregroundStyle(TF.settingsAccentBlue)
-                    }
-                    .buttonStyle(.plain)
+                SettingsDivider()
+
+                settingsField(
+                    L("描述说明", "Description"),
+                    subtitle: L("仅在首页展示，不发送给大模型", "Shown on Home, not sent to the model"),
+                    text: $modeDescription,
+                    prompt: L("简要说明此模式的用途", "Briefly explain what this mode does")
+                )
+
+                SettingsDivider()
+
+                settingsField(
+                    L("处理标签", "Processing label"),
+                    subtitle: L("录音完成后在悬浮栏展示的文案", "Status label shown in floating bar"),
+                    text: $processingLabel,
+                    prompt: L("处理中", "Processing")
+                )
+
+                SettingsDivider()
+
+                settingsOptionRow(
+                    L("短文本跳过", "Short text skip"),
+                    subtitle: L("少于字数跳过润色", "Skip polishing under N chars"),
+                    controlWidth: SettingsControlWidth.input
+                ) {
+                    settingsDropdown(
+                        selection: $shortTextExemption,
+                        options: exemptionOptions
+                    )
                 }
-
-                if promptBeforeUpdate != nil {
-                    Button {
-                        prompt = promptBeforeUpdate!
-                        promptBeforeUpdate = nil
-                    } label: {
-                        HStack(spacing: 3) {
-                            Image(systemName: "arrow.uturn.backward")
-                                .font(.system(size: 9))
-                            Text(L("撤销", "Undo"))
-                                .font(.system(size: 10))
-                        }
-                        .foregroundStyle(TF.settingsTextSecondary)
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                if saveStatus == .saved {
-                    HStack(spacing: 4) {
-                        Circle().fill(TF.settingsAccentGreen).frame(width: 6, height: 6)
-                        Text(L("已保存", "Saved")).font(.system(size: 10)).foregroundStyle(TF.settingsAccentGreen)
-                    }
-                    .transition(.opacity)
-                }
-
-                Button(L("保存", "Save")) {
-                    var updated = mode
-                    updated.name = name
-                    updated.description = modeDescription
-                    updated.processingLabel = processingLabel
-                    updated.prompt = prompt
-                    updated.shortTextExemption = Int(shortTextExemption) ?? 0
-                    updated.punctuationMode = punctuationMode
-                    onSave(updated)
-                    promptBeforeUpdate = nil
-                    withAnimation { saveStatus = .saved }
-                    onDraftChange(updated, false)
-                }
-                .buttonStyle(.plain)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 5)
-                .background(RoundedRectangle(cornerRadius: 6).fill(
-                    isDirty ? TF.settingsNavActive : TF.settingsTextTertiary
-                ))
-                .disabled(!isDirty)
-            }
-
-            // Name
-            VStack(alignment: .leading, spacing: 4) {
-                fieldLabel(L("名称", "Name"))
-                TextField(L("模式名称", "Mode name"), text: $name)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 13))
-                    .padding(.horizontal, 12)
-                    .frame(height: 36)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(TF.settingsCardAlt))
-            }
-
-            // Description
-            VStack(alignment: .leading, spacing: 4) {
-                fieldLabel(L("描述", "Description"),
-                           L("显示在首页，不发送给模型", "Shown on Home, not sent to the model"))
-                TextField(L("简要说明这个模式的用途", "Briefly explain what this mode does"), text: $modeDescription)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 13))
-                    .padding(.horizontal, 12)
-                    .frame(height: 36)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(TF.settingsCardAlt))
-            }
-
-            // Processing label + short text skip (compact, side by side)
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    fieldLabel(L("处理标签", "Processing label"),
-                               L("浮窗文案，如「翻译中」", "Bar text, e.g. \"Translating\""))
-                    TextField(L("处理中", "Processing"), text: $processingLabel)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 13))
-                        .padding(.horizontal, 12)
-                        .frame(height: 36)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(TF.settingsCardAlt))
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    fieldLabel(L("短文本跳过", "Short text skip"),
-                               L("少于字数跳过润色", "Skip polishing under N chars"))
-                    exemptionDropdown
-                }
-                .frame(width: 176)
             }
 
             PunctuationModeSection(selection: $punctuationMode)
 
-            // Hotkeys
             HotkeySectionView(
                 bindings: mode.hotkeyBindings,
                 onEdit: onEditBinding,
@@ -1946,22 +1814,24 @@ private struct FormalWritingDetailInner: View {
                 onAdd: onAddBinding
             )
 
-            // Prompt 模板
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Text(L("Prompt 模板", "Prompt Template"))
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(TF.settingsTextTertiary)
-                    Group {
-                        Text("{text}") + Text("  ") + Text("{selected}") + Text("  ") + Text("{clipboard}")
+            // Prompt Template Card
+            settingsGroupCard(L("Prompt 模板", "Prompt Template"), icon: "text.alignleft") {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 6) {
+                        Text(L("支持变量：", "Variables: "))
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(TF.settingsTextSecondary)
+                        Text("{text}  {selected}  {clipboard}")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(TF.settingsAccentBlue)
                     }
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(TF.settingsTextTertiary.opacity(0.6))
+
+                    AutoSizingTextEditor(text: $prompt)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(TF.settingsCardAlt))
                 }
-                AutoSizingTextEditor(text: $prompt)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(TF.settingsCardAlt))
+                .padding(.vertical, 4)
             }
 
             Spacer()
@@ -1976,6 +1846,113 @@ private struct FormalWritingDetailInner: View {
         .onChange(of: punctuationMode) { _, _ in reportDraft() }
     }
 
+    private var headerBar: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: "wand.and.stars")
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(TF.settingsAccentAmber)
+                .frame(width: 32, height: 32)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(TF.settingsCardAlt)
+                )
+
+            HStack(spacing: 6) {
+                Text(mode.localizedDisplayName)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(TF.settingsText)
+
+                Text(L("内置", "Built-in"))
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(TF.settingsTextTertiary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1.5)
+                    .background(Capsule().fill(TF.settingsCardAlt))
+            }
+
+            Spacer()
+
+            if !isLatestPrompt {
+                Button {
+                    promptBeforeUpdate = prompt
+                    prompt = ProcessingMode.formalWritingPromptTemplate
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.system(size: 10))
+                        Text(L("还原为官方版", "Restore to official"))
+                            .font(.system(size: 11))
+                    }
+                    .foregroundStyle(TF.settingsAccentBlue)
+                }
+                .buttonStyle(.plain)
+            }
+
+            if promptBeforeUpdate != nil {
+                Button {
+                    prompt = promptBeforeUpdate!
+                    promptBeforeUpdate = nil
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "arrow.uturn.backward")
+                            .font(.system(size: 10))
+                        Text(L("撤销", "Undo"))
+                            .font(.system(size: 11))
+                    }
+                    .foregroundStyle(TF.settingsTextSecondary)
+                }
+                .buttonStyle(.plain)
+            }
+
+            if saveStatus == .saved {
+                HStack(spacing: 4) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(TF.settingsAccentGreen)
+                    Text(L("已保存", "Saved"))
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(TF.settingsAccentGreen)
+                }
+                .transition(.opacity)
+            }
+
+            saveButton
+        }
+        .padding(.bottom, 4)
+    }
+
+    private var saveButton: some View {
+        Button {
+            var updated = mode
+            updated.name = name
+            updated.description = modeDescription
+            updated.processingLabel = processingLabel
+            updated.prompt = prompt
+            updated.shortTextExemption = Int(shortTextExemption) ?? 0
+            updated.punctuationMode = punctuationMode
+            onSave(updated)
+            promptBeforeUpdate = nil
+            withAnimation { saveStatus = .saved }
+            onDraftChange(updated, false)
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "square.and.arrow.down")
+                    .font(.system(size: 11))
+                Text(L("保存", "Save"))
+                    .font(.system(size: 12, weight: .medium))
+            }
+            .foregroundStyle(isDirty ? Color.white : TF.settingsTextTertiary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 5)
+            .background(
+                Capsule()
+                    .fill(isDirty ? TF.settingsAccentBlue : TF.settingsCardAlt)
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(!isDirty)
+    }
+
     private func reportDraft() {
         if saveStatus == .saved { saveStatus = .dirty }
         var updated = mode
@@ -1986,37 +1963,6 @@ private struct FormalWritingDetailInner: View {
         updated.shortTextExemption = Int(shortTextExemption) ?? 0
         updated.punctuationMode = punctuationMode
         onDraftChange(updated, isDirty)
-    }
-
-    private var exemptionDropdown: some View {
-        let currentLabel = exemptionOptions.first(where: { $0.value == shortTextExemption })?.label ?? shortTextExemption
-        return Menu {
-            ForEach(exemptionOptions, id: \.value) { option in
-                Button {
-                    shortTextExemption = option.value
-                } label: {
-                    if option.value == shortTextExemption {
-                        Label(option.label, systemImage: "checkmark")
-                    } else {
-                        Text(option.label)
-                    }
-                }
-            }
-        } label: {
-            HStack(spacing: 8) {
-                Text(currentLabel)
-                    .font(.system(size: 13))
-                    .foregroundStyle(TF.settingsText)
-                Spacer()
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(TF.settingsTextTertiary)
-            }
-            .padding(.horizontal, 12)
-            .frame(height: 36)
-            .background(RoundedRectangle(cornerRadius: 8).fill(TF.settingsCardAlt))
-        }
-        .buttonStyle(.plain)
     }
 
     private func syncFields() {
