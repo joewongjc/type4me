@@ -1,6 +1,17 @@
 {
-  "latest": "2.4.0",
+  "latest": "2.5.0",
   "releases": [
+    {
+      "version": "2.5.0",
+      "date": "2026-09-01",
+      "notes": "- 全新模型与模式设置，统一主从布局、服务商分组、品牌图标、配置状态与凭证操作\n- 手动录音支持安全写入停止录音时明确聚焦的输入框，无法确认时保留到剪贴板\n- macOS 26 录音条升级为原生 Apple Liquid Glass，macOS 14/15 自动回落为原生磨砂\n- 模型配置支持清空凭证并保存，测试连接不再隐式保存草稿\n- 修复中英文设置侧栏标签换行与版本号挤压问题\n- 改进写入目标归属、安全回退及录音条主题与布局稳定性",
+      "cloud_dmg_url": "https://github.com/joewongjc/type4me/releases/download/v2.5.0/Type4Me-v2.5.0-cloud.dmg",
+      "cloud_dmg_size": 12396869,
+      "cloud_dmg_sha256": "7bde09a7c34e939e28ab0a423cd23220028df33a4654884920d75760efab8805",
+      "local_dmg_url": "https://github.com/joewongjc/type4me/releases/download/v2.5.0/Type4Me-v2.5.0-local-apple-silicon.dmg",
+      "local_dmg_size": 718337704,
+      "local_dmg_sha256": "a48fcac9ff86db265b16f1c40bf72b7e27df646ecd5cd715f1415b47e2376035"
+    },
     {
       "version": "2.4.0",
       "date": "2026-08-30",
