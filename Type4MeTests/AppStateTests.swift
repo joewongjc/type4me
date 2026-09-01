@@ -282,6 +282,32 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(action.panelSize, NSSize(width: 316, height: 111))
     }
 
+    func testFloatingPanelKeepsCapsulePositionWhenOverlayResizesPanel() {
+        let visibleFrame = NSRect(x: 100, y: 50, width: 1000, height: 800)
+        let capsuleSize = NSSize(width: TF.barWidthCompact, height: TF.barHeight)
+
+        // Hovering a control adds a tooltip whose bubble overflows the capsule by
+        // a fractional amount. The capsule is centered in the panel, so its left
+        // edge must not move as the panel grows around it.
+        let overflows: [CGFloat] = [0, 12.5, 37.25, 60, 73.9]
+        let capsuleOrigins: [CGFloat] = overflows.map { overflow in
+            let layout = FloatingBarPanelLayout(
+                contentSize: capsuleSize,
+                horizontalOverflow: overflow,
+                capsuleSize: capsuleSize
+            )
+            let size = layout.panelSize
+            XCTAssertEqual(size.width.truncatingRemainder(dividingBy: 2), 0, "panel width must stay even")
+
+            let frame = FloatingBarPanel.bottomCenteredFrame(size: size, visibleFrame: visibleFrame)
+            return frame.minX + (size.width - capsuleSize.width) / 2
+        }
+
+        for origin in capsuleOrigins {
+            XCTAssertEqual(origin, capsuleOrigins[0], accuracy: 0.001)
+        }
+    }
+
     func testFloatingPanelFrameKeepsBarBottomCentered() {
         let visibleFrame = NSRect(x: 100, y: 50, width: 1000, height: 800)
         let frame = FloatingBarPanel.bottomCenteredFrame(

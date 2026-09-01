@@ -100,6 +100,7 @@ struct AppearancePreviewStage: View {
                             state: demoState,
                             presentationOverride: presentation
                         )
+                        .id(presentation.theme)
                     } else {
                         Text(L("录音时不显示悬浮条", "The floating bar is hidden while recording."))
                             .font(.system(size: 13, weight: .medium))
