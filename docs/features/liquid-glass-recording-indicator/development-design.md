@@ -3,8 +3,8 @@
 > 文档类型：开发设计
 > 文档状态：当前有效（已实现，持续验证）
 > 设计日期：2026-08-25
-> 最后校验：2026-08-26
-> 实现基线：`06c06a0`
+> 最后校验：2026-09-01
+> 实现基线：`b67ee103`（PR #279）
 > 对应产品设计：[product-design.md](product-design.md)
 > 上游文档：[外观设置增强开发设计](../appearance-settings-enhancements/development-design.md)、[紧凑型录音指示条开发设计](../compact-recording-indicator/development-design.md)
 
@@ -12,19 +12,25 @@
 
 ## 1. 设计摘要
 
-本功能仅替换 Regular 指示条的内部视觉系统：`RecordingVisualStyle` 从五种背景效果重构为十种动态液态玻璃预设与一种静态红色玻璃预设；`FloatingBarView` 不再使用 `AudioRipple` 或 `ProcessingProgress`，改为用同一套 Metal 材质绘制录音球和文字填充。
+本功能包含两层彼此独立的“Liquid Glass”视觉系统：
 
-实现采用 SwiftUI `Shader` 作为球体和文字的 `ShapeStyle`，而不是建立独立的 MTKView 或在运行时编译着色器。项目最低系统版本为 macOS 14，满足 SwiftUI shader API 的平台条件。Swift Package Manager 可把同一 target 中的 `.metal` 源编译为资源 bundle 内的 `.metallib`，再通过 `ShaderLibrary.bundle(Bundle.module)` 加载；这是 Apple 推荐的包内 Metal 交付路径。[Apple TN3133](https://developer.apple.com/documentation/technotes/tn3133-packaging-a-renderer) [Apple Shader 文档](https://developer.apple.com/documentation/swiftui/shader)
+1. **前景 Orb / Text 材质**：`RecordingVisualStyle` 从五种旧背景效果重构为十种动态预设与一种静态红色预设；`FloatingBarView` 不再使用 `AudioRipple` 或 `ProcessingProgress`，改用 Metal/SwiftUI Shader 绘制录音球和文字填充。
+2. **背景 Apple Liquid Glass 材质**：PR #279 将胶囊和悬停气泡的底层表面升级为 macOS 26 原生 SwiftUI `.glassEffect()`，并为 macOS 14/15 和“减少透明度”保留独立 fallback。Dark / Light 主题只改变背景与控件的可读性策略，不改变 Orb 预设本身。
+
+前景实现采用 SwiftUI `Shader` 作为球体和文字的 `ShapeStyle`，而不是建立独立的 MTKView 或在运行时编译着色器。项目最低系统版本为 macOS 14；原生 Apple Liquid Glass 路径通过 `#available(macOS 26.0, *)` 隔离，因此旧系统继续编译并运行磨砂 fallback。
 
 ## 2. 已验证的实现基线
 
-| 区域 | 当前实现 | 本设计的变化 |
-|---|---|---|
-| `RecordingVisualStyle` | `classic`、`dual`、`timeline`、`effectless`、`hidden`，存储在 `tf_visualStyle`。 | 用 11 个液态玻璃样式替换，并迁移旧值。 |
-| `FloatingBarView` | `capsuleBackground` 在录音使用 `AudioRipple`，在处理/恢复/完成使用 `ProcessingProgress`。 | 背景永远静止；录音球和 `LiquidGlassText` 成为唯一动态元素。 |
-| 转写状态 | `TranscriptionSegment` 有 `text` 和 `isConfirmed`；`AppState.setLiveTranscript` 生成确认前缀和最后一个未确认片段。 | 直接复用该边界，确认文本和流式尾段分开渲染。 |
-| Preview | `AppearancePreviewStage` 复用 `FloatingBarView`，`DemoState` 生成合成音量。 | 扩展为可在录音/处理中切换，并继续复用真实 View。 |
-| Compact | 独立 24pt renderer 和 `CompactAudioIndicator`，不进入 Regular 的背景效果路径。 | 保持完全不变。 |
+| 区域 | PR #279 当前实现 |
+|---|---|
+| `RecordingVisualStyle` | 11 个 Orb/文字前景样式继续使用既有 Metal/SwiftUI Shader 路径，不因背景主题变化而改变。 |
+| 胶囊背景 | `RecordingGlassSurface` 统一承载 Regular 胶囊和悬停气泡背景。macOS 26+ 使用原生 `.glassEffect(.regular, in:)`；macOS 14/15 使用 `VisualEffectBlur` fallback；Reduce Transparency 使用实色。 |
+| Dark / Light | `RecordingTheme` 为确定性二选一。Dark 原生玻璃下方使用 `TF.glassDarkContrastFloor = 0.52`；Light 不加该黑色底垫。 |
+| Border | native glass 在 preparing/recording/processing/recovering 阶段不叠加人工 rim；旧系统与 Reduce Transparency fallback 保留既有边界。Done/Error 仍保留反馈边框。 |
+| Theme scope | `FloatingBarView` 使用 `.environment(\.colorScheme, ...)` 将主题限定在自身 view tree，避免 Settings Preview 改写整个窗口外观。 |
+| Preview | `AppearancePreviewStage` 继续复用真实 `FloatingBarView`，并以 `.id(presentation.theme)` 在主题切换时重建预览实例；`RecordingGlassSurface` 自身也按 theme identity 重建 native glass 表面。 |
+| Panel geometry | `FloatingBarPanelLayout.panelSize` 将宽度向上取整为偶数，`bottomCenteredFrame` 对 origin 做点级取整，避免 overlay resize 时中心胶囊出现半点横向漂移。 |
+| Compact | 继续使用既有 Compact renderer；本次背景材质升级不改变其录音状态机、实时文本语义或生命周期。 |
 
 ## 3. 范围与不变量
 
@@ -34,6 +40,8 @@
 4. Production 与 Appearance Preview 必须使用同一个 `FloatingBarView`、`LiquidGlassOrb` 和 `LiquidGlassText`。
 5. 不在 SwiftUI `body` 内迁移 `UserDefaults` 或写入偏好。
 6. 球体、文字效果及其 fallback 不可改变文字宽度计算、Capsule 几何、按钮 hit area 或现有 top overlay 逻辑。
+7. 背景材质只能改变视觉表面，不得引入新的录屏权限、状态机分支或额外屏幕采样；Dark / Light 是用户显式选择，不自动读取底层第三方窗口像素。
+8. `Reduce Motion` 控制前景动画，`Reduce Transparency` 控制背景材质，两者必须保持独立语义。
 
 ## 4. 偏好模型与迁移
 
@@ -227,9 +235,9 @@ struct RecordingTextParts: Equatable {
 
 现有 `recordingDisplayText` 与 `measureText` 仍对完整可见字符串测量。宽度计算、peak width、长文本 mask、Transcript Popup 和 `currentRecordingChromeWidth` 不能因渲染拆分而改变。
 
-### 7.3 背景和旧组件移除
+### 7.3 旧背景动效移除与当前背景边界
 
-`capsuleBackground` 只保留 `TF.floatingBackground` 与既有错误色调分支。删除或不再引用：
+旧的全宽背景动效仍然删除或不再引用：
 
 - `AudioRipple`
 - `ProcessingProgress`
@@ -238,6 +246,8 @@ struct RecordingTextParts: Equatable {
 - `RecordingDot`
 
 移除它们后清理所有针对 `.classic`、`.dual`、`.timeline`、`.effectless`、`.hidden` 的 `switch` 分支；编译器 exhaustive switch 必须成为遗漏检测器。`shouldRenderCapsule` 在 Regular 中不再依据 visual style 隐藏条，只受 `barPhase != .hidden` 控制。
+
+PR #279 不恢复任何全宽背景动画，而是将静态承载表面统一为 `RecordingGlassSurface`：native glass / frosted fallback / opaque accessibility fallback 都只负责材质与可读性，不表达录音进度。Error 的红色 gradient 仍作为状态语义 overlay 存在。
 
 ## 8. 设置与预览接入
 
@@ -258,6 +268,8 @@ struct RecordingTextParts: Equatable {
 
 预览音量由确定性曲线生成，不使用 `Float.random`，便于截图、UI 自动化和设计评审复现。切出 Appearance tab 或 Stage 消失时继续调用既有 `stop()`，确保 timer/task 不泄漏。
 
+主题切换采用两层 identity 保护：Preview 外层 `FloatingBarView` 绑定 `presentation.theme`，native `RecordingGlassSurface` 也绑定当前 theme。这样切换 Dark / Light 时会重新建立原生 glass layer，避免 SwiftUI 在同一 view identity 上复用旧材质导致预览残影或损坏。主题色通过 `FloatingBarView` 的局部 `colorScheme` environment 注入，禁止使用会影响整个 Settings window 的 `preferredColorScheme`。
+
 ## 9. 本地化、辅助功能与 fallback
 
 1. 预设 display name、设置说明、PreviewPhase 和静态说明全部通过 `L(zh, en)` 计算，禁止存储已经翻译好的标题。
@@ -265,6 +277,8 @@ struct RecordingTextParts: Equatable {
 3. 使用 `@Environment(\.accessibilityReduceMotion)`（或等效 macOS accessibility source）参与 `LiquidGlassMotion` 决策；不是仅降低帧率。
 4. Finish 控件的 visual content 更换不影响 label、traits、accessibility action 或键盘可达性。
 5. Metal library 或 shader function 在开发构建中若加载异常，记录诊断并使用稳定的 `LinearGradient`/`TF.recording` fallback；fallback 必须保留文字和按钮语义，不能隐藏 bar 或崩溃。
+6. 背景材质读取 `@Environment(\.accessibilityReduceTransparency)`：开启时必须直接使用 `TF.floatingBackgroundLight` / `TF.floatingBackground` 实色，不进入 native glass 或 `NSVisualEffectView` 路径。
+7. native Liquid Glass 只在 macOS 26+ 且 Reduce Transparency 关闭时使用；同一判断同时决定是否移除人工 rim，防止材质路径与边框路径不一致。
 
 ## 10. 文件变更规划
 
@@ -272,13 +286,15 @@ struct RecordingTextParts: Equatable {
 |---|---|
 | `Type4Me/UI/AppState.swift` | 替换 `RecordingVisualStyle`、新增迁移和 `RecordingTextParts` 纯 helper（或置于同职责文件）。 |
 | `Type4Me/Type4MeApp.swift` | 在启动 bootstrap 调用一次偏好迁移。 |
-| `Type4Me/UI/FloatingBar/FloatingBarView.swift` | 替换背景效果、Finish 视觉、录音/处理文字路由，保留交互和几何。 |
+| `Type4Me/UI/FloatingBar/FloatingBarView.swift` | 前景继续承载 Orb/文字路由；背景统一为 `RecordingGlassSurface`，增加 native glass、Reduce Transparency、局部 colorScheme 与 native/fallback border 分流。 |
 | `Type4Me/UI/FloatingBar/LiquidGlass/*` | 新增预设、动效策略、SwiftUI 外壳和 Metal shader。 |
 | `Type4Me/UI/Settings/AppearanceSettingsTab.swift` | 更新 row 标题、说明和枚举选项。 |
-| `Type4Me/UI/Settings/AppearancePreviewStage.swift` | 新增录音/处理预览阶段切换。 |
+| `Type4Me/UI/Settings/AppearancePreviewStage.swift` | 保留录音/处理预览阶段切换，并对 `FloatingBarView` 绑定 theme identity，稳定 Dark / Light 原生玻璃切换。 |
 | `Type4Me/UI/Setup/DemoState.swift` | 增加确定性录音/处理 demo 数据与完整 teardown。 |
 | `Type4Me/Resources/ThirdPartyNotices/Orb-LICENSE` | 加入上游 MIT 文本并确保 package/app 资源包含。 |
-| `Type4MeTests/AppStateTests.swift` | 替换旧样式断言，覆盖迁移与 fallback。 |
+| `Type4Me/UI/DesignSystem.swift` | 定义 `glassDarkContrastFloor = 0.52`，并明确旧 rim 只用于 fallback。 |
+| `Type4Me/UI/FloatingBar/FloatingBarPanel.swift` | panel width 偶数化、window origin 取整，稳定 overlay resize 时的中心位置。 |
+| `Type4MeTests/AppStateTests.swift` | 覆盖旧样式迁移/fallback，并新增 overlay resize 时胶囊中心不漂移的回归测试。 |
 | `Type4MeTests/AppearancePreviewTests.swift` | 覆盖 presentation、预览阶段和中英文行为。 |
 | `Type4MeTests/LiquidGlassVisualTests.swift` | 新增纯策略、预设、文本分段和 reduce-motion 测试。 |
 
@@ -304,6 +320,8 @@ struct RecordingTextParts: Equatable {
 - Regular 不再因为视觉样式而隐藏 capsule；Compact 仍在 visual-style 静态值下显示自身 renderer；
 - Finish/Cancel accessibility labels 和 control actions 仍存在；
 - 设置变更能通过 `FloatingBarPresentation` 实时传入 Preview；
+- Dark / Light 切换会重建 Preview 的 `FloatingBarView`，但不会改变 Settings window 其他区域的 color scheme；
+- 不同 fractional overlay overflow 下 panel width 保持偶数，胶囊左边缘/中心位置不发生半点漂移；
 - 中英文切换后所有新增 label 与 preview sample 重新求值。
 
 像素截图是手工/CI UI 验证的补充，不能取代上面的确定性单元测试。
@@ -318,6 +336,9 @@ struct RecordingTextParts: Equatable {
 4. 切换 Regular/Compact，确认 Compact 的 24pt 声纹轨、各 phase 的宽度、按钮和反馈保持原样。
 5. 在 Appearance Preview 中切换样式、语言、录音/处理阶段及设置开关，确认不请求麦克风权限，离开页面后不继续刷新。
 6. 用 VoiceOver、键盘焦点、Tooltip 关闭和 `Esc` 取消复核可操作性。
+7. 在 macOS 26 分别验证 Dark / Light 原生 Liquid Glass；在 macOS 14/15 验证 `NSVisualEffectView` fallback；开启“减少透明度”后确认两种主题都立即成为实色且不残留 native glass rim。
+8. 在 Appearance Preview 中反复切换 Dark / Light，确认只有预览浮动条刷新，设置窗口其他区域不闪烁、不改主题。
+9. 展开/收起 Tooltip、Transcript Popup 等 overlay，确认面板尺寸变化时胶囊中心不横向跳动。
 
 ### 12.2 性能门槛
 
@@ -353,6 +374,9 @@ swift build -c release
 | 迁移覆盖用户新设置或视图 body 反复写偏好 | schema 版本化、应用启动时执行一次、UserDefaults 注入测试。 |
 | Compact 被错误接入 Orb | 以 `usesCompactPresentation` 在内容路由最前分流，并回归其所有 phase。 |
 | Preview 与生产渲染漂移 | Preview 只替换 state，不复制 `FloatingBarView` 或 liquid-glass 组件。 |
+| native glass 在反复主题切换时复用错误 layer | `FloatingBarView` Preview 与 `RecordingGlassSurface` 均按 theme 建立明确 identity。 |
+| Dark 原生玻璃覆盖亮背景时对比度不足 | 在 glass 下方固定使用 `TF.glassDarkContrastFloor = 0.52`，不把 scrim 放到 glass 上方。 |
+| overlay resize 导致半点横向漂移 | panel width 统一向上取偶数，最终 window origin 做取整，并以 fractional overflow 回归测试锁定。 |
 | 上游许可证或参数漂移 | 固定 commit、保留 MIT、明确更新流程需人工审查和新快照。 |
 
 ## 15. 实现顺序
@@ -362,9 +386,49 @@ swift build -c release
 3. 实现 `LiquidGlassMotion`、`LiquidGlassOrb`、`LiquidGlassText`，先在 isolated preview 中检查 dynamic/static/reduce-motion；
 4. 替换 Regular `FloatingBarView` 背景和 Finish/文字路由，删除旧效果组件；
 5. 接入 Settings 与 Appearance Preview 的录音/处理阶段；
-6. 完成单元测试、全量构建、手工视觉/无障碍/性能验收和许可证打包检查。
+6. 完成单元测试、全量构建、手工视觉/无障碍/性能验收和许可证打包检查；
+7. 在 PR #279 中将背景承载表面升级为 native Apple Liquid Glass，并补齐 Dark / Light、Reduce Transparency、旧系统 fallback、Preview identity 与 panel pixel alignment 回归。
 
-## 16. 外观主题与屏幕明暗采样技术调研
+## 16. 原生 Apple Liquid Glass 背景架构
+
+### 16.1 材质选择顺序
+
+`RecordingGlassSurface` 是胶囊和 Transcript Popup 背景的统一入口，分支优先级固定如下：
+
+```text
+Reduce Transparency 开启
+    → 对应主题实色背景
+否则 macOS 26+
+    → SwiftUI .glassEffect(.regular, in: shape)
+       Dark: glass 下方叠 0.52 black contrast floor
+       Light: clear floor
+否则 macOS 14/15
+    → VisualEffectBlur + 主题 tint
+```
+
+该顺序意味着辅助功能优先级高于平台能力：即使运行在 macOS 26，只要用户开启 Reduce Transparency，也不得创建 native glass surface。
+
+### 16.2 边框与状态 overlay
+
+- preparing / recording / processing / recovering：native glass 自带边界折射，不额外画 rim；fallback 继续使用 `recordingGlassRim` / `recordingLightGlassRim`。
+- done / error：继续绘制反馈边框，并使用短 opacity transition，避免状态切换时边框瞬间跳变。
+- error gradient 仍叠加在材质表面之上，只表达错误状态，不改变基础主题选择。
+
+### 16.3 Theme scope 与 Preview identity
+
+`FloatingBarView` 在自身 view tree 注入 `.environment(\.colorScheme, ...)`，不能使用会传播到宿主窗口的 `preferredColorScheme`。Appearance Preview 额外通过 `.id(presentation.theme)` 重建 `FloatingBarView`；native `RecordingGlassSurface` 也通过 `.id(theme)` 重建材质层。这是针对原生 glass layer 生命周期的稳定性措施，而不是业务状态重置。
+
+### 16.4 Panel pixel alignment
+
+Tooltip/action overlay 会让 panel 在胶囊两侧产生 fractional overflow。为保持胶囊中心稳定：
+
+1. `panelSize.width` 先 `ceil`，再向上取最近偶数；
+2. `bottomCenteredFrame` 对最终 `x/y` origin 取整；
+3. 单元测试使用 `12.5`、`37.25`、`73.9` 等 fractional overflow，验证 overlay resize 前后胶囊 origin 恒定。
+
+这一修复只约束外层 window/panel 几何，不改变胶囊自身的自适应宽度或 spring 动画。
+
+## 17. 外观主题与屏幕明暗采样技术调研
 
 在探索液态玻璃指示条「自适应」外观模式期间，团队对基于 Quartz 屏幕采样的像素级明暗计算方案进行了预研与真机验证。
 
