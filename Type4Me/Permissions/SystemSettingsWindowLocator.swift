@@ -20,6 +20,10 @@ enum SystemSettingsWindowLocator {
     /// the AppKit coordinate space (origin at the bottom-left of the main
     /// display, matching `NSWindow.frame`).
     static func findMainWindowFrame() -> NSRect? {
+        let running = NSRunningApplication.runningApplications(withBundleIdentifier: systemSettingsBundleID)
+        guard running.contains(where: { !$0.isTerminated }) else {
+            return nil
+        }
         let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
         guard let rawList = CGWindowListCopyWindowInfo(options, kCGNullWindowID)
             as? [[String: Any]] else {

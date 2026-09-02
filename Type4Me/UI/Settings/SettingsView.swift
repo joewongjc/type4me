@@ -89,6 +89,7 @@ enum SettingsTab: String, CaseIterable, Identifiable, Hashable {
 @Observable
 final class AppNavigationModel {
     var selectedTab: SettingsTab = .general
+    var pendingModelCategory: ModelCategory?
     var pendingAskAnythingSessionID: UUID?
     var pendingModeSelectionID: UUID?
 }
@@ -361,7 +362,7 @@ struct SettingsView: View {
     private var content: some View {
         switch selectedTab {
         case .general:
-            ZStack {
+            ZStack(alignment: .bottomTrailing) {
                 HomeDottedWaveBackground()
                 tabPage {
                     HomeDashboardView(isActive: selectedTab == .general) { modeId in
@@ -370,6 +371,9 @@ struct SettingsView: View {
                         })
                     }
                 }
+                FloatingModelAlertCards()
+                    .padding(.trailing, 28)
+                    .padding(.bottom, 24)
             }
         case .askAnything:
             fixedPage {

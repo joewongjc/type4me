@@ -769,6 +769,9 @@ struct MenuBarControlCenterView: View {
         AppDelegate.openPermissionGuideAction = { [openWindow] in
             openWindow(id: "permission-guide")
         }
+        AppDelegate.openSetupAction = { [openWindow] in
+            openWindow(id: "setup")
+        }
     }
 }
 

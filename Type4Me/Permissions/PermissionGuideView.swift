@@ -1,19 +1,12 @@
 import SwiftUI
 import AppKit
 
-// `dismissWindow` action came in macOS 14.
-
 /// Unified permission guide presented both at first launch (inside the setup
 /// wizard) and when the main app detects a missing authorization.
 ///
-/// Visually aligned with the Settings window: amber accent, warm cream
-/// background, Settings-style permission cards (icon tile + title + green
-/// "已授权" / amber "授权" pill). The shared look keeps the two surfaces
-/// feeling like the same app rather than two disconnected dialogs.
-///
-/// When `embedded` is true the view runs inside the setup wizard, so the
-/// cream background and forced light scheme are skipped to blend with the
-/// wizard's own framing.
+/// Designed in Screenflare style: dark translucent material, grouped card layout,
+/// clear "Required" vs "Optional" badge hierarchy, dynamic restart detection,
+/// and integrated drag-to-authorize assistance for Accessibility.
 struct PermissionGuideView: View {
 
     @Bindable var model: PermissionGuideModel
@@ -21,35 +14,53 @@ struct PermissionGuideView: View {
     @Environment(\.openWindow) private var openWindow
 
     let embedded: Bool
+    var onFinish: (() -> Void)?
+    var onRaiseHostWindow: (() -> Void)?
 
-    init(model: PermissionGuideModel, embedded: Bool = false) {
+    init(
+        model: PermissionGuideModel,
+        embedded: Bool = false,
+        onFinish: (() -> Void)? = nil,
+        onRaiseHostWindow: (() -> Void)? = nil
+    ) {
         self.model = model
         self.embedded = embedded
-    }
-
-    private var allGranted: Bool {
-        model.micGranted && model.accessibilityGranted
+        self.onFinish = onFinish
+        self.onRaiseHostWindow = onRaiseHostWindow
     }
 
     var body: some View {
-        Group {
-            if embedded {
-                content
-            } else {
-                content
-                    .background(TF.settingsBg)
-                    .preferredColorScheme(.light)
-            }
+        VStack(spacing: 20) {
+            // Header
+            headerSection
+
+            // Grouped Permissions Container
+            permissionGroupContainer
+
+            // Footer Privacy Note
+            Text(L(
+                "随时可以在 macOS「系统设置」中更改这些权限。",
+                "You can change any of these later in System Settings."
+            ))
+            .font(.system(size: 11))
+            .foregroundStyle(Color.white.opacity(0.5))
+            .multilineTextAlignment(.center)
+
+            // Bottom Actions Bar
+            bottomBar
         }
-        .onAppear { model.refresh() }
-        .onDisappear { model.dismissDragOverlay() }
-        // Poll state while the guide is on screen. AX is covered by the
-        // drag-overlay's own 0.5s poll, but microphone state can change
-        // from System Settings *without* Type4Me becoming active (user
-        // never switches back), so the normal `didBecomeActive` refresh
-        // misses it. 1s poll is lightweight and makes the cards light up
-        // as soon as the user toggles the switch, without requiring a
-        // relaunch.
+        .padding(.horizontal, 28)
+        .padding(.vertical, 24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(screenflareBackground)
+        .preferredColorScheme(.dark)
+        .onAppear {
+            model.refresh()
+        }
+        .onDisappear {
+            model.dismissDragOverlay()
+        }
+        // Periodically refresh permissions to catch external System Settings toggles
         .onReceive(
             Timer.publish(every: 1, on: .main, in: .common).autoconnect()
         ) { _ in
@@ -57,62 +68,268 @@ struct PermissionGuideView: View {
         }
     }
 
-    // MARK: - Content
+    // MARK: - Header Section
 
-    private var content: some View {
-        VStack(spacing: 16) {
-            if !embedded {
-                headerArtwork
-            }
+    private var headerSection: some View {
+        VStack(spacing: 8) {
+            Text(L("几项系统权限", "A few permissions"))
+                .font(.system(size: 20, weight: .bold))
+                .foregroundStyle(Color.white)
 
             Text(L(
-                "请授权以下权限,以允许 Type4Me 使用你的麦克风并监听快捷键和完成输入",
-                "Please grant the permissions below so Type4Me can use your microphone and listen for hotkeys to type for you."
+                "Type4Me 仅在听写时使用麦克风与快捷键，音频处理取决于你配置的语音识别服务。",
+                "Type4Me only accesses your microphone while dictating; audio handling depends on your selected speech recognition provider."
             ))
-            .font(.system(size: 13, weight: .medium))
-            .foregroundStyle(textPrimary)
+            .font(.system(size: 12))
+            .foregroundStyle(Color.white.opacity(0.65))
             .multilineTextAlignment(.center)
-            .frame(maxWidth: 440)
-
-            VStack(spacing: 10) {
-                microphoneCard
-                accessibilityCard
-            }
-            .frame(maxWidth: 440)
-
-            if !embedded {
-                launchButton
-            }
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: 460)
         }
-        .padding(.horizontal, 32)
-        .padding(.vertical, embedded ? 16 : 28)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.top, embedded ? 0 : 6)
     }
 
-    // MARK: - Launch Button
+    // MARK: - Grouped Permission Container
 
-    @ViewBuilder
-    private var launchButton: some View {
-        Button(action: dismissGuide) {
-            Text(L("启动 Type4Me", "Launch Type4Me"))
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 10)
-                .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(allGranted ? TF.settingsAccentAmber : TF.settingsTextTertiary.opacity(0.4))
-                )
+    private var permissionGroupContainer: some View {
+        VStack(spacing: 0) {
+            // 1. Microphone Row
+            microphoneRow
+
+            dividerLine
+
+            // 2. Accessibility Row
+            accessibilityRow
+
+            // 3. Apple Speech Recognition (only when Apple Speech is selected)
+            if model.isAppleASRSelected {
+                dividerLine
+                speechRecognitionRow
+            }
         }
-        .buttonStyle(.plain)
-        .disabled(!allGranted)
-        .frame(maxWidth: 440)
+        .background(Color.white.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+        )
+        .frame(maxWidth: 480)
     }
 
-    /// Close the guide window, surface the Settings window as the user's
-    /// next destination (so "launch" produces a visible window instead of
-    /// silently parking the app in the menu bar), and bring Type4Me to the
-    /// front.
+    // MARK: - Permission Rows
+
+    private var microphoneRow: some View {
+        permissionRow(
+            icon: "mic.fill",
+            iconColor: Color(red: 1.0, green: 0.35, blue: 0.35),
+            title: L("麦克风", "Microphone"),
+            isRequired: true,
+            description: L("录制你的语音以进行文字识别。", "Records your voice for speech-to-text."),
+            isGranted: model.micGranted,
+            action: { model.requestMicrophone() }
+        )
+    }
+
+    private var accessibilityRow: some View {
+        permissionRow(
+            icon: "accessibility",
+            iconColor: Color(red: 0.35, green: 0.65, blue: 1.0),
+            title: L("辅助功能", "Accessibility"),
+            isRequired: true,
+            description: L("监听全局快捷键，并将文字直接输入到目标 App。", "Listens for hotkeys and types text into your active app."),
+            statusHint: (model.accessibilityGranted && model.needsRestart)
+                ? L("已开启？macOS 可能需要在重启应用后生效。", "Switched it on? macOS applies this on the next launch.")
+                : nil,
+            isGranted: model.accessibilityGranted,
+            action: {
+                model.beginAccessibilityFlow {
+                    if embedded {
+                        if let onRaiseHostWindow {
+                            onRaiseHostWindow()
+                        } else {
+                            AppDelegate.presentSetupWizard()
+                        }
+                    } else {
+                        AppDelegate.openPermissionGuideAction?()
+                    }
+                }
+            }
+        )
+    }
+
+    private var speechRecognitionRow: some View {
+        permissionRow(
+            icon: "waveform",
+            iconColor: Color(red: 0.3, green: 0.8, blue: 0.6),
+            title: L("Apple 语音识别", "Apple Speech Recognition"),
+            isRequired: false,
+            description: L("使用系统内置语音引擎（使用云端或本地模型可跳过）。", "Transcribes via Apple Speech (can be skipped if using other ASR)."),
+            isGranted: model.speechGranted,
+            action: { model.requestSpeechRecognition() }
+        )
+    }
+
+    // MARK: - Generic Row Builder
+
+    private func permissionRow(
+        icon: String,
+        iconColor: Color,
+        title: String,
+        isRequired: Bool,
+        description: String,
+        statusHint: String? = nil,
+        isGranted: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        HStack(alignment: .top, spacing: 14) {
+            // Icon square
+            ZStack {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(iconColor.opacity(0.18))
+                    .frame(width: 34, height: 34)
+
+                Image(systemName: icon)
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(iconColor)
+            }
+
+            // Texts
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(title)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.white)
+
+                    if isRequired {
+                        Text(L("必需", "Required"))
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(Color(red: 1.0, green: 0.45, blue: 0.45))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color(red: 1.0, green: 0.3, blue: 0.3).opacity(0.18))
+                            .clipShape(Capsule())
+                    } else {
+                        Text(L("可选", "Optional"))
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(Color.white.opacity(0.6))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.white.opacity(0.12))
+                            .clipShape(Capsule())
+                    }
+                }
+
+                Text(description)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.white.opacity(0.6))
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if let hint = statusHint {
+                    Text(hint)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color(red: 1.0, green: 0.8, blue: 0.35))
+                        .padding(.top, 2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            Spacer(minLength: 8)
+
+            // Status or Action Button
+            if isGranted {
+                HStack(spacing: 5) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 13))
+                        .foregroundStyle(TF.settingsAccentGreen)
+                    Text(L("已允许", "Allowed"))
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(TF.settingsAccentGreen)
+                }
+                .padding(.vertical, 5)
+            } else {
+                Button(action: action) {
+                    Text(L("允许", "Allow"))
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 5)
+                        .background(
+                            Capsule()
+                                .fill(Color(red: 0.22, green: 0.52, blue: 0.98))
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(14)
+    }
+
+    // MARK: - Bottom Actions Bar
+
+    private var bottomBar: some View {
+        HStack {
+            if embedded {
+                // Step Indicator Dots
+                HStack(spacing: 6) {
+                    Circle().fill(Color.white.opacity(0.25)).frame(width: 6, height: 6)
+                    Circle().fill(TF.amber).frame(width: 6, height: 6)
+                }
+            }
+
+            Spacer()
+
+            if model.needsRestart {
+                Button(action: handleRelaunch) {
+                    Text(L("重启 Type4Me", "Relaunch Type4Me"))
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.white)
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 8)
+                        .background(
+                            Capsule()
+                                .fill(Color(red: 0.22, green: 0.52, blue: 0.98))
+                        )
+                }
+                .buttonStyle(.plain)
+            } else {
+                Button(action: handlePrimaryAction) {
+                    Text(embedded ? L("进入应用", "Launch Type4Me") : L("完成", "Done"))
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.white)
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 8)
+                        .background(
+                            Capsule()
+                                .fill(model.requiredPermissionsGranted
+                                      ? TF.settingsAccentAmber
+                                      : Color.white.opacity(0.18))
+                        )
+                }
+                .buttonStyle(.plain)
+                .disabled(!model.requiredPermissionsGranted)
+            }
+        }
+        .frame(maxWidth: 480)
+    }
+
+    // MARK: - Actions
+
+    private func handlePrimaryAction() {
+        if let onFinish {
+            onFinish()
+        } else {
+            dismissGuide()
+        }
+    }
+
+    private func handleRelaunch() {
+        model.relaunchApp(persistSetup: {
+            if embedded && model.requiredPermissionsGranted {
+                onFinish?()
+            }
+        })
+    }
+
     private func dismissGuide() {
         model.dismissDragOverlay()
         dismissWindow(id: "permission-guide")
@@ -120,109 +337,33 @@ struct PermissionGuideView: View {
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    // MARK: - Header
-
-    private var headerArtwork: some View {
-        Image(nsImage: NSApp.applicationIconImage ?? NSImage())
-            .resizable()
-            .interpolation(.high)
-            .frame(width: 80, height: 80)
-            .shadow(color: .black.opacity(0.12), radius: 10, x: 0, y: 4)
+    private var dividerLine: some View {
+        Rectangle()
+            .fill(Color.white.opacity(0.08))
+            .frame(height: 1)
+            .padding(.horizontal, 14)
     }
 
-    // MARK: - Cards
+    // MARK: - Screenflare Style Background
 
-    private var microphoneCard: some View {
-        permissionBlock(
-            icon: "mic.fill",
-            name: L("麦克风", "Microphone"),
-            subtitle: L("录制你的语音", "Captures your voice"),
-            granted: model.micGranted,
-            action: { model.requestMicrophone() }
-        )
-    }
-
-    private var accessibilityCard: some View {
-        permissionBlock(
-            icon: "accessibility",
-            name: L("辅助功能", "Accessibility"),
-            subtitle: L("监听全局快捷键并把文字打到其它 App",
-                        "Global hotkeys + inject text into other apps"),
-            granted: model.accessibilityGranted,
-            action: { model.beginAccessibilityFlow() }
-        )
-    }
-
-    // MARK: - Permission Block (aligned with SettingsTab permissionBlock)
-
-    private func permissionBlock(
-        icon: String,
-        name: String,
-        subtitle: String,
-        granted: Bool,
-        action: @escaping () -> Void
-    ) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.system(size: 18))
-                .foregroundStyle(.white)
-                .frame(width: 36, height: 36)
-                .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(granted ? TF.settingsAccentGreen : TF.settingsTextTertiary)
+    @ViewBuilder
+    private var screenflareBackground: some View {
+        if embedded {
+            Color.clear
+        } else {
+            ZStack {
+                Color(red: 0.11, green: 0.12, blue: 0.14)
+                RadialGradient(
+                    gradient: Gradient(colors: [
+                        Color(red: 0.2, green: 0.22, blue: 0.26).opacity(0.6),
+                        Color.clear
+                    ]),
+                    center: .top,
+                    startRadius: 20,
+                    endRadius: 360
                 )
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(name)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(textPrimary)
-                Text(subtitle)
-                    .font(.system(size: 11))
-                    .foregroundStyle(textTertiary)
-                    .fixedSize(horizontal: false, vertical: true)
             }
-
-            Spacer(minLength: 8)
-
-            if granted {
-                HStack(spacing: 4) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 12))
-                        .foregroundStyle(TF.settingsAccentGreen)
-                    Text(L("已授权", "Authorized"))
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(TF.settingsAccentGreen)
-                }
-            } else {
-                Button(action: action) {
-                    Text(L("授权", "Grant"))
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 5)
-                        .background(
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(TF.settingsAccentAmber)
-                        )
-                }
-                .buttonStyle(.plain)
-            }
+            .ignoresSafeArea()
         }
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 8).fill(cardBackground)
-        )
-    }
-
-    // MARK: - Adaptive Colors
-
-    /// In embedded mode we defer to the system-managed primary/secondary so
-    /// the wizard's current color scheme is respected. In the standalone
-    /// guide window we pin to the Settings cream palette.
-    private var textPrimary: Color { embedded ? .primary : TF.settingsText }
-    private var textSecondary: Color { embedded ? .secondary : TF.settingsTextSecondary }
-    private var textTertiary: Color { embedded ? .secondary : TF.settingsTextTertiary }
-    private var cardBackground: Color {
-        embedded ? Color.secondary.opacity(0.08) : TF.settingsCardAlt
     }
 }

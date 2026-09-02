@@ -1,5 +1,6 @@
 import AppKit
 import AVFoundation
+import Speech
 import Observation
 
 /// Coordinates the state + side-effects of the unified permission guide
@@ -22,8 +23,31 @@ final class PermissionGuideModel {
     /// macOS accepts a fresh drop even when a conflicting entry exists.
     var accessibilityGranted: Bool = false
 
+    /// Speech recognition authorization (optional, used when Apple Speech ASR is selected).
+    var speechGranted: Bool = false
+
+    /// True if the currently selected ASR provider is Apple Speech.
+    var isAppleASRSelected: Bool = false
+
+    /// True when Accessibility is granted by TCC, but the kernel-level event tap
+    /// fails and requires an application relaunch to activate global hotkeys.
+    var needsRestart: Bool = false
+
     /// True while the drag overlay is visible.
     var isDragOverlayShown: Bool = false
+
+    /// Computed requirement: both Microphone and Accessibility must be granted.
+    var requiredPermissionsGranted: Bool {
+        micGranted && accessibilityGranted
+    }
+
+    // MARK: - Injected Probes & Callbacks
+
+    /// Real event-tap probe provided by AppDelegate/HotkeyManager.
+    var hotkeyProbe: (() -> Bool)?
+
+    /// Origin-aware host raise callback (distinguishes embedded wizard vs standalone guide window).
+    var onFlowCompleteOrRaise: (() -> Void)?
 
     // MARK: - Dependencies
 
@@ -31,9 +55,6 @@ final class PermissionGuideModel {
     private var appActiveObserver: NSObjectProtocol?
 
     // MARK: - Lifecycle
-
-    // Lifetime is pinned to AppDelegate, so we don't clean up the activation
-    // observer on deinit (which would need @MainActor hops under Swift 6).
 
     init() {
         refresh()
@@ -45,6 +66,22 @@ final class PermissionGuideModel {
     func refresh() {
         micGranted = PermissionManager.hasMicrophonePermission
         accessibilityGranted = PermissionManager.hasAccessibilityPermission
+        speechGranted = PermissionManager.hasSpeechRecognitionPermission
+        isAppleASRSelected = (KeychainService.selectedASRProvider == .apple)
+
+        if accessibilityGranted {
+            if isDragOverlayShown {
+                dismissDragOverlay()
+            }
+            if let probe = hotkeyProbe {
+                let tapOk = probe()
+                needsRestart = !tapOk
+            } else {
+                needsRestart = false
+            }
+        } else {
+            needsRestart = false
+        }
     }
 
     /// Request microphone access via the standard system prompt. If the user
@@ -71,15 +108,38 @@ final class PermissionGuideModel {
         }
     }
 
+    /// Request Speech Recognition access (for Apple Speech ASR).
+    func requestSpeechRecognition() {
+        let status = SFSpeechRecognizer.authorizationStatus()
+        switch status {
+        case .authorized:
+            speechGranted = true
+        case .notDetermined:
+            Task { @MainActor in
+                let granted = await PermissionManager.requestSpeechRecognitionPermission()
+                self.speechGranted = granted
+            }
+        case .denied, .restricted:
+            if let url = URL(
+                string: "x-apple.systempreferences:com.apple.preference.security?Privacy_SpeechRecognition"
+            ) {
+                NSWorkspace.shared.open(url)
+            }
+        @unknown default:
+            break
+        }
+    }
+
     /// Open System Settings to Accessibility and surface the drag overlay
     /// pinned under its window.
     ///
     /// When the overlay's poll detects `AXIsProcessTrusted()` flipping to
-    /// true (i.e. the drop landed and TCC granted the permission), we
-    /// dismiss the overlay, refresh state, and **bring the main guide
-    /// window back to the front** so the user lands on an obvious "next
-    /// step" surface instead of being stranded inside System Settings.
-    func beginAccessibilityFlow() {
+    /// true, we dismiss the overlay, refresh state, and bring the host
+    /// window back to the front.
+    func beginAccessibilityFlow(hostRaiseCallback: (() -> Void)? = nil) {
+        if let hostRaiseCallback {
+            self.onFlowCompleteOrRaise = hostRaiseCallback
+        }
         PermissionManager.openAccessibilitySettings()
         isDragOverlayShown = true
         dragOverlay.show(
@@ -91,10 +151,11 @@ final class PermissionGuideModel {
                 self.isDragOverlayShown = false
                 self.refresh()
                 NSApp.activate(ignoringOtherApps: true)
-                // Re-invoking the SwiftUI openWindow action for an already-
-                // open Window scene raises it to the front. If the user
-                // closed the guide window mid-flow, this reopens it.
-                AppDelegate.openPermissionGuideAction?()
+                if let raise = self.onFlowCompleteOrRaise {
+                    raise()
+                } else {
+                    AppDelegate.openPermissionGuideAction?()
+                }
             }
         }
     }
@@ -102,6 +163,17 @@ final class PermissionGuideModel {
     func dismissDragOverlay() {
         dragOverlay.dismiss()
         isDragOverlayShown = false
+    }
+
+    func relaunchApp(persistSetup: (() -> Void)? = nil) {
+        dismissDragOverlay()
+        persistSetup?()
+        let url = Bundle.main.bundleURL
+        let task = Process()
+        task.launchPath = "/usr/bin/open"
+        task.arguments = ["-n", url.path]
+        try? task.run()
+        NSApp.terminate(nil)
     }
 
     // MARK: - Helpers

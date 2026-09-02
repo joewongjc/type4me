@@ -1892,4 +1892,5 @@ extension Notification.Name {
     static let navigateToHistory = Notification.Name("Type4MeNavigateToHistory")
     static let navigateToVocabulary = Notification.Name("Type4MeNavigateToVocabulary")
     static let selectMode = Notification.Name("Type4MeSelectMode")
+    static let credentialsDidChange = Notification.Name("tf_credentialsDidChange")
 }

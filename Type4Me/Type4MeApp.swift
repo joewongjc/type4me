@@ -430,6 +430,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
+        permissionGuideModel.hotkeyProbe = { [weak self] in
+            self?.hotkeyManager.start() == true
+        }
+
+        hotkeyManager.onAccessibilityRevoked = { [weak self] in
+            MainActor.assumeIsolated {
+                self?.handleAccessibilityRevoked()
+            }
+        }
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.startHotkeyWithRetry()
@@ -446,13 +455,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // `application(open:)` sets `suppressSetupWizardForHeadlessLaunch` so the
         // wizard doesn't steal focus over the headless recording.
         if needsSetup {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
                 MainActor.assumeIsolated {
                     if self?.suppressSetupWizardForHeadlessLaunch == true {
                         DebugFileLogger.log("setup wizard suppressed: headless URL launch")
                         return
                     }
-                    _ = NSApp.sendAction(Selector(("showSetupWindow:")), to: nil, from: nil)
+                    self?.presentSetupWizard()
                 }
             }
         }
@@ -1354,13 +1363,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var retryTimer: Timer?
     private var hotkeyRetryCount = 0
 
+    private func handleAccessibilityRevoked() {
+        retryTimer?.invalidate()
+        retryTimer = nil
+        hotkeyRetryCount = 0
+        hotkeyManager.stop()
+
+        DebugFileLogger.log("hotkey accessibility revoked; tap torn down")
+
+        let showWizard: Bool = {
+            #if HAS_CLOUD_SUBSCRIPTION
+            return !appState.hasCompletedSetup || appState.appEdition == nil
+            #else
+            return !appState.hasCompletedSetup
+            #endif
+        }()
+        if !showWizard {
+            presentPermissionGuide()
+        }
+
+        retryTimer = Timer.scheduledTimer(
+            timeInterval: 2.0,
+            target: self,
+            selector: #selector(handleHotkeyRetry(_:)),
+            userInfo: nil,
+            repeats: true
+        )
+    }
+
     private func startHotkeyWithRetry() {
+        retryTimer?.invalidate()
+        retryTimer = nil
+
         let success = hotkeyManager.start()
         NSLog("[Type4Me] Hotkey setup: %@", success ? "OK" : "FAILED (need Accessibility permission)")
 
         if success {
-            retryTimer?.invalidate()
-            retryTimer = nil
             hotkeyRetryCount = 0
             return
         }
@@ -1380,7 +1418,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         hotkeyRetryCount = 0
-        retryTimer?.invalidate()
         retryTimer = Timer.scheduledTimer(
             timeInterval: 2.0,
             target: self,
@@ -1392,23 +1429,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc
     private func handleHotkeyRetry(_ timer: Timer) {
-        if PermissionManager.hasAccessibilityPermission {
-            let ok = hotkeyManager.start()
-            hotkeyRetryCount += 1
-            NSLog("[Type4Me] Hotkey retry #%d: %@", hotkeyRetryCount, ok ? "OK" : "still failing")
-            if ok {
-                timer.invalidate()
-                retryTimer = nil
-                hotkeyRetryCount = 0
-            } else if hotkeyRetryCount >= 5 {
-                // Permission granted but event tap still fails (macOS caches denial at kernel level).
-                // Suggest restart.
-                timer.invalidate()
-                retryTimer = nil
-                hotkeyRetryCount = 0
-                NSLog("[Type4Me] Accessibility granted but hotkey tap failed after retries. Suggesting restart.")
-                showRestartAlert()
-            }
+        guard PermissionManager.hasAccessibilityPermission else {
+            return
+        }
+        let ok = hotkeyManager.start()
+        hotkeyRetryCount += 1
+        NSLog("[Type4Me] Hotkey retry #%d: %@", hotkeyRetryCount, ok ? "OK" : "still failing")
+        if ok {
+            timer.invalidate()
+            retryTimer = nil
+            hotkeyRetryCount = 0
+        } else if hotkeyRetryCount >= 5 {
+            // Permission granted but event tap still fails (macOS caches denial at kernel level).
+            // Suggest restart.
+            timer.invalidate()
+            retryTimer = nil
+            hotkeyRetryCount = 0
+            NSLog("[Type4Me] Accessibility granted but hotkey tap failed after retries. Suggesting restart.")
+            showRestartAlert()
         }
     }
 
@@ -1530,6 +1568,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Stored by MenuBarContent so AppDelegate can open the setup wizard window.
+    static var openSetupAction: (() -> Void)?
+
     /// Stored by MenuBarContent so AppDelegate can open the settings window.
     static var openSettingsAction: (() -> Void)?
 
@@ -1539,6 +1580,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// before the first MenuBarExtra render), calls are retried on the next
     /// runloop.
     static var openPermissionGuideAction: (() -> Void)?
+
+    /// Static convenience to open the setup wizard.
+    static func presentSetupWizard() {
+        if let action = openSetupAction {
+            action()
+            NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+
+    /// Static convenience to open the settings window.
+    static func presentSettings() {
+        if let action = openSettingsAction {
+            action()
+            NSApp.activate(ignoringOtherApps: true)
+        } else {
+            _ = NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+            NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+
+    /// Static convenience to open the permission guide window.
+    static func presentPermissionGuide() {
+        if let action = openPermissionGuideAction {
+            action()
+            NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+
+    /// Present the setup wizard window, activating the app and retrying
+    /// until the SwiftUI scene registers its open action.
+    func presentSetupWizard(remainingAttempts: Int = 25) {
+        if let action = Self.openSetupAction {
+            action()
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+        guard remainingAttempts > 0 else {
+            NSLog("[Type4Me] Failed to present setup wizard: open action not registered after retries")
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+            self?.presentSetupWizard(remainingAttempts: remainingAttempts - 1)
+        }
+    }
 
     /// Present the permission guide window, activating the app and retrying
     /// until the SwiftUI scene registers its open action.
@@ -1552,7 +1637,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.presentPermissionGuide()
         }
     }
-
     /// Present the settings window from anywhere (URL command, Dock reopen,
     /// etc.). Uses the standard SwiftUI settings-open selector so it works
     /// even before the MenuBarExtra scene has registered `openSettingsAction`,
@@ -1615,6 +1699,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     #endif
 
     func applicationWillTerminate(_ notification: Notification) {
+        hotkeyManager.stop()
         inputDeviceChangeObservers.forEach(NotificationCenter.default.removeObserver)
         inputDeviceChangeObservers.removeAll()
         if let preciseTargetActivationObserver {

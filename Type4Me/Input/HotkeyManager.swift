@@ -324,11 +324,9 @@ final class HotkeyManager: NSObject {
 
     // MARK: - Configuration
 
-    /// Global keyboard shortcuts must be observed before app-level consumers such as
-    /// Feishu/Lark can consume a bare Fn event. Always prefer the HID tap and retain the
-    /// session tap as a compatibility fallback when HID access is unavailable.
+    /// Session-level tap ensures global shortcuts work reliably without intercepting
+    /// hardware IOHID streams, preventing kernel-level input freezes upon runtime permission changes.
     internal static let tapLocationPriority: [CGEventTapLocation] = [
-        .cghidEventTap,
         .cgSessionEventTap,
     ]
 
@@ -417,6 +415,62 @@ final class HotkeyManager: NSObject {
     /// false if the app is not actually in an active session (ESC should pass through).
     var onESCAbort: (() -> Bool)?
 
+    internal enum EventTapRecoveryAction: Equatable {
+        case reenable
+        case revoke
+        case passThrough
+    }
+
+    private enum EventTapLifecycleState: Equatable {
+        case stopped
+        case starting
+        case running
+        case stopping
+        case revoked
+    }
+
+    private var eventTapLifecycleState: EventTapLifecycleState = .stopped
+    private var eventTapRunLoop: CFRunLoop?
+    private var hasEmittedAccessibilityRevoked = false
+    var onAccessibilityRevoked: (() -> Void)?
+
+    internal var eventTapLifecycleStateDescription: String {
+        switch eventTapLifecycleState {
+        case .stopped: return "stopped"
+        case .starting: return "starting"
+        case .running: return "running"
+        case .stopping: return "stopping"
+        case .revoked: return "revoked"
+        }
+    }
+
+    internal static func recoveryAction(
+        for type: CGEventType,
+        isAccessibilityTrusted: Bool
+    ) -> EventTapRecoveryAction {
+        if !isAccessibilityTrusted {
+            if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+                return .revoke
+            }
+        } else {
+            if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+                return .reenable
+            }
+        }
+        return .passThrough
+    }
+    internal func simulateRevocationForTesting() {
+        if eventTapLifecycleState != .running && eventTapLifecycleState != .revoked {
+            eventTapLifecycleState = .running
+        }
+        tearDownEventTap(finalState: .revoked)
+    }
+
+    internal func resetRevocationGenerationForTesting() {
+        hasEmittedAccessibilityRevoked = false
+        eventTapLifecycleState = .running
+    }
+
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var healthCheckTimer: Timer?
@@ -429,7 +483,6 @@ final class HotkeyManager: NSObject {
     /// Tokens for MPRemoteCommandCenter handlers (prevents Apple Music from auto-launching).
     private var mediaCommandTokens: [(command: MPRemoteCommand, token: Any)] = []
     private var isMediaSessionActive = false
-
     // MARK: - Registration
 
     func registerBindings(_ newBindings: [ModeBinding]) {
@@ -450,6 +503,21 @@ final class HotkeyManager: NSObject {
 
     @discardableResult
     func start() -> Bool {
+        if eventTapLifecycleState == .running,
+           let tap = eventTap,
+           CFMachPortIsValid(tap),
+           CGEvent.tapIsEnabled(tap: tap) {
+            return true
+        }
+
+        guard PermissionManager.hasAccessibilityPermission else {
+            tearDownEventTap(finalState: .revoked)
+            return false
+        }
+
+        tearDownEventTap(finalState: .stopped)
+        eventTapLifecycleState = .starting
+
         let hasMediaKeyBindings = bindings.contains { $0.isMediaKey }
 
         let eventMask: CGEventMask =
@@ -467,7 +535,6 @@ final class HotkeyManager: NSObject {
             | (1 << CGEventType.otherMouseDragged.rawValue)
             | (1 << CGEventType.scrollWheel.rawValue)
             | (hasMediaKeyBindings ? (1 << 14) : 0)  // kCGEventSystemDefined (NX_SYSDEFINED) for media/headphone keys
-
         let userInfo = Unmanaged.passUnretained(self).toOpaque()
 
         var tap: CFMachPort?
@@ -487,7 +554,7 @@ final class HotkeyManager: NSObject {
         }
 
         guard let tap = tap else {
-            TextInjectionEngine.globalInputMonitorDidStop()
+            tearDownEventTap(finalState: .stopped)
             return false
         }
 
@@ -499,18 +566,19 @@ final class HotkeyManager: NSObject {
         eventTap = tap
         lastEventTime = nil
 
+        let currentRunLoop = CFRunLoopGetCurrent()
+        eventTapRunLoop = currentRunLoop
         let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
         runLoopSource = source
-        CFRunLoopAddSource(CFRunLoopGetCurrent(), source, .commonModes)
+        CFRunLoopAddSource(currentRunLoop, source, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
         guard CGEvent.tapIsEnabled(tap: tap) else {
-            TextInjectionEngine.globalInputMonitorDidStop()
-            CGEvent.tapEnable(tap: tap, enable: false)
-            CFRunLoopRemoveSource(CFRunLoopGetCurrent(), source, .commonModes)
-            eventTap = nil
-            runLoopSource = nil
+            tearDownEventTap(finalState: .stopped)
             return false
         }
+
+        eventTapLifecycleState = .running
+        hasEmittedAccessibilityRevoked = false
         TextInjectionEngine.globalInputMonitorDidStart(eventTap: tap)
 
         startHealthCheck()
@@ -519,19 +587,36 @@ final class HotkeyManager: NSObject {
     }
 
     func stop() {
-        TextInjectionEngine.globalInputMonitorDidStop()
-        deactivateMediaKeySession()
+        tearDownEventTap(finalState: .stopped)
+    }
+
+    private func tearDownEventTap(finalState: EventTapLifecycleState) {
+        let previousState = eventTapLifecycleState
+        eventTapLifecycleState = .stopping
+
         healthCheckTimer?.invalidate()
         healthCheckTimer = nil
+
+        deactivateMediaKeySession()
+        TextInjectionEngine.globalInputMonitorDidStop()
+
         if let tap = eventTap {
             CGEvent.tapEnable(tap: tap, enable: false)
         }
         if let source = runLoopSource {
-            CFRunLoopRemoveSource(CFRunLoopGetCurrent(), source, .commonModes)
+            let runLoop = eventTapRunLoop ?? CFRunLoopGetCurrent()
+            CFRunLoopRemoveSource(runLoop, source, .commonModes)
+            CFRunLoopSourceInvalidate(source)
         }
+        if let tap = eventTap {
+            CFMachPortInvalidate(tap)
+        }
+
         eventTap = nil
         runLoopSource = nil
+        eventTapRunLoop = nil
         lastEventTime = nil
+
         holdState = [:]
         wasModifierDown = [:]
         clearActiveRecordingState()
@@ -541,16 +626,35 @@ final class HotkeyManager: NSObject {
         gestureState = .idle
         previousModifierFlags = []
         heldModifierKeyCodes.removeAll()
+
+        eventTapLifecycleState = finalState
+
+        if finalState == .revoked {
+            if previousState == .running && !hasEmittedAccessibilityRevoked {
+                hasEmittedAccessibilityRevoked = true
+                DispatchQueue.main.async { [weak self] in
+                    self?.onAccessibilityRevoked?()
+                }
+            }
+        }
     }
 
     // MARK: - Health check
 
-    /// Periodically verify the event tap is actually alive.
-    /// Detects the "silent disable" race where tapCreate succeeds but the tap is dead.
+    /// Periodically verify the event tap is actually alive and permission has not been lost.
     private func startHealthCheck() {
         healthCheckTimer?.invalidate()
-        healthCheckTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: true) { [weak self] _ in
-            guard let self, let tap = self.eventTap else { return }
+        let timer = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            guard self.eventTapLifecycleState == .running else { return }
+
+            guard PermissionManager.hasAccessibilityPermission else {
+                DebugFileLogger.log("hotkey watchdog detected accessibility permission loss")
+                self.tearDownEventTap(finalState: .revoked)
+                return
+            }
+
+            guard let tap = self.eventTap else { return }
 
             // Check 1: Is the tap port still valid? Only recreate the tap for real invalidation,
             // not for normal idle periods with no keyboard/mouse input.
@@ -573,10 +677,15 @@ final class HotkeyManager: NSObject {
                 }
             }
         }
+        RunLoop.current.add(timer, forMode: .common)
+        healthCheckTimer = timer
     }
-
     /// Tear down and recreate the event tap from scratch.
     private func reinstallTap() {
+        guard PermissionManager.hasAccessibilityPermission else {
+            tearDownEventTap(finalState: .revoked)
+            return
+        }
         stop()
         let ok = start()
         NSLog("[Type4Me] Tap reinstall: %@", ok ? "OK" : "FAILED")
@@ -588,10 +697,25 @@ final class HotkeyManager: NSObject {
         lastEventTime = Date()
         didDispatchBindingCallback = false
 
-        // Re-enable tap if system disabled it, and recover any stuck hold states.
-        // When macOS disables the tap (main thread blocked >1s), keyUp events are lost.
-        // We must check if held keys are still physically down; if not, fire onStop.
-        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+        // Immediate fail-open guard: if Accessibility permission was revoked at runtime,
+        // tear down the active tap immediately and pass the event untouched to the system.
+        guard PermissionManager.hasAccessibilityPermission else {
+            TextInjectionEngine.globalInputMonitorDidStop()
+            DebugFileLogger.log("hotkey event tap untrusted during event handling, tearing down immediately")
+            tearDownEventTap(finalState: .revoked)
+            return Unmanaged.passUnretained(event)
+        }
+        let recovery = Self.recoveryAction(
+            for: type,
+            isAccessibilityTrusted: PermissionManager.hasAccessibilityPermission
+        )
+        switch recovery {
+        case .revoke:
+            TextInjectionEngine.globalInputMonitorDidStop()
+            DebugFileLogger.log("hotkey event tap revoked on disabled event type=\(type.rawValue)")
+            tearDownEventTap(finalState: .revoked)
+            return Unmanaged.passUnretained(event)
+        case .reenable:
             TextInjectionEngine.globalInputMonitorDidStop()
             DebugFileLogger.log(
                 "hotkey event tap disabled type=\(type.rawValue) recording=\(activeRecordingBindingId != nil)"
@@ -600,13 +724,19 @@ final class HotkeyManager: NSObject {
             // Keep the monitor unavailable while a stuck hold is recovered so
             // that recovery-triggered stops cannot capture an opaque target.
             recoverStuckHolds()
-            if let tap = eventTap {
+            if let tap = eventTap, CFMachPortIsValid(tap) {
                 CGEvent.tapEnable(tap: tap, enable: true)
                 if CGEvent.tapIsEnabled(tap: tap) {
                     TextInjectionEngine.globalInputMonitorDidStart(eventTap: tap)
+                } else {
+                    reinstallTap()
                 }
+            } else {
+                reinstallTap()
             }
             return Unmanaged.passUnretained(event)
+        case .passThrough:
+            break
         }
 
         // Record the event before a matching stop hotkey invokes its callback.
