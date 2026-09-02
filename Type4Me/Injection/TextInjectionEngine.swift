@@ -745,20 +745,20 @@ final class TextInjectionEngine: @unchecked Sendable {
         case restoreOriginal
     }
 
-    private struct FocusedElementSnapshot {
-        let element: AXUIElement?
-        let processIdentifier: pid_t?
-        let bundleIdentifier: String?
-        let role: String?
-        let subrole: String?
-        let value: String?
-        let placeholder: String?
-        let accessibilityDescription: String?
-        let selectedRange: NSRange?
-        let isEditable: Bool
+    struct FocusedElementSnapshot {
+        var element: AXUIElement? = nil
+        var processIdentifier: pid_t? = nil
+        var bundleIdentifier: String? = nil
+        var role: String? = nil
+        var subrole: String? = nil
+        var value: String? = nil
+        var placeholder: String? = nil
+        var accessibilityDescription: String? = nil
+        var selectedRange: NSRange? = nil
+        var isEditable: Bool = false
         /// true when AX successfully found a focused UI element; false when
         /// no element was found (e.g. desktop, no focused window).
-        let hasFocusedElement: Bool
+        var hasFocusedElement: Bool = true
     }
 
     typealias ClipboardSnapshot = Type4Me.ClipboardSnapshot
@@ -1510,7 +1510,7 @@ final class TextInjectionEngine: @unchecked Sendable {
             // result remains in the clipboard. Never claim `.inserted` here.
             outcome = .pasteAttemptedClipboardRetained
         } else {
-            let detectedOutcome = inferInjectionOutcome(
+            let detectedOutcome = Self.inferInjectionOutcome(
                 before: before,
                 after: after,
                 pastedText: text
@@ -1869,7 +1869,60 @@ final class TextInjectionEngine: @unchecked Sendable {
         return NSRange(location: prefixLength, length: pastedLength)
     }
 
-    private func inferInjectionOutcome(
+    /// Standard macOS Accessibility roles representing static UI elements or
+    /// controls that do not accept text input when focused.
+    static let knownNonEditableRoles: Set<String> = [
+        "AXApplication",
+        "AXWindow",
+        "AXSheet",
+        "AXDialog",
+        "AXAlert",
+        "AXDrawer",
+        "AXPopover",
+        "AXGroup",
+        "AXSplitGroup",
+        "AXScrollArea",
+        "AXButton",
+        "AXPopUpButton",
+        "AXMenuButton",
+        "AXMenu",
+        "AXMenuItem",
+        "AXMenuBar",
+        "AXMenuBarItem",
+        "AXCheckBox",
+        "AXRadioButton",
+        "AXRadioGroup",
+        "AXTabGroup",
+        "AXSlider",
+        "AXColorWell",
+        "AXImage",
+        "AXStaticText",
+        "AXProgressIndicator",
+        "AXScrollBar",
+        "AXToolbar",
+        "AXTable",
+        "AXOutline",
+        "AXRow",
+        "AXColumn",
+        "AXCell",
+        "AXList",
+        "AXHeading",
+        "AXLink",
+        "AXDisclosureTriangle",
+        "AXIncrementor",
+        "AXLevelIndicator",
+        "AXPage",
+        "AXRuler",
+        "AXRulerMarker",
+        "AXSplitter",
+        "AXValueIndicator",
+    ]
+    static func isKnownNonEditableRole(_ role: String?) -> Bool {
+        guard let role else { return false }
+        return knownNonEditableRoles.contains(role)
+    }
+
+    static func inferInjectionOutcome(
         before: FocusedElementSnapshot?,
         after: FocusedElementSnapshot?,
         pastedText: String
@@ -1903,8 +1956,15 @@ final class TextInjectionEngine: @unchecked Sendable {
             return .inserted
         }
 
-        // Not editable and value didn't change → paste had nowhere to go
-        return .copiedToClipboard
+        // Standard non-editable controls (buttons, images, static labels, etc.)
+        // where pasting has nowhere to go.
+        if isKnownNonEditableRole(before.role) || isKnownNonEditableRole(after.role) {
+            return .copiedToClipboard
+        }
+
+        // Opaque, terminal, or custom rendering surfaces (e.g. AXUnknown, nil,
+        // or custom canvas) that possess focus in an active application: assume Cmd+V worked.
+        return .inserted
     }
 
 
