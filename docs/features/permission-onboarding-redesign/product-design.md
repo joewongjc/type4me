@@ -1,7 +1,7 @@
 # Type4Me 权限引导与首启流程产品设计
 
 > 文档类型：产品设计  
-> 文档状态：设计完成，待审阅  
+> 文档状态：设计完成，已通过 Review 修正  
 > 设计日期：2026-09-02  
 > 对应分支：`feat/permission-onboarding-redesign`  
 > 对应开发设计：[development-design.md](development-design.md)  
@@ -68,7 +68,7 @@ sequenceDiagram
     alt 需重启生效
         Perm->>User: 提示「已开启？部分系统需重启生效」，按钮变为「重启 Type4Me」
         User->>Perm: 点击「重启 Type4Me」
-        Perm->>App: 自动调用 open -n 重启应用
+        Perm->>App: 写入 hasCompletedSetup 并自动调用 open -n 重启应用
     else 立即生效
         Perm->>User: 按钮高亮「进入应用」
     end
@@ -88,7 +88,7 @@ sequenceDiagram
     User->>Home: 点击提醒卡片
     Home->>Models: 切换到模型设置页并定位到对应类别
     User->>Models: 填入 API Key 并保存
-    Models->>Home: 通知配置变更
+    Models->>Home: 触发 credentialsDidChange 通知
     Home->>User: 提醒卡片平滑淡出消失
 ```
 
@@ -116,7 +116,7 @@ sequenceDiagram
   - 隐私说明：`Type4Me 需要以下权限以录制语音并自动打字。录音数据仅在听写期间使用，绝不会离开你的 Mac。` / `macOS asks before Type4Me can record your voice and type for you. Nothing leaves your Mac.`（12pt，二级文本色）。
 
 #### B. 统一权限卡片列表（Grouped Permission Container）
-三项权限置于同一个浅色半透明圆角容器中，行间用极细分割线分隔：
+权限置于同一个浅色半透明圆角容器中，行间用极细分割线分隔：
 
 1. **麦克风 (Microphone)**：
    - 图标：红/橙渐变圆角底 + 白色麦克风图标；
@@ -138,7 +138,8 @@ sequenceDiagram
      - 未授权：胶囊按钮 `允许` / `Allow`，点击自动打开系统设置并唤起底部拖拽浮层；
      - 已授权：绿色对勾图标 + `已允许` / `Allowed`。
 
-3. **Apple 语音识别 (Apple Speech Recognition)**：
+3. **Apple 语音识别 (Apple Speech Recognition，条件渲染)**：
+   - 仅当所选 ASR 引擎为 `Apple Speech`（`.apple`）时呈现；非 Apple Speech 引擎不展现该行，避免冗余权限索取。
    - 图标：青/绿渐变圆角底 + 白色语音识别图标；
    - 标题：`Apple 语音识别` / `Apple Speech Recognition`；
    - 徽标：`可选` / `Optional`（中性灰文字徽标）；
@@ -150,14 +151,14 @@ sequenceDiagram
 - 左下角：步骤指示圆点 `• •`。
 - 右下角主操作按钮：
   - 状态 1（必需权限未满）：`进入应用` 按钮置灰禁用；
-  - 状态 2（辅助功能已开启但需要重启）：高亮蓝色胶囊按钮 **「重启 Type4Me」/「Relaunch Type4Me」**；
+  - 状态 2（辅助功能已开启但需要重启）：高亮蓝色胶囊按钮 **「重启 Type4Me」/「Relaunch Type4Me」**（点击持久化首启完成并自动重启）；
   - 状态 3（必需权限就绪）：高亮琥珀金胶囊按钮 **「进入应用」/「Launch Type4Me」**。
 
 ---
 
 ### 4.3 应用首页：模型配置引导提醒卡片 (Floating Model Alert Cards)
 
-用户进入主应用窗口（`SettingsTab.general` 首页）后，如果尚未配置默认模型，在**右下角**以浮动卡片栈形式提示：
+用户进入主应用窗口（`SettingsTab.general` 首页）后，如果尚未配置默认模型，在**首页右下角**以浮动卡片栈形式提示（仅在 `selectedTab == .general` 首页生效，避免遮挡模型编辑页）：
 
 ```text
                                               ┌──────────────────────────────────────┐
@@ -182,7 +183,7 @@ sequenceDiagram
    - 副文案：`用于智能纠错、标点与改写` / `Used for smart punctuation and rewriting`；
    - 点击事件：触发导航至 `SettingsTab.models`，且自动切换子类别 `category = .llm`。
 3. **消除机制**：
-   - 响应 `KeychainService` 与配置变更通知，一旦对应 Provider 凭证完备（`hasConfiguredCredentials == true`），卡片带有 Apple Spring 弹簧动画平滑缩放淡出消除。
+   - 响应 `credentialsDidChange` 通知，一旦对应 Provider 凭证完备（`hasConfiguredCredentials == true`），卡片带有 Apple Spring 弹簧动画平滑缩放淡出消除。
 
 ---
 
