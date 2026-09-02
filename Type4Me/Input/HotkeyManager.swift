@@ -324,11 +324,9 @@ final class HotkeyManager: NSObject {
 
     // MARK: - Configuration
 
-    /// Global keyboard shortcuts must be observed before app-level consumers such as
-    /// Feishu/Lark can consume a bare Fn event. Always prefer the HID tap and retain the
-    /// session tap as a compatibility fallback when HID access is unavailable.
+    /// Session-level tap ensures global shortcuts work without intercepting hardware
+    /// IOHID streams, preventing kernel-level input freezes upon runtime permission changes.
     internal static let tapLocationPriority: [CGEventTapLocation] = [
-        .cghidEventTap,
         .cgSessionEventTap,
     ]
 
@@ -526,18 +524,9 @@ final class HotkeyManager: NSObject {
             (1 << CGEventType.keyDown.rawValue)
             | (1 << CGEventType.keyUp.rawValue)
             | (1 << CGEventType.flagsChanged.rawValue)
-            | (1 << CGEventType.leftMouseDown.rawValue)
-            | (1 << CGEventType.leftMouseUp.rawValue)
-            | (1 << CGEventType.rightMouseDown.rawValue)
-            | (1 << CGEventType.rightMouseUp.rawValue)
             | (1 << CGEventType.otherMouseDown.rawValue)
             | (1 << CGEventType.otherMouseUp.rawValue)
-            | (1 << CGEventType.leftMouseDragged.rawValue)
-            | (1 << CGEventType.rightMouseDragged.rawValue)
-            | (1 << CGEventType.otherMouseDragged.rawValue)
-            | (1 << CGEventType.scrollWheel.rawValue)
             | (hasMediaKeyBindings ? (1 << 14) : 0)  // kCGEventSystemDefined (NX_SYSDEFINED) for media/headphone keys
-
         let userInfo = Unmanaged.passUnretained(self).toOpaque()
 
         var tap: CFMachPort?
