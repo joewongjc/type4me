@@ -4,6 +4,7 @@ struct ModelSettingsTab: View, SettingsCardHelpers {
 
     var showsHeader = true
     let draftCoordinator: SettingsDraftCoordinator
+    @Environment(AppNavigationModel.self) private var navigationModel
 
     @State private var selectedCategory: ModelCategory = .asr
     @State private var selectedASRProvider: ASRProvider = KeychainService.selectedASRProvider
@@ -78,10 +79,20 @@ struct ModelSettingsTab: View, SettingsCardHelpers {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .onAppear {
+            if let pendingCategory = navigationModel.pendingModelCategory {
+                selectedCategory = pendingCategory
+                navigationModel.pendingModelCategory = nil
+            }
             defaultASRProvider = KeychainService.selectedASRProvider
             defaultLLMProvider = KeychainService.selectedLLMProvider
             selectedASRProvider = defaultASRProvider
             selectedLLMProvider = defaultLLMProvider
+        }
+        .onChange(of: navigationModel.pendingModelCategory) { _, newCategory in
+            if let newCategory {
+                selectedCategory = newCategory
+                navigationModel.pendingModelCategory = nil
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .asrProviderDidChange)) { note in
             if let provider = note.object as? ASRProvider {

@@ -89,6 +89,7 @@ enum SettingsTab: String, CaseIterable, Identifiable, Hashable {
 @Observable
 final class AppNavigationModel {
     var selectedTab: SettingsTab = .general
+    var pendingModelCategory: ModelCategory?
     var pendingAskAnythingSessionID: UUID?
     var pendingModeSelectionID: UUID?
 }

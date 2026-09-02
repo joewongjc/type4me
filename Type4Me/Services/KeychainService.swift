@@ -101,6 +101,7 @@ enum KeychainService {
             UserDefaults.standard.set(newValue.rawValue, forKey: selectedProviderKey)
             guard previous != newValue else { return }
             NotificationCenter.default.post(name: .asrProviderDidChange, object: newValue)
+            NotificationCenter.default.post(name: .credentialsDidChange, object: nil)
         }
     }
 
@@ -146,6 +147,7 @@ enum KeychainService {
         }
         try saveAll(dict)
         cachedCredentials = dict
+        NotificationCenter.default.post(name: .credentialsDidChange, object: nil)
     }
 
     static func loadASRCredentials(for provider: ASRProvider) -> [String: String]? {
@@ -206,7 +208,10 @@ enum KeychainService {
             return provider
         }
         set {
+            let previous = selectedLLMProvider
             UserDefaults.standard.set(newValue.rawValue, forKey: selectedLLMProviderKey)
+            guard previous != newValue else { return }
+            NotificationCenter.default.post(name: .credentialsDidChange, object: nil)
         }
     }
 
@@ -234,6 +239,7 @@ enum KeychainService {
         }
         try saveAll(dict)
         cachedCredentials = dict
+        NotificationCenter.default.post(name: .credentialsDidChange, object: nil)
     }
 
     static func loadLLMCredentials(for provider: LLMProvider) -> [String: String]? {
