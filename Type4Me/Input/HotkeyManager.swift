@@ -689,6 +689,14 @@ final class HotkeyManager: NSObject {
         lastEventTime = Date()
         didDispatchBindingCallback = false
 
+        // Immediate fail-open guard: if Accessibility permission was revoked at runtime,
+        // tear down the active tap immediately and pass the event untouched to the system.
+        guard PermissionManager.hasAccessibilityPermission else {
+            TextInjectionEngine.globalInputMonitorDidStop()
+            DebugFileLogger.log("hotkey event tap untrusted during event handling, tearing down immediately")
+            tearDownEventTap(finalState: .revoked)
+            return Unmanaged.passUnretained(event)
+        }
         let recovery = Self.recoveryAction(
             for: type,
             isAccessibilityTrusted: PermissionManager.hasAccessibilityPermission
