@@ -434,6 +434,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.hotkeyManager.start() == true
         }
 
+        hotkeyManager.onAccessibilityRevoked = { [weak self] in
+            MainActor.assumeIsolated {
+                self?.handleAccessibilityRevoked()
+            }
+        }
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.startHotkeyWithRetry()
@@ -1358,13 +1363,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var retryTimer: Timer?
     private var hotkeyRetryCount = 0
 
+    private func handleAccessibilityRevoked() {
+        retryTimer?.invalidate()
+        retryTimer = nil
+        hotkeyRetryCount = 0
+        hotkeyManager.stop()
+
+        DebugFileLogger.log("hotkey accessibility revoked; tap torn down")
+
+        let showWizard: Bool = {
+            #if HAS_CLOUD_SUBSCRIPTION
+            return !appState.hasCompletedSetup || appState.appEdition == nil
+            #else
+            return !appState.hasCompletedSetup
+            #endif
+        }()
+        if !showWizard {
+            presentPermissionGuide()
+        }
+
+        retryTimer = Timer.scheduledTimer(
+            timeInterval: 2.0,
+            target: self,
+            selector: #selector(handleHotkeyRetry(_:)),
+            userInfo: nil,
+            repeats: true
+        )
+    }
+
     private func startHotkeyWithRetry() {
+        retryTimer?.invalidate()
+        retryTimer = nil
+
         let success = hotkeyManager.start()
         NSLog("[Type4Me] Hotkey setup: %@", success ? "OK" : "FAILED (need Accessibility permission)")
 
         if success {
-            retryTimer?.invalidate()
-            retryTimer = nil
             hotkeyRetryCount = 0
             return
         }
@@ -1384,7 +1418,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         hotkeyRetryCount = 0
-        retryTimer?.invalidate()
         retryTimer = Timer.scheduledTimer(
             timeInterval: 2.0,
             target: self,
@@ -1396,23 +1429,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc
     private func handleHotkeyRetry(_ timer: Timer) {
-        if PermissionManager.hasAccessibilityPermission {
-            let ok = hotkeyManager.start()
-            hotkeyRetryCount += 1
-            NSLog("[Type4Me] Hotkey retry #%d: %@", hotkeyRetryCount, ok ? "OK" : "still failing")
-            if ok {
-                timer.invalidate()
-                retryTimer = nil
-                hotkeyRetryCount = 0
-            } else if hotkeyRetryCount >= 5 {
-                // Permission granted but event tap still fails (macOS caches denial at kernel level).
-                // Suggest restart.
-                timer.invalidate()
-                retryTimer = nil
-                hotkeyRetryCount = 0
-                NSLog("[Type4Me] Accessibility granted but hotkey tap failed after retries. Suggesting restart.")
-                showRestartAlert()
-            }
+        guard PermissionManager.hasAccessibilityPermission else {
+            return
+        }
+        let ok = hotkeyManager.start()
+        hotkeyRetryCount += 1
+        NSLog("[Type4Me] Hotkey retry #%d: %@", hotkeyRetryCount, ok ? "OK" : "still failing")
+        if ok {
+            timer.invalidate()
+            retryTimer = nil
+            hotkeyRetryCount = 0
+        } else if hotkeyRetryCount >= 5 {
+            // Permission granted but event tap still fails (macOS caches denial at kernel level).
+            // Suggest restart.
+            timer.invalidate()
+            retryTimer = nil
+            hotkeyRetryCount = 0
+            NSLog("[Type4Me] Accessibility granted but hotkey tap failed after retries. Suggesting restart.")
+            showRestartAlert()
         }
     }
 
@@ -1665,6 +1699,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     #endif
 
     func applicationWillTerminate(_ notification: Notification) {
+        hotkeyManager.stop()
         inputDeviceChangeObservers.forEach(NotificationCenter.default.removeObserver)
         inputDeviceChangeObservers.removeAll()
         if let preciseTargetActivationObserver {

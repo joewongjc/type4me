@@ -1141,4 +1141,121 @@ final class HotkeyStateMachineTests: XCTestCase {
         }
         XCTAssertFalse(completedOrFinalized, "Full discard abort must not emit completion or processing events")
     }
+
+    // MARK: - Event Tap Recovery Policy & Lifecycle Tests
+
+    func testEventTapRecoveryActionPolicy() {
+        XCTAssertEqual(
+            HotkeyManager.recoveryAction(for: .tapDisabledByUserInput, isAccessibilityTrusted: false),
+            .revoke
+        )
+        XCTAssertEqual(
+            HotkeyManager.recoveryAction(for: .tapDisabledByTimeout, isAccessibilityTrusted: false),
+            .revoke
+        )
+        XCTAssertEqual(
+            HotkeyManager.recoveryAction(for: .tapDisabledByUserInput, isAccessibilityTrusted: true),
+            .reenable
+        )
+        XCTAssertEqual(
+            HotkeyManager.recoveryAction(for: .tapDisabledByTimeout, isAccessibilityTrusted: true),
+            .reenable
+        )
+        XCTAssertEqual(
+            HotkeyManager.recoveryAction(for: .keyDown, isAccessibilityTrusted: false),
+            .passThrough
+        )
+        XCTAssertEqual(
+            HotkeyManager.recoveryAction(for: .keyDown, isAccessibilityTrusted: true),
+            .passThrough
+        )
+    }
+
+    func testRepeatedStopLeavesStoppedStateWithoutRevocationCallback() {
+        let manager = makeManager()
+        var revocationCount = 0
+        manager.onAccessibilityRevoked = {
+            revocationCount += 1
+        }
+
+        XCTAssertEqual(manager.eventTapLifecycleStateDescription, "stopped")
+        manager.stop()
+        XCTAssertEqual(manager.eventTapLifecycleStateDescription, "stopped")
+        manager.stop()
+        XCTAssertEqual(manager.eventTapLifecycleStateDescription, "stopped")
+
+        let exp = expectation(description: "No async revocation callback")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            exp.fulfill()
+        }
+        wait(for: [exp], timeout: 0.2)
+        XCTAssertEqual(revocationCount, 0)
+    }
+
+    func testSimulatedPermissionLossLifecycleAndOneShotRevocationCallback() {
+        let manager = makeManager()
+        var revocationCount = 0
+        manager.onAccessibilityRevoked = {
+            revocationCount += 1
+        }
+
+        // First transition to revoked
+        manager.simulateRevocationForTesting()
+        XCTAssertEqual(manager.eventTapLifecycleStateDescription, "revoked")
+
+        let exp1 = expectation(description: "First revocation callback dispatched")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            exp1.fulfill()
+        }
+        wait(for: [exp1], timeout: 0.2)
+        XCTAssertEqual(revocationCount, 1)
+
+        // Second simulated loss in the same generation must not emit again
+        manager.simulateRevocationForTesting()
+        XCTAssertEqual(manager.eventTapLifecycleStateDescription, "revoked")
+
+        let exp2 = expectation(description: "Duplicate revocation suppressed")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            exp2.fulfill()
+        }
+        wait(for: [exp2], timeout: 0.2)
+        XCTAssertEqual(revocationCount, 1)
+
+        // Reset generation after simulated successful start
+        manager.resetRevocationGenerationForTesting()
+        XCTAssertEqual(manager.eventTapLifecycleStateDescription, "running")
+
+        // Next revocation in new generation should emit once more
+        manager.simulateRevocationForTesting()
+        XCTAssertEqual(manager.eventTapLifecycleStateDescription, "revoked")
+
+        let exp3 = expectation(description: "New generation revocation callback dispatched")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            exp3.fulfill()
+        }
+        wait(for: [exp3], timeout: 0.2)
+        XCTAssertEqual(revocationCount, 2)
+    }
+
+    func testInitialStartWithoutPermissionDoesNotEmitRevocationCallback() {
+        let manager = makeManager()
+        var revocationCount = 0
+        manager.onAccessibilityRevoked = {
+            revocationCount += 1
+        }
+
+        // If permission is absent, calling start() should transition to revoked but NOT emit revocation callback
+        if !PermissionManager.hasAccessibilityPermission {
+            let started = manager.start()
+            XCTAssertFalse(started)
+            XCTAssertEqual(manager.eventTapLifecycleStateDescription, "revoked")
+
+            let exp = expectation(description: "No revocation callback on initial start")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                exp.fulfill()
+            }
+            wait(for: [exp], timeout: 0.2)
+            XCTAssertEqual(revocationCount, 0, "Initial denial must not trigger onAccessibilityRevoked")
+        }
+    }
 }
