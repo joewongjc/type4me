@@ -110,7 +110,11 @@ struct SetupWizardView: View {
         PermissionGuideView(
             model: permissionGuideModel,
             embedded: true,
-            onFinish: completeSetupAndLaunchHome
+            onFinish: completeSetupAndLaunchHome,
+            onRaiseHostWindow: {
+                NSApp.activate(ignoringOtherApps: true)
+                AppDelegate.presentSetupWizard()
+            }
         )
     }
 

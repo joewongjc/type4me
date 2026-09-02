@@ -131,22 +131,27 @@ enum KeychainService {
 
     static func saveASRCredentials(for provider: ASRProvider, values: [String: String]) throws {
         lock.lock()
-        defer { lock.unlock() }
-        var dict = _loadAllUnlocked()
-        let storageKey = asrStorageKey(for: provider)
-        let split = splitCredentials(values, using: ASRProviderRegistry.configType(for: provider)?.credentialFields ?? [])
-        if split.secure.isEmpty {
-            _ = deleteSecureValue(service: keychainGroupedService, account: storageKey)
-        } else {
-            try saveSecureValues(split.secure, account: storageKey)
+        do {
+            var dict = _loadAllUnlocked()
+            let storageKey = asrStorageKey(for: provider)
+            let split = splitCredentials(values, using: ASRProviderRegistry.configType(for: provider)?.credentialFields ?? [])
+            if split.secure.isEmpty {
+                _ = deleteSecureValue(service: keychainGroupedService, account: storageKey)
+            } else {
+                try saveSecureValues(split.secure, account: storageKey)
+            }
+            if split.plaintext.isEmpty {
+                dict.removeValue(forKey: storageKey)
+            } else {
+                dict[storageKey] = split.plaintext
+            }
+            try saveAll(dict)
+            cachedCredentials = dict
+            lock.unlock()
+        } catch {
+            lock.unlock()
+            throw error
         }
-        if split.plaintext.isEmpty {
-            dict.removeValue(forKey: storageKey)
-        } else {
-            dict[storageKey] = split.plaintext
-        }
-        try saveAll(dict)
-        cachedCredentials = dict
         NotificationCenter.default.post(name: .credentialsDidChange, object: nil)
     }
 
@@ -223,22 +228,27 @@ enum KeychainService {
 
     static func saveLLMCredentials(for provider: LLMProvider, values: [String: String]) throws {
         lock.lock()
-        defer { lock.unlock() }
-        var dict = _loadAllUnlocked()
-        let storageKey = llmStorageKey(for: provider)
-        let split = splitCredentials(values, using: LLMProviderRegistry.configType(for: provider)?.credentialFields ?? [])
-        if split.secure.isEmpty {
-            _ = deleteSecureValue(service: keychainGroupedService, account: storageKey)
-        } else {
-            try saveSecureValues(split.secure, account: storageKey)
+        do {
+            var dict = _loadAllUnlocked()
+            let storageKey = llmStorageKey(for: provider)
+            let split = splitCredentials(values, using: LLMProviderRegistry.configType(for: provider)?.credentialFields ?? [])
+            if split.secure.isEmpty {
+                _ = deleteSecureValue(service: keychainGroupedService, account: storageKey)
+            } else {
+                try saveSecureValues(split.secure, account: storageKey)
+            }
+            if split.plaintext.isEmpty {
+                dict.removeValue(forKey: storageKey)
+            } else {
+                dict[storageKey] = split.plaintext
+            }
+            try saveAll(dict)
+            cachedCredentials = dict
+            lock.unlock()
+        } catch {
+            lock.unlock()
+            throw error
         }
-        if split.plaintext.isEmpty {
-            dict.removeValue(forKey: storageKey)
-        } else {
-            dict[storageKey] = split.plaintext
-        }
-        try saveAll(dict)
-        cachedCredentials = dict
         NotificationCenter.default.post(name: .credentialsDidChange, object: nil)
     }
 

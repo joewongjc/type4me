@@ -15,15 +15,18 @@ struct PermissionGuideView: View {
 
     let embedded: Bool
     var onFinish: (() -> Void)?
+    var onRaiseHostWindow: (() -> Void)?
 
     init(
         model: PermissionGuideModel,
         embedded: Bool = false,
-        onFinish: (() -> Void)? = nil
+        onFinish: (() -> Void)? = nil,
+        onRaiseHostWindow: (() -> Void)? = nil
     ) {
         self.model = model
         self.embedded = embedded
         self.onFinish = onFinish
+        self.onRaiseHostWindow = onRaiseHostWindow
     }
 
     var body: some View {
@@ -74,8 +77,8 @@ struct PermissionGuideView: View {
                 .foregroundStyle(Color.white)
 
             Text(L(
-                "Type4Me 需要以下权限以录制语音并自动打字。录音数据仅在听写期间使用，绝不会离开你的 Mac。",
-                "macOS asks before Type4Me can record your voice and type for you. Nothing leaves your Mac."
+                "Type4Me 仅在听写时使用麦克风与快捷键，音频处理取决于你配置的语音识别服务。",
+                "Type4Me only accesses your microphone while dictating; audio handling depends on your selected speech recognition provider."
             ))
             .font(.system(size: 12))
             .foregroundStyle(Color.white.opacity(0.65))
@@ -141,7 +144,11 @@ struct PermissionGuideView: View {
             action: {
                 model.beginAccessibilityFlow {
                     if embedded {
-                        onFinish?()
+                        if let onRaiseHostWindow {
+                            onRaiseHostWindow()
+                        } else {
+                            AppDelegate.presentSetupWizard()
+                        }
                     } else {
                         AppDelegate.openPermissionGuideAction?()
                     }
@@ -317,7 +324,7 @@ struct PermissionGuideView: View {
 
     private func handleRelaunch() {
         model.relaunchApp(persistSetup: {
-            if embedded {
+            if embedded && model.requiredPermissionsGranted {
                 onFinish?()
             }
         })
