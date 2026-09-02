@@ -117,6 +117,7 @@ struct SetupWizardView: View {
     // MARK: - Completion Handler
 
     private func completeSetupAndLaunchHome() {
+        permissionGuideModel.dismissDragOverlay()
         #if HAS_CLOUD_SUBSCRIPTION
         if appState.appEdition == nil {
             AppEditionMigration.switchTo(.byoKey)

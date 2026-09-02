@@ -70,6 +70,9 @@ final class PermissionGuideModel {
         isAppleASRSelected = (KeychainService.selectedASRProvider == .apple)
 
         if accessibilityGranted {
+            if isDragOverlayShown {
+                dismissDragOverlay()
+            }
             if let probe = hotkeyProbe {
                 let tapOk = probe()
                 needsRestart = !tapOk
@@ -162,9 +165,8 @@ final class PermissionGuideModel {
         isDragOverlayShown = false
     }
 
-    /// Relaunches the application to refresh macOS kernel-level event tap permissions.
-    /// Executes optional persistence logic (such as marking setup complete) before spawning.
     func relaunchApp(persistSetup: (() -> Void)? = nil) {
+        dismissDragOverlay()
         persistSetup?()
         let url = Bundle.main.bundleURL
         let task = Process()

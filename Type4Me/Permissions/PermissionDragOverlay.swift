@@ -156,8 +156,8 @@ final class PermissionDragOverlayController {
     private var panel: PermissionDragPanel?
     private var followTimer: Timer?
     private var permissionPollTimer: Timer?
+    private var timeoutTimer: Timer?
     private var onGranted: (() -> Void)?
-
     /// Show the overlay pinned to the System Settings window.
     ///
     /// - Parameters:
@@ -207,7 +207,9 @@ final class PermissionDragOverlayController {
         // is actively dragging the System Settings window, macOS puts the
         // main runloop into `.eventTracking` mode, and a default-mode timer
         // would pause exactly when we need it most. `.common` fires in both.
-        let followInterval: TimeInterval = 1.0 / 60.0
+        // Follow System Settings window motion at a throttled ~10Hz (100ms) interval
+        // to avoid saturating WindowServer IPC with high-frequency CGWindowList queries.
+        let followInterval: TimeInterval = 0.1
         let follow = Timer(timeInterval: followInterval, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.reposition()
@@ -222,6 +224,13 @@ final class PermissionDragOverlayController {
                 self?.checkGranted()
             }
         }
+
+        // Auto-dismiss safety watchdog after 60 seconds of inactivity
+        timeoutTimer = Timer.scheduledTimer(withTimeInterval: 60.0, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.dismiss()
+            }
+        }
     }
 
     func dismiss() {
@@ -229,6 +238,8 @@ final class PermissionDragOverlayController {
         followTimer = nil
         permissionPollTimer?.invalidate()
         permissionPollTimer = nil
+        timeoutTimer?.invalidate()
+        timeoutTimer = nil
         panel?.orderOut(nil)
         panel = nil
         onGranted = nil
