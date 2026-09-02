@@ -48,6 +48,46 @@ final class KeychainNotificationTests: XCTestCase {
         XCTAssertTrue(synchronousReadSucceeded, "Synchronous read inside credentialsDidChange observer must complete without deadlocking")
     }
 
+    func testSaveASRCredentialsObserverSynchronousReadDoesNotDeadlock() throws {
+        guard KeychainService.isUsingTestStorage else {
+            throw XCTSkip("Keychain tests require isolated test storage")
+        }
+        var readCompleted = false
+        let observer = NotificationCenter.default.addObserver(
+            forName: .credentialsDidChange,
+            object: nil,
+            queue: nil
+        ) { _ in
+            _ = KeychainService.loadASRCredentials(for: .volcano)
+            _ = KeychainService.loadSelectedASRConfig()
+            readCompleted = true
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
+
+        try KeychainService.saveASRCredentials(for: .volcano, values: ["appKey": "test_app_key"])
+        XCTAssertTrue(readCompleted, "Synchronous read inside saveASRCredentials notification must not deadlock")
+    }
+
+    func testSaveLLMCredentialsObserverSynchronousReadDoesNotDeadlock() throws {
+        guard KeychainService.isUsingTestStorage else {
+            throw XCTSkip("Keychain tests require isolated test storage")
+        }
+        var readCompleted = false
+        let observer = NotificationCenter.default.addObserver(
+            forName: .credentialsDidChange,
+            object: nil,
+            queue: nil
+        ) { _ in
+            _ = KeychainService.loadLLMCredentials(for: .doubao)
+            _ = KeychainService.loadSelectedLLMConfig()
+            readCompleted = true
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
+
+        try KeychainService.saveLLMCredentials(for: .doubao, values: ["model": "doubao-pro"])
+        XCTAssertTrue(readCompleted, "Synchronous read inside saveLLMCredentials notification must not deadlock")
+    }
+
     func testAppNavigationModelPendingCategory() {
         let model = AppNavigationModel()
         XCTAssertNil(model.pendingModelCategory)

@@ -43,10 +43,11 @@ final class HotkeyStateMachineTests: XCTestCase {
         return manager
     }
 
-    func testKeyboardHotkeysPreferSessionTap() {
+    func testKeyboardHotkeysPreferHIDTapBeforeSessionFallback() {
         XCTAssertEqual(
             HotkeyManager.tapLocationPriority.map(\.rawValue),
             [
+                CGEventTapLocation.cghidEventTap.rawValue,
                 CGEventTapLocation.cgSessionEventTap.rawValue,
             ]
         )

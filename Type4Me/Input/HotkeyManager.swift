@@ -324,9 +324,11 @@ final class HotkeyManager: NSObject {
 
     // MARK: - Configuration
 
-    /// Session-level tap ensures global shortcuts work without intercepting hardware
-    /// IOHID streams, preventing kernel-level input freezes upon runtime permission changes.
+    /// Global keyboard shortcuts must be observed before app-level consumers such as
+    /// Feishu/Lark can consume a bare Fn event. Always prefer the HID tap and retain the
+    /// session tap as a compatibility fallback when HID access is unavailable.
     internal static let tapLocationPriority: [CGEventTapLocation] = [
+        .cghidEventTap,
         .cgSessionEventTap,
     ]
 
