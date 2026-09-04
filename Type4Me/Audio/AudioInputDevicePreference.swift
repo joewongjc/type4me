@@ -38,6 +38,12 @@ enum AudioInputDevicePreferenceMode: String {
     case priority
 }
 
+enum AudioInputCaptureResolution: Equatable {
+    case explicitDevice(uid: String)
+    case systemDefault
+    case unavailable
+}
+
 struct AudioInputDevicePreferenceEntry: Codable, Equatable, Identifiable {
     var id: String { uid }
     let uid: String
@@ -85,6 +91,34 @@ enum AudioInputDevicePreferenceStore {
     static func resolvedCachedDeviceUID() -> String? {
         let devices = cachedDevicesOrRefresh()
         return resolvedDevice(devices: devices)?.uid
+    }
+
+    /// Resolves the input policy used for capture. In priority mode, silently
+    /// falling back to a Bluetooth system default can switch the headset to its
+    /// low-bandwidth call profile and interrupt media playback, so that fallback
+    /// is deliberately rejected unless the user explicitly follows the system.
+    static func captureResolution(
+        devices: [AudioInputDevice],
+        systemDefault: AudioInputDevice?
+    ) -> AudioInputCaptureResolution {
+        guard mode() == .priority else { return .systemDefault }
+        if let device = resolvedDevice(devices: devices) {
+            return .explicitDevice(uid: device.uid)
+        }
+        guard systemDefault?.category != .bluetooth else { return .unavailable }
+        return .systemDefault
+    }
+
+    static func cachedCaptureResolution() -> AudioInputCaptureResolution {
+        var snapshot = AudioInputDeviceMonitor.shared.currentSnapshot()
+        if snapshot.devices.isEmpty {
+            AudioInputDeviceMonitor.shared.refreshSynchronously()
+            snapshot = AudioInputDeviceMonitor.shared.currentSnapshot()
+        }
+        return captureResolution(
+            devices: snapshot.devices,
+            systemDefault: snapshot.systemDefaultInput
+        )
     }
 
     static func mode() -> AudioInputDevicePreferenceMode {
@@ -158,13 +192,41 @@ enum AudioInputDevicePreferenceStore {
     }
 
     /// The device Type4Me will use for the next recording. In priority mode,
-    /// an unavailable preferred device falls back to the current system input.
+    /// an unavailable preferred device may fall back to a non-Bluetooth system
+    /// input, but never implicitly activates a Bluetooth headset microphone.
     static func activeInputDevice(
         devices: [AudioInputDevice],
         systemDefault: AudioInputDevice?
     ) -> AudioInputDevice? {
         guard mode() == .priority else { return systemDefault }
-        return resolvedDevice(devices: devices) ?? systemDefault
+        if let resolved = resolvedDevice(devices: devices) {
+            return resolved
+        }
+        guard systemDefault?.category != .bluetooth else { return nil }
+        return systemDefault
+    }
+
+    /// Keep-alive is only useful for an actively selected Bluetooth microphone.
+    /// Built-in, wired and USB microphones must not open the system-default
+    /// Bluetooth input as a side effect.
+    static func keepAliveInputDevice(
+        devices: [AudioInputDevice],
+        systemDefault: AudioInputDevice?
+    ) -> AudioInputDevice? {
+        let active = activeInputDevice(devices: devices, systemDefault: systemDefault)
+        return active?.category == .bluetooth ? active : nil
+    }
+
+    static func cachedKeepAliveInputDevice() -> AudioInputDevice? {
+        var snapshot = AudioInputDeviceMonitor.shared.currentSnapshot()
+        if snapshot.devices.isEmpty {
+            AudioInputDeviceMonitor.shared.refreshSynchronously()
+            snapshot = AudioInputDeviceMonitor.shared.currentSnapshot()
+        }
+        return keepAliveInputDevice(
+            devices: snapshot.devices,
+            systemDefault: snapshot.systemDefaultInput
+        )
     }
 
     static func activeCachedInputDevice() -> AudioInputDevice? {

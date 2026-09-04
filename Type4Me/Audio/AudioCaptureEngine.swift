@@ -4,6 +4,7 @@ enum AudioCaptureError: Error, LocalizedError {
     case converterCreationFailed
     case microphonePermissionDenied
     case noInputDevice
+    case preferredInputDeviceUnavailable
 
     var errorDescription: String? {
         switch self {
@@ -13,6 +14,11 @@ enum AudioCaptureError: Error, LocalizedError {
             return L("未授予麦克风权限", "Microphone permission not granted")
         case .noInputDevice:
             return L("找不到麦克风", "No microphone found")
+        case .preferredInputDeviceUnavailable:
+            return L(
+                "首选麦克风不可用。为避免中断蓝牙播放，本次录音已取消",
+                "Preferred microphone unavailable. Recording was cancelled to preserve Bluetooth playback"
+            )
         }
     }
 }
@@ -66,11 +72,11 @@ final class AudioCaptureEngine: NSObject, @unchecked Sendable, AVCaptureAudioDat
         availableAudioInputDevices().map { (uid: $0.uid, name: $0.name) }
     }
 
-    /// Resolve the capture device: use selectedDeviceUID if set and valid, otherwise system default.
+    /// Resolve the capture device. An explicit device that disappears must fail
+    /// instead of silently switching to the system-default Bluetooth microphone.
     private func resolveDevice() -> AVCaptureDevice? {
-        if let uid = selectedDeviceUID, !uid.isEmpty,
-           let device = AVCaptureDevice(uniqueID: uid) {
-            return device
+        if let uid = selectedDeviceUID, !uid.isEmpty {
+            return AVCaptureDevice(uniqueID: uid)
         }
         return AVCaptureDevice.default(for: .audio)
     }

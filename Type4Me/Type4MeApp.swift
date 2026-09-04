@@ -251,7 +251,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                             // BT wake-up preamble is baked into the sound buffer itself.
                             SoundFeedback.playStart()
                             // Lower volume after start sound finishes playing
-                            let targetVolumePercent = UserDefaults.standard.integer(forKey: "tf_volumeReduction")
+                            let targetVolumePercent = SystemVolumeManager.configuredReductionPercent()
                             if targetVolumePercent >= 0 {
                                 let delayMs = SoundFeedback.startSoundDurationMs()
                                 if delayMs > 0 {
@@ -532,6 +532,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 queue: .main
             ) { [weak self] _ in
                 MainActor.assumeIsolated {
+                    AudioKeepAliveManager.syncMicState()
                     self?.updateEffectiveInputDevice(notify: true)
                 }
             }

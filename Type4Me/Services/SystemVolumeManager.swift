@@ -9,6 +9,8 @@ import os
 /// the caller (Bluetooth audio devices can stall AudioObject*PropertyData for seconds).
 enum SystemVolumeManager {
 
+    static let volumeReductionKey = "tf_volumeReduction"
+
     private static let logger = Logger(subsystem: "com.type4me.volume", category: "SystemVolumeManager")
 
     /// Dedicated serial queue for CoreAudio property access.
@@ -19,6 +21,16 @@ enum SystemVolumeManager {
 
     /// UserDefaults key for crash recovery.
     private static let savedVolumeKey = "tf_savedSystemVolume"
+
+    /// `UserDefaults.integer(forKey:)` returns zero for a missing key, which
+    /// accidentally mutes fresh installs. Missing means the documented default:
+    /// do not lower playback volume.
+    static func configuredReductionPercent(defaults: UserDefaults = .standard) -> Int {
+        guard let value = defaults.object(forKey: volumeReductionKey) as? NSNumber else {
+            return -1
+        }
+        return value.intValue
+    }
 
     /// Lower system volume to a fraction of the current level.
     /// Saves the current volume so it can be restored later.
