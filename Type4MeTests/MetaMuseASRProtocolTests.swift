@@ -29,8 +29,11 @@ final class MetaMuseASRProtocolTests: XCTestCase {
         XCTAssertEqual(sanitized, ["Type4Me", "Swift 6", "macOS"])
 
         let longWord = String(repeating: "a", count: 150)
-        let capped = MetaMuseASRProtocol.sanitizedKeywords(from: [longWord], maxLength: 50)
-        XCTAssertEqual(capped.first?.count, 50)
+        let defaultCapped = MetaMuseASRProtocol.sanitizedKeywords(from: [longWord])
+        XCTAssertEqual(defaultCapped.first?.count, 20)
+
+        let customCapped = MetaMuseASRProtocol.sanitizedKeywords(from: [longWord], maxLength: 50)
+        XCTAssertEqual(customCapped.first?.count, 50)
 
         let manyWords = (0..<120).map { "term_\($0)" }
         let limited = MetaMuseASRProtocol.sanitizedKeywords(from: manyWords, maxCount: 100)

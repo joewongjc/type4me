@@ -82,7 +82,7 @@ enum MetaMuseASRProtocol {
 
     static let defaultEndpoint = "wss://api.meta.ai/v1/asr/realtime"
     static let maxKeywordsCount = 100
-    static let maxKeywordLength = 100
+    static let maxKeywordLength = 20
 
     static func buildWebSocketURL(override: String? = nil, sessionId: String? = nil) throws -> URL {
         let base = override ?? defaultEndpoint
