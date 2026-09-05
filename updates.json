@@ -1,6 +1,17 @@
 {
-  "latest": "2.5.0",
+  "latest": "2.6.0",
   "releases": [
+    {
+      "version": "2.6.0",
+      "date": "2026-09-04",
+      "notes": "- 首次设置简化为欢迎与权限两步，支持辅助功能拖拽授权引导\n- 首页提醒未配置的语音识别与文本处理服务，并可直接跳转设置\n- 新增 Meta Muse 实时语音识别，支持流式转写、热词与语言提示\n- 液态玻璃录音球随语音节奏响应，改善边缘清晰度并尊重减少动态效果设置\n- 修复语音输入意外静音和错误启用蓝牙麦克风的问题\n- 修复终端已粘贴成功却提示无法输入的误判\n- 优化大量片段替换词条的打开、滚动与编辑体验\n- 改进权限变更恢复、凭证通知稳定性和中英文即时切换",
+      "cloud_dmg_url": "https://github.com/joewongjc/type4me/releases/download/v2.6.0/Type4Me-v2.6.0-cloud.dmg",
+      "cloud_dmg_size": 12600342,
+      "cloud_dmg_sha256": "c8c9c0f578e197d7c67c291aa8f37557ebe7750d1f371cc7f4ed1f5af7b78a95",
+      "local_dmg_url": "https://github.com/joewongjc/type4me/releases/download/v2.6.0/Type4Me-v2.6.0-local-apple-silicon.dmg",
+      "local_dmg_size": 717359822,
+      "local_dmg_sha256": "3f9bcf4989d67ce9ae7d9345c478fd6d02c059314916679cf6faeff18c6507a1"
+    },
     {
       "version": "2.5.0",
       "date": "2026-09-01",
