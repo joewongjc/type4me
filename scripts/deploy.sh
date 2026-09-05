@@ -75,7 +75,7 @@ fi
 
 if [ "$LAUNCH_APP" = "1" ]; then
     echo "Launching via GUI session (no shell env vars)..."
-    launchctl asuser "$(id -u)" /usr/bin/open "$APP_PATH"
+    launchctl asuser "$(id -u)" /usr/bin/open "$APP_PATH" 2>/dev/null || /usr/bin/open "$APP_PATH"
 else
     echo "Skipping launch because LAUNCH_APP=$LAUNCH_APP"
 fi

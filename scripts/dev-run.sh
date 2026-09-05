@@ -119,5 +119,5 @@ echo "Designated requirement: $CURRENT_REQUIREMENT"
 bash "$SCRIPT_DIR/migrate-dev-keychain-access.sh" "$APP_PATH"
 
 echo "Launching $APP_NAME..."
-launchctl asuser "$(id -u)" /usr/bin/open "$APP_PATH"
+launchctl asuser "$(id -u)" /usr/bin/open "$APP_PATH" 2>/dev/null || /usr/bin/open "$APP_PATH"
 echo "Done."

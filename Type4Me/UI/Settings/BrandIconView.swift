@@ -87,6 +87,7 @@ struct BrandIconView: View {
             case .elevenlabs:  return "elevenlabs"
             case .gemini:      return "gemini"
             case .grok:        return "grok"
+            case .metaMuse:    return "meta"
             case .stepfun,
                  .stepfunBatch: return "stepfun"
             case .mimo:        return "mimo"

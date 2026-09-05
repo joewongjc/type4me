@@ -325,6 +325,8 @@ actor RecognitionSession {
             return "https://api.deepgram.com"
         case .gemini:
             return "https://generativelanguage.googleapis.com"
+        case .metaMuse:
+            return "https://api.meta.ai"
         default:
             return ""
         }
