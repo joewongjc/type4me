@@ -137,6 +137,11 @@ enum ASRProviderRegistry {
                 createClient: { SonioxASRClient() },
                 capabilities: .streaming()
             ),
+            .metaMuse: ProviderEntry(
+                configType: MetaMuseASRConfig.self,
+                createClient: { MetaMuseASRClient() },
+                capabilities: .streaming()
+            ),
             .bailian: ProviderEntry(
                 configType: BailianASRConfig.self,
                 createClient: { BailianASRClient() },

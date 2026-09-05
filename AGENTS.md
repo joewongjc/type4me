@@ -4,7 +4,7 @@
 
 macOS menu bar voice input tool with dual-engine local ASR, multi-provider cloud ASR, and LLM post-processing.
 Local ASR: SenseVoice via native sherpa-onnx (streaming) + Qwen3-ASR (final calibration, Python WebSocket service managed by `SenseVoiceServerManager`).
-Cloud ASR: 14 providers implemented (Volcano, StepFun streaming, StepFun batch, MiMo batch, OpenAI, Deepgram, Cartesia, AssemblyAI, ElevenLabs, Gemini, Grok, Soniox, Bailian, Baidu), plus Apple Speech.
+Cloud ASR: 15 providers implemented (Volcano, StepFun streaming, StepFun batch, MiMo batch, OpenAI, Deepgram, Cartesia, AssemblyAI, ElevenLabs, Gemini, Grok, Soniox, Bailian, Baidu, Meta Muse), plus Apple Speech.
 Swift Package Manager project, no Xcode project file. Optional `sherpa-onnx.xcframework` enables local SenseVoice, Silero VAD, and punctuation restoration.
 
 ## Branch Naming and Lifecycle
@@ -148,10 +148,10 @@ All subscription/cloud-proxy code lives in `Type4Me/CloudSubscription/`. Main co
 
 Multi-provider ASR support via `ASRProvider` enum + `ASRProviderConfig` protocol + `ASRProviderRegistry`.
 
-- `ASRProvider` enum: 23 standard cases (`sherpa`, `apple`, international and China cloud providers, and `custom`), plus conditional `cloud` when `HAS_CLOUD_SUBSCRIPTION` is enabled.
-- Each provider has its own Config type (e.g., `SherpaASRConfig`, `VolcanoASRConfig`) defining `credentialFields` for dynamic UI rendering
+- `ASRProvider` enum: 24 standard cases (`sherpa`, `apple`, international and China cloud providers, and `custom`), plus conditional `cloud` when `HAS_CLOUD_SUBSCRIPTION` is enabled.
+- Each provider has its own Config type (e.g., `SherpaASRConfig`, `VolcanoASRConfig`, `MetaMuseASRConfig`) defining `credentialFields` for dynamic UI rendering
 - `ASRProviderRegistry`: maps provider to config type + client factory; `capabilities` indicates availability and streaming support
-- **Fully implemented**: Apple Speech (streaming); Volcano, StepFun, Deepgram, Cartesia, AssemblyAI, ElevenLabs, Gemini, Grok, Soniox, Bailian, and Baidu (streaming); StepFun, MiMo, and OpenAI (batch); and Sherpa/SenseVoice when `HAS_SHERPA_ONNX` is enabled.
+- **Fully implemented**: Apple Speech (streaming); Volcano, StepFun, Deepgram, Cartesia, AssemblyAI, ElevenLabs, Gemini, Grok, Soniox, Bailian, Baidu, and Meta Muse (streaming); StepFun, MiMo, and OpenAI (batch); and Sherpa/SenseVoice when `HAS_SHERPA_ONNX` is enabled.
 - **Config only (no client)**: azure, google, aws, aliyun, tencent, iflytek, custom
 
 ### Adding a New Provider

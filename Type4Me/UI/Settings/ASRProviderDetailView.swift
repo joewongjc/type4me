@@ -121,6 +121,11 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
             return [
                 (L("API Key", "API Key"), L("获取", "get"), URL(string: "https://console.soniox.com")!),
             ]
+        case .metaMuse:
+            return [
+                (L("模型介绍", "Blog"), L("查看", "view"), URL(string: "https://research.meta.ai/blog/introducing-muse-voice-transcribe")!),
+                (L("开发者文档", "Docs"), L("查看", "view"), URL(string: "https://dev.meta.ai/docs/speech-to-text")!),
+            ]
         case .bailian:
             return [
                 (L("可用模型", "Models"), L("查看", "view"), URL(string: "https://help.aliyun.com/zh/model-studio/fun-asr-realtime-websocket-api")!),
@@ -156,6 +161,11 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
             return L(
                 "实时流式识别。Smart 模式会自动清理口语停顿、重复和自我纠正；如需逐字记录可切换为 Verbatim。",
                 "Real-time streaming transcription. Smart mode cleans up disfluencies, repetitions, and self-corrections; switch to Verbatim for literal transcripts."
+            )
+        case .metaMuse:
+            return L(
+                "实时语音识别，支持中英混输和关键词增强。Muse 的说话人分离与自动端点能力首版不用于控制 Type4Me 录音。",
+                "Realtime transcription with code-switching and keyword biasing. Muse diarization and automatic endpointing do not control Type4Me recording in the first release."
             )
         case .openai:
             return L(

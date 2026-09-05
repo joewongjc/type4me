@@ -193,6 +193,7 @@ enum ModelSettingsHelpers {
         case .elevenlabs:  return "waveform.path"
         case .gemini:      return "sparkles"
         case .grok:        return "brain.head.profile"
+        case .metaMuse:    return "waveform.badge.mic"
         case .stepfun, .stepfunBatch: return "bolt.horizontal.fill"
         case .mimo:        return "message.and.waveform.fill"
         case .bailian:     return "cloud.fill"

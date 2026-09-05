@@ -4,7 +4,7 @@ import XCTest
 final class ASRProviderRegistryTests: XCTestCase {
 
     func testAvailableProvidersSupportDirectMode() {
-        for provider in [ASRProvider.volcano, .stepfun, .stepfunBatch, .mimo, .baidu, .bailian, .deepgram, .gemini, .assemblyai, .soniox, .openai] {
+        for provider in [ASRProvider.volcano, .stepfun, .stepfunBatch, .mimo, .baidu, .bailian, .deepgram, .gemini, .assemblyai, .soniox, .metaMuse, .openai] {
             XCTAssertTrue(ASRProviderRegistry.supports(.direct, for: provider))
         }
     }
@@ -50,6 +50,20 @@ final class ASRProviderRegistryTests: XCTestCase {
         XCTAssertTrue(caps.supportsRealtimeRecognition)
         XCTAssertEqual(caps.audioInput, .pcmData)
     }
+    func testRegistry_exposesMetaMuseProviderConfiguration() {
+        let entry = ASRProviderRegistry.entry(for: .metaMuse)
+        XCTAssertNotNil(entry)
+        XCTAssertTrue(entry?.isAvailable ?? false)
+        XCTAssertTrue(ASRProviderRegistry.configType(for: .metaMuse) == MetaMuseASRConfig.self)
+        XCTAssertNotNil(ASRProviderRegistry.createClient(for: .metaMuse))
+
+        let caps = ASRProviderRegistry.capabilities(for: .metaMuse)
+        XCTAssertTrue(caps.isAvailable)
+        XCTAssertTrue(caps.isStreaming)
+        XCTAssertTrue(caps.supportsRealtimeRecognition)
+        XCTAssertEqual(caps.audioInput, .pcmData)
+    }
+
 
     func testRegistry_exposesMiMoProviderConfiguration() {
         let entry = ASRProviderRegistry.entry(for: .mimo)
@@ -77,7 +91,7 @@ final class ASRProviderRegistryTests: XCTestCase {
         // Realtime streaming providers
         for realtime in [
             ASRProvider.apple, .volcano, .deepgram, .cartesia,
-            .assemblyai, .elevenlabs, .gemini, .grok, .soniox, .stepfun, .bailian, .baidu
+            .assemblyai, .elevenlabs, .gemini, .grok, .soniox, .metaMuse, .stepfun, .bailian, .baidu
         ] {
             let caps = ASRProviderRegistry.capabilities(for: realtime)
             XCTAssertTrue(caps.isAvailable)

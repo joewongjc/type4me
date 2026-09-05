@@ -12,6 +12,7 @@ xcuserdata/
 .vscode/
 .claude/
 
+.omp/
 # Local agent context
 .ai/
 .devlead/
