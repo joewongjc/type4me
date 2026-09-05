@@ -169,7 +169,6 @@ struct VocabularyTab: View {
     @State private var replacementDraft: SnippetReplacementDraft? = nil
     @State private var displayedSnippetQuery: String = ""
     @State private var activeNavigationToken: UUID? = nil
-    @State private var isApplyingNavigation: Bool = false
     @State private var newTrigger: String = ""
     @State private var newSnippetTriggers: [String] = []
     @State private var newValue: String = ""
@@ -232,6 +231,7 @@ struct VocabularyTab: View {
             .onReceive(NotificationCenter.default.publisher(for: .navigateToVocabulary)) { note in
                 let token = UUID()
                 activeNavigationToken = token
+                highlightedGroup = nil
 
                 if let request = note.object as? VocabularyNavigationRequest {
                     applyNavigationRequest(request)
@@ -241,14 +241,10 @@ struct VocabularyTab: View {
                 // Quick Correction always writes to the global snippet store.
                 // Reset view-only filters before resolving the scroll target so
                 // the newly added group is guaranteed to exist in the hierarchy.
-                isApplyingNavigation = true
                 searchQuery = ""
                 switchScope(to: nil)
                 withAnimation(.easeInOut(duration: 0.18)) {
                     selectedSection = .snippets
-                }
-                DispatchQueue.main.async {
-                    isApplyingNavigation = false
                 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                     guard activeNavigationToken == token else { return }
@@ -261,8 +257,9 @@ struct VocabularyTab: View {
                         proxy.scrollTo("snippet-\(replacement)", anchor: .center)
                         highlightedGroup = replacement
                         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                            guard activeNavigationToken == token else { return }
-                            highlightedGroup = nil
+                            if highlightedGroup == replacement {
+                                highlightedGroup = nil
+                            }
                         }
                     } else {
                         withAnimation(.easeInOut(duration: 0.4), completionCriteria: .removed) {
@@ -279,9 +276,10 @@ struct VocabularyTab: View {
                             highlightedGroup = replacement
                         }
                         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                            guard activeNavigationToken == token else { return }
-                            withAnimation(.easeOut(duration: 0.8)) {
-                                highlightedGroup = nil
+                            if highlightedGroup == replacement {
+                                withAnimation(.easeOut(duration: 0.8)) {
+                                    highlightedGroup = nil
+                                }
                             }
                         }
                     }
@@ -298,21 +296,23 @@ struct VocabularyTab: View {
                 applyNavigationRequest(request)
             }
         }
-        .onChange(of: selectedSection) { _, _ in
-            if !isApplyingNavigation {
+        .onChange(of: selectedSection) { _, newSection in
+            if newSection != .snippets {
                 activeNavigationToken = nil
+                highlightedGroup = nil
             }
         }
-        .onChange(of: selectedAppScope) { _, _ in
-            if !isApplyingNavigation {
+        .onChange(of: selectedAppScope) { _, newScope in
+            if newScope != nil {
                 activeNavigationToken = nil
+                highlightedGroup = nil
             }
         }
         .onChange(of: searchQuery) { _, newQuery in
-            if !isApplyingNavigation {
+            if !newQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 activeNavigationToken = nil
-            }
-            if newQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                highlightedGroup = nil
+            } else {
                 recomputeDisplaySnippets()
             }
         }
@@ -1118,7 +1118,6 @@ struct VocabularyTab: View {
     // MARK: - Actions
 
     private func applyNavigationRequest(_ request: VocabularyNavigationRequest) {
-        isApplyingNavigation = true
         searchQuery = ""
         isSearchExpanded = false
         switchScope(to: nil)
@@ -1135,7 +1134,6 @@ struct VocabularyTab: View {
 
         VocabularyNavigationCenter.shared.consume(request)
         DispatchQueue.main.async {
-            isApplyingNavigation = false
             switch request.focus {
             case .hotword: focusedVocabularyInput = .hotword
             case .snippetTrigger: focusedVocabularyInput = .snippetTrigger
@@ -1654,24 +1652,16 @@ private struct SnippetGroupRow: View, Equatable {
     /// triggers need to be reachable.
     @ViewBuilder
     private var triggerStrip: some View {
-        // The container must not change while a trigger is being typed: swapping
-        // it would rebuild the text field and drop the user's focus mid-entry.
         let isActive = isHovered || isEditing || isAddingTrigger || isAddTriggerButtonFocused
-        let content = HStack(spacing: 7) {
-            ForEach(group.triggers, id: \.self) { trigger in
-                triggerTag(trigger: trigger, showsRemove: isHovered || isEditing)
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 7) {
+                ForEach(group.triggers, id: \.self) { trigger in
+                    triggerTag(trigger: trigger, showsRemove: isHovered || isEditing)
+                }
+                addTriggerControl
             }
-            addTriggerControl
         }
-
-        if isActive {
-            ScrollView(.horizontal, showsIndicators: false) { content }
-        } else {
-            content
-                .fixedSize(horizontal: true, vertical: false)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .clipped()
-        }
+        .scrollDisabled(!isActive)
     }
 
     /// The dashed "add trigger" pill.
@@ -1746,6 +1736,7 @@ private struct SnippetGroupRow: View, Equatable {
                 .contentShape(Capsule())
             }
             .buttonStyle(.plain)
+            .focusable()
             .focused($isAddTriggerButtonFocused)
             .accessibilityLabel(L("添加触发词", "Add trigger"))
         }
