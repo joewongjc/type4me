@@ -12,6 +12,22 @@ import Foundation
 public struct OrbPreset: Equatable {
     public let styleID: Int
     public let isAnimated: Bool
+    /// How much the rendered image changes per unit of shader phase.
+    ///
+    /// Measured offscreen: each fluid is rendered at 120x120 at eight spread-out
+    /// phases, each against the same fluid advanced by 0.05, and the mean
+    /// absolute per-channel difference inside the orb is averaged and divided by
+    /// the step. The numbers are stable to about +/-2% across runs.
+    ///
+    /// The fluids differ by more than 12x here — `frost` at 3.9 barely moves
+    /// for the same phase advance that carries `siri` at 50.7 through a whole
+    /// gesture. The preset `speed` field is not a usable substitute: it is a
+    /// phase multiplier, and it is nearly uncorrelated with this (frost ships at
+    /// speed 2.22, siri at 0.82). Without this, one flow-speed curve makes some
+    /// presets frantic and leaves others looking like a still image.
+    ///
+    /// Re-measure if a preset's zoom/warp/ridge/sharp or its fluid changes.
+    public let flowResponse: Float
     public let uniforms: [Float]
 
     private static func rgb(_ hex: String) -> (Float, Float, Float, Float) {
@@ -122,6 +138,7 @@ public struct OrbPreset: Equatable {
     public static let siri = OrbPreset(
         styleID: 0,
         isAnimated: true,
+        flowResponse: 50.72,
         uniforms: makeSeed(
             speed: 0.82,
             radius: 0.94,
@@ -151,6 +168,7 @@ public struct OrbPreset: Equatable {
     public static let blueDrop = OrbPreset(
         styleID: 1,
         isAnimated: true,
+        flowResponse: 4.93,
         uniforms: makeSeed(
             speed: 0.9,
             radius: 0.94,
@@ -185,6 +203,7 @@ public struct OrbPreset: Equatable {
     public static let chromaticMetal = OrbPreset(
         styleID: 2,
         isAnimated: true,
+        flowResponse: 27.67,
         uniforms: makeSeed(
             speed: 1.12,
             radius: 0.94,
@@ -216,6 +235,7 @@ public struct OrbPreset: Equatable {
     public static let frost = OrbPreset(
         styleID: 3,
         isAnimated: true,
+        flowResponse: 3.93,
         uniforms: makeSeed(
             speed: 2.22,
             radius: 0.94,
@@ -246,6 +266,7 @@ public struct OrbPreset: Equatable {
     public static let opal = OrbPreset(
         styleID: 4,
         isAnimated: true,
+        flowResponse: 21.59,
         uniforms: makeSeed(
             speed: 1.5,
             radius: 0.94,
@@ -275,6 +296,7 @@ public struct OrbPreset: Equatable {
     public static let voiceWave = OrbPreset(
         styleID: 5,
         isAnimated: true,
+        flowResponse: 21.85,
         uniforms: makeSeed(
             speed: 0.95,
             radius: 0.94,
@@ -307,13 +329,17 @@ public struct OrbPreset: Equatable {
     public static let violetEmber = OrbPreset(
         styleID: 6,
         isAnimated: true,
+        flowResponse: 30.83,
         uniforms: makeSeed(
             speed: 1.12,
             radius: 0.94,
-            zoom: 0.58,
-            warp: 4.7,
-            ridgeAmt: 0.73,
-            sharp: 3.3,
+            // Trimmed from zoom 0.58 / warp 4.7 / ridge 0.73 / sharp 3.3. At
+            // 45pt those pushed the detail below one pixel and the ember read
+            // as static rather than as flowing plasma.
+            zoom: 0.44,
+            warp: 3.6,
+            ridgeAmt: 0.56,
+            sharp: 2.5,
             shade: 0.18,
             sheen: 0.2,
             gloss: 0.34,
@@ -341,6 +367,7 @@ public struct OrbPreset: Equatable {
     public static let aurora = OrbPreset(
         styleID: 7,
         isAnimated: true,
+        flowResponse: 8.83,
         uniforms: makeSeed(
             speed: 3.0,
             radius: 0.94,
@@ -368,14 +395,17 @@ public struct OrbPreset: Equatable {
     public static let chrome = OrbPreset(
         styleID: 8,
         isAnimated: true,
+        flowResponse: 38.64,
         uniforms: makeSeed(
             speed: 2.0,
             radius: 0.94,
             zoom: 0.36,
             warp: 3.8,
             ridgeAmt: 0.44,
-            sharp: 5.2,
-            shade: 0.58,
+            // Softened from sharp 5.2 / shade 0.58: the hard black-and-white
+            // break was the harshest edge in the set at this size.
+            sharp: 3.6,
+            shade: 0.44,
             shellEdgeAlpha: 1.0,
             exposure: 1.08,
             styleFlowIndex: 12.0,
@@ -394,6 +424,7 @@ public struct OrbPreset: Equatable {
     public static let spectrum = OrbPreset(
         styleID: 9,
         isAnimated: true,
+        flowResponse: 60.16,
         uniforms: makeSeed(
             speed: 1.8,
             radius: 0.94,
@@ -404,6 +435,11 @@ public struct OrbPreset: Equatable {
             sheen: 0.26,
             gloss: 0.24,
             shellEdgeAlpha: 1.0,
+            // Deliberately left on makeSeed's default flow index of 9.0, the
+            // Siri band shader. It looks like an oversight next to the unused
+            // spectrum fluid at index 14, but index 14 renders a far plainer
+            // band and this preset's whole appeal is the spectral palette
+            // running through the Siri wave. Do not "fix" this.
             glassOpacity: 1.0,
             contourDeform: 0.03,
             colorA: "#FFFFFF",
@@ -420,6 +456,7 @@ public struct OrbPreset: Equatable {
     public static let staticSiri = OrbPreset(
         styleID: 10,
         isAnimated: false,
+        flowResponse: 50.72,
         uniforms: makeSeed(
             speed: 0.0,
             radius: 0.94,

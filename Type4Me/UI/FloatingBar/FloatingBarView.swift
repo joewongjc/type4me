@@ -837,7 +837,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
             if action == .finish {
                 LiquidGlassOrb(
                     style: recordingVisualStyle,
-                    audioEnergy: state.audioLevel.current,
+                    audioLevelMeter: state.audioLevel,
                     isHovered: hoveredAction == .finish,
                     isPressed: pressedAction == .finish || recordingActionLocked
                 )
