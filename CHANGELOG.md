@@ -12,6 +12,12 @@ v2.6.0 简化首次设置，扩展实时语音识别，并改善录音反馈、�
   <img src="https://github.com/user-attachments/assets/793474bf-8c4c-4430-88c4-27a1a22c436b" width="640" alt="两步首启流程的欢迎页面" />
 </p>
 
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/b2325f38-09c0-4f24-8ed8-353cb21f7d23" width="640" alt="权限设置页面（PR 截图）" />
+</p>
+
+> 配图来自 PR；当前版本的音频处理方式取决于所选语音识别服务，使用云端服务时会上传音频进行识别。
+
 - **首页模型配置提醒 (#281)**：默认语音识别或文本处理服务尚未配置时，首页显示可直接跳转到对应模型设置的提醒卡片，保存配置后自动消失。
 
 <p align="center">
