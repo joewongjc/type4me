@@ -2,7 +2,9 @@
 
 > 分支：`feat/meta-muse-asr`
 > 文档类型：开发设计
-> 文档状态：设计中
+> 文档状态：当前有效（已实现，持续验证）
+> 最后校验：2026-09-05
+> 实现基线：`6fdfb8d`
 > 对应产品设计：`docs/features/meta-muse-asr/product-design.md`
 > 设计日期：2026-09-03
 > 目标模型：Muse Voice Transcribe

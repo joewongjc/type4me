@@ -21,6 +21,8 @@
 
 | 功能 | 文档 | 类型 | 状态 | 设计日期 | 实现基线 |
 |---|---|---|---|---:|---|
+| Meta Muse 实时 ASR | [产品设计](features/meta-muse-asr/product-design.md) / [开发设计](features/meta-muse-asr/development-design.md) | 产品与开发设计 | 已实现，持续验证 | 2026-09-03 | `6fdfb8d`（#286） |
+| 权限与首启引导 | [产品设计](features/permission-onboarding-redesign/product-design.md) / [开发设计](features/permission-onboarding-redesign/development-design.md) | 产品与开发设计 | 已实现，持续验证 | 2026-09-02 | `5fce88f`（#281） |
 | Gemini 实时 ASR | [产品设计](features/gemini-transcribe-asr/product-design.md) | 产品设计 | 当前有效（已实现，持续验证） | 2026-08-27 | `c82aa2b` |
 | Gemini 实时 ASR | [开发设计](features/gemini-transcribe-asr/development-design.md) | 开发设计 | 当前有效（已实现，持续验证） | 2026-08-27 | `c82aa2b` |
 | Compact 实时识别文本 | [产品设计](features/compact-live-transcript/product-design.md) | 产品设计 | 当前有效（已实现，持续验证） | 2026-08-27 | `a90f8d2` |

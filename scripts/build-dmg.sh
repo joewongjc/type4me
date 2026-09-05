@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && /bin/pwd -P)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && /bin/pwd -P)"
-APP_VERSION="${APP_VERSION:-2.5.0}"
+APP_VERSION="${APP_VERSION:-2.6.0}"
 APP_FLAVOR="${APP_FLAVOR:-public}"  # public or personal
 VARIANT="${VARIANT:-pure}"          # pure, official, local, or cloud(alias pure)
 ARCH="${ARCH:-}"                    # arm64 or universal (default: universal for pure/official, arm64 for local)

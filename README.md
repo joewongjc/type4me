@@ -13,7 +13,7 @@
 </p>
 
 
-- **语音识别**：内置本地识别引擎、媲美云端引擎准确率；支持 14 家云端语音识别服务商，覆盖实时与批量识别，支持边说边出字、说完快速完成；
+- **语音识别**：内置本地识别引擎、媲美云端引擎准确率；支持 15 家云端语音识别服务商，覆盖实时与批量识别，支持边说边出字、说完快速完成；
 - **8 种默认模式**：内置快速模式、智能感知、翻译、随便问、Mac 操作、语音润色、Prompt 优化与代办模式，可自定义添加任意处理模版；
 - **Intelli Sense**：根据当前 App、输入控件和有限上下文安全润色文字；还可按需学习稳定的纠错、表达和列表结构偏好；
 - **Ask Anything**：围绕选中文本直接提问，并把连续追问保存为会话，随时搜索、恢复或继续追问；
@@ -32,6 +32,8 @@
 - **配套Skill**：真正做到100%准确率，打造只属于你的输入法，[点这里安装Skill](https://github.com/joewongjc/type4me-vocab-skill)后跟你的agent说"Qwen3.5 不要识别成 Queen 3.5"，他就能自动帮你管理热词和映射词，同类错误不再犯
 - **URL Scheme**：支持从 Stream Deck、快捷指令、Raycast / Alfred、终端、浏览器或脚本直接控制录音（开始、结束、切换）；后台调用不抢前台焦点，注入目标无法确认时安全保留文本到剪贴板；同样可打开设置、管理词库、静默写入热词与片段替换规则；
 
+- **渐进式设置引导**：两步完成欢迎与权限设置；首页提示尚未配置的默认模型，点击即可进入对应设置，保存后自动收起。
+
 ## 立即体验
 
 **方式一：直接下载DMG（推荐）**
@@ -40,8 +42,8 @@
 
 | 版本                                                         | 说明                                                         | 安装包大小   |
 | ------------------------------------------------------------ | ------------------------------------------------------------ | ------ |
-| ✨推荐：**[云端版本（点击下载）](https://github.com/joewongjc/type4me/releases/download/v2.5.0/Type4Me-v2.5.0-cloud.dmg)** | 支持云端识别 (Intel + Apple Silicon)，需配置语音、大模型API Key。语音识别推荐火山-豆包语音/Soniox、体验最好。火山注册有送额度，单价都十分便宜。[配置指引](https://my.feishu.cn/wiki/QdEnwBMfUi0mN4k3ucMcNYhUnXr) | ~10MB  |
-| **[本地版本（点击下载）](https://github.com/joewongjc/type4me/releases/download/v2.5.0/Type4Me-v2.5.0-local-apple-silicon.dmg)** | 内嵌 SenseVoice + Qwen3-ASR 本地识别引擎 (Apple Silicon only，约占用8GB内存，建议32GB以上)，大模型依旧需要配置 API Key 或 Ollama 本地服务。 | ~700MB |
+| ✨推荐：**[云端版本（点击下载）](https://github.com/joewongjc/type4me/releases/download/v2.6.0/Type4Me-v2.6.0-cloud.dmg)** | 支持云端识别 (Intel + Apple Silicon)，需配置语音、大模型API Key。语音识别推荐火山-豆包语音/Soniox、体验最好。火山注册有送额度，单价都十分便宜。[配置指引](https://my.feishu.cn/wiki/QdEnwBMfUi0mN4k3ucMcNYhUnXr) | ~10MB  |
+| **[本地版本（点击下载）](https://github.com/joewongjc/type4me/releases/download/v2.6.0/Type4Me-v2.6.0-local-apple-silicon.dmg)** | 内嵌 SenseVoice + Qwen3-ASR 本地识别引擎 (Apple Silicon only，约占用8GB内存，建议32GB以上)，大模型依旧需要配置 API Key 或 Ollama 本地服务。 | ~700MB |
 
 系统要求：macOS 14+ (Sonoma)
 
@@ -724,7 +726,7 @@ ASR Provider 架构设计为可插拔：实现 `ASRProviderConfig`（定义凭�
 </p>
 
 
-- **Speech Recognition**: Built-in local recognition engine with accuracy rivaling cloud engines; supports 14 cloud ASR providers across streaming and batch recognition, with instant text output while speaking and fast completion after recording;
+- **Speech Recognition**: Built-in local recognition engine with accuracy rivaling cloud engines; supports 15 cloud ASR providers across streaming and batch recognition, with instant text output while speaking and fast completion after recording;
 - **8 Default Modes**: Built-in Quick Mode, Intelli Sense, Translation, Ask Anything, Mac Actions, Voice Polish, Prompt Optimization, and Task Delegation; fully customizable with user-defined templates;
 - **Intelli Sense**: Safely polishes text using the current app, input control, and limited context; optionally learns stable corrections, expression preferences, and list structure;
 - **Ask Anything**: Ask questions about selected text, save follow-ups into conversation history, and search, resume, or continue conversations anytime;
@@ -743,6 +745,8 @@ ASR Provider 架构设计为可插拔：实现 `ASRProviderConfig`（定义凭�
 - **Companion Skill**: Achieve 100% recognition accuracy. [Install the Skill](https://github.com/joewongjc/type4me-vocab-skill) and tell your agent "Don't recognize Qwen3.5 as Queen 3.5" to automatically manage hotwords and snippets. Same mistakes won't happen again.
 - **URL Scheme**: Control recording directly (start, stop, toggle) from Stream Deck, Shortcuts, Raycast / Alfred, Terminal, or scripts without simulating keystrokes; background calls keep the foreground app intact and fall back safely to the clipboard when an injection target cannot be confirmed; open Settings, manage vocabulary, and silently write hotwords/snippets.
 
+- **Guided Setup**: Complete welcome and permissions in two steps; Home highlights unconfigured default models, links to their settings, and dismisses reminders after saving.
+
 ## Get Started
 
 **Option 1: Download DMG (Recommended)**
@@ -751,8 +755,8 @@ Two editions, sharing the same config files. You can switch between them at any 
 
 | Edition | Description | Size |
 | ------- | ----------- | ---- |
-| ✨Recommended: **[Cloud Edition (Download)](https://github.com/joewongjc/type4me/releases/download/v2.5.0/Type4Me-v2.5.0-cloud.dmg)** | Cloud recognition (Intel + Apple Silicon). Requires ASR and LLM API keys. Recommended: Volcano/Doubao or Soniox for best experience. [Setup Guide](https://my.feishu.cn/wiki/QdEnwBMfUi0mN4k3ucMcNYhUnXr) | ~10MB |
-| **[Local Edition (Download)](https://github.com/joewongjc/type4me/releases/download/v2.5.0/Type4Me-v2.5.0-local-apple-silicon.dmg)** | Bundled SenseVoice + Qwen3-ASR local recognition (Apple Silicon only, ~8GB RAM, 32GB+ recommended). LLM still requires API key or local Ollama. | ~700MB |
+| ✨Recommended: **[Cloud Edition (Download)](https://github.com/joewongjc/type4me/releases/download/v2.6.0/Type4Me-v2.6.0-cloud.dmg)** | Cloud recognition (Intel + Apple Silicon). Requires ASR and LLM API keys. Recommended: Volcano/Doubao or Soniox for best experience. [Setup Guide](https://my.feishu.cn/wiki/QdEnwBMfUi0mN4k3ucMcNYhUnXr) | ~10MB |
+| **[Local Edition (Download)](https://github.com/joewongjc/type4me/releases/download/v2.6.0/Type4Me-v2.6.0-local-apple-silicon.dmg)** | Bundled SenseVoice + Qwen3-ASR local recognition (Apple Silicon only, ~8GB RAM, 32GB+ recommended). LLM still requires API key or local Ollama. | ~700MB |
 
 System requirements: macOS 14+ (Sonoma)
 

@@ -1,7 +1,9 @@
 # Type4Me 权限引导与首启流程产品设计
 
 > 文档类型：产品设计  
-> 文档状态：设计完成，已通过 Review 修正  
+> 文档状态：当前有效（已实现，持续验证）
+> 最后校验：2026-09-05
+> 实现基线：`5fce88f`
 > 设计日期：2026-09-02  
 > 对应分支：`feat/permission-onboarding-redesign`  
 > 对应开发设计：[development-design.md](development-design.md)  
