@@ -16,8 +16,8 @@ enum AudioCaptureError: Error, LocalizedError {
             return L("找不到麦克风", "No microphone found")
         case .preferredInputDeviceUnavailable:
             return L(
-                "首选麦克风不可用。为避免中断蓝牙播放，本次录音已取消",
-                "Preferred microphone unavailable. Recording was cancelled to preserve Bluetooth playback"
+                "首选麦克风不可用，未自动切换至蓝牙麦克风。请重新连接或在设置中指定麦克风",
+                "Preferred microphone unavailable and will not fall back to Bluetooth. Reconnect it or choose another microphone in Settings"
             )
         }
     }
