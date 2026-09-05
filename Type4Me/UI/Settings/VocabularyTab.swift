@@ -1,4 +1,5 @@
 import SwiftUI
+import Observation
 
 /// Chrome-style tab shape with concave bottom corners.
 ///
@@ -144,6 +145,7 @@ struct VocabularyTab: View {
         case snippetReplacement
     }
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedSection: VocabularySection = .hotwords
     @State private var isSearchExpanded = false
     @State private var searchQuery = ""
@@ -161,13 +163,15 @@ struct VocabularyTab: View {
 
     // Snippets (user file + built-in)
     @State private var snippets: [(trigger: String, value: String)] = SnippetStorage.load()
-    @State private var editingGroupReplacement: String? = nil
-    @State private var editReplacementText: String = ""
-    @State private var newTriggerTexts: [String: String] = [:]
+    /// Grouped, filtered and sorted rows for the snippet list.
+    /// See `recomputeDisplaySnippets()` for why this is cached rather than computed.
+    @State private var displaySnippets: [SnippetGroup] = []
+    @State private var replacementDraft: SnippetReplacementDraft? = nil
+    @State private var displayedSnippetQuery: String = ""
+    @State private var activeNavigationToken: UUID? = nil
     @State private var newTrigger: String = ""
     @State private var newSnippetTriggers: [String] = []
     @State private var newValue: String = ""
-    @State private var hoveredSnippetGroup: String? = nil
     @State private var isAddAppHovered = false
     @State private var showBulkSnippetsSheet = false
     @State private var bulkSnippetsText = ""
@@ -225,6 +229,10 @@ struct VocabularyTab: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
             .onReceive(NotificationCenter.default.publisher(for: .navigateToVocabulary)) { note in
+                let token = UUID()
+                activeNavigationToken = token
+                highlightedGroup = nil
+
                 if let request = note.object as? VocabularyNavigationRequest {
                     applyNavigationRequest(request)
                     return
@@ -239,15 +247,40 @@ struct VocabularyTab: View {
                     selectedSection = .snippets
                 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                    withAnimation(.easeInOut(duration: 0.4)) {
+                    guard activeNavigationToken == token else { return }
+                    guard selectedSection == .snippets,
+                          selectedAppScope == nil,
+                          displaySnippets.contains(where: { $0.replacement == replacement })
+                    else { return }
+
+                    if reduceMotion {
                         proxy.scrollTo("snippet-\(replacement)", anchor: .center)
-                    }
-                    withAnimation(.easeIn(duration: 0.3).delay(0.2)) {
                         highlightedGroup = replacement
-                    }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                        withAnimation(.easeOut(duration: 0.8)) {
-                            highlightedGroup = nil
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                            if highlightedGroup == replacement {
+                                highlightedGroup = nil
+                            }
+                        }
+                    } else {
+                        withAnimation(.easeInOut(duration: 0.4), completionCriteria: .removed) {
+                            proxy.scrollTo("snippet-\(replacement)", anchor: .center)
+                        } completion: {
+                            guard activeNavigationToken == token else { return }
+                            guard selectedSection == .snippets,
+                                  selectedAppScope == nil,
+                                  displaySnippets.contains(where: { $0.replacement == replacement })
+                            else { return }
+                            proxy.scrollTo("snippet-\(replacement)", anchor: .center)
+                        }
+                        withAnimation(.easeIn(duration: 0.3).delay(0.2)) {
+                            highlightedGroup = replacement
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                            if highlightedGroup == replacement {
+                                withAnimation(.easeOut(duration: 0.8)) {
+                                    highlightedGroup = nil
+                                }
+                            }
                         }
                     }
                 }
@@ -258,9 +291,41 @@ struct VocabularyTab: View {
             snippets = SnippetStorage.load()
             registeredApps = SnippetStorage.loadRegistry()
             seedExampleIfNeeded()
+            recomputeDisplaySnippets()
             if let request = VocabularyNavigationCenter.shared.pendingRequest {
                 applyNavigationRequest(request)
             }
+        }
+        .onChange(of: selectedSection) { _, newSection in
+            if newSection != .snippets {
+                activeNavigationToken = nil
+                highlightedGroup = nil
+            }
+        }
+        .onChange(of: selectedAppScope) { _, newScope in
+            if newScope != nil {
+                activeNavigationToken = nil
+                highlightedGroup = nil
+            }
+        }
+        .onChange(of: searchQuery) { _, newQuery in
+            if !newQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                activeNavigationToken = nil
+                highlightedGroup = nil
+            } else {
+                recomputeDisplaySnippets()
+            }
+        }
+        .task(id: searchQuery) {
+            let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !query.isEmpty else { return }
+            do {
+                try await Task.sleep(nanoseconds: 200_000_000)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            recomputeDisplaySnippets()
         }
         .onReceive(NotificationCenter.default.publisher(for: SnippetStorage.didChangeNotification)) { _ in
             if let bundleId = selectedAppScope {
@@ -268,6 +333,7 @@ struct VocabularyTab: View {
             } else {
                 snippets = SnippetStorage.load()
             }
+            recomputeDisplaySnippets()
         }
         .onReceive(NotificationCenter.default.publisher(for: HotwordStorage.didChangeNotification)) { _ in
             hotwords = HotwordStorage.load()
@@ -375,6 +441,7 @@ struct VocabularyTab: View {
                 ) {
                     withAnimation(.easeInOut(duration: 0.15)) {
                         snippetSort.toggle()
+                        recomputeDisplaySnippets()
                     }
                 }
 
@@ -528,10 +595,27 @@ struct VocabularyTab: View {
                 .zIndex(3)
 
             ScrollView(.vertical, showsIndicators: true) {
-                VStack(alignment: .leading, spacing: 7) {
+                // Lazy on purpose: a plain VStack materialised every group up
+                // front, and each row carries a horizontal ScrollView plus a
+                // TextField, so a few hundred groups meant a few hundred
+                // NSScrollViews and NSTextFields built on the main thread the
+                // moment the tab was selected.
+                LazyVStack(alignment: .leading, spacing: 7) {
                     ForEach(displaySnippets) { group in
-                        snippetGroupView(group: group)
-                            .id("snippet-\(group.id)")
+                        SnippetGroupRow(
+                            group: group,
+                            isExample: group.replacement == Self.builtinExampleReplacement,
+                            replacementDraft: replacementDraft?.replacement == group.replacement ? replacementDraft : nil,
+                            isHighlighted: highlightedGroup == group.replacement,
+                            onStartEdit: { replacementDraft = SnippetReplacementDraft(replacement: group.replacement) },
+                            onCommitEdit: { commitGroupEdit(oldReplacement: group.replacement, newText: $0) },
+                            onCancelEdit: { replacementDraft = nil },
+                            onDeleteGroup: { removeGroup(replacement: group.replacement) },
+                            onRemoveTrigger: { removeTrigger(trigger: $0, replacement: group.replacement) },
+                            onAddTrigger: { addTrigger($0, to: group.replacement) }
+                        )
+                        .equatable()
+                        .id("snippet-\(group.id)")
                     }
 
                     if displaySnippets.isEmpty {
@@ -646,16 +730,17 @@ struct VocabularyTab: View {
     }
 
     private var snippetEmptyState: some View {
-        VStack(spacing: 8) {
-            Image(systemName: isSearching ? "magnifyingglass" : "text.badge.plus")
+        let isSearchingSnippets = !displayedSnippetQuery.isEmpty
+        return VStack(spacing: 8) {
+            Image(systemName: isSearchingSnippets ? "magnifyingglass" : "text.badge.plus")
                 .font(.system(size: 22, weight: .regular))
                 .foregroundStyle(TF.settingsTextTertiary)
-            Text(isSearching
+            Text(isSearchingSnippets
                  ? L("没有匹配的片段", "No matching snippets")
                  : L("还没有片段替换规则", "No snippet rules yet"))
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(TF.settingsTextSecondary)
-            Text(isSearching
+            Text(isSearchingSnippets
                  ? L("尝试更换搜索关键词。", "Try a different search term.")
                  : L("添加触发词，让常用内容一说即用。", "Add a trigger phrase to insert frequently used text instantly."))
                 .font(.system(size: 11))
@@ -765,29 +850,13 @@ struct VocabularyTab: View {
         .settingsTooltip(help)
     }
 
-    // MARK: - Snippet Group View
-
-    private struct SnippetGroup: Identifiable {
-        var id: String { replacement }
-        let replacement: String
-        let triggers: [String]
-    }
+    // MARK: - Snippet List Data
 
     private var displayHotwords: [String] {
         let filtered = hotwords.filter(matchesSearch)
         switch hotwordSort {
         case .byTime: return filtered
         case .byAlpha: return filtered.sorted { $0.localizedAlphabeticalCompare($1) == .orderedAscending }
-        }
-    }
-
-    private var displaySnippets: [SnippetGroup] {
-        let groups = groupedSnippets.filter { group in
-            matchesSearch(group.replacement) || group.triggers.contains(where: matchesSearch)
-        }
-        switch snippetSort {
-        case .byTime: return groups
-        case .byAlpha: return groups.sorted { $0.replacement.localizedAlphabeticalCompare($1.replacement) == .orderedAscending }
         }
     }
 
@@ -798,208 +867,47 @@ struct VocabularyTab: View {
     private func matchesSearch(_ value: String) -> Bool {
         let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return true }
-        return value.range(
-            of: query,
-            options: [.caseInsensitive, .diacriticInsensitive]
-        ) != nil
+        return matches(value, query)
     }
 
-    private var groupedSnippets: [SnippetGroup] {
+    private func matches(_ value: String, _ query: String) -> Bool {
+        value.range(of: query, options: [.caseInsensitive, .diacriticInsensitive]) != nil
+    }
+
+    /// Rebuilds `displaySnippets` from the current entries, search query and sort.
+    ///
+    /// This used to be a computed property. Grouping is O(entries) and the store
+    /// can hold several hundred groups, so every hover and every keystroke
+    /// re-grouped the whole list before rendering it. Callers now drive the
+    /// recompute explicitly, from the few places that actually change the inputs.
+    private func recomputeDisplaySnippets() {
         var order: [String] = []
         var dict: [String: [String]] = [:]
-        for s in snippets {
-            if dict[s.value] == nil {
-                order.append(s.value)
-            }
-            dict[s.value, default: []].append(s.trigger)
+        order.reserveCapacity(snippets.count)
+        for entry in snippets {
+            if dict[entry.value] == nil { order.append(entry.value) }
+            dict[entry.value, default: []].append(entry.trigger)
         }
-        return order.map { SnippetGroup(replacement: $0, triggers: dict[$0]!) }
-    }
+        if let draft = replacementDraft, dict[draft.replacement] == nil {
+            replacementDraft = nil
+        }
+        var groups = order.map { SnippetGroup(replacement: $0, triggers: dict[$0]!) }
 
-    private func newTriggerBinding(for replacement: String) -> Binding<String> {
-        Binding(
-            get: { newTriggerTexts[replacement, default: ""] },
-            set: { newTriggerTexts[replacement] = $0 }
-        )
-    }
-
-    private func snippetGroupView(group: SnippetGroup) -> some View {
-        let isHovered = hoveredSnippetGroup == group.replacement
-        let isEditing = editingGroupReplacement == group.replacement
-
-        return HStack(spacing: 10) {
-            Group {
-                if isEditing {
-                    TextField("", text: $editReplacementText)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(TF.settingsText)
-                        .padding(.horizontal, 9)
-                        .frame(height: 28)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .fill(TF.settingsBg)
-                        )
-                        .onSubmit { commitGroupEdit(oldReplacement: group.replacement) }
-                } else {
-                    HStack(spacing: 6) {
-                        Text(group.replacement)
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(TF.settingsText)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-
-                        if group.replacement == Self.builtinExampleReplacement {
-                            Text(L("示例", "Example"))
-                                .font(.system(size: 8, weight: .semibold))
-                                .foregroundStyle(TF.settingsTextTertiary)
-                                .padding(.horizontal, 6)
-                                .frame(height: 18)
-                                .background(Capsule().fill(TF.settingsCardAlt))
-                        }
-                    }
-                }
-            }
-            .frame(width: 180, alignment: .leading)
-
-            Image(systemName: "arrow.left")
-                .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(TF.settingsTextTertiary)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 7) {
-                    ForEach(group.triggers, id: \.self) { trigger in
-                        triggerTag(
-                            trigger: trigger,
-                            replacement: group.replacement,
-                            showsRemove: isHovered || isEditing
-                        )
-                    }
-
-                    HStack(spacing: 4) {
-                        Image(systemName: "plus")
-                            .font(.system(size: 8, weight: .bold))
-                            .foregroundStyle(TF.settingsTextTertiary)
-                        TextField(
-                            L("添加触发词", "Add trigger"),
-                            text: newTriggerBinding(for: group.replacement)
-                        )
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 11))
-                        .foregroundStyle(TF.settingsTextSecondary)
-                        .frame(width: 82)
-                        .onSubmit { addTriggerToGroup(replacement: group.replacement) }
-                    }
-                    .padding(.horizontal, 9)
-                    .frame(height: 26)
-                    .background(
-                        Capsule()
-                            .stroke(
-                                TF.settingsTextTertiary.opacity(0.28),
-                                style: StrokeStyle(lineWidth: 1, dash: [4])
-                            )
-                    )
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .frame(height: 28)
-
-            if isEditing {
-                snippetCardActionButton(
-                    icon: "checkmark",
-                    color: TF.settingsAccentGreen,
-                    tooltip: L("保存", "Save")
-                ) { commitGroupEdit(oldReplacement: group.replacement) }
-                snippetCardActionButton(
-                    icon: "xmark",
-                    color: TF.settingsTextTertiary,
-                    tooltip: L("取消", "Cancel")
-                ) { editingGroupReplacement = nil }
-            } else if isHovered {
-                snippetCardActionButton(
-                    icon: "pencil",
-                    color: TF.settingsTextSecondary,
-                    tooltip: L("编辑替换内容", "Edit replacement")
-                ) { startGroupEdit(replacement: group.replacement) }
-                snippetCardActionButton(
-                    icon: "trash",
-                    color: TF.settingsAccentRed,
-                    tooltip: L("删除整组", "Delete group")
-                ) { removeGroup(replacement: group.replacement) }
+        let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !query.isEmpty {
+            groups = groups.filter { group in
+                matches(group.replacement, query) || group.triggers.contains { matches($0, query) }
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(highlightedGroup == group.replacement
-                      ? TF.settingsAccentGreen.opacity(0.10)
-                      : (isHovered || isEditing
-                         ? TF.settingsRowHover
-                         : TF.settingsCard))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(
-                    highlightedGroup == group.replacement
-                        ? TF.settingsAccentGreen.opacity(0.32)
-                        : (isHovered || isEditing ? Color.black.opacity(0.11) : TF.settingsBorder),
-                    lineWidth: 1
-                )
-        )
-        .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .zIndex(isHovered || isEditing ? 3 : 0)
-        .onHover { hovering in
-            withAnimation(.easeOut(duration: 0.1)) {
-                hoveredSnippetGroup = hovering ? group.replacement : nil
-            }
+
+        if snippetSort == .byAlpha {
+            groups.sort { $0.replacement.localizedAlphabeticalCompare($1.replacement) == .orderedAscending }
         }
+
+        displaySnippets = groups
+        displayedSnippetQuery = query
     }
 
-    private func snippetCardActionButton(
-        icon: String,
-        color: Color,
-        tooltip: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Image(systemName: icon)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(color)
-                .frame(width: 24, height: 24)
-                .background(Circle().fill(TF.settingsCardAlt))
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .settingsTooltip(tooltip)
-    }
-
-    private func triggerTag(trigger: String, replacement: String, showsRemove: Bool) -> some View {
-        HStack(spacing: 6) {
-            Text(trigger)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(TF.settingsTextSecondary)
-
-            if showsRemove {
-                Button {
-                    removeTrigger(trigger: trigger, replacement: replacement)
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 7, weight: .bold))
-                        .foregroundStyle(TF.settingsTextTertiary)
-                        .frame(width: 14, height: 14)
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .settingsTooltip(L("删除触发词", "Remove trigger"))
-            }
-        }
-        .padding(.leading, 10)
-        .padding(.trailing, showsRemove ? 6 : 10)
-        .frame(height: 26)
-        .background(Capsule().fill(TF.settingsControl))
-        .overlay(Capsule().stroke(Color.black.opacity(0.045), lineWidth: 1))
-    }
 
     // MARK: - App Scope Bar
 
@@ -1097,12 +1005,16 @@ struct VocabularyTab: View {
     }
 
     private func switchScope(to bundleId: String?) {
+        if selectedAppScope != bundleId {
+            replacementDraft = nil
+        }
         selectedAppScope = bundleId
         if let bundleId = bundleId {
             snippets = SnippetStorage.loadAppSnippets(bundleId: bundleId)
         } else {
             snippets = SnippetStorage.load()
         }
+        recomputeDisplaySnippets()
     }
 
     private func pickApp() {
@@ -1149,6 +1061,7 @@ struct VocabularyTab: View {
         } else {
             SnippetStorage.save(snippets)
         }
+        recomputeDisplaySnippets()
     }
 
     // MARK: - Example Seeding
@@ -1167,15 +1080,10 @@ struct VocabularyTab: View {
 
     // MARK: - Group Actions
 
-    private func startGroupEdit(replacement: String) {
-        editReplacementText = replacement
-        editingGroupReplacement = replacement
-    }
-
-    private func commitGroupEdit(oldReplacement: String) {
-        let newReplacement = editReplacementText.trimmingCharacters(in: .whitespaces)
+    private func commitGroupEdit(oldReplacement: String, newText: String) {
+        let newReplacement = newText.trimmingCharacters(in: .whitespaces)
         guard !newReplacement.isEmpty, newReplacement != oldReplacement else {
-            editingGroupReplacement = nil
+            replacementDraft = nil
             return
         }
         for i in snippets.indices {
@@ -1184,7 +1092,7 @@ struct VocabularyTab: View {
             }
         }
         saveCurrentSnippets()
-        editingGroupReplacement = nil
+        replacementDraft = nil
     }
 
     private func removeGroup(replacement: String) {
@@ -1199,16 +1107,12 @@ struct VocabularyTab: View {
         }
     }
 
-    private func addTriggerToGroup(replacement: String) {
-        let trigger = (newTriggerTexts[replacement] ?? "").trimmingCharacters(in: .whitespaces)
+    private func addTrigger(_ rawTrigger: String, to replacement: String) {
+        let trigger = rawTrigger.trimmingCharacters(in: .whitespaces)
         guard !trigger.isEmpty else { return }
-        guard !snippets.contains(where: { $0.trigger.lowercased() == trigger.lowercased() }) else {
-            newTriggerTexts[replacement] = ""
-            return
-        }
+        guard !snippets.contains(where: { $0.trigger.lowercased() == trigger.lowercased() }) else { return }
         snippets.append((trigger: trigger, value: replacement))
         saveCurrentSnippets()
-        newTriggerTexts[replacement] = ""
     }
 
     // MARK: - Actions
@@ -1238,7 +1142,6 @@ struct VocabularyTab: View {
             }
         }
     }
-
     private func addHotword() {
         let word = newHotword.trimmingCharacters(in: .whitespaces)
         guard !word.isEmpty, !hotwords.contains(word) else {
@@ -1583,4 +1486,304 @@ struct VocabularyTab: View {
         .background(TF.settingsWindowBackground)
     }
 
+}
+
+@MainActor
+@Observable
+fileprivate final class SnippetReplacementDraft {
+    let replacement: String
+    var text: String
+
+    init(replacement: String) {
+        self.replacement = replacement
+        self.text = replacement
+    }
+}
+
+// MARK: - Snippet Group Row
+
+private struct SnippetGroup: Identifiable, Equatable {
+    var id: String { replacement }
+    let replacement: String
+    let triggers: [String]
+}
+
+/// One row of the snippet replacement list.
+///
+/// Hover state and the "add trigger" draft deliberately live here instead of on
+/// `VocabularyTab`: while they sat on the parent, moving the mouse across a row
+/// — or typing a single character into one row's trigger field — invalidated the
+/// parent body and rebuilt every row in the list. The view is `Equatable` so
+/// `ForEach` can skip rows whose inputs did not change.
+private struct SnippetGroupRow: View, Equatable {
+    let group: SnippetGroup
+    let isExample: Bool
+    let replacementDraft: SnippetReplacementDraft?
+    let isHighlighted: Bool
+    let onStartEdit: () -> Void
+    let onCommitEdit: (String) -> Void
+    let onCancelEdit: () -> Void
+    let onDeleteGroup: () -> Void
+    let onRemoveTrigger: (String) -> Void
+    let onAddTrigger: (String) -> Void
+
+    @AppStorage("tf_language") private var language = AppLanguage.systemDefault
+    @State private var isHovered = false
+    @State private var newTriggerText = ""
+    /// Whether the real "add trigger" text field has been swapped in for its
+    /// placeholder. See `addTriggerControl`.
+    @State private var isAddingTrigger = false
+    @FocusState private var isTriggerFieldFocused: Bool
+    @FocusState private var isAddTriggerButtonFocused: Bool
+
+    private var isEditing: Bool { replacementDraft != nil }
+
+    /// Closures are recreated on every parent render and carry no state of their
+    /// own, so only the rendered inputs take part in equality.
+    static func == (lhs: SnippetGroupRow, rhs: SnippetGroupRow) -> Bool {
+        lhs.group == rhs.group
+            && lhs.isExample == rhs.isExample
+            && lhs.replacementDraft === rhs.replacementDraft
+            && lhs.isHighlighted == rhs.isHighlighted
+            && lhs.language == rhs.language
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Group {
+                if let draft = replacementDraft {
+                    @Bindable var draft = draft
+                    TextField("", text: $draft.text)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(TF.settingsText)
+                        .padding(.horizontal, 9)
+                        .frame(height: 28)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(TF.settingsBg)
+                        )
+                        .onSubmit { onCommitEdit(draft.text) }
+                } else {
+                    HStack(spacing: 6) {
+                        Text(group.replacement)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(TF.settingsText)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+
+                        if isExample {
+                            Text(L("示例", "Example"))
+                                .font(.system(size: 8, weight: .semibold))
+                                .foregroundStyle(TF.settingsTextTertiary)
+                                .padding(.horizontal, 6)
+                                .frame(height: 18)
+                                .background(Capsule().fill(TF.settingsCardAlt))
+                        }
+                    }
+                }
+            }
+            .frame(width: 180, alignment: .leading)
+
+            Image(systemName: "arrow.left")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(TF.settingsTextTertiary)
+
+            triggerStrip
+                .frame(maxWidth: .infinity)
+                .frame(height: 28)
+
+            if let draft = replacementDraft {
+                actionButton(
+                    icon: "checkmark",
+                    color: TF.settingsAccentGreen,
+                    tooltip: L("保存", "Save")
+                ) { onCommitEdit(draft.text) }
+                actionButton(
+                    icon: "xmark",
+                    color: TF.settingsTextTertiary,
+                    tooltip: L("取消", "Cancel")
+                ) { onCancelEdit() }
+            } else if isHovered {
+                actionButton(
+                    icon: "pencil",
+                    color: TF.settingsTextSecondary,
+                    tooltip: L("编辑替换内容", "Edit replacement")
+                ) { onStartEdit() }
+                actionButton(
+                    icon: "trash",
+                    color: TF.settingsAccentRed,
+                    tooltip: L("删除整组", "Delete group")
+                ) { onDeleteGroup() }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(isHighlighted
+                      ? TF.settingsAccentGreen.opacity(0.10)
+                      : (isHovered || isEditing
+                         ? TF.settingsRowHover
+                         : TF.settingsCard))
+                .animation(.easeOut(duration: 0.1), value: isHovered)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(
+                    isHighlighted
+                        ? TF.settingsAccentGreen.opacity(0.32)
+                        : (isHovered || isEditing ? Color.black.opacity(0.11) : TF.settingsBorder),
+                    lineWidth: 1
+                )
+                .animation(.easeOut(duration: 0.1), value: isHovered)
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .onHover { hovering in
+            isHovered = hovering
+        }
+    }
+
+    /// The trigger tags plus the "add trigger" control.
+    ///
+    /// A resting row lays the strip out in a plain, clipped `HStack`. The
+    /// horizontal `ScrollView` — an NSScrollView — is only built while the row
+    /// is hovered or being edited, which is also the only time the overflowing
+    /// triggers need to be reachable.
+    @ViewBuilder
+    private var triggerStrip: some View {
+        let isActive = isHovered || isEditing || isAddingTrigger || isAddTriggerButtonFocused
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 7) {
+                ForEach(group.triggers, id: \.self) { trigger in
+                    triggerTag(trigger: trigger, showsRemove: isHovered || isEditing)
+                }
+                addTriggerControl
+            }
+        }
+        .scrollDisabled(!isActive)
+    }
+
+    /// The dashed "add trigger" pill.
+    ///
+    /// Rendered as a keyboard-accessible button until it is actually used. A live `TextField` is
+    /// an NSTextField, and one per row is the single most expensive thing in a
+    /// list this long, so the real field is only built once the row is engaged.
+    @ViewBuilder
+    private var addTriggerControl: some View {
+        if isAddingTrigger {
+            HStack(spacing: 4) {
+                Image(systemName: "plus")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(TF.settingsTextTertiary)
+
+                TextField(L("添加触发词", "Add trigger"), text: $newTriggerText)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 11))
+                    .foregroundStyle(TF.settingsTextSecondary)
+                    .frame(width: 82)
+                    .focused($isTriggerFieldFocused)
+                    .onSubmit {
+                        onAddTrigger(newTriggerText)
+                        newTriggerText = ""
+                    }
+                    .onAppear {
+                        DispatchQueue.main.async { isTriggerFieldFocused = true }
+                    }
+                    .onChange(of: isTriggerFieldFocused) { _, focused in
+                        // Collapse back to the placeholder once the field is
+                        // done with, but never discard text in progress.
+                        if !focused && newTriggerText.isEmpty { isAddingTrigger = false }
+                    }
+            }
+            .padding(.horizontal, 9)
+            .frame(height: 26)
+            .background(
+                Capsule()
+                    .stroke(
+                        TF.settingsTextTertiary.opacity(0.28),
+                        style: StrokeStyle(lineWidth: 1, dash: [4])
+                    )
+            )
+            .contentShape(Capsule())
+            .onTapGesture {
+                isTriggerFieldFocused = true
+            }
+        } else {
+            Button {
+                isAddingTrigger = true
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(TF.settingsTextTertiary)
+                        .accessibilityHidden(true)
+
+                    Text(L("添加触发词", "Add trigger"))
+                        .font(.system(size: 11))
+                        .foregroundStyle(TF.settingsTextTertiary)
+                        .frame(width: 82, alignment: .leading)
+                }
+                .padding(.horizontal, 9)
+                .frame(height: 26)
+                .background(
+                    Capsule()
+                        .stroke(
+                            TF.settingsTextTertiary.opacity(0.28),
+                            style: StrokeStyle(lineWidth: 1, dash: [4])
+                        )
+                )
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .focusable()
+            .focused($isAddTriggerButtonFocused)
+            .accessibilityLabel(L("添加触发词", "Add trigger"))
+        }
+    }
+
+    private func actionButton(
+        icon: String,
+        color: Color,
+        tooltip: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(color)
+                .frame(width: 24, height: 24)
+                .background(Circle().fill(TF.settingsCardAlt))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .settingsTooltip(tooltip)
+    }
+
+    private func triggerTag(trigger: String, showsRemove: Bool) -> some View {
+        HStack(spacing: 6) {
+            Text(trigger)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(TF.settingsTextSecondary)
+
+            if showsRemove {
+                Button {
+                    onRemoveTrigger(trigger)
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 7, weight: .bold))
+                        .foregroundStyle(TF.settingsTextTertiary)
+                        .frame(width: 14, height: 14)
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .settingsTooltip(L("删除触发词", "Remove trigger"))
+            }
+        }
+        .padding(.leading, 10)
+        .padding(.trailing, showsRemove ? 6 : 10)
+        .frame(height: 26)
+        .background(Capsule().fill(TF.settingsControl))
+        .overlay(Capsule().stroke(Color.black.opacity(0.045), lineWidth: 1))
+    }
 }
