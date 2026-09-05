@@ -1042,7 +1042,16 @@ actor RecognitionSession {
         }
 
         do {
-            let selectedDeviceUID = AudioInputDevicePreferenceStore.resolvedCachedDeviceUID()
+            let captureResolution = AudioInputDevicePreferenceStore.cachedCaptureResolution()
+            let selectedDeviceUID: String?
+            switch captureResolution {
+            case .explicitDevice(let uid):
+                selectedDeviceUID = uid
+            case .systemDefault:
+                selectedDeviceUID = nil
+            case .unavailable:
+                throw AudioCaptureError.preferredInputDeviceUnavailable
+            }
             let preferenceMode = AudioInputDevicePreferenceStore.mode().rawValue
             let priorityUIDs = AudioInputDevicePreferenceStore.priorityEntries().map(\.uid).joined(separator: ",")
             audioEngine.selectedDeviceUID = selectedDeviceUID

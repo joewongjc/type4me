@@ -11,7 +11,7 @@ final class AudioInputDevicePreferenceTests: XCTestCase {
         UserDefaults.standard.removeObject(forKey: AudioInputDevicePreferenceStore.backupUIDKey)
         UserDefaults.standard.removeObject(forKey: "tf_microphoneSelectionMode")
         UserDefaults.standard.removeObject(forKey: "tf_microphonePriorityOrder")
-        AudioInputDeviceMonitor.shared.replaceCachedDevices([])
+        AudioInputDeviceMonitor.shared.replaceCachedDevices([], systemDefaultInput: nil)
         super.tearDown()
     }
 
@@ -137,6 +137,24 @@ final class AudioInputDevicePreferenceTests: XCTestCase {
         XCTAssertEqual(active, systemDefault)
     }
 
+    func testActiveDeviceDoesNotImplicitlyFallBackToBluetooth() {
+        AudioInputDevicePreferenceStore.savePriorityEntries([
+            AudioInputDevicePreferenceEntry(uid: "built-in", name: "MacBook Pro Microphone"),
+        ])
+        let airPods = AudioInputDevice(
+            uid: "airpods",
+            name: "AirPods Pro",
+            category: .bluetooth
+        )
+
+        let active = AudioInputDevicePreferenceStore.activeInputDevice(
+            devices: [airPods],
+            systemDefault: airPods
+        )
+
+        XCTAssertNil(active)
+    }
+
     func testActiveDevicePrefersAvailablePriorityDeviceOverSystemDefault() {
         let airPods = AudioInputDevice(uid: "airpods", name: "AirPods Pro", category: .bluetooth)
         let systemDefault = AudioInputDevice(
@@ -154,6 +172,104 @@ final class AudioInputDevicePreferenceTests: XCTestCase {
         )
 
         XCTAssertEqual(active, airPods)
+    }
+
+    func testCaptureResolutionUsesExplicitPriorityDevice() {
+        let builtIn = AudioInputDevice(
+            uid: "built-in",
+            name: "MacBook Pro Microphone",
+            category: .builtIn
+        )
+        let airPods = AudioInputDevice(
+            uid: "airpods",
+            name: "AirPods Pro",
+            category: .bluetooth
+        )
+        AudioInputDevicePreferenceStore.savePriorityEntries([
+            AudioInputDevicePreferenceEntry(uid: builtIn.uid, name: builtIn.name),
+        ])
+
+        let resolution = AudioInputDevicePreferenceStore.captureResolution(
+            devices: [builtIn, airPods],
+            systemDefault: airPods
+        )
+
+        XCTAssertEqual(resolution, .explicitDevice(uid: builtIn.uid))
+    }
+
+    func testCaptureResolutionRejectsImplicitBluetoothFallback() {
+        let airPods = AudioInputDevice(
+            uid: "airpods",
+            name: "AirPods Pro",
+            category: .bluetooth
+        )
+        AudioInputDevicePreferenceStore.savePriorityEntries([
+            AudioInputDevicePreferenceEntry(uid: "built-in", name: "MacBook Pro Microphone"),
+        ])
+
+        let resolution = AudioInputDevicePreferenceStore.captureResolution(
+            devices: [airPods],
+            systemDefault: airPods
+        )
+
+        XCTAssertEqual(resolution, .unavailable)
+    }
+
+    func testCaptureResolutionAllowsExplicitFollowSystemBluetooth() {
+        let airPods = AudioInputDevice(
+            uid: "airpods",
+            name: "AirPods Pro",
+            category: .bluetooth
+        )
+        AudioInputDevicePreferenceStore.resetToSystemDefault()
+
+        let resolution = AudioInputDevicePreferenceStore.captureResolution(
+            devices: [airPods],
+            systemDefault: airPods
+        )
+
+        XCTAssertEqual(resolution, .systemDefault)
+    }
+
+    func testKeepAliveDoesNotOpenBluetoothWhenBuiltInMicIsSelected() {
+        let builtIn = AudioInputDevice(
+            uid: "built-in",
+            name: "MacBook Pro Microphone",
+            category: .builtIn
+        )
+        let airPods = AudioInputDevice(
+            uid: "airpods",
+            name: "AirPods Pro",
+            category: .bluetooth
+        )
+        AudioInputDevicePreferenceStore.savePriorityEntries([
+            AudioInputDevicePreferenceEntry(uid: builtIn.uid, name: builtIn.name),
+        ])
+
+        let keepAlive = AudioInputDevicePreferenceStore.keepAliveInputDevice(
+            devices: [builtIn, airPods],
+            systemDefault: airPods
+        )
+
+        XCTAssertNil(keepAlive)
+    }
+
+    func testKeepAliveUsesExplicitlySelectedBluetoothMic() {
+        let airPods = AudioInputDevice(
+            uid: "airpods",
+            name: "AirPods Pro",
+            category: .bluetooth
+        )
+        AudioInputDevicePreferenceStore.savePriorityEntries([
+            AudioInputDevicePreferenceEntry(uid: airPods.uid, name: airPods.name),
+        ])
+
+        let keepAlive = AudioInputDevicePreferenceStore.keepAliveInputDevice(
+            devices: [airPods],
+            systemDefault: nil
+        )
+
+        XCTAssertEqual(keepAlive, airPods)
     }
 
     func testPriorityEntryStoragePreservesDeviceNamesAndOrder() {

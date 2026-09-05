@@ -16,7 +16,7 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
 
     @AppStorage("tf_startSound") private var startSound = StartSoundStyle.chime.rawValue
     @AppStorage("tf_launchAtLogin") private var launchAtLogin = true
-    @AppStorage("tf_volumeReduction") private var volumeReduction = -1
+    @AppStorage(SystemVolumeManager.volumeReductionKey) private var volumeReduction = -1
     @AppStorage("tf_language") private var language = AppLanguage.systemDefault
     @AppStorage(ClipboardOutputPolicy.storageKey)
     private var clipboardOutputPolicyRaw = ClipboardOutputPolicy.defaultValue.rawValue
