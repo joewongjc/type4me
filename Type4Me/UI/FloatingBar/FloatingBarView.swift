@@ -1425,7 +1425,7 @@ struct RecordingGlassSurface: View {
     let cornerRadius: CGFloat
     var theme: RecordingTheme = .dark
     /// Only consumed by the macOS 14/15 fallback; the native glass path uses
-    /// `TF.glassDarkContrastFloor` instead.
+    /// `TF.glassDarkContrastFloor` / `TF.glassLightContrastFloor` instead.
     let tintOpacity: Double
 
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -1439,7 +1439,11 @@ struct RecordingGlassSurface: View {
             shape.fill(theme == .light ? TF.floatingBackgroundLight : TF.floatingBackground)
         } else if #available(macOS 26.0, *) {
             ZStack {
-                shape.fill(theme == .dark ? Color.black.opacity(TF.glassDarkContrastFloor) : Color.clear)
+                shape.fill(
+                    theme == .dark
+                        ? Color.black.opacity(TF.glassDarkContrastFloor)
+                        : Color.white.opacity(TF.glassLightContrastFloor)
+                )
                 Color.clear.glassEffect(.regular, in: shape)
             }
             .id(theme)

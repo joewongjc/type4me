@@ -34,7 +34,16 @@ private final class CorrectionLearningPanel: NSPanel {
         hidesOnDeactivate = false
         ignoresMouseEvents = false
         animationBehavior = .utilityWindow
-        appearance = NSAppearance(named: .darkAqua)
+        updateAppearance()
+    }
+
+    // Mirrors FloatingBarPanel's lookup rather than sharing one, so this file
+    // stays clear of the recording-theme refactor in flight on PR #288.
+    func updateAppearance() {
+        let themeRaw = UserDefaults.standard.string(forKey: RecordingTheme.storageKey)
+            ?? RecordingTheme.defaultValue.rawValue
+        let theme = RecordingTheme(rawValue: themeRaw) ?? .dark
+        appearance = theme == .light ? NSAppearance(named: .aqua) : NSAppearance(named: .darkAqua)
     }
 
     override var canBecomeKey: Bool { false }
@@ -83,6 +92,7 @@ final class CorrectionLearningPanelController {
         state.isPresented = true
         state.onLearn = onLearn
         state.onIgnore = onIgnore
+        panel.updateAppearance()
         panel.positionAboveFloatingBar()
         panel.alphaValue = 0
         panel.orderFrontRegardless()
@@ -156,6 +166,9 @@ final class CorrectionLearningPanelController {
 
 private struct CorrectionLearningCardView: View {
     @ObservedObject var state: CorrectionLearningPanelState
+    @AppStorage(RecordingTheme.storageKey) private var storedTheme = RecordingTheme.defaultValue
+
+    private var theme: RecordingTheme { storedTheme }
 
     var body: some View {
         ZStack {
@@ -207,12 +220,14 @@ private struct CorrectionLearningCardView: View {
                         Button(L("忽略 (\(state.remainingSeconds)s)", "Ignore (\(state.remainingSeconds)s)")) {
                             state.onIgnore?()
                         }
-                        .buttonStyle(CorrectionCardButtonStyle(isPrimary: false, fixedWidth: 96))
+                        .buttonStyle(
+                            CorrectionCardButtonStyle(isPrimary: false, theme: theme, fixedWidth: 96)
+                        )
 
                         Button(state.status == .saveFailed ? L("重试", "Retry") : L("添加", "Add")) {
                             state.onLearn?()
                         }
-                        .buttonStyle(CorrectionCardButtonStyle(isPrimary: true))
+                        .buttonStyle(CorrectionCardButtonStyle(isPrimary: true, theme: theme))
                     }
                     .frame(maxWidth: .infinity, alignment: .trailing)
                 }
@@ -223,13 +238,36 @@ private struct CorrectionLearningCardView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(
             RoundedRectangle(cornerRadius: 11, style: .continuous)
-                .fill(Color(red: 0.095, green: 0.095, blue: 0.095).opacity(0.98))
+                .fill(cardFill)
+                .overlay {
+                    // The dark card separates itself from any host window by
+                    // luminance alone; the light one needs a rim or it dissolves
+                    // into a white page underneath.
+                    if theme == .light {
+                        RoundedRectangle(cornerRadius: 11, style: .continuous)
+                            .strokeBorder(TF.floatingBorderLight, lineWidth: 0.5)
+                    }
+                }
         )
         .padding(6)
+        .environment(\.colorScheme, theme == .light ? .light : .dark)
     }
 
-    private let primaryText = Color(red: 1, green: 1, blue: 1)
-    private let secondaryText = Color(red: 138 / 255, green: 138 / 255, blue: 138 / 255)
+    private var cardFill: Color {
+        theme == .light
+            ? TF.floatingBackgroundLight.opacity(0.98)
+            : Color(red: 0.095, green: 0.095, blue: 0.095).opacity(0.98)
+    }
+
+    private var primaryText: Color {
+        theme == .light ? TF.floatingTextLight : Color(red: 1, green: 1, blue: 1)
+    }
+
+    private var secondaryText: Color {
+        theme == .light
+            ? TF.floatingTextSecondaryLight
+            : Color(red: 138 / 255, green: 138 / 255, blue: 138 / 255)
+    }
 
     @ViewBuilder
     private var animatedStatusIcon: some View {
@@ -270,22 +308,43 @@ private struct CorrectionLearningCardView: View {
 
 private struct CorrectionCardButtonStyle: ButtonStyle {
     let isPrimary: Bool
+    var theme: RecordingTheme = .dark
     var fixedWidth: CGFloat? = nil
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(isPrimary ? Color.black : Color.white)
+            .foregroundStyle(labelColor)
             .padding(.horizontal, fixedWidth == nil ? 14 : 0)
             .frame(width: fixedWidth, height: 34)
             .background(
-                Capsule().fill(
-                    isPrimary
-                        ? Color(red: 251 / 255, green: 251 / 255, blue: 251 / 255)
-                            .opacity(configuration.isPressed ? 0.78 : 1)
-                        : Color(red: 51 / 255, green: 51 / 255, blue: 51 / 255)
-                            .opacity(configuration.isPressed ? 0.76 : 1)
-                )
+                Capsule().fill(fillColor(isPressed: configuration.isPressed))
             )
+    }
+
+    /// The primary button is the card's one high-contrast element, so it stays
+    /// inverted against the card fill in both themes.
+    private var labelColor: Color {
+        switch (theme, isPrimary) {
+        case (.dark, true): Color.black
+        case (.dark, false): Color.white
+        case (.light, true): Color.white
+        case (.light, false): TF.floatingTextLight
+        }
+    }
+
+    private func fillColor(isPressed: Bool) -> Color {
+        switch (theme, isPrimary) {
+        case (.dark, true):
+            TF.floatingControlLight.opacity(isPressed ? 0.78 : 1)
+        case (.dark, false):
+            TF.floatingControl.opacity(isPressed ? 0.76 : 1)
+        case (.light, true):
+            TF.floatingTextLight.opacity(isPressed ? 0.78 : 1)
+        // The light secondary fill is a wash over the card rather than an opaque
+        // capsule, so pressing has to deepen it instead of fading it out.
+        case (.light, false):
+            Color.black.opacity(isPressed ? 0.13 : 0.07)
+        }
     }
 }

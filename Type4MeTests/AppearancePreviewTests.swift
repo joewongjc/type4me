@@ -409,4 +409,16 @@ final class AppearancePreviewTests: XCTestCase {
         XCTAssertFalse(tab.subtitle.isEmpty)
         XCTAssertTrue(SettingsTab.allCases.contains(.appearance))
     }
+
+    // MARK: - Recording Glass Contrast
+
+    /// Native Liquid Glass samples the host application's backdrop, so a light
+    /// capsule over a dark page renders dark while its near-black foreground
+    /// colours stay put. Both themes must therefore carry a contrast floor.
+    func testGlassContrastFloors_areSetForBothThemes() {
+        XCTAssertGreaterThan(TF.glassLightContrastFloor, 0.5)
+        XCTAssertLessThan(TF.glassLightContrastFloor, 1.0)
+        XCTAssertGreaterThan(TF.glassDarkContrastFloor, 0.5)
+        XCTAssertLessThan(TF.glassDarkContrastFloor, 1.0)
+    }
 }

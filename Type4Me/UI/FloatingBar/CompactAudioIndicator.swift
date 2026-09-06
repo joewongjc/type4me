@@ -86,7 +86,7 @@ struct CompactAudioIndicator: View {
                 let totalColumns = Int(ceil((size.width + pitch) / pitch)) + 1
 
                 let activeColor = theme == .light ? TF.floatingTextLight : TF.compactIndicatorActive
-                let inactiveColor = theme == .light ? Color.black.opacity(0.18) : TF.compactIndicatorInactive
+                let inactiveColor = theme == .light ? TF.compactIndicatorInactiveLight : TF.compactIndicatorInactive
 
                 for i in 0..<totalColumns {
                     let x = rightEdge - CGFloat(i) * pitch
