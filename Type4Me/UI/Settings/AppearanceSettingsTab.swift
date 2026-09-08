@@ -30,6 +30,9 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
     @AppStorage(AppearancePreferenceDefaults.showCancelButtonKey)
     private var showCancelButton = AppearancePreferenceDefaults.showCancelButtonDefault
 
+    @AppStorage(AppearancePreferenceDefaults.showFinishButtonKey)
+    private var showFinishButton = AppearancePreferenceDefaults.showFinishButtonDefault
+
     @AppStorage(RecordingMetadataDisplayPreference.showModeNameKey)
     private var showModeName = RecordingMetadataDisplayPreference.showModeNameDefault
 
@@ -68,6 +71,7 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
             enablesHoverTranscriptPreview: hoverTranscriptPreview,
             showsTooltips: showTooltips,
             showsCancelButton: showCancelButton,
+            showsFinishButton: showFinishButton,
             showsModeName: showModeName,
             showsProviderName: showProviderName,
             showsModelName: showModelName
@@ -135,6 +139,8 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
                     hoverPreviewRow
                 }
 
+                SettingsDivider()
+                showFinishButtonRow
                 SettingsDivider()
                 showCancelButtonRow
                 SettingsDivider()
@@ -216,6 +222,17 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
         settingsToggleRow(
             L("悬停文字预览", "Hover Text Preview"),
             isOn: $hoverTranscriptPreview
+        )
+    }
+
+    private var showFinishButtonRow: some View {
+        settingsToggleRow(
+            L("显示录制按钮", "Show Record Button"),
+            subtitle: L(
+                "关闭后隐藏录制按钮（常规样式下同时隐藏光球动效），仍可通过快捷键结束录制",
+                "Hide the record button (also hides the orb in Regular style); you can still finish recording with the hotkey"
+            ),
+            isOn: $showFinishButton
         )
     }
 

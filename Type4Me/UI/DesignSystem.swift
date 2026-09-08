@@ -158,15 +158,31 @@ enum TF {
     )
     // Fixed control chrome. FloatingBarView adds the text inset for the
     // actual trailing boundary: the visible cancel circle or the capsule edge.
-    static let recordingChromeWidth: CGFloat = recordingFinishControlSize
-        + recordingCancelControlSize
-        + recordingLeadingInset
-        + recordingTrailingInset
-        + recordingControlGap * 2
-    static let recordingSingleButtonChromeWidth: CGFloat = recordingFinishControlSize
-        + recordingLeadingInset
-        + recordingTrailingInset
-        + recordingControlGap
+    //
+    // Either control can be hidden from Settings, so the width is summed from
+    // whichever ones are actually drawn rather than picked from a fixed pair.
+    static func recordingChromeWidth(
+        showsFinishButton: Bool,
+        showsCancelButton: Bool
+    ) -> CGFloat {
+        var width = recordingLeadingInset + recordingTrailingInset
+        if showsFinishButton {
+            width += recordingFinishControlSize + recordingControlGap
+        }
+        if showsCancelButton {
+            width += recordingCancelControlSize + recordingControlGap
+        }
+        return width
+    }
+
+    static let recordingChromeWidth: CGFloat = recordingChromeWidth(
+        showsFinishButton: true,
+        showsCancelButton: true
+    )
+    static let recordingSingleButtonChromeWidth: CGFloat = recordingChromeWidth(
+        showsFinishButton: true,
+        showsCancelButton: false
+    )
 
     // MARK: Transcript Popup (hover preview above bar)
 

@@ -98,6 +98,7 @@ struct FloatingBarPresentation: Equatable {
     var enablesHoverTranscriptPreview: Bool = true
     var showsTooltips: Bool = true
     var showsCancelButton: Bool = true
+    var showsFinishButton: Bool = true
     var showsModeName: Bool = RecordingMetadataDisplayPreference.showModeNameDefault
     var showsProviderName: Bool = RecordingMetadataDisplayPreference.showProviderNameDefault
     var showsModelName: Bool = RecordingMetadataDisplayPreference.showModelNameDefault
@@ -152,6 +153,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
     @AppStorage("tf_hoverTranscriptPreview") private var hoverTranscriptPreview = true
     @AppStorage(AppearancePreferenceDefaults.showTooltipsKey) private var showTooltips = AppearancePreferenceDefaults.showTooltipsDefault
     @AppStorage(AppearancePreferenceDefaults.showCancelButtonKey) private var showCancelButton = AppearancePreferenceDefaults.showCancelButtonDefault
+    @AppStorage(AppearancePreferenceDefaults.showFinishButtonKey) private var showFinishButton = AppearancePreferenceDefaults.showFinishButtonDefault
     @AppStorage(RecordingVisualStyle.storageKey) private var visualStyle = RecordingVisualStyle.defaultValue
     @AppStorage(RecordingMetadataDisplayPreference.showModeNameKey)
     private var showModeName = RecordingMetadataDisplayPreference.showModeNameDefault
@@ -198,13 +200,23 @@ struct FloatingBarView<S: FloatingBarState>: View {
         presentationOverride?.showsCancelButton ?? showCancelButton
     }
 
+    private var effectiveShowsFinishButton: Bool {
+        presentationOverride?.showsFinishButton ?? showFinishButton
+    }
+
     private var currentRecordingChromeWidth: CGFloat {
-        (effectiveShowsCancelButton ? TF.recordingChromeWidth : TF.recordingSingleButtonChromeWidth)
-            + recordingTextTrailingInset
+        TF.recordingChromeWidth(
+            showsFinishButton: effectiveShowsFinishButton,
+            showsCancelButton: effectiveShowsCancelButton
+        ) + recordingTextTrailingInset
     }
 
     private var recordingTextTrailingInset: CGFloat {
-        guard effectiveShowsCancelButton else { return TF.recordingTextEdgeInset }
+        // The compensation below exists only to balance the orb against the
+        // cancel circle, so it applies only while both are actually drawn.
+        guard effectiveShowsCancelButton, effectiveShowsFinishButton else {
+            return TF.recordingTextEdgeInset
+        }
 
         // The orb sits inside its Metal frame; the cancel circle fills its
         // frame. Match the orb's transparent inset on the cancel side so the
@@ -610,8 +622,12 @@ struct FloatingBarView<S: FloatingBarState>: View {
 
     private var compactRecordingControls: some View {
         HStack(spacing: 0) {
-            compactRecordingButton(.finish)
-                .frame(width: 32, height: TF.compactIndicatorHeight)
+            if effectiveShowsFinishButton {
+                compactRecordingButton(.finish)
+                    .frame(width: 32, height: TF.compactIndicatorHeight)
+            } else {
+                Spacer().frame(width: TF.recordingEdgeInset)
+            }
 
             CompactAudioIndicator(meter: state.audioLevel, theme: effectiveTheme)
                 .frame(maxWidth: .infinity, maxHeight: TF.compactIndicatorHeight)
@@ -778,7 +794,9 @@ struct FloatingBarView<S: FloatingBarState>: View {
 
     private var recordingContent: some View {
         HStack(spacing: TF.recordingControlGap) {
-            recordingButton(.finish)
+            if effectiveShowsFinishButton {
+                recordingButton(.finish)
+            }
 
             recordingText
 

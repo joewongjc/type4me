@@ -54,6 +54,12 @@ enum AppearancePreferenceDefaults {
 
     static let showCancelButtonKey = "tf_showCancelButton"
     static let showCancelButtonDefault = true
+
+    /// The finish control: the stop square in the compact capsule, and the
+    /// tappable orb in the regular bar. Hiding it leaves the hotkey as the way
+    /// to end a recording.
+    static let showFinishButtonKey = "tf_showFinishButton"
+    static let showFinishButtonDefault = true
 }
 
 enum RecordingVisualStyle: String, CaseIterable {

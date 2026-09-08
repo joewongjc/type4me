@@ -70,6 +70,46 @@ final class AppearancePreviewTests: XCTestCase {
         XCTAssertTrue(AppearancePreferenceDefaults.showCancelButtonDefault)
     }
 
+    // MARK: - Optional Record Button
+
+    func testShowFinishButtonPreferenceDefaults() {
+        XCTAssertEqual(AppearancePreferenceDefaults.showFinishButtonKey, "tf_showFinishButton")
+        // Existing users must keep the control until they opt out.
+        XCTAssertTrue(AppearancePreferenceDefaults.showFinishButtonDefault)
+        XCTAssertTrue(FloatingBarPresentation().showsFinishButton)
+    }
+
+    func testFinishAndCancelButtonsHideIndependently() {
+        var presentation = FloatingBarPresentation()
+        presentation.showsFinishButton = false
+        XCTAssertFalse(presentation.showsFinishButton)
+        XCTAssertTrue(presentation.showsCancelButton)
+    }
+
+    /// Either control can now be hidden, so the chrome width is summed from the
+    /// ones actually drawn instead of chosen from a fixed pair of constants.
+    func testRecordingChromeWidth_summedFromVisibleControls() {
+        XCTAssertEqual(
+            TF.recordingChromeWidth(showsFinishButton: true, showsCancelButton: true),
+            TF.recordingChromeWidth
+        )
+        XCTAssertEqual(
+            TF.recordingChromeWidth(showsFinishButton: true, showsCancelButton: false),
+            TF.recordingSingleButtonChromeWidth
+        )
+        // Hiding the finish control drops exactly its size plus one gap.
+        XCTAssertEqual(
+            TF.recordingChromeWidth(showsFinishButton: true, showsCancelButton: true)
+                - TF.recordingChromeWidth(showsFinishButton: false, showsCancelButton: true),
+            TF.recordingFinishControlSize + TF.recordingControlGap
+        )
+        // With neither control only the capsule insets remain.
+        XCTAssertEqual(
+            TF.recordingChromeWidth(showsFinishButton: false, showsCancelButton: false),
+            TF.recordingLeadingInset + TF.recordingTrailingInset
+        )
+    }
+
     func testRecordingMetadataDisplayPreferenceDefaults() {
         XCTAssertTrue(RecordingMetadataDisplayPreference.showModeNameDefault)
         XCTAssertFalse(RecordingMetadataDisplayPreference.showProviderNameDefault)
