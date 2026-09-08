@@ -79,7 +79,10 @@ enum ASRProviderRegistry {
             .volcano: ProviderEntry(
                 configType: VolcanoASRConfig.self,
                 createClient: { VolcASRClient() },
-                capabilities: .streaming()
+                capabilities: .streaming(),
+                validateCredentials: { config, options in
+                    try await VolcASRClient.validateCredentials(config: config, options: options)
+                }
             ),
             .stepfun: ProviderEntry(
                 configType: StepFunASRConfig.self,

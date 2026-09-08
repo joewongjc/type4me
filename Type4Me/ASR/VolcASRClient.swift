@@ -244,6 +244,47 @@ actor VolcASRClient: SpeechRecognizer {
         startReceiveLoop()
     }
 
+    /// How long a credential test stays on the line waiting for the server's
+    /// verdict on the init request.
+    private static let credentialProbeWindow = Duration.seconds(2)
+
+    /// Opening the socket only proves the endpoint and handshake are healthy.
+    /// Volcengine reports quota, billing and rate-limit problems in a frame it
+    /// sends after the init request, so a test that connects and immediately
+    /// disconnects reports "Connected" for an account that cannot transcribe a
+    /// single word (issue #290). This stays connected long enough to hear that
+    /// verdict, and treats silence as success.
+    static func validateCredentials(
+        config: any ASRProviderConfig,
+        options: ASRRequestOptions
+    ) async throws {
+        let client = VolcASRClient()
+        // The stream installs its continuation lazily, so it has to be created
+        // before connecting or the server's error is emitted into nothing.
+        let events = await client.events
+        try await client.connect(config: config, options: options)
+
+        let serverError: Error? = await withTaskGroup(of: Error?.self) { group in
+            group.addTask {
+                for await event in events {
+                    if case .error(let error) = event { return error }
+                    if case .completed = event { return nil }
+                }
+                return nil
+            }
+            group.addTask {
+                try? await Task.sleep(for: Self.credentialProbeWindow)
+                return nil
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
+        }
+
+        await client.disconnect()
+        if let serverError { throw serverError }
+    }
+
     /// When WebSocket handshake is rejected, make a plain HTTPS request to get the actual error body.
     private static func probeServerError(request: URLRequest) async -> VolcASRError? {
         guard let url = request.url,
@@ -400,17 +441,35 @@ actor VolcASRClient: SpeechRecognizer {
 
             // Server error (0xF): could be a real error or just
             // bigmodel_async's "session complete" signal.
+            //
+            // Whether the server is reporting a problem has nothing to do with
+            // how much audio we happened to send, so the two are told apart by
+            // what the frame actually carries. Gating on `audioPacketCount`
+            // turned every mid-session error into a silent stop (issue #290:
+            // an exhausted quota looked exactly like a normal short recording).
             if msgType == 0x0F {
-                if audioPacketCount == 0 {
-                    // No audio was sent yet — this is a real setup/auth error.
-                    do {
-                        _ = try VolcProtocol.decodeServerResponse(data)
-                    } catch {
-                        NSLog("[ASR] Server error: %@", String(describing: error))
-                        emitEvent(.error(error))
-                    }
+                let extracted = VolcProtocol.extractServerError(data)
+                if extracted.code != nil || extracted.message != nil {
+                    let error = VolcProtocolError.serverError(
+                        code: extracted.code,
+                        message: extracted.message
+                    )
+                    NSLog(
+                        "[ASR] Server error after %d audio packets: %@",
+                        audioPacketCount,
+                        String(describing: error)
+                    )
+                    emitEvent(.error(error))
                 } else {
+                    // Nothing readable in the frame, so this is taken as the
+                    // async session-complete signal. Record it: if a report of
+                    // a hidden error ever survives this change, the bytes here
+                    // are what identify the real layout.
                     NSLog("[ASR] Session ended by server after %d audio packets", audioPacketCount)
+                    DebugFileLogger.log(
+                        "Volc 0x0F frame with no readable error, \(data.count)B: "
+                            + data.prefix(64).map { String(format: "%02x", $0) }.joined()
+                    )
                 }
                 emitEvent(.completed)
                 // The server has already ended the logical session. A graceful

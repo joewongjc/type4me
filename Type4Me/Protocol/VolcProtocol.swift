@@ -170,8 +170,102 @@ enum VolcProtocol: Sendable {
 
     // MARK: - Decode Server Message
 
+    /// Best-effort extraction of the code and text from a server error frame.
+    ///
+    /// The documented layout is header, 4-byte error code, 4-byte body size,
+    /// then the body, but no real error frame has ever been captured from this
+    /// client to confirm it — issue #290 reached us as a server-side error the
+    /// user only ever saw as a recording that stopped by itself. So rather than
+    /// trusting one offset and throwing `invalidPayload` when it does not fit,
+    /// this tries the plausible framings and returns whatever is readable.
+    /// Surfacing the server's own words matters more than parsing them
+    /// precisely; hiding them behind a parse failure is the actual defect.
+    static func extractServerError(_ data: Data) -> (code: Int?, message: String?) {
+        let headerBytes = Int((try? VolcHeader.decode(from: data))?.headerSize ?? 1) * 4
+        guard data.count > headerBytes else { return (nil, nil) }
+        let tail = Data(data[(data.startIndex + headerBytes)...])
+
+        var code: Int?
+        if tail.count >= 4 {
+            let value = tail.prefix(4).withUnsafeBytes { UInt32(bigEndian: $0.load(as: UInt32.self)) }
+            // Volcengine error codes are 8-digit. Anything else is far more
+            // likely to be a length prefix or the body itself, so it is
+            // dropped rather than reported as a bogus code.
+            if (10_000_000...99_999_999).contains(Int(value)) {
+                code = Int(value)
+            }
+        }
+
+        // Candidate bodies: the tail as-is, and with the code and size prefixes
+        // peeled off, each also tried gzip-decompressed.
+        var candidates: [Data] = []
+        for skip in [0, 4, 8] where tail.count > skip {
+            let slice = Data(tail[(tail.startIndex + skip)...])
+            candidates.append(slice)
+            if let inflated = try? gzipDecompress(slice) { candidates.append(inflated) }
+        }
+
+        for candidate in candidates {
+            if let found = readableError(from: candidate) {
+                // A code inside the body is unambiguous; the leading word is a
+                // guess about framing, so it only fills in when the body has none.
+                return (found.code ?? code, found.message)
+            }
+        }
+        return (code, nil)
+    }
+
+    /// Pulls a code and a human-readable error out of a byte slice: a JSON
+    /// object's fields if one is present, otherwise the raw text.
+    ///
+    /// Both shapes seen in this codebase are accepted — a body carrying its own
+    /// `code`, and one carrying only text with the code in the framing.
+    private static func readableError(from data: Data) -> (code: Int?, message: String?)? {
+        let keys = ["error", "message", "msg", "error_msg"]
+
+        func fromJSON(_ slice: Data) -> (code: Int?, message: String?)? {
+            guard let object = try? JSONSerialization.jsonObject(with: slice) as? [String: Any] else {
+                return nil
+            }
+            let code = object["code"] as? Int
+            for key in keys {
+                if let value = object[key] as? String, !value.isEmpty { return (code, value) }
+            }
+            return code.map { ($0, nil) }
+        }
+
+        if let found = fromJSON(data) { return found }
+
+        guard let text = String(data: data, encoding: .utf8) else { return nil }
+        // The body may sit inside a larger slice when the framing guess is off.
+        if let open = text.firstIndex(of: "{"), let close = text.lastIndex(of: "}"), open < close {
+            let embedded = String(text[open...close])
+            if let found = fromJSON(Data(embedded.utf8)) { return found }
+        }
+
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        // Reject slices that are mostly control bytes: those are framing, not a
+        // message. Decoding succeeded only because those bytes happen to be
+        // valid UTF-8.
+        let scalars = trimmed.unicodeScalars
+        let printable = scalars.filter { $0.value >= 0x20 }.count
+        guard printable * 4 >= scalars.count * 3 else { return nil }
+        return (nil, String(trimmed.prefix(200)))
+    }
+
     static func decodeServerResponse(_ data: Data) throws -> VolcServerResponse {
         let header = try VolcHeader.decode(from: data)
+
+        // Handled before any length parsing: an error frame's framing is the
+        // part we cannot verify, and a strict parse here would replace the
+        // server's message with `invalidPayload`.
+        if header.messageType == .serverError {
+            let extracted = extractServerError(data)
+            throw VolcProtocolError.serverError(code: extracted.code, message: extracted.message)
+        }
+
         let headerBytes = Int(header.headerSize) * 4
         var offset = headerBytes
 
@@ -194,22 +288,6 @@ enum VolcProtocol: Sendable {
         }
 
         var payload = data[data.startIndex + offset ..< data.startIndex + offset + payloadSize]
-
-        // Handle server error
-        if header.messageType == .serverError {
-            // Error payload may also be compressed/JSON
-            if header.compression == .gzip {
-                payload = try gzipDecompress(Data(payload))
-            }
-            if header.serialization == .json, !payload.isEmpty {
-                if let json = try? JSONSerialization.jsonObject(with: Data(payload)) as? [String: Any] {
-                    let code = json["code"] as? Int
-                    let message = json["message"] as? String
-                    throw VolcProtocolError.serverError(code: code, message: message)
-                }
-            }
-            throw VolcProtocolError.serverError(code: nil, message: nil)
-        }
 
         // Decompress if needed
         if header.compression == .gzip {
