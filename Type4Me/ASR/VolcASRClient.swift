@@ -160,9 +160,23 @@ actor VolcASRClient: SpeechRecognizer {
         if let existing = _events {
             return existing
         }
+        return installFreshEventStream()
+    }
+
+    /// Bumped every time the stream is replaced. A handle taken at one
+    /// generation stops receiving once a newer one exists, which is why
+    /// `connect` must run before the caller reads `events`.
+    private(set) var eventStreamGeneration = 0
+
+    /// Replaces the event stream and returns the new one. `connect` calls this
+    /// so each session starts clean; anything already holding the old handle is
+    /// left on a stream that will never receive again.
+    @discardableResult
+    func installFreshEventStream() -> AsyncStream<RecognitionEvent> {
         let (stream, continuation) = AsyncStream<RecognitionEvent>.makeStream()
         self.eventContinuation = continuation
         self._events = stream
+        self.eventStreamGeneration += 1
         return stream
     }
 
@@ -174,9 +188,7 @@ actor VolcASRClient: SpeechRecognizer {
         }
 
         // Ensure fresh event stream
-        let (stream, continuation) = AsyncStream<RecognitionEvent>.makeStream()
-        self.eventContinuation = continuation
-        self._events = stream
+        installFreshEventStream()
 
         let connectId = UUID().uuidString
         let isCloudProxy = options.cloudProxyURL != nil
@@ -248,6 +260,11 @@ actor VolcASRClient: SpeechRecognizer {
     /// verdict on the init request.
     private static let credentialProbeWindow = Duration.seconds(2)
 
+    /// 0.2s of 16 kHz mono 16-bit silence — the same amount that made the server
+    /// return the quota verdict in issue #290. The init request alone was never
+    /// shown to be enough to make it decide.
+    private static let credentialProbeSilenceBytes = 6400
+
     /// Opening the socket only proves the endpoint and handshake are healthy.
     /// Volcengine reports quota, billing and rate-limit problems in a frame it
     /// sends after the init request, so a test that connects and immediately
@@ -259,12 +276,34 @@ actor VolcASRClient: SpeechRecognizer {
         options: ASRRequestOptions
     ) async throws {
         let client = VolcASRClient()
-        // The stream installs its continuation lazily, so it has to be created
-        // before connecting or the server's error is emitted into nothing.
-        let events = await client.events
         try await client.connect(config: config, options: options)
+        // Read the stream only after connecting. `connect` installs a fresh
+        // continuation, so a handle taken before it is one the receive loop has
+        // already replaced — the verdict would be delivered to a stream nobody
+        // is reading and the probe would time out reporting success. Events the
+        // server sends before iteration begins are buffered by the stream, so
+        // reading late loses nothing.
+        let events = await client.events
 
-        let serverError: Error? = await withTaskGroup(of: Error?.self) { group in
+        // Give the server something to judge. #290's quota error arrived only
+        // after audio was sent, so an init-only probe may never draw a verdict.
+        try? await client.sendAudio(Data(count: Self.credentialProbeSilenceBytes))
+
+        let serverError = await firstServerError(in: events, within: Self.credentialProbeWindow)
+        await client.disconnect()
+        if let serverError { throw serverError }
+    }
+
+    /// Returns the first `.error` the stream produces, or nil if the stream ends
+    /// or the window elapses first.
+    ///
+    /// Silence is treated as success: the server says nothing when the request
+    /// is accepted, so waiting longer would only slow down a healthy test.
+    static func firstServerError(
+        in events: AsyncStream<RecognitionEvent>,
+        within window: Duration
+    ) async -> Error? {
+        await withTaskGroup(of: Error?.self) { group in
             group.addTask {
                 for await event in events {
                     if case .error(let error) = event { return error }
@@ -273,16 +312,13 @@ actor VolcASRClient: SpeechRecognizer {
                 return nil
             }
             group.addTask {
-                try? await Task.sleep(for: Self.credentialProbeWindow)
+                try? await Task.sleep(for: window)
                 return nil
             }
             let first = await group.next() ?? nil
             group.cancelAll()
             return first
         }
-
-        await client.disconnect()
-        if let serverError { throw serverError }
     }
 
     /// When WebSocket handshake is rejected, make a plain HTTPS request to get the actual error body.

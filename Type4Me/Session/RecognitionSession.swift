@@ -352,6 +352,15 @@ actor RecognitionSession {
         onASREvent = handler
     }
 
+    #if DEBUG
+    /// Test seam: feeds an event through the same path the client's receive loop
+    /// uses, so how a runtime server error reaches the user is coverable without
+    /// a live provider.
+    func ingestASREventForTesting(_ event: RecognitionEvent) {
+        handleASREvent(event, expectedGeneration: sessionGeneration)
+    }
+    #endif
+
     /// Called with normalized audio level (0..1) for UI visualization.
     private var onAudioLevel: (@Sendable (Float) -> Void)?
 
@@ -2501,6 +2510,28 @@ actor RecognitionSession {
 
     // MARK: - Stream interruption recovery
 
+    /// Ends the session and hands the server's own message to the UI, using the
+    /// same teardown the other unrecoverable paths use.
+    private func failWithTerminalServerError(_ error: Error) async {
+        guard state != .idle else { return }
+        // Hand the reason over first: the teardown below is unrelated to why the
+        // session ended, and the message is the only actionable part.
+        onASREvent?(.error(error))
+        SoundFeedback.playError()
+        audioEngine.stop()
+        audioEngine.onAudioChunk = nil
+        audioEngine.onAudioLevel = nil
+        if let client = asrClient {
+            await client.disconnect()
+        }
+        asrClient = nil
+        state = .idle
+        hasEmittedReadyForCurrentSession = false
+        onASREvent?(.completed)
+        SystemVolumeManager.restore()
+        clearIntelliSenseSessionContext()
+    }
+
     private func beginStreamRecovery(trigger: String) async {
         guard state == .recording else {
             DebugFileLogger.log("recovery ignored: state=\(state) trigger=\(trigger)")
@@ -2748,7 +2779,16 @@ actor RecognitionSession {
         case .error(let error):
             lastStreamingError = error
             logger.error("ASR error: \(error)")
-            if state == .recording {
+            if (error as? TerminalASRError)?.isTerminalServerError == true {
+                // Quota, billing, auth and rate limiting are verdicts about the
+                // account, not a dropped connection. Recovery would retry the
+                // same provider until it gives up and would replace the server's
+                // wording with a generic interruption notice, which is exactly
+                // how an exhausted quota looked like a recording that stopped by
+                // itself (issue #290).
+                DebugFileLogger.log("terminal ASR server error, skipping recovery: \(error)")
+                Task { await self.failWithTerminalServerError(error) }
+            } else if state == .recording {
                 Task { await self.beginStreamRecovery(trigger: "ASR error: \(error)") }
             }
 

@@ -108,3 +108,32 @@ enum VolcProtocolError: Error, Sendable {
     case compressionFailed
     case serverError(code: Int?, message: String?)
 }
+
+extension VolcProtocolError: LocalizedError {
+    /// The session surfaces errors through `LocalizedError`, so a server error
+    /// without this conformance reaches the user as Foundation's generic
+    /// "operation couldn't be completed" and the server's own wording — the
+    /// only actionable part — is lost (issue #290).
+    var errorDescription: String? {
+        guard case .serverError(let code, let message) = self else { return nil }
+        let base = message ?? L("语音识别服务返回错误", "The speech service returned an error")
+        return code.map { "\(base) (\($0))" } ?? base
+    }
+}
+
+/// An error the server reported about the account or the request itself —
+/// quota, billing, authentication, rate limiting.
+///
+/// These are worth separating from dropped sockets: retrying the same provider
+/// cannot clear them, so the recovery path burns attempts on a request that
+/// will keep failing while hiding the one message that says what to fix.
+protocol TerminalASRError: Error {
+    var isTerminalServerError: Bool { get }
+}
+
+extension VolcProtocolError: TerminalASRError {
+    var isTerminalServerError: Bool {
+        if case .serverError = self { return true }
+        return false
+    }
+}
