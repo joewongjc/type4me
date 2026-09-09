@@ -139,8 +139,11 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
                     hoverPreviewRow
                 }
 
-                SettingsDivider()
-                showFinishButtonRow
+                if isCompact {
+                    SettingsDivider()
+                    showFinishButtonRow
+                }
+
                 SettingsDivider()
                 showCancelButtonRow
                 SettingsDivider()
@@ -229,8 +232,8 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
         settingsToggleRow(
             L("显示录制按钮", "Show Record Button"),
             subtitle: L(
-                "关闭后隐藏录制按钮（常规样式下同时隐藏光球动效），仍可通过快捷键结束录制",
-                "Hide the record button (also hides the orb in Regular style); you can still finish recording with the hotkey"
+                "关闭后隐藏停止按钮，音波居中显示，仍可通过快捷键结束录制",
+                "Hide the stop button and centre the waveform; you can still finish recording with the hotkey"
             ),
             isOn: $showFinishButton
         )

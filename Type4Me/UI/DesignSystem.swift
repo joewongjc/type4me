@@ -158,31 +158,15 @@ enum TF {
     )
     // Fixed control chrome. FloatingBarView adds the text inset for the
     // actual trailing boundary: the visible cancel circle or the capsule edge.
-    //
-    // Either control can be hidden from Settings, so the width is summed from
-    // whichever ones are actually drawn rather than picked from a fixed pair.
-    static func recordingChromeWidth(
-        showsFinishButton: Bool,
-        showsCancelButton: Bool
-    ) -> CGFloat {
-        var width = recordingLeadingInset + recordingTrailingInset
-        if showsFinishButton {
-            width += recordingFinishControlSize + recordingControlGap
-        }
-        if showsCancelButton {
-            width += recordingCancelControlSize + recordingControlGap
-        }
-        return width
-    }
-
-    static let recordingChromeWidth: CGFloat = recordingChromeWidth(
-        showsFinishButton: true,
-        showsCancelButton: true
-    )
-    static let recordingSingleButtonChromeWidth: CGFloat = recordingChromeWidth(
-        showsFinishButton: true,
-        showsCancelButton: false
-    )
+    static let recordingChromeWidth: CGFloat = recordingFinishControlSize
+        + recordingCancelControlSize
+        + recordingLeadingInset
+        + recordingTrailingInset
+        + recordingControlGap * 2
+    static let recordingSingleButtonChromeWidth: CGFloat = recordingFinishControlSize
+        + recordingLeadingInset
+        + recordingTrailingInset
+        + recordingControlGap
 
     // MARK: Transcript Popup (hover preview above bar)
 
@@ -202,6 +186,9 @@ enum TF {
     static let compactTranscriptHorizontalInset: CGFloat = 8
     static let compactTranscriptLeadingFadeWidth: CGFloat = 10
     static let compactIndicatorControlVisualSize: CGFloat = 15
+    /// Width of a compact control's tap lane. The capsule is balanced only when
+    /// the lanes on both edges match, so hiding one control skews the waveform.
+    static let compactIndicatorControlWidth: CGFloat = 32
     static let compactIndicatorWaveBarWidth: CGFloat = 2
     static let compactIndicatorWaveMinHeight: CGFloat = 2
     static let compactIndicatorWaveMaxHeight: CGFloat = 18

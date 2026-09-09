@@ -200,23 +200,20 @@ struct FloatingBarView<S: FloatingBarState>: View {
         presentationOverride?.showsCancelButton ?? showCancelButton
     }
 
-    private var effectiveShowsFinishButton: Bool {
+    /// Compact only. The regular bar's finish control is the `LiquidGlassOrb`,
+    /// which is also that style's only audio-level feedback while recording, so
+    /// it is never hidden. The compact capsule draws its waveform separately.
+    private var effectiveShowsCompactFinishButton: Bool {
         presentationOverride?.showsFinishButton ?? showFinishButton
     }
 
     private var currentRecordingChromeWidth: CGFloat {
-        TF.recordingChromeWidth(
-            showsFinishButton: effectiveShowsFinishButton,
-            showsCancelButton: effectiveShowsCancelButton
-        ) + recordingTextTrailingInset
+        (effectiveShowsCancelButton ? TF.recordingChromeWidth : TF.recordingSingleButtonChromeWidth)
+            + recordingTextTrailingInset
     }
 
     private var recordingTextTrailingInset: CGFloat {
-        // The compensation below exists only to balance the orb against the
-        // cancel circle, so it applies only while both are actually drawn.
-        guard effectiveShowsCancelButton, effectiveShowsFinishButton else {
-            return TF.recordingTextEdgeInset
-        }
+        guard effectiveShowsCancelButton else { return TF.recordingTextEdgeInset }
 
         // The orb sits inside its Metal frame; the cancel circle fills its
         // frame. Match the orb's transparent inset on the cancel side so the
@@ -622,9 +619,9 @@ struct FloatingBarView<S: FloatingBarState>: View {
 
     private var compactRecordingControls: some View {
         HStack(spacing: 0) {
-            if effectiveShowsFinishButton {
+            if effectiveShowsCompactFinishButton {
                 compactRecordingButton(.finish)
-                    .frame(width: 32, height: TF.compactIndicatorHeight)
+                    .frame(width: TF.compactIndicatorControlWidth, height: TF.compactIndicatorHeight)
             } else {
                 Spacer().frame(width: TF.recordingEdgeInset)
             }
@@ -634,7 +631,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
 
             if effectiveShowsCancelButton {
                 compactRecordingButton(.cancel)
-                    .frame(width: 32, height: TF.compactIndicatorHeight)
+                    .frame(width: TF.compactIndicatorControlWidth, height: TF.compactIndicatorHeight)
             } else {
                 Spacer().frame(width: TF.recordingEdgeInset)
             }
@@ -794,9 +791,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
 
     private var recordingContent: some View {
         HStack(spacing: TF.recordingControlGap) {
-            if effectiveShowsFinishButton {
-                recordingButton(.finish)
-            }
+            recordingButton(.finish)
 
             recordingText
 
