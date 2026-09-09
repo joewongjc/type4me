@@ -190,6 +190,23 @@ final class SelectionAskPanel: NSPanel {
 }
 
 @MainActor
+private struct SelectionAskThemedRoot: View {
+    let content: SelectionAskView
+    let onThemeChange: @MainActor (SettingsTheme) -> Void
+
+    @AppStorage(SettingsTheme.storageKey)
+    private var themeRaw = SettingsTheme.defaultValue.rawValue
+
+    var body: some View {
+        content
+            .preferredColorScheme(SettingsTheme.resolve(themeRaw).colorScheme)
+            .onChange(of: themeRaw) { _, newValue in
+                onThemeChange(SettingsTheme.resolve(newValue))
+            }
+    }
+}
+
+@MainActor
 final class SelectionAskController {
     let coordinator: AskAnythingCoordinator
     private var state: SelectionAskState { coordinator.state }
@@ -227,7 +244,11 @@ final class SelectionAskController {
             onCancelFollowUp: onCancelFollowUp
         )
         let size = NSSize(width: 680, height: 560)
-        panel = SelectionAskPanel(contentRect: NSRect(origin: .zero, size: size))
+        let panel = SelectionAskPanel(contentRect: NSRect(origin: .zero, size: size))
+        panel.appearance = SettingsTheme.resolve(
+            UserDefaults.standard.string(forKey: SettingsTheme.storageKey) ?? SettingsTheme.defaultValue.rawValue
+        ).appearance
+        self.panel = panel
 
         let view = SelectionAskView(state: self.coordinator.state) { [weak self] in
             self?.close()
@@ -238,7 +259,11 @@ final class SelectionAskController {
         } onOpenInType4Me: { [weak self] in
             self?.openInType4Me()
         }
-        let hosting = NSHostingView(rootView: view)
+        let targetPanel = panel
+        let themedRoot = SelectionAskThemedRoot(content: view) { [weak targetPanel] theme in
+            targetPanel?.appearance = theme.appearance
+        }
+        let hosting = NSHostingView(rootView: themedRoot)
         hosting.frame = NSRect(origin: .zero, size: size)
         hosting.autoresizingMask = [.width, .height]
         panel.contentView = hosting
