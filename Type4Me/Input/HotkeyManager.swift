@@ -529,16 +529,8 @@ final class HotkeyManager: NSObject {
             (1 << CGEventType.keyDown.rawValue)
             | (1 << CGEventType.keyUp.rawValue)
             | (1 << CGEventType.flagsChanged.rawValue)
-            | (1 << CGEventType.leftMouseDown.rawValue)
-            | (1 << CGEventType.leftMouseUp.rawValue)
-            | (1 << CGEventType.rightMouseDown.rawValue)
-            | (1 << CGEventType.rightMouseUp.rawValue)
             | (1 << CGEventType.otherMouseDown.rawValue)
             | (1 << CGEventType.otherMouseUp.rawValue)
-            | (1 << CGEventType.leftMouseDragged.rawValue)
-            | (1 << CGEventType.rightMouseDragged.rawValue)
-            | (1 << CGEventType.otherMouseDragged.rawValue)
-            | (1 << CGEventType.scrollWheel.rawValue)
             | (hasMediaKeyBindings ? (1 << 14) : 0)  // kCGEventSystemDefined (NX_SYSDEFINED) for media/headphone keys
         let userInfo = Unmanaged.passUnretained(self).toOpaque()
 
@@ -584,7 +576,6 @@ final class HotkeyManager: NSObject {
 
         eventTapLifecycleState = .running
         hasEmittedAccessibilityRevoked = false
-        TextInjectionEngine.globalInputMonitorDidStart(eventTap: tap)
 
         startHealthCheck()
         updateMediaKeySession()
@@ -601,10 +592,7 @@ final class HotkeyManager: NSObject {
 
         healthCheckTimer?.invalidate()
         healthCheckTimer = nil
-
         deactivateMediaKeySession()
-        TextInjectionEngine.globalInputMonitorDidStop()
-
         if let tap = eventTap {
             CGEvent.tapEnable(tap: tap, enable: false)
         }
@@ -672,11 +660,8 @@ final class HotkeyManager: NSObject {
             // Check 2: Is the tap still enabled at the Mach port level?
             if !CGEvent.tapIsEnabled(tap: tap) {
                 NSLog("[Type4Me] Health check: tap disabled, re-enabling...")
-                TextInjectionEngine.globalInputMonitorDidStop()
                 CGEvent.tapEnable(tap: tap, enable: true)
-                if CGEvent.tapIsEnabled(tap: tap) {
-                    TextInjectionEngine.globalInputMonitorDidStart(eventTap: tap)
-                } else {
+                if !CGEvent.tapIsEnabled(tap: tap) {
                     NSLog("[Type4Me] Health check: tap re-enable failed, reinstalling tap...")
                     self.reinstallTap()
                 }
@@ -705,7 +690,6 @@ final class HotkeyManager: NSObject {
         // Immediate fail-open guard: if Accessibility permission was revoked at runtime,
         // tear down the active tap immediately and pass the event untouched to the system.
         guard PermissionManager.hasAccessibilityPermission else {
-            TextInjectionEngine.globalInputMonitorDidStop()
             DebugFileLogger.log("hotkey event tap untrusted during event handling, tearing down immediately")
             tearDownEventTap(finalState: .revoked)
             return Unmanaged.passUnretained(event)
@@ -716,24 +700,17 @@ final class HotkeyManager: NSObject {
         )
         switch recovery {
         case .revoke:
-            TextInjectionEngine.globalInputMonitorDidStop()
             DebugFileLogger.log("hotkey event tap revoked on disabled event type=\(type.rawValue)")
             tearDownEventTap(finalState: .revoked)
             return Unmanaged.passUnretained(event)
         case .reenable:
-            TextInjectionEngine.globalInputMonitorDidStop()
             DebugFileLogger.log(
                 "hotkey event tap disabled type=\(type.rawValue) recording=\(activeRecordingBindingId != nil)"
             )
-            // Any input released while the tap was disabled is unknowable.
-            // Keep the monitor unavailable while a stuck hold is recovered so
-            // that recovery-triggered stops cannot capture an opaque target.
             recoverStuckHolds()
             if let tap = eventTap, CFMachPortIsValid(tap) {
                 CGEvent.tapEnable(tap: tap, enable: true)
-                if CGEvent.tapIsEnabled(tap: tap) {
-                    TextInjectionEngine.globalInputMonitorDidStart(eventTap: tap)
-                } else {
+                if !CGEvent.tapIsEnabled(tap: tap) {
                     reinstallTap()
                 }
             } else {
@@ -744,11 +721,7 @@ final class HotkeyManager: NSObject {
             break
         }
 
-        // Record the event before a matching stop hotkey invokes its callback.
-        // Capture may arm only this event's release-only tail; every unrelated
-        // later keyboard or pointer event invalidates an opaque target.
-        TextInjectionEngine.beginGlobalInputEvent(type: type, event: event)
-        defer { TextInjectionEngine.endGlobalInputEvent(type: type) }
+
 
         // Type4Me's own Cmd+C / Delete / Cmd+V events must reach the target
         // application but must never trigger a user-configured Type4Me hotkey.
@@ -761,20 +734,7 @@ final class HotkeyManager: NSObject {
             return Unmanaged.passUnretained(event)
         }
 
-        // Left/right presses are observed only for opaque-target continuity;
-        // they are never hotkeys here and must pass through untouched.
-        if type == .leftMouseDown || type == .leftMouseUp
-            || type == .rightMouseDown || type == .rightMouseUp {
-            return Unmanaged.passUnretained(event)
-        }
 
-        // Dragging and scrolling can move selection or dismiss a private
-        // editor without changing its AX window. They invalidate opaque
-        // targets above and otherwise pass through untouched.
-        if type == .leftMouseDragged || type == .rightMouseDragged
-            || type == .otherMouseDragged || type == .scrollWheel {
-            return Unmanaged.passUnretained(event)
-        }
 
         // MARK: Mouse button events (otherMouseDown/Up = middle + side buttons)
         if type == .otherMouseDown || type == .otherMouseUp {
@@ -1064,7 +1024,6 @@ final class HotkeyManager: NSObject {
 
     private func dispatchBindingCallback(_ callback: () -> Void) {
         didDispatchBindingCallback = true
-        TextInjectionEngine.authorizeCurrentGlobalInputForStopCapture()
         callback()
     }
 

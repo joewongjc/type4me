@@ -571,53 +571,29 @@ actor RecognitionSession {
     private var targetBundleId: String?
     /// The frontmost application captured when recording starts, used to restore focus if needed.
     private var targetApplication: NSRunningApplication?
-    /// Frozen for the lifetime of one recording. Only normal manual recordings
-    /// receive the user's configured value; specialized/automated flows pass the
-    /// backward-compatible recording-start preference.
-    private var injectionTargetPreference: InjectionTargetPreference = .defaultValue
+    /// Whether this recording was triggered by an automated flow (e.g. URL Scheme).
+    /// Automated flows require restoring/activating their pinned target application.
+    /// Ordinary user input writes to the current keyboard focus without switching apps.
+    private var isAutomationTarget: Bool = false
 
     /// Pure, testable classification of how to treat the injection target that was
     /// captured when recording started, evaluated at paste time.
-    ///
-    /// The overriding goal is to never paste dictated text into an application the
-    /// user did not intend, so anything uncertain fails safe to the clipboard.
     enum InjectionTargetPlan: Equatable {
-        /// No target was captured because Type4Me itself was frontmost at record
-        /// start (e.g. a URL Scheme command activated the app, then yielded focus).
-        /// The application focused at paste time *is* the user's intended target,
-        /// so pasting into the current frontmost app is correct.
         case injectIntoCurrentFrontmost
-        /// A live target was captured; it must be activated and confirmed frontmost
-        /// (PID match) before pasting, otherwise fall back to the clipboard.
         case activateAndConfirm
-        /// A stop-time destination was captured with an explicit evidence tier.
-        /// Exact and best-effort opaque targets perform their own revalidation.
-        case injectIntoEndTarget
-        /// The captured target terminated during transcription/processing. Never
-        /// paste — whatever is frontmost now is a different app — retain the text
-        /// in the clipboard for a deliberate manual paste.
         case failSafeClipboard
     }
 
     static func planInjectionTarget(
-        preference: InjectionTargetPreference = .recordingStart,
-        hasCapturedTarget: Bool,
-        isTerminated: Bool,
-        hasEndTarget: Bool = false
+        isAutomation: Bool = false,
+        hasCapturedTarget: Bool = true,
+        isTerminated: Bool = false
     ) -> InjectionTargetPlan {
-        if preference == .recordingEnd {
-            return hasEndTarget ? .injectIntoEndTarget : .failSafeClipboard
+        guard isAutomation else {
+            return .injectIntoCurrentFrontmost
         }
         guard hasCapturedTarget else { return .injectIntoCurrentFrontmost }
         return isTerminated ? .failSafeClipboard : .activateAndConfirm
-    }
-
-    static func resolvedIntelliSenseTarget(
-        preference: InjectionTargetPreference,
-        recordingStartTarget: TargetApplicationContext?,
-        recordingEndTarget: TargetApplicationContext?
-    ) -> TargetApplicationContext? {
-        preference == .recordingEnd ? recordingEndTarget : recordingStartTarget
     }
 
     /// Activates `target` and waits until it actually becomes the frontmost
@@ -714,7 +690,7 @@ actor RecognitionSession {
         case .idle:
             await startRecording()
         case .recording:
-            await stopRecording(endTarget: captureAutomaticEndTarget())
+            await stopRecording()
         case .recovering:
             _ = await handleRecoveryHotkeyPress()
         default:
@@ -763,12 +739,12 @@ actor RecognitionSession {
     func startRecording(
         mode: ProcessingMode = .direct,
         requestedAt: ContinuousClock.Instant? = nil,
-        injectionTargetPreference: InjectionTargetPreference = .recordingStart
+        isAutomation: Bool = false
     ) async {
         await startRecording(
             purpose: .input(mode),
             requestedAt: requestedAt,
-            injectionTargetPreference: injectionTargetPreference
+            isAutomation: isAutomation
         )
     }
 
@@ -836,7 +812,7 @@ actor RecognitionSession {
     func startRecording(
         purpose: RecordingPurpose,
         requestedAt: ContinuousClock.Instant? = nil,
-        injectionTargetPreference: InjectionTargetPreference = .recordingStart,
+        isAutomation: Bool = false,
         manualInput: Bool = false
     ) async {
         let recordingRequestStartedAt = requestedAt ?? ContinuousClock.now
@@ -861,7 +837,7 @@ actor RecognitionSession {
 
         self.isManualInput = manualInput
         self.recordingPurpose = purpose
-        self.injectionTargetPreference = injectionTargetPreference
+        self.isAutomationTarget = isAutomation
         clipboardOutputPolicy = ClipboardOutputPolicy.current()
         completionIntent = .normal
         stoppedByMaxDuration = false
@@ -946,27 +922,16 @@ actor RecognitionSession {
             }
             if effectiveMode.id == ProcessingMode.intelliSenseId {
                 let settings = await IntelliSenseSettingsStore.shared.load()
-                let recordingStartTarget = TargetApplicationContext(
+                let target = TargetApplicationContext(
                     processIdentifier: frontmostApplication?.processIdentifier,
                     bundleIdentifier: frontmostApplication?.bundleIdentifier,
                     displayName: frontmostApplication?.localizedName
                 )
-                let target = Self.resolvedIntelliSenseTarget(
-                    preference: injectionTargetPreference,
-                    recordingStartTarget: recordingStartTarget,
-                    recordingEndTarget: nil
-                )
                 intelliSenseSettings = settings
                 intelliSenseTarget = target
                 intelliSenseStartedModeID = effectiveMode.id
-                if let target {
-                    intelliSenseContextTask = Task {
-                        await IntelliSenseContextCapturer.capture(target: target, settings: settings)
-                    }
-                } else {
-                    // The destination is intentionally unknown until the user
-                    // stops a recording in the stop-time target mode.
-                    intelliSenseContextTask = nil
+                intelliSenseContextTask = Task {
+                    await IntelliSenseContextCapturer.capture(target: target, settings: settings)
                 }
             }
 
@@ -1276,16 +1241,9 @@ actor RecognitionSession {
         guard state == .recording else { return }
         DebugFileLogger.log("max recording duration reached (\(limit)s), auto-stopping")
         stoppedByMaxDuration = true
-        await stopRecording(endTarget: captureAutomaticEndTarget())
+        await stopRecording()
     }
 
-    private func captureAutomaticEndTarget() -> TextInjectionEngine.EndInjectionTarget? {
-        guard injectionTargetPreference == .recordingEnd,
-              currentMode.supportsOutputFormatting,
-              completionIntent == .normal
-        else { return nil }
-        return TextInjectionEngine.captureEndInjectionTarget()
-    }
 
     private func clearASRCleanupTask(generation: Int) {
         if asrCleanupGeneration == generation {
@@ -1595,9 +1553,7 @@ actor RecognitionSession {
         return error.localizedDescription
     }
 
-    func stopRecording(
-        endTarget: TextInjectionEngine.EndInjectionTarget? = nil
-    ) async {
+    func stopRecording() async {
         guard !isManualInput else { return }
         let myGeneration = sessionGeneration
         guard state == .recording else {
@@ -1608,12 +1564,6 @@ actor RecognitionSession {
         // Set state BEFORE any await to prevent a second stop from
         // slipping through the guard during the suspension point.
         state = .finishing
-        let endTarget = injectionTargetPreference == .recordingEnd
-            && currentMode.supportsOutputFormatting
-            && completionIntent == .normal
-            ? endTarget
-            : nil
-        prepareStopTimeTargetContext(endTarget)
         if let translationContext = translationRequestContext,
            currentMode.id == ProcessingMode.translationModeId {
             onASREvent?(.processingLabelOverride(L(
@@ -1956,7 +1906,7 @@ actor RecognitionSession {
         currentConfig = nil
 
         await finishTextOutput(effectiveText, generation: myGeneration, stopStartedAt: stopT0,
-                               needsLLM: needsLLM, earlyLLMTask: earlyLLMTask, needsBatchFallback: needsBatchFallback, endTarget: endTarget)
+                               needsLLM: needsLLM, earlyLLMTask: earlyLLMTask, needsBatchFallback: needsBatchFallback)
     }
 
     /// Shared by finalized speech and typed input: prompt expansion, LLM, guarded output and history.
@@ -1966,8 +1916,7 @@ actor RecognitionSession {
         stopStartedAt stopT0: ContinuousClock.Instant,
         needsLLM initialNeedsLLM: Bool,
         earlyLLMTask initialEarlyLLMTask: Task<TimedLLMResult, Never>? = nil,
-        needsBatchFallback: Bool = false,
-        endTarget: TextInjectionEngine.EndInjectionTarget? = nil
+        needsBatchFallback: Bool = false
     ) async {
         var needsLLM = initialNeedsLLM
         var earlyLLMTask = initialEarlyLLMTask
@@ -2293,16 +2242,9 @@ actor RecognitionSession {
                 contextAvailability: contextAvailability,
                 targetBundleIdentifier: targetBundleId
             )
-            let correctionLearningEnabled = learningPlan.correctionEnabled
-            let expressionLearningEnabled = learningPlan.expressionLearningEnabled
             let shouldTrackLearning = !isManualInput && learningPlan.shouldTrackInjection
-            let observationAppCategory = intelliSenseRequestContext?.snapshot.appCategory
-                ?? AppContextClassifier.classify(
-                    bundleIdentifier: targetBundleId,
-                    appName: nil
-                )
             let targetApp = targetApplication
-            let targetPreference = injectionTargetPreference
+            let isAutomation = isAutomationTarget
             let manualInputHasNoTarget = isManualInput && targetApp == nil
             let injectLog = "stop: injecting method=clipboard len=\(finalText.count) +\(ContinuousClock.now - stopT0)"
             let injectionResult: TrackedInjectionResult = await withCheckedContinuation { continuation in
@@ -2323,10 +2265,9 @@ actor RecognitionSession {
                         )
                     } else {
                         let plan = manualInputHasNoTarget ? InjectionTargetPlan.failSafeClipboard : RecognitionSession.planInjectionTarget(
-                            preference: targetPreference,
+                            isAutomation: isAutomation,
                             hasCapturedTarget: targetApp != nil,
-                            isTerminated: targetApp?.isTerminated ?? false,
-                            hasEndTarget: endTarget != nil
+                            isTerminated: targetApp?.isTerminated ?? false
                         )
                         let allowInjection: Bool
                         switch plan {
@@ -2334,8 +2275,6 @@ actor RecognitionSession {
                             allowInjection = true
                         case .activateAndConfirm:
                             allowInjection = targetApp.map(RecognitionSession.activateAndConfirmFrontmost) ?? false
-                        case .injectIntoEndTarget:
-                            allowInjection = endTarget != nil
                         case .failSafeClipboard:
                             allowInjection = false
                         }
@@ -2346,15 +2285,11 @@ actor RecognitionSession {
                                     finalText,
                                     sourceText: rawText,
                                     sourceRecordID: recordId,
-                                    modeID: modeID,
-                                    requiring: endTarget
+                                    modeID: modeID
                                 )
                             } else {
                                 result = TrackedInjectionResult(
-                                    outcome: engine.inject(
-                                        finalText,
-                                        requiring: endTarget
-                                    ),
+                                    outcome: engine.inject(finalText),
                                     observationContext: nil
                                 )
                             }
@@ -2363,14 +2298,9 @@ actor RecognitionSession {
                             // frontmost, so pasting now could leak the dictated text
                             // into the wrong app. Retain it in the clipboard instead.
                             engine.copyToClipboard(finalText)
-                            let reason: String
-                            if targetPreference == .recordingEnd {
-                                reason = "end target missing or focus changed"
-                            } else {
-                                reason = plan == .failSafeClipboard
-                                    ? "target terminated"
-                                    : "target focus unconfirmed"
-                            }
+                            let reason = plan == .failSafeClipboard
+                                ? "target terminated"
+                                : "target focus unconfirmed"
                             DebugFileLogger.log("stop: \(reason); retained in clipboard, paste skipped")
                             result = TrackedInjectionResult(
                                 outcome: .copiedToClipboard,
@@ -2430,6 +2360,24 @@ actor RecognitionSession {
             ))
             if injectionResult.outcome == .inserted,
                let context = injectionResult.observationContext {
+                let actualBundleID = context.bundleIdentifier
+                let effectiveLearningPlan = PostInjectionLearningPlan.resolve(
+                    settings: intelliSenseSettings,
+                    modeID: currentMode.id,
+                    startedModeID: intelliSenseStartedModeID,
+                    isCrossModeFallback: intelliSenseCrossModeFallback,
+                    aborted: wasCancelled,
+                    guardRejected: intelliSenseGuardRejected,
+                    contextAvailability: contextAvailability,
+                    targetBundleIdentifier: actualBundleID
+                )
+                let actualCategory = intelliSenseRequestContext?.snapshot.appCategory
+                    ?? AppContextClassifier.classify(
+                        bundleIdentifier: actualBundleID,
+                        appName: nil
+                    )
+                let effectiveShouldTrackLearning = !isManualInput && effectiveLearningPlan.shouldTrackInjection
+
                 let sourceKind: ReviseSourceModeKind
                 if currentMode.id == ProcessingMode.intelliSenseId {
                     sourceKind = .intelliSense
@@ -2443,17 +2391,17 @@ actor RecognitionSession {
                 await ReviseCoordinator.shared.registerTarget(
                     context: context,
                     sourceModeKind: sourceKind,
-                    learningResumePlan: ReviseLearningResumePlan(shouldResume: shouldTrackLearning, modeID: currentMode.id)
+                    learningResumePlan: ReviseLearningResumePlan(shouldResume: effectiveShouldTrackLearning, modeID: currentMode.id)
                 )
 
-                if shouldTrackLearning {
+                if effectiveShouldTrackLearning {
                     await MainActor.run {
                         PostInjectionLearningCoordinator.shared.begin(
                             context,
                             options: PostInjectionLearningOptions(
-                                correctionEnabled: correctionLearningEnabled,
-                                expressionLearningEnabled: expressionLearningEnabled,
-                                appCategory: observationAppCategory
+                                correctionEnabled: effectiveLearningPlan.correctionEnabled,
+                                expressionLearningEnabled: effectiveLearningPlan.expressionLearningEnabled,
+                                appCategory: actualCategory
                             )
                         )
                     }
@@ -2774,9 +2722,7 @@ actor RecognitionSession {
                     NSLog("[Session] Server closed ASR while recording, initiating stop")
                     DebugFileLogger.log("server-initiated stop from recording state")
                     Task {
-                        await self.stopRecording(
-                            endTarget: self.captureAutomaticEndTarget()
-                        )
+                        await self.stopRecording()
                     }
                 }
             }
@@ -2911,13 +2857,6 @@ actor RecognitionSession {
     // MARK: - Speculative LLM
 
     private var isSpeculativeLLMEnabled: Bool {
-        // IntelliSense cannot know the relevant application or editor until
-        // stop time in this mode. Reusing a request built from the start-time
-        // app would make both processing and history attribution incorrect.
-        if injectionTargetPreference == .recordingEnd,
-           currentMode.id == ProcessingMode.intelliSenseId {
-            return false
-        }
         let provider = KeychainService.selectedLLMProvider
         guard provider.supportsSpeculativeProcessing else { return false }
         if let override = UserDefaults.standard.object(forKey: "tf_enableSpeculativeLLM") as? Bool {
@@ -2926,53 +2865,6 @@ actor RecognitionSession {
         return true
     }
 
-    private func prepareStopTimeTargetContext(
-        _ endTarget: TextInjectionEngine.EndInjectionTarget?
-    ) {
-        guard injectionTargetPreference == .recordingEnd else { return }
-
-        let recordingEndTarget = endTarget.map { target in
-            TargetApplicationContext(
-                processIdentifier: target.processIdentifier,
-                bundleIdentifier: target.bundleIdentifier,
-                displayName: NSRunningApplication(
-                    processIdentifier: target.processIdentifier
-                )?.localizedName
-            )
-        }
-        targetBundleId = recordingEndTarget?.bundleIdentifier
-
-        guard currentMode.id == ProcessingMode.intelliSenseId,
-              intelliSenseStartedModeID == ProcessingMode.intelliSenseId,
-              !intelliSenseCrossModeFallback
-        else { return }
-
-        cancelAllSpeculativeLLM()
-        speculativeThrottle.reset()
-        pendingLLMError = nil
-        clearHistoryLLMMetadata()
-        intelliSenseContextTask?.cancel()
-        intelliSenseContextTask = nil
-        intelliSenseRequestContext = nil
-        intelliSenseLastProcessingResult = nil
-        intelliSenseTarget = Self.resolvedIntelliSenseTarget(
-            preference: injectionTargetPreference,
-            recordingStartTarget: intelliSenseTarget,
-            recordingEndTarget: recordingEndTarget
-        )
-
-        guard let target = intelliSenseTarget,
-              let settings = intelliSenseSettings else {
-            DebugFileLogger.log("intelli sense stop target unavailable")
-            return
-        }
-        intelliSenseContextTask = Task {
-            await IntelliSenseContextCapturer.capture(target: target, settings: settings)
-        }
-        DebugFileLogger.log(
-            "intelli sense retargeted at stop bundle=\(target.bundleIdentifier ?? "unknown")"
-        )
-    }
 
     /// Debounce: after each transcript update, wait 800ms of silence before
     /// speculatively sending current text to LLM. If the user is still
