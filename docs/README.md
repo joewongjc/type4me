@@ -21,7 +21,7 @@
 
 | 功能 | 文档 | 类型 | 状态 | 设计日期 | 实现基线 |
 |---|---|---|---|---:|---|
-| 当前键盘焦点回写（简化输入目标） | [产品设计](features/current-focus-injection/product-design.md) / [开发设计](features/current-focus-injection/development-design.md) | 产品与开发设计 | 设计完成，待实现 | 2026-09-10 | — |
+| 当前键盘焦点回写（简化输入目标） | [产品设计](features/current-focus-injection/product-design.md) / [开发设计](features/current-focus-injection/development-design.md) | 产品与开发设计 | 已实现，待合并 | 2026-09-10 | `22e2fd1` |
 | 首次设置与权限引导 | [产品设计](features/setup-guide/product-design.md) | 产品设计 | 已实现，待用户验收 | 2026-09-08 | `bafecde` |
 | Meta Muse 实时 ASR | [产品设计](features/meta-muse-asr/product-design.md) / [开发设计](features/meta-muse-asr/development-design.md) | 产品与开发设计 | 已实现，持续验证 | 2026-09-03 | `6fdfb8d`（#286） |
 | 权限与首启引导 | [产品设计](features/permission-onboarding-redesign/product-design.md) / [开发设计](features/permission-onboarding-redesign/development-design.md) | 产品与开发设计 | 已实现，持续验证 | 2026-09-02 | `5fce88f`（#281） |

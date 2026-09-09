@@ -1,7 +1,7 @@
 # Type4Me 当前键盘焦点文本回写开发设计
 
 > 文档类型：开发设计
-> 文档状态：设计完成，待实现
+> 文档状态：已实现，待合并
 > 设计日期：2026-09-10
 > 最后校验：2026-09-10
 > 对应产品设计：[产品设计](product-design.md)
@@ -35,19 +35,23 @@
 
 ## 2. 目标选择机制 (Target Selection)
 
-### 2.1 模式抽象
-重构注入目标定义，以 `InjectionTargetMode` 显式区分输入场景：
+### 2.1 模式抽象与实现落地
+概念上以交互式输入与自动化任务显式区分输入场景：
+
+- **普通交互式输入**：输出时直接读取当前键盘焦点所在的前台应用（`currentKeyboardFocus`）；
+- **外部自动化任务**：指定绑定的目标应用，保持激活与 PID 一致（`pinnedApplication`）。
+
+在具体实现落地中，会话层通过 `RecognitionSession.planInjectionTarget(isAutomation:hasCapturedTarget:isTerminated:)` 判定：
 
 ```swift
-enum InjectionTargetMode: Sendable {
-    /// 普通交互式输入：输出时直接读取当前键盘焦点所在的前台应用
-    case currentKeyboardFocus
-
-    /// 外部自动化任务：指定绑定的目标应用（需保持激活与 PID 一致）
-    case pinnedApplication(NSRunningApplication)
+enum InjectionTargetPlan: Equatable {
+    case injectIntoCurrentFrontmost
+    case activateAndConfirm
+    case failSafeClipboard
 }
 ```
 
+交互式输入（快捷键、菜单栏、输入窗）`isAutomation: false`，直接进入 `.injectIntoCurrentFrontmost`；自动化入口（URL Scheme）`isAutomation: true`，严格进行 `.activateAndConfirm` 校验。
 ### 2.2 交互模式目标判定
 在 `currentKeyboardFocus` 下：
 1. 直接读取 `NSWorkspace.shared.frontmostApplication`；
@@ -123,39 +127,26 @@ func inject(
 }
 ```
 
-### 3.2 注入结果模型重塑
-移除 `inferInjectionOutcome` 对“是否真正插入”的虚假保证，将结果类型简化为事实陈述：
+### 3.2 注入结果模型与 UI 反馈
+移除 `inferInjectionOutcome` 对“是否真正插入”的虚假保证。实现层与既有 `InjectionOutcome` 枚举自然对齐：
 
-```swift
-enum InjectionOutcome: Equatable, Sendable {
-    /// Cmd+V 已成功投递至目标应用的事件队列
-    case pasteDispatched(targetApp: NSRunningApplication)
-
-    /// 无法投递，已退化为纯剪贴板写入
-    case clipboardFallback(reason: FallbackReason)
-
-    enum FallbackReason: Equatable, Sendable {
-        case noTargetApp
-        case targetTerminated
-        case targetMismatch
-        case eventPostFailed
-    }
-}
-```
+- 成功派发 `Cmd+V`：报告 `.inserted`，浮层显示“已完成”；
+- 异常兜底（无前台应用或按键合成失败）：报告 `.copiedToClipboard`，浮层明确提示“已粘贴到剪贴板”，文本安全保留。
 
 ### 3.3 剪贴板策略完全回归 `ClipboardOutputPolicy`
-- 无论目标应用是纯原生、Rust+Metal（super.engineering）、Electron 还是终端，剪贴板是否保留纯粹由用户配置的 `ClipboardOutputPolicy`（`alwaysCopy` / `cancelProcessed` / `cancelRawTranscript` / `neverCopy`）决定；
-- 彻底取消在 `TextInjectionEngine` 内强制 `retainResult` 的特判逻辑。
+- 成功粘贴后，剪贴板是否保留纯粹由用户配置的 `ClipboardOutputPolicy`（`alwaysCopy` / `cancelProcessed` / `cancelRawTranscript` / `neverCopy`）决定；
+- 彻底取消在 `TextInjectionEngine` 内强制 `retainResult` 的特判逻辑；
+- **异常兜底例外**：仅在真正无法向任何前台应用派发（如无有效应用或按键合成失败）时，无条件将识别文本永久保留到剪贴板，防止口述内容丢失。
 
 ## 4. 减负与代码删除清单 (Weight Reduction)
 
-本次重构的核心工作是**删除负资产代码**，预计净减少代码约 1800 ~ 2200 行。
+本次重构的核心工作是**删除负资产代码**，实际净减少代码约 2800+ 行。
 
 ### 4.1 `TextInjectionEngine.swift` 清理项
 - **删除 `InputActivityMonitor`（约 450 行）**：
   - 移除全局 Event Tap 事件统计与 Epoch 计数器；
   - 移除 `StopGestureTail` 结构体及 `Fn` 物理按键释放尾部事件过滤（179 键码探测）；
-  - 移除合成事件标记（`syntheticInputEventMarker`）。
+  - *注：保留 `syntheticInputEventMarker` 与 `isSyntheticInput` 检查，用于阻止 Type4Me 自身合成事件（Cmd+V 等）在全局 Event Tap 中误触发用户热键。*
 - **删除 `FocusContinuityGuard` 与 `ConfirmedTargetInvalidationState`（约 200 行）**：
   - 移除通过 `AXObserver` 对焦点变更的死守监控。
 - **删除目标启发与扫描逻辑（约 600 行）**：
@@ -165,8 +156,8 @@ enum InjectionOutcome: Equatable, Sendable {
   - 移除 `standardPasteCommandState`（菜单栏遍历找 Paste 菜单）；
   - 移除 `isStrictEditableCandidate`、`shouldUseBestEffortOpaqueDestination`。
 - **删除注入后 AX 证明逻辑（约 250 行）**：
-  - 移除 `inferInjectionOutcome` 中强行将 `AXWindow` 判定为不可编辑并推翻粘贴结果的代码；
-  - 移除 `inferInsertedRange` 等推断逻辑。
+  - 移除 `inferInjectionOutcome` 中强行将 `AXWindow` 判定为不可编辑并推翻粘贴结果的代码；普通注入完全跳过 AX 探测；
+  - *注：保留 `inferInsertedRange` 作为 IntelliSense 文本纠正追踪学习的局部辅助计算。*
 
 ### 4.2 关联文件清理项
 - **`Type4Me/Injection/InjectionTargetPreference.swift`**：

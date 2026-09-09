@@ -2232,6 +2232,20 @@ actor RecognitionSession {
             let modeID = currentMode.id
             let sessionSettings = intelliSenseRequestContext?.settings ?? intelliSenseSettings
             let contextAvailability = intelliSenseRequestContext?.snapshot.availability
+            let isAutomation = isAutomationTarget
+            let currentFrontmostBundleId = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+            let effectiveTargetBundleId = (!isAutomation && currentFrontmostBundleId != nil)
+                ? currentFrontmostBundleId
+                : targetBundleId
+            let effectiveContextAvailability: ContextAvailability? = {
+                if !isAutomation, let currentFrontmostBundleId, currentFrontmostBundleId != targetBundleId {
+                    if sessionSettings?.isBlacklisted(bundleIdentifier: currentFrontmostBundleId) == true {
+                        return .blacklisted
+                    }
+                    return nil
+                }
+                return contextAvailability
+            }()
             let learningPlan = PostInjectionLearningPlan.resolve(
                 settings: sessionSettings,
                 modeID: modeID,
@@ -2239,12 +2253,11 @@ actor RecognitionSession {
                 isCrossModeFallback: intelliSenseCrossModeFallback,
                 aborted: wasCancelled,
                 guardRejected: intelliSenseGuardRejected,
-                contextAvailability: contextAvailability,
-                targetBundleIdentifier: targetBundleId
+                contextAvailability: effectiveContextAvailability,
+                targetBundleIdentifier: effectiveTargetBundleId
             )
             let shouldTrackLearning = !isManualInput && learningPlan.shouldTrackInjection
             let targetApp = targetApplication
-            let isAutomation = isAutomationTarget
             let manualInputHasNoTarget = isManualInput && targetApp == nil
             let injectLog = "stop: injecting method=clipboard len=\(finalText.count) +\(ContinuousClock.now - stopT0)"
             let injectionResult: TrackedInjectionResult = await withCheckedContinuation { continuation in
@@ -2361,6 +2374,15 @@ actor RecognitionSession {
             if injectionResult.outcome == .inserted,
                let context = injectionResult.observationContext {
                 let actualBundleID = context.bundleIdentifier
+                let actualAvailability: ContextAvailability? = {
+                    if intelliSenseSettings?.isBlacklisted(bundleIdentifier: actualBundleID) == true {
+                        return .blacklisted
+                    }
+                    if actualBundleID == targetBundleId {
+                        return contextAvailability
+                    }
+                    return nil
+                }()
                 let effectiveLearningPlan = PostInjectionLearningPlan.resolve(
                     settings: intelliSenseSettings,
                     modeID: currentMode.id,
@@ -2368,14 +2390,19 @@ actor RecognitionSession {
                     isCrossModeFallback: intelliSenseCrossModeFallback,
                     aborted: wasCancelled,
                     guardRejected: intelliSenseGuardRejected,
-                    contextAvailability: contextAvailability,
+                    contextAvailability: actualAvailability,
                     targetBundleIdentifier: actualBundleID
                 )
-                let actualCategory = intelliSenseRequestContext?.snapshot.appCategory
-                    ?? AppContextClassifier.classify(
+                let actualCategory = {
+                    if actualBundleID == targetBundleId,
+                       let startCategory = intelliSenseRequestContext?.snapshot.appCategory {
+                        return startCategory
+                    }
+                    return AppContextClassifier.classify(
                         bundleIdentifier: actualBundleID,
                         appName: nil
                     )
+                }()
                 let effectiveShouldTrackLearning = !isManualInput && effectiveLearningPlan.shouldTrackInjection
 
                 let sourceKind: ReviseSourceModeKind

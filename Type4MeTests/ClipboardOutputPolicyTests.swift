@@ -55,23 +55,6 @@ final class ClipboardOutputPolicyTests: XCTestCase {
         }
     }
 
-    func testRestoringClipboardDoesNotReportClipboardFallback() {
-        XCTAssertEqual(
-            TextInjectionEngine.finalizeOutcome(
-                .copiedToClipboard,
-                retention: .restoreOriginal
-            ),
-            .notInserted
-        )
-        XCTAssertEqual(
-            TextInjectionEngine.finalizeOutcome(
-                .copiedToClipboard,
-                retention: .retainResult
-            ),
-            .copiedToClipboard
-        )
-    }
-
     func testRestorePolicyDeterminesClipboardRestoration() {
         XCTAssertTrue(TextInjectionEngine.shouldRestoreClipboard(retention: .restoreOriginal))
         XCTAssertFalse(TextInjectionEngine.shouldRestoreClipboard(retention: .retainResult))
