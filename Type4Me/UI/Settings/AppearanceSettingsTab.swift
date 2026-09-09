@@ -84,10 +84,10 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            settingsGroupCard(L("设置窗口", "Settings Window"), icon: "paintpalette") {
+            settingsGroupCard(L("窗口外观", "Window Appearance"), icon: "paintpalette") {
                 settingsOptionRow(
                     L("窗口主题", "Window Theme"),
-                    subtitle: L("立即生效，录音浮条主题独立设置。", "Applies immediately. The recording bar has its own theme."),
+                    subtitle: L("应用于 Type4Me 窗口；录音浮条主题独立设置。", "Applies to Type4Me windows. The recording bar has its own theme."),
                     controlWidth: themeControlWidth
                 ) {
                     settingsInlineSegmentedPicker(

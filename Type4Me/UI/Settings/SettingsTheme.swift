@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Settings-window appearance. RecordingTheme remains an independent preference.
+/// Appearance preference for standard Type4Me windows. RecordingTheme remains independent.
 enum SettingsTheme: String, CaseIterable, Identifiable {
     case system
     case light
