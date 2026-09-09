@@ -928,7 +928,10 @@ struct SettingsInlineSegmentedPicker: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(SettingsSegmentedButtonStyle())
-                .help(option.label)
+                .settingsTooltip(
+                    option.label,
+                    isEnabled: option.icon != nil
+                )
                 .accessibilityLabel(option.label)
                 .accessibilityAddTraits(isSelected ? [.isSelected] : [])
                 .background {
