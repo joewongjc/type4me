@@ -51,8 +51,8 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
     @AppStorage("tf_language")
     private var language = AppLanguage.systemDefault
 
-    // Equal thirds, with enough room for “Follow System” in English.
-    private var themeSegmentWidth: CGFloat { language == AppLanguage.zh.rawValue ? 80 : 108 }
+    // Compact square-proportioned icon segments following Apple segmented button standards.
+    private let themeSegmentWidth: CGFloat = 40
     private var themeControlWidth: CGFloat { themeSegmentWidth * 3 + 8 }
 
     private var isCompact: Bool {
@@ -90,13 +90,13 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
                     subtitle: L("应用于 Type4Me 窗口；录音浮条主题独立设置。", "Applies to Type4Me windows. The recording bar has its own theme."),
                     controlWidth: themeControlWidth
                 ) {
-                    settingsInlineSegmentedPicker(
+                    settingsInlineIconSegmentedPicker(
                         selection: Binding(
                             get: { SettingsTheme.resolve(settingsTheme).rawValue },
                             set: { settingsTheme = $0 }
                         ),
-                        options: [SettingsTheme.light, .system, .dark].map {
-                            ($0.rawValue, $0.displayName(language: AppLanguage(rawValue: language) ?? .en))
+                        options: [SettingsTheme.system, .light, .dark].map {
+                            ($0.rawValue, $0.iconName, $0.displayName(language: AppLanguage(rawValue: language) ?? .en))
                         },
                         segmentWidth: themeSegmentWidth
                     )

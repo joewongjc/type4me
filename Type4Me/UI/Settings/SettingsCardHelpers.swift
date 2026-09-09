@@ -645,6 +645,15 @@ extension SettingsCardHelpers {
         SettingsInlineSegmentedPicker(selection: selection, options: options, segmentWidth: segmentWidth)
     }
 
+    /// Compact Apple-style inline segmented picker with icons and tooltips.
+    func settingsInlineIconSegmentedPicker(
+        selection: Binding<String>,
+        options: [(value: String, icon: String, label: String)],
+        segmentWidth: CGFloat? = nil
+    ) -> some View {
+        SettingsInlineSegmentedPicker(selection: selection, iconOptions: options, segmentWidth: segmentWidth)
+    }
+
     func primaryButton(
         _ title: String,
         icon: String? = nil,
@@ -846,9 +855,41 @@ struct SettingsSecureInputField: View {
 
 /// Apple-grade inline segmented capsule picker with smooth matched-geometry sliding spring pill.
 struct SettingsInlineSegmentedPicker: View {
+    struct Option {
+        let value: String
+        let label: String
+        let icon: String?
+
+        init(value: String, label: String, icon: String? = nil) {
+            self.value = value
+            self.label = label
+            self.icon = icon
+        }
+    }
+
     @Binding var selection: String
-    let options: [(value: String, label: String)]
+    let options: [Option]
     var segmentWidth: CGFloat? = nil
+
+    init(
+        selection: Binding<String>,
+        options: [(value: String, label: String)],
+        segmentWidth: CGFloat? = nil
+    ) {
+        self._selection = selection
+        self.options = options.map { Option(value: $0.value, label: $0.label) }
+        self.segmentWidth = segmentWidth
+    }
+
+    init(
+        selection: Binding<String>,
+        iconOptions: [(value: String, icon: String, label: String)],
+        segmentWidth: CGFloat? = nil
+    ) {
+        self._selection = selection
+        self.options = iconOptions.map { Option(value: $0.value, label: $0.label, icon: $0.icon) }
+        self.segmentWidth = segmentWidth
+    }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var selectionNamespace
@@ -870,15 +911,26 @@ struct SettingsInlineSegmentedPicker: View {
                         }
                     }
                 } label: {
-                    Text(option.label)
-                        .font(.system(size: 11, weight: isSelected ? .semibold : .medium))
-                        .foregroundStyle(isSelected ? TF.settingsText : TF.settingsTextSecondary)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 5)
-                        .frame(width: segmentWidth)
-                        .contentShape(Rectangle())
+                    Group {
+                        if let icon = option.icon {
+                            Image(systemName: icon)
+                                .font(.system(size: 12, weight: isSelected ? .semibold : .medium))
+                                .frame(height: 14)
+                        } else {
+                            Text(option.label)
+                                .font(.system(size: 11, weight: isSelected ? .semibold : .medium))
+                        }
+                    }
+                    .foregroundStyle(isSelected ? TF.settingsText : TF.settingsTextSecondary)
+                    .padding(.horizontal, option.icon != nil ? 8 : 12)
+                    .padding(.vertical, 5)
+                    .frame(width: segmentWidth)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(SettingsSegmentedButtonStyle())
+                .help(option.label)
+                .accessibilityLabel(option.label)
+                .accessibilityAddTraits(isSelected ? [.isSelected] : [])
                 .background {
                     ZStack {
                         if isSelected {

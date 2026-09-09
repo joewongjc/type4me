@@ -28,6 +28,16 @@ final class SettingsThemeTests: XCTestCase {
         XCTAssertEqual(savedValues.map(SettingsTheme.resolve), themes)
     }
 
+    func testThemeIconsAreDefinedAndAvailable() {
+        XCTAssertEqual(SettingsTheme.system.iconName, "circle.lefthalf.filled")
+        XCTAssertEqual(SettingsTheme.light.iconName, "sun.max.fill")
+        XCTAssertEqual(SettingsTheme.dark.iconName, "moon.fill")
+        for theme in SettingsTheme.allCases {
+            XCTAssertNotNil(NSImage(systemSymbolName: theme.iconName, accessibilityDescription: nil),
+                            "Icon symbol for \(theme.rawValue) must exist in system symbols")
+        }
+    }
+
     func testDarkSettingsTextAndSolidButtonContrast() {
         let surfaces = [TF.settingsWindowBackground, TF.settingsBg, TF.settingsCard,
                         TF.settingsCardAlt, TF.settingsSidebar, TF.settingsControl]
