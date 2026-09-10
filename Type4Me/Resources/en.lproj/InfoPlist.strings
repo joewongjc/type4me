@@ -1,0 +1,7 @@
+/* Type4Me permission usage descriptions (English) */
+
+"NSMicrophoneUsageDescription" = "Type4Me needs microphone access to capture your voice for transcription.";
+
+"NSSpeechRecognitionUsageDescription" = "Type4Me needs speech recognition access to transcribe your voice into text.";
+
+"NSAppleEventsUsageDescription" = "Type4Me needs accessibility access to inject transcribed text into other apps.";
