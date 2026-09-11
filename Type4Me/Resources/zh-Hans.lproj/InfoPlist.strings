@@ -1,0 +1,7 @@
+/* Type4Me 权限用途说明（简体中文） */
+
+"NSMicrophoneUsageDescription" = "Type4Me 需要访问麦克风以录制语音并将其转换为文本。";
+
+"NSSpeechRecognitionUsageDescription" = "Type4Me 需要语音识别权限以将你的语音转写为文字。";
+
+"NSAppleEventsUsageDescription" = "Type4Me 需要辅助功能权限来注入转写文字到其他应用";
