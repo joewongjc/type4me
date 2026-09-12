@@ -173,7 +173,8 @@ enum GeminiTranscribeProtocol {
     static func makeTranscriptUpdate(
         from data: Data,
         confirmedSegments: [String],
-        didEndAudio: Bool
+        didEndAudio: Bool,
+        hotwords: [String] = []
     ) throws -> GeminiTranscriptUpdate? {
         guard data.first == UInt8(ascii: "{") else { return nil }
 
@@ -227,9 +228,23 @@ enum GeminiTranscribeProtocol {
         // 1. Finalized input transcription (authoritative segment)
         if let finalText = serverContent.inputTranscription?.text {
             let trimmed = finalText.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else { return nil }
+            let sanitized = ASRHotwordLeakSanitizer.sanitize(trimmed, hotwords: hotwords)
+            guard !sanitized.isEmpty else {
+                guard didEndAudio else { return nil }
+                let authoritative = confirmedSegments.joined()
+                return GeminiTranscriptUpdate(
+                    transcript: RecognitionTranscript(
+                        confirmedSegments: confirmedSegments,
+                        partialText: "",
+                        authoritativeText: authoritative,
+                        isFinal: true
+                    ),
+                    confirmedSegments: confirmedSegments,
+                    isSetupComplete: false
+                )
+            }
 
-            let normalized = normalize(segment: trimmed, after: confirmedSegments.joined())
+            let normalized = normalize(segment: sanitized, after: confirmedSegments.joined())
             var updatedConfirmed = confirmedSegments
             updatedConfirmed.append(normalized)
 
@@ -250,10 +265,11 @@ enum GeminiTranscribeProtocol {
         // 2. Interim input transcription (streaming partial)
         if let interimText = serverContent.interimInputTranscription?.text {
             let trimmed = interimText.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else { return nil }
+            let sanitized = ASRHotwordLeakSanitizer.sanitize(trimmed, hotwords: hotwords)
+            guard !sanitized.isEmpty else { return nil }
 
             let confirmedJoined = confirmedSegments.joined()
-            let normalizedInterim = normalize(segment: trimmed, after: confirmedJoined)
+            let normalizedInterim = normalize(segment: sanitized, after: confirmedJoined)
 
             let transcript = RecognitionTranscript(
                 confirmedSegments: confirmedSegments,
