@@ -24,7 +24,7 @@ actor SenseVoiceServerManager {
     nonisolated static func syncHotwordsFile() {
         let words = HotwordStorage.loadEffective()
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let dir = appSupport.appendingPathComponent("Type4Me")
+        let dir = appSupport.appendingPathComponent(AppDataLocation.directoryName)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let path = dir.appendingPathComponent("hotwords.txt")
         let content = words.joined(separator: "\n")
@@ -288,7 +288,8 @@ actor SenseVoiceServerManager {
 
     private static var pidFileURL: URL {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        return dir.appendingPathComponent("Type4Me/server-pids.txt")
+        return dir.appendingPathComponent(AppDataLocation.directoryName, isDirectory: true)
+            .appendingPathComponent("server-pids.txt")
     }
 
     /// Save current managed PIDs to disk so we can clean up after a crash.
@@ -392,7 +393,7 @@ actor SenseVoiceServerManager {
         // Hotwords file
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let hotwordsPath = appSupport
-            .appendingPathComponent("Type4Me")
+            .appendingPathComponent(AppDataLocation.directoryName)
             .appendingPathComponent("hotwords.txt")
         let hotwordsFile = FileManager.default.fileExists(atPath: hotwordsPath.path) ? hotwordsPath.path : ""
 
@@ -419,7 +420,7 @@ actor SenseVoiceServerManager {
         // 2. App Support (user-downloaded)
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let userModel = appSupport
-            .appendingPathComponent("Type4Me")
+            .appendingPathComponent(AppDataLocation.directoryName)
             .appendingPathComponent("Models/Qwen3-ASR")
         if FileManager.default.fileExists(atPath: userModel.path) {
             return userModel.path

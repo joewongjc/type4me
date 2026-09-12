@@ -2,7 +2,13 @@ import SwiftUI
 
 struct QuickCorrectionSheet: View {
 
+    /// The recogniser's own output. Corrections are built from this, because a
+    /// replacement rule is matched against what the recogniser produced.
     let text: String
+    /// What the record actually delivered. When it differs from `text`, a
+    /// replacement rule rewrote the output, and the characters below will not
+    /// match what the history list showed.
+    var finalText: String?
     var onComplete: (() -> Void)?
 
     @Environment(\.dismiss) private var dismiss
@@ -26,6 +32,74 @@ struct QuickCorrectionSheet: View {
         !correctText.trimmingCharacters(in: .whitespaces).isEmpty && !selectedChars.isEmpty
     }
 
+    /// Non-nil only when the delivered output was rewritten after recognition.
+    private var rewrittenOutput: String? {
+        guard let finalText, !finalText.isEmpty, finalText != text else { return nil }
+        return finalText
+    }
+
+    private var appliedRules: [(trigger: String, value: String)] {
+        rewrittenOutput == nil ? [] : SnippetStorage.rulesApplied(to: text)
+    }
+
+    private func openRule(_ rule: (trigger: String, value: String)) {
+        dismiss()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            VocabularyNavigationCenter.shared.submit(
+                VocabularyNavigationRequest(
+                    section: .snippets,
+                    trigger: rule.trigger,
+                    replacement: rule.value
+                )
+            )
+        }
+    }
+
+    /// Explains the mismatch between the characters below and the text the
+    /// history list showed, and points at the rule that caused it.
+    @ViewBuilder
+    private var rewriteNotice: some View {
+        if let rewritten = rewrittenOutput {
+            VStack(alignment: .leading, spacing: TF.spacingXS) {
+                Text(L(
+                    "这条记录的输出被替换规则改写过，下方是原始识别结果。",
+                    "This record's output was rewritten by a replacement rule. The characters below are the original recognition."
+                ))
+                .font(.system(size: 11))
+                .foregroundStyle(TF.settingsTextSecondary)
+
+                HStack(alignment: .firstTextBaseline, spacing: TF.spacingXS) {
+                    Text(L("实际输出", "Delivered"))
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(TF.settingsTextTertiary)
+                    Text(rewritten)
+                        .font(.system(size: 11))
+                        .foregroundStyle(TF.settingsText)
+                        .textSelection(.enabled)
+                }
+
+                ForEach(appliedRules, id: \.trigger) { rule in
+                    HStack(spacing: TF.spacingXS) {
+                        Text("\(rule.trigger) → \(rule.value)")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(TF.settingsText)
+                        Button(L("查看规则", "Open rule")) { openRule(rule) }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(TF.settingsAccentBlue)
+                    }
+                }
+            }
+            .padding(TF.spacingSM)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: TF.cornerSM, style: .continuous)
+                    .fill(TF.settingsCardAlt.opacity(0.6))
+            )
+            .padding(.bottom, TF.spacingSM)
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Top bar
@@ -42,6 +116,8 @@ struct QuickCorrectionSheet: View {
                 .buttonStyle(.plain)
             }
             .padding(.bottom, TF.spacingLG)
+
+            rewriteNotice
 
             // Scrollable character grid
             ScrollView {

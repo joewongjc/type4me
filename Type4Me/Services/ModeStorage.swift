@@ -10,9 +10,7 @@ struct ModeStorage {
         if let url = fileURL {
             self.fileURL = url
         } else {
-            let appSupport = FileManager.default.urls(
-                for: .applicationSupportDirectory, in: .userDomainMask
-            ).first!.appendingPathComponent("Type4Me", isDirectory: true)
+            let appSupport = AppDataLocation.directory
             try? FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
             self.fileURL = appSupport.appendingPathComponent("modes.json")
         }

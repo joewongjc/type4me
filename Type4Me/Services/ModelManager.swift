@@ -15,7 +15,7 @@ actor ModelManager {
             for: .applicationSupportDirectory, in: .userDomainMask
         ).first!
         return appSupport
-            .appendingPathComponent("Type4Me", isDirectory: true)
+            .appendingPathComponent(AppDataLocation.directoryName, isDirectory: true)
             .appendingPathComponent("models", isDirectory: true)
             .path
     }

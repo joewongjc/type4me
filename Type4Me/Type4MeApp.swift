@@ -180,6 +180,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(showDock ? .regular : .accessory)
         KeychainService.migrateIfNeeded()
         HotwordStorage.migrateIfNeeded()
+        // Off the launch path: copying the databases should never delay startup.
+        Task.detached(priority: .utility) { DataBackupManager.runIfNeeded() }
         SnippetStorage.migrateIfNeeded()
         AudioInputDevicePreferenceStore.migrateIfNeeded()
         CJKSpacingMode.migrateIfNeeded()

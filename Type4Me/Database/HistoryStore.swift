@@ -17,9 +17,7 @@ actor HistoryStore {
         if let path {
             dbPath = path
         } else {
-            let appSupport = FileManager.default.urls(
-                for: .applicationSupportDirectory, in: .userDomainMask
-            ).first!.appendingPathComponent("Type4Me", isDirectory: true)
+            let appSupport = AppDataLocation.directory
             try? FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
             dbPath = appSupport.appendingPathComponent("history.db").path
         }

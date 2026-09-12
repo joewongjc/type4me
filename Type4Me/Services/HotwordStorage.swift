@@ -19,7 +19,7 @@ enum HotwordStorage {
 
     private static var appSupportDir: URL {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        return dir.appendingPathComponent("Type4Me")
+        return dir.appendingPathComponent(AppDataLocation.directoryName)
     }
 
     /// Built-in hotwords file (seeded from defaults, user-editable for bulk ops)

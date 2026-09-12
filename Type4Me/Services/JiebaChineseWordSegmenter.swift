@@ -47,10 +47,7 @@ actor JiebaChineseWordSegmenter: ChineseWordSegmenting {
         if let overlayURL {
             self.overlayURL = overlayURL
         } else {
-            let appSupport = FileManager.default.urls(
-                for: .applicationSupportDirectory,
-                in: .userDomainMask
-            ).first!.appendingPathComponent("Type4Me", isDirectory: true)
+            let appSupport = AppDataLocation.directory
             self.overlayURL = appSupport.appendingPathComponent("jieba-user-dictionary-v1.utf8")
         }
     }

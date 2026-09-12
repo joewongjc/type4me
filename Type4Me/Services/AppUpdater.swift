@@ -40,7 +40,8 @@ final class AppUpdater {
 
     private var stagingDir: URL {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        return appSupport.appendingPathComponent("Type4Me/Updates")
+        return appSupport.appendingPathComponent(AppDataLocation.directoryName, isDirectory: true)
+            .appendingPathComponent("Updates", isDirectory: true)
     }
 
     private var updateLogURL: URL { stagingDir.appendingPathComponent("update.log") }

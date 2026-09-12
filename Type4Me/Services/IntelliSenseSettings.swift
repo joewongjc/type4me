@@ -21,10 +21,7 @@ actor IntelliSenseSettingsStore {
         if let fileURL {
             self.fileURL = fileURL
         } else {
-            let directory = FileManager.default.urls(
-                for: .applicationSupportDirectory,
-                in: .userDomainMask
-            ).first!.appendingPathComponent("Type4Me", isDirectory: true)
+            let directory = AppDataLocation.directory
             self.fileURL = directory.appendingPathComponent("intelli-sense-settings.json")
         }
         if let userDefaultsSuiteName {
