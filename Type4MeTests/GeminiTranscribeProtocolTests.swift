@@ -126,6 +126,44 @@ final class GeminiTranscribeProtocolTests: XCTestCase {
         XCTAssertFalse(unwrapped.transcript.isFinal)
     }
 
+    func testMakeTranscriptUpdate_dropsPureHotwordInterim() throws {
+        let json = #"{"serverContent": {"interimInputTranscription": {"text": "Type4Me Qwen Deepgram"}}}"#
+        let update = try GeminiTranscribeProtocol.makeTranscriptUpdate(
+            from: Data(json.utf8),
+            confirmedSegments: [],
+            didEndAudio: false,
+            hotwords: ["Type4Me", "Qwen", "Deepgram"]
+        )
+
+        XCTAssertNil(update)
+    }
+
+    func testMakeTranscriptUpdate_dropsPureHotwordFinalAndCompletes() throws {
+        let json = #"{"serverContent": {"inputTranscription": {"text": "Type4Me Qwen Deepgram"}}}"#
+        let update = try XCTUnwrap(try GeminiTranscribeProtocol.makeTranscriptUpdate(
+            from: Data(json.utf8),
+            confirmedSegments: [],
+            didEndAudio: true,
+            hotwords: ["Type4Me", "Qwen", "Deepgram"]
+        ))
+
+        XCTAssertTrue(update.transcript.isFinal)
+        XCTAssertEqual(update.transcript.displayText, "")
+        XCTAssertTrue(update.confirmedSegments.isEmpty)
+    }
+
+    func testMakeTranscriptUpdate_keepsSingleHotwordUtterance() throws {
+        let json = #"{"serverContent": {"interimInputTranscription": {"text": "Qwen"}}}"#
+        let update = try XCTUnwrap(try GeminiTranscribeProtocol.makeTranscriptUpdate(
+            from: Data(json.utf8),
+            confirmedSegments: [],
+            didEndAudio: false,
+            hotwords: ["Qwen"]
+        ))
+
+        XCTAssertEqual(update.transcript.displayText, "Qwen")
+    }
+
     func testMakeTranscriptUpdate_finalTranscriptionBeforeEndAudio() throws {
         let json = #"{"serverContent": {"inputTranscription": {"text": "Hello world"}}}"#
         let update = try GeminiTranscribeProtocol.makeTranscriptUpdate(

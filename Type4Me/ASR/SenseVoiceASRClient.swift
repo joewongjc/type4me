@@ -641,7 +641,7 @@ actor SenseVoiceASRClient: SpeechRecognizer {
             return nil
         }
 
-        let sanitizedText = Qwen3HotwordLeakSanitizer.sanitize(
+        let sanitizedText = ASRHotwordLeakSanitizer.sanitize(
             calibratedText,
             hotwords: calibrationHotwords,
             fallbackText: fallbackText
