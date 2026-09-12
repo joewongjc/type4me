@@ -406,6 +406,40 @@ enum SnippetStorage {
 
     // MARK: - Apply (merge both stores)
 
+    /// The rules that actually rewrote `text`, in the order they were applied.
+    ///
+    /// A replacement is invisible once it has happened: the history list shows
+    /// the rewritten output, which is indistinguishable from a misrecognition.
+    /// This lets the UI name the rule responsible so the user can go edit it,
+    /// instead of leaving the only escape hatch buried in the vocabulary page.
+    static func rulesApplied(to text: String) -> [(trigger: String, value: String)] {
+        rulesApplied(to: text, in: load())
+    }
+
+    /// Takes the rules as an argument so callers — tests included — can ask the
+    /// question without reading or writing the user's stored snippets.
+    static func rulesApplied(
+        to text: String,
+        in rules: [(trigger: String, value: String)]
+    ) -> [(trigger: String, value: String)] {
+        var result = text
+        var applied: [(trigger: String, value: String)] = []
+        for snippet in rules {
+            let pattern = buildFlexPattern(snippet.trigger)
+            guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
+            else { continue }
+            let range = NSRange(result.startIndex..., in: result)
+            guard regex.firstMatch(in: result, range: range) != nil else { continue }
+            applied.append(snippet)
+            result = regex.stringByReplacingMatches(
+                in: result,
+                range: range,
+                withTemplate: NSRegularExpression.escapedTemplate(for: snippet.value)
+            )
+        }
+        return applied
+    }
+
     /// Apply built-in + user snippets. User entries override built-in on trigger conflict.
     static func applyEffective(to text: String) -> String {
         var result = text
