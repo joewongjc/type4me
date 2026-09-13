@@ -185,6 +185,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         CJKSpacingMode.migrateIfNeeded()
         ClipboardOutputPolicy.migrateIfNeeded()
         RecordingVisualStyle.migrateLegacyPreferenceIfNeeded()
+        // Obsolete: speculative LLM was removed; older installs may still hold the override.
+        UserDefaults.standard.removeObject(forKey: "tf_enableSpeculativeLLM")
 
         // Sync hotwords to Volcengine cloud table (async, non-blocking)
         VolcHotwordSyncManager.syncIfNeeded()

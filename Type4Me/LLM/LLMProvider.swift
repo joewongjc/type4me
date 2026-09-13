@@ -167,12 +167,6 @@ enum LLMProvider: String, CaseIterable, Codable, Sendable {
         self != .ollama && self != .codexCLI
     }
 
-    /// Whether recording-time speculative requests are safe and economical.
-    /// CLI runtimes start a full agent process for every request, so they only
-    /// run once after the final transcript is available.
-    var supportsSpeculativeProcessing: Bool {
-        self != .ollama && self != .codexCLI
-    }
 
     /// Thinking/reasoning disable strategy for this provider.
     /// Each provider uses a different field name to turn off chain-of-thought.

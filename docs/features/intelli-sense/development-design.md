@@ -74,7 +74,7 @@
 |---|---|---|
 | `ProcessingMode` | `Type4Me/UI/AppState.swift` | 稳定模式 ID、名称、Prompt、快捷键、执行类型 |
 | `ModeStorage` | `Type4Me/Services/ModeStorage.swift` | 模式持久化、官方模式补入和旧模式迁移 |
-| `RecognitionSession` | `Type4Me/Session/RecognitionSession.swift` | 录音、ASR、speculative LLM、后处理、注入、历史保存主流水线 |
+| `RecognitionSession` | `Type4Me/Session/RecognitionSession.swift` | 录音、ASR、停止后 LLM、后处理、注入、历史保存主流水线 |
 | `PromptContext` | `Type4Me/LLM/PromptContext.swift` | AX 调用超时与一次性 Prompt 变量展开模式 |
 | `TextInjectionEngine` | `Type4Me/Injection/TextInjectionEngine.swift` | 聚焦控件快照、注入结果检测、注入范围追踪 |
 | `CorrectionLearningCoordinator` | `Type4Me/Services/CorrectionLearning.swift` | 60 秒观察、4 秒防抖、词级 diff、敏感过滤、确认和保存 |
@@ -352,7 +352,7 @@ enum ContextAvailability: Sendable, Equatable {
 2. 立即检查 App 黑名单；
 3. 若未命中黑名单，创建异步 AX 捕获任务；
 4. 音频录制和 ASR 连接不等待 AX 任务；
-5. 在首次 speculative LLM 或最终 LLM 前等待快照，最长 300ms；
+5. 在最终 LLM 前等待快照，最长 300ms；
 6. 超时则只使用已经得到的 App 信息或完全回退基础润色。
 
 这样既锁定用户开始录音时的场景，又不增加录音启动延迟。
@@ -539,16 +539,15 @@ L2 控件只做确定性覆盖：搜索框强制 `compactness = high`、`structu
 
 场景分类器只选择策略，不决定任务类型，也不能改变输出语言。
 
-### 8.6 与 speculative LLM 的集成
+### 8.6 与停止后 LLM 的集成
 
-现有 speculative LLM 路径继续保留：
+Intelli Sense 沿用停止录音后的 LLM 流水线：
 
 - 录音开始时创建一次 `IntelliSenseRequestContext`；
-- 上下文快照、设置和表达档案在当前 session 内冻结；最终 Prompt 按每次 speculative 或 final 的当前转写文本构建；
+- 上下文快照、设置和表达档案在当前 session 内冻结；最终 Prompt 按 final 的当前转写文本构建；
 - `ListStructureIntentAnalyzer` 在建 Prompt 时识别明确枚举；结构可用的控件会获得本次专属列表约束，并过滤冲突的“减少列表”画像；
-- speculative、TranscriptDiff 触发的 fresh final 和同步 final 三个调用点统一使用 `IntelliSensePromptBuilder.build(request:)`，不得再经过 `PromptContext.expandContextVariables(_:)`；
+- 停止录音后的 final 与同步 final 两个调用点统一使用 `IntelliSensePromptBuilder.build(request:)`，不得再经过 `PromptContext.expandContextVariables(_:)`；
 - App 切换或学习模型更新不改变进行中的请求；
-- 最终 ASR 文本与 speculative 文本不兼容时，沿用 `TranscriptDiff` 发起新请求；
 - 不新增场景分类网络请求。
 
 ---
@@ -886,8 +885,8 @@ HotwordStorage.loadEffective()
 所有模式继续在 LLM 前调用全局和 App 片段替换。Intelli Sense 在此基础上：
 
 1. 获取本 session 冻结的上下文、设置和表达档案；
-2. speculative、fresh final 和同步 final 分别用各自当前转写调用统一的 `build(request:)`，不调用 `promptContext.expandContextVariables(currentMode.prompt)`；
-3. 发起现有 LLM 请求；若 `TranscriptDiff` 判定 speculative 结果不可复用，沿用现有逻辑取消旧任务并发起一次 fresh final，不增加额外校验请求；
+2. final 和同步 final 分别用各自当前转写调用统一的 `build(request:)`，不调用 `promptContext.expandContextVariables(currentMode.prompt)`；
+3. 在停止录音、拿到最终转写后发起唯一一次 LLM 请求；
 4. 通过 `IntelliSenseOutputGuard` 检查结果；
 5. 失败时回退片段替换后的 ASR 文本。
 
@@ -946,7 +945,7 @@ let needsObservation = settings.correctionDetectionEnabled
 
 - 每个异步结果携带 `sessionGeneration`；
 - 过期上下文或档案结果不得写回新 session；
-- speculative 和 final 请求共享同一不可变 request context；
+- final 请求共享当前 session 不可变的 request context；
 - 设置在录音中变化只影响下一次 session；
 - 全局生词表保存后允许下一次 ASR 请求生效，不修改当前进行中的识别。
 
@@ -981,7 +980,7 @@ let needsObservation = settings.correctionDetectionEnabled
 - 学习分析在注入完成后低优先级执行；
 - 文件写入防抖，多个特征更新合并为一次原子保存。
 
-Intelli Sense 不新增场景路由或 Guard 校验网络请求。现有 speculative 请求在 `TranscriptDiff` 不可复用时可能被一次 fresh final 替代，这是当前流水线行为。性能验收同时记录 speculative 复用率、fresh final 触发率以及停止录音到注入的端到端 P50/P95，不能只测本地 Prompt 构建耗时。
+智能感知不新增场景路由或 Guard 校验网络请求；每次录音只发起一次 LLM 请求。性能验收记录停止录音到注入的端到端 P50/P95。
 
 ### 15.3 脱敏可观测性
 
@@ -1050,11 +1049,11 @@ Intelli Sense 完成最终 Guard 后构造 `IntelliSenseHistoryTrace`，以版�
 
 轨迹必须基于最终实际采用的路径：LLM 失败时 `appliedLayers` 为空并记录 `processingFallback`；Guard 拒绝时记录 `protectedResultFallback`；跨模式结束的基础回退不生成 Intelli Sense 轨迹。这样历史说明不会把“功能已开启”误写成“本次已生效”。
 
-历史表另增可空的 `llm_provider` 与 `llm_model`，记录本次实际处理请求所使用的 LLM 快照。speculative 结果被复用时记录 speculative 请求的模型；最终文本变化而重发请求时以 fresh final 请求覆盖；短文本豁免或未配置 LLM 时保持为空。LLM 请求失败仍保留已尝试的模型，便于诊断。字段只保存 provider ID 和模型 ID，不保存 URL、凭据或 Prompt。
+历史表另增可空的 `llm_provider` 与 `llm_model`，记录本次实际处理请求所使用的 LLM 快照。短文本豁免或未配置 LLM 时保持为空。LLM 请求失败仍保留已尝试的模型，便于诊断。字段只保存 provider ID 和模型 ID，不保存 URL、凭据或 Prompt。
 
 历史展开区的来源标签按职责分离：麦克风图标只显示 ASR 服务与模型，CPU 图标只显示上述 LLM 快照。UI 不读取当前 LLM 设置解释过去记录，也不对旧记录推测回填；旧记录只显示已有的 ASR 信息。
 
-历史表追加可空 `asr_duration_seconds` 与 `llm_duration_seconds`。`asr_duration_seconds` 从停止录音入口开始计时，到最终转写文本可用为止；发生批量恢复时延长到恢复结果确定，不包含录音时长。`llm_duration_seconds` 记录最终采用或尝试采用的那次请求自身耗时；复用 speculative 结果时使用该 speculative 请求的耗时，fresh final 覆盖旧 speculative 快照，超时记录实际等待上限。展开 UI 以一位小数附在对应模型名称后；旧记录保持 `NULL`。
+历史表追加可空 `asr_duration_seconds` 与 `llm_duration_seconds`。`asr_duration_seconds` 从停止录音入口开始计时，到最终转写文本可用为止；发生批量恢复时延长到恢复结果确定，不包含录音时长。`llm_duration_seconds` 记录最终采用或尝试采用的那次请求自身耗时，超时记录实际等待上限。展开 UI 以一位小数附在对应模型名称后；旧记录保持 `NULL`。
 
 ---
 
@@ -1191,8 +1190,8 @@ Type4MeTests/ExpressionProfileStoreTests.swift
 - 上下文中的命令不会改变 Prompt 任务；
 - `{text}` 只保留一次且不会被上下文二次展开；
 - 动态构建的 Prompt 不包含 `{selected}`、`{clipboard}` 或 `{tools_json}`；
-- Intelli Sense 三个 LLM 调用点均不经过 `PromptContext.expandContextVariables(_:)`；
-- speculative、fresh final 与同步 final 共用同一 Builder 和冻结快照，并分别使用当前转写文本。
+- Intelli Sense 的 LLM 调用点均不经过 `PromptContext.expandContextVariables(_:)`；
+- final 与同步 final 共用同一 Builder 和冻结快照，并分别使用当前转写文本。
 
 ### 20.4 Guard
 
@@ -1282,8 +1281,7 @@ Type4MeTests/ExpressionProfileStoreTests.swift
 - `AppStateTests`；
 - `VocabularyCommandsTests`；
 - `Qwen3HotwordLeakSanitizerTests`；
-- `SpeculativeLLMThrottleTests`；
-- `TranscriptDiffTests`。
+
 
 ---
 
@@ -1360,7 +1358,7 @@ Type4MeTests/ExpressionProfileStoreTests.swift
 10. 清除表达习惯数据不影响全局生词表；
 11. 上下文、编辑全文和自然语言用户画像不进入长期存储；
 12. 任一增强能力失败时仍能完成输入；
-13. speculative LLM、历史、注入和其他模式无回归；
+13. 历史、注入和其他模式无回归；
 14. 完整测试套件通过；
 15. Intelli Sense 不读取剪贴板或选中文本，所有 LLM 路径使用同一冻结请求快照和统一 Prompt Builder；
 16. 跨模式切换不会复用错误的上下文或覆盖最后选择模式；

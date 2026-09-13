@@ -664,18 +664,14 @@ actor RecognitionSession {
             && frontmost.bundleIdentifier?.caseInsensitiveCompare(bundleIdentifier) == .orderedSame
     }
 
-    // MARK: - Speculative LLM (fire during recording pauses)
+    // MARK: - Post-stop LLM
 
     private struct TimedLLMResult: Sendable {
         let text: String?
         let durationSeconds: Double
     }
 
-    private var speculativeLLMTask: Task<TimedLLMResult, Never>?
-    private var speculativeLLMText: String = ""
-    private var speculativeDebounceTask: Task<Void, Never>?
-    private var speculativeThrottle = SpeculativeLLMThrottle()
-    /// Stores the last LLM error from the early/fresh LLM task, consumed once by stopRecording().
+    /// Stores the last LLM error from the final LLM task, consumed once by stopRecording().
     private var pendingLLMError: Error?
     private var pendingSelectionAskRequestContext: SelectionAskRequestContext?
     private enum CompletionIntent: Sendable {
@@ -954,7 +950,6 @@ actor RecognitionSession {
 
         self.recordingStartTime = nil
         hasEmittedReadyForCurrentSession = false
-        speculativeThrottle.reset()
         pendingLLMError = nil
         lastStreamingError = nil
         state = .starting
@@ -964,7 +959,6 @@ actor RecognitionSession {
             currentTranscript = .empty
             currentConfig = nil
             uploadFailureFlag = nil
-            cancelAllSpeculativeLLM()
             await resolvePromptContextIfNeeded(generation: myGeneration)
             _ = await intelliSenseContextTask?.value
             guard sessionGeneration == myGeneration else { return }
@@ -1268,20 +1262,6 @@ actor RecognitionSession {
     func switchMode(to mode: ProcessingMode) async {
         let resolved = ASRProviderRegistry.resolvedMode(for: mode, provider: activeProvider)
         let previousModeID = currentMode.id
-        if previousModeID != resolved.id {
-            // A speculative result belongs to the prompt of the mode that
-            // started it. Never reuse it after a cross-mode finish.
-            speculativeDebounceTask?.cancel()
-            speculativeDebounceTask = nil
-            speculativeLLMTask?.cancel()
-            speculativeLLMTask = nil
-            speculativeLLMText = ""
-            speculativeThrottle.reset()
-            pendingLLMError = nil
-            historyLLMProvider = nil
-            historyLLMModel = nil
-            historyLLMDurationSeconds = nil
-        }
         if currentMode.id == ProcessingMode.intelliSenseId,
            resolved.id != ProcessingMode.intelliSenseId {
             clearIntelliSenseSessionContext()
@@ -1332,9 +1312,6 @@ actor RecognitionSession {
     /// proceed; the frozen clipboard policy decides whether it is retained.
     func abortInjection() {
         completionIntent = .cancelled
-        if cancellationSkipsLLM {
-            cancelAllSpeculativeLLM()
-        }
         DebugFileLogger.log(
             "abortInjection: policy=\(clipboardOutputPolicy.rawValue) "
                 + "processesCancelled=\(clipboardOutputPolicy.processesCancelledResult)"
@@ -1424,7 +1401,7 @@ actor RecognitionSession {
             currentTranscript = .empty
             if !isManualInput { warmUpASRConnection() }
         }
-        resetSpeculativeLLM()
+        resetSessionLLMState()
         SystemVolumeManager.restore()
     }
 
@@ -1551,7 +1528,7 @@ actor RecognitionSession {
             currentTranscript = .empty
             if !isManualInput { warmUpASRConnection() }
         }
-        resetSpeculativeLLM()
+        resetSessionLLMState()
         SystemVolumeManager.restore()
     }
 
@@ -1623,7 +1600,7 @@ actor RecognitionSession {
                 currentTranscript = .empty
                 warmUpASRConnection()
             }
-            resetSpeculativeLLM()
+            resetSessionLLMState()
             SystemVolumeManager.restore()
             return
         }
@@ -1666,7 +1643,7 @@ actor RecognitionSession {
                         currentTranscript = .empty
                         warmUpASRConnection()
                     }
-                    resetSpeculativeLLM()
+                    resetSessionLLMState()
                     SystemVolumeManager.restore()
                     return
                 }
@@ -1701,16 +1678,12 @@ actor RecognitionSession {
             }
         }
 
-        // Keep speculative LLM task alive — we'll compare its input text
-        // against the final ASR transcript after full teardown.
-        cancelSpeculativeLLM()
         var needsLLM = Self.shouldRunInputModeLLM(
             recordingPurpose: recordingPurpose,
             mode: currentMode
         )
         if cancellationSkipsLLM {
             needsLLM = false
-            cancelAllSpeculativeLLM()
             clearHistoryLLMMetadata()
             DebugFileLogger.log("stop: cancelled output skips LLM")
         }
@@ -1782,11 +1755,10 @@ actor RecognitionSession {
         }
         historyASRDurationSeconds = max(0, Date().timeIntervalSince(asrFinishingStartedAt))
 
-        // Now that we have the final transcript, decide whether to reuse
-        // the speculative LLM result or fire a fresh request.
-        let canEarlyLLM = providerIsStreaming
-        var earlyLLMTask: Task<TimedLLMResult, Never>?
-        if needsLLM && canEarlyLLM {
+        // The final transcript is available; fire the one and only LLM request.
+        let canFireLLMAtStop = providerIsStreaming
+        var finalLLMTask: Task<TimedLLMResult, Never>?
+        if needsLLM && canFireLLMAtStop {
             var finalASRText = currentTranscript.displayText
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             finalASRText = SnippetStorage.applyEffective(to: finalASRText, bundleId: targetBundleId)
@@ -1796,63 +1768,42 @@ actor RecognitionSession {
             if exemptionThreshold > 0 && finalASRText.count < exemptionThreshold {
                 DebugFileLogger.log("stop: short text exemption (\(finalASRText.count) < \(exemptionThreshold) chars), skipping LLM")
                 needsLLM = false
-                historyLLMProvider = nil
-                historyLLMModel = nil
-                historyLLMDurationSeconds = nil
+                clearHistoryLLMMetadata()
                 onASREvent?(.processingLabelOverride(L("校准中", "Calibrating")))
             }
 
-            let speculativeDiff = TranscriptDiff.classify(source: speculativeLLMText, final: finalASRText)
             DebugFileLogger.log(
-                "stop: needsLLM=\(needsLLM) mode=\(currentMode.name) text=\(finalASRText.count)chars specDiff=\(speculativeDiff.type.rawValue)"
+                "stop: needsLLM=\(needsLLM) mode=\(currentMode.name) text=\(finalASRText.count)chars"
             )
-            if needsLLM && !finalASRText.isEmpty {
-                if speculativeDiff.canReuseLLMResult, let specTask = speculativeLLMTask {
-                    // Final transcript is semantically equivalent to speculative input — reuse (may already be done!)
-                    earlyLLMTask = specTask
-                    state = .postProcessing
-                    DebugFileLogger.log("stop: reusing speculative LLM +\(ContinuousClock.now - stopT0)")
-                } else {
-                    // Final transcript differs from speculative input (tail words arrived),
-                    // discard stale result and fire fresh LLM with complete text.
-                    speculativeLLMTask?.cancel()
-                    historyLLMProvider = nil
-                    historyLLMModel = nil
-                    historyLLMDurationSeconds = nil
-                    if let runtime = await resolveLLMRuntime() {
-                        rememberHistoryLLM(runtime)
-                        let llmConfig = runtime.config
-                        let prompt = await promptForCurrentMode(text: finalASRText)
-                        let inputBoundary = llmInputBoundaryForCurrentMode()
-                        let client = runtime.client
-                        state = .postProcessing
-                        if finalASRText != speculativeLLMText {
-                            DebugFileLogger.log("stop: final transcript changed (spec=\(speculativeLLMText.count)chars final=\(finalASRText.count)chars), firing fresh LLM")
-                        }
-                        DebugFileLogger.log("stop: fresh LLM firing mode=\(currentMode.name) model=\(llmConfig.model) with \(finalASRText.count) chars +\(ContinuousClock.now - stopT0)")
-                        let requestStartedAt = Date()
-                        earlyLLMTask = Task {
-                            do {
-                                let result = try await client.process(
-                                    text: finalASRText,
-                                    prompt: prompt,
-                                    config: llmConfig,
-                                    inputBoundary: inputBoundary
-                                )
-                                DebugFileLogger.log("stop: fresh LLM done \(result.count) chars +\(ContinuousClock.now - stopT0)")
-                                return TimedLLMResult(
-                                    text: result,
-                                    durationSeconds: max(0, Date().timeIntervalSince(requestStartedAt))
-                                )
-                            } catch {
-                                DebugFileLogger.log("stop: fresh LLM FAILED +\(ContinuousClock.now - stopT0) error=\(error)")
-                                self.setPendingLLMError(error)
-                                return TimedLLMResult(
-                                    text: nil,
-                                    durationSeconds: max(0, Date().timeIntervalSince(requestStartedAt))
-                                )
-                            }
-                        }
+            if needsLLM && !finalASRText.isEmpty, let runtime = await resolveLLMRuntime() {
+                rememberHistoryLLM(runtime)
+                let llmConfig = runtime.config
+                let prompt = await promptForCurrentMode(text: finalASRText)
+                let inputBoundary = llmInputBoundaryForCurrentMode()
+                let client = runtime.client
+                state = .postProcessing
+                DebugFileLogger.log("stop: final LLM firing mode=\(currentMode.name) model=\(llmConfig.model) with \(finalASRText.count) chars +\(ContinuousClock.now - stopT0)")
+                let requestStartedAt = Date()
+                finalLLMTask = Task {
+                    do {
+                        let result = try await client.process(
+                            text: finalASRText,
+                            prompt: prompt,
+                            config: llmConfig,
+                            inputBoundary: inputBoundary
+                        )
+                        DebugFileLogger.log("stop: final LLM done \(result.count) chars +\(ContinuousClock.now - stopT0)")
+                        return TimedLLMResult(
+                            text: result,
+                            durationSeconds: max(0, Date().timeIntervalSince(requestStartedAt))
+                        )
+                    } catch {
+                        DebugFileLogger.log("stop: final LLM FAILED +\(ContinuousClock.now - stopT0) error=\(error)")
+                        self.setPendingLLMError(error)
+                        return TimedLLMResult(
+                            text: nil,
+                            durationSeconds: max(0, Date().timeIntervalSince(requestStartedAt))
+                        )
                     }
                 }
             }
@@ -1915,7 +1866,7 @@ actor RecognitionSession {
         currentConfig = nil
 
         await finishTextOutput(effectiveText, generation: myGeneration, stopStartedAt: stopT0,
-                               needsLLM: needsLLM, earlyLLMTask: earlyLLMTask, needsBatchFallback: needsBatchFallback)
+                               needsLLM: needsLLM, finalLLMTask: finalLLMTask, needsBatchFallback: needsBatchFallback)
     }
 
     /// Shared by finalized speech and typed input: prompt expansion, LLM, guarded output and history.
@@ -1924,11 +1875,11 @@ actor RecognitionSession {
         generation myGeneration: Int,
         stopStartedAt stopT0: ContinuousClock.Instant,
         needsLLM initialNeedsLLM: Bool,
-        earlyLLMTask initialEarlyLLMTask: Task<TimedLLMResult, Never>? = nil,
+        finalLLMTask initialFinalLLMTask: Task<TimedLLMResult, Never>? = nil,
         needsBatchFallback: Bool = false
     ) async {
         var needsLLM = initialNeedsLLM
-        var earlyLLMTask = initialEarlyLLMTask
+        var finalLLMTask = initialFinalLLMTask
         if !effectiveText.isEmpty {
             let rawText = effectiveText
             var finalText = effectiveText
@@ -1964,18 +1915,17 @@ actor RecognitionSession {
 
             if cancellationSkipsLLM {
                 // A cancellation may arrive while ASR teardown is awaiting.
-                // Discard any speculative result and retain the final ASR text.
+                // Discard the in-flight LLM result and retain the final ASR text.
                 needsLLM = false
-                earlyLLMTask?.cancel()
-                earlyLLMTask = nil
-                cancelAllSpeculativeLLM()
+                finalLLMTask?.cancel()
+                finalLLMTask = nil
                 clearHistoryLLMMetadata()
                 finalText = rawText
                 DebugFileLogger.log("stop: cancellation received before LLM completion, using raw ASR")
             }
 
             // Short text exemption (for non-streaming providers, per-mode threshold)
-            if !isManualInput && needsLLM && earlyLLMTask == nil && currentMode.shortTextExemption > 0 {
+            if !isManualInput && needsLLM && finalLLMTask == nil && currentMode.shortTextExemption > 0 {
                 let exemptionThreshold = currentMode.shortTextExemption
                 if exemptionThreshold > 0 && finalText.count < exemptionThreshold {
                     DebugFileLogger.log("stop: short text exemption (\(finalText.count) < \(exemptionThreshold) chars), skipping LLM (sync path)")
@@ -1987,18 +1937,17 @@ actor RecognitionSession {
                 }
             }
 
-            // LLM post-processing: prefer early result (fired at stop time),
-            // fall back to synchronous call for very short recordings where
-            // no streaming text was available yet.
-            if let earlyTask = earlyLLMTask {
+            // LLM post-processing: prefer the task fired at stop time, fall back to a
+            // synchronous call for very short recordings where no streaming text was available yet.
+            if let finalTask = finalLLMTask {
                 state = .postProcessing
-                DebugFileLogger.log("stop: awaiting early LLM result +\(ContinuousClock.now - stopT0)")
+                DebugFileLogger.log("stop: awaiting final LLM result +\(ContinuousClock.now - stopT0)")
 
                 // Timeout: don't wait more than 15s for LLM
-                let earlyOutcome: TimedLLMResult = await withCheckedContinuation { continuation in
+                let finalOutcome: TimedLLMResult = await withCheckedContinuation { continuation in
                     let finished = OSAllocatedUnfairLock(initialState: false)
                     Task {
-                        let result = await earlyTask.value
+                        let result = await finalTask.value
                         if finished.withLock({ let old = $0; $0 = true; return !old }) {
                             continuation.resume(returning: result)
                         }
@@ -2006,17 +1955,17 @@ actor RecognitionSession {
                     Task {
                         try? await Task.sleep(for: .seconds(15))
                         if finished.withLock({ let old = $0; $0 = true; return !old }) {
-                            earlyTask.cancel()
-                            DebugFileLogger.log("stop: early LLM timeout after 15s, falling back to raw text")
+                            finalTask.cancel()
+                            DebugFileLogger.log("stop: final LLM timeout after 15s, falling back to raw text")
                             continuation.resume(returning: TimedLLMResult(text: nil, durationSeconds: 15))
                         }
                     }
                 }
-                historyLLMDurationSeconds = earlyOutcome.durationSeconds
-                let earlyResult = earlyOutcome.text
+                historyLLMDurationSeconds = finalOutcome.durationSeconds
+                let finalResult = finalOutcome.text
 
-                if let result = earlyResult, !result.isEmpty {
-                    DebugFileLogger.log("stop: early LLM result received \(result.count) chars +\(ContinuousClock.now - stopT0)")
+                if let result = finalResult, !result.isEmpty {
+                    DebugFileLogger.log("stop: final LLM result received \(result.count) chars +\(ContinuousClock.now - stopT0)")
                     let cleaned = result
                     if currentMode.id == ProcessingMode.macActionId {
                         let action = await dispatchMacAction(llmReply: cleaned)
@@ -2060,7 +2009,7 @@ actor RecognitionSession {
                     }
                 } else {
                     let err = pendingLLMError ?? LLMError.emptyResponse(nil)
-                    DebugFileLogger.log("stop: early LLM failed: \(err)")
+                    DebugFileLogger.log("stop: final LLM failed: \(err)")
                     pendingLLMError = nil
                     if currentMode.id == ProcessingMode.translationModeId {
                         if cancellationSkipsLLM {
@@ -2478,7 +2427,7 @@ actor RecognitionSession {
             // Typed input does not need an ASR connection.
             if !isManualInput { warmUpASRConnection() }
         }
-        resetSpeculativeLLM()
+        resetSessionLLMState()
         SystemVolumeManager.restore()
         logger.info("Session complete, injected \(effectiveText.count) chars")
     }
@@ -2535,7 +2484,6 @@ actor RecognitionSession {
 
         maxDurationTask?.cancel()
         maxDurationTask = nil
-        cancelSpeculativeLLM()
         SystemVolumeManager.restore()
 
         audioEngine.stop()
@@ -2638,7 +2586,7 @@ actor RecognitionSession {
         clearRecoveryState()
         state = .idle
         currentTranscript = .empty
-        resetSpeculativeLLM()
+        resetSessionLLMState()
         SystemVolumeManager.restore()
         warmUpASRConnection()
     }
@@ -2747,9 +2695,6 @@ actor RecognitionSession {
                 cont.resume(returning: transcript.displayText)
             }
             logger.info("Transcript updated: \(transcript.displayText)")
-            if state == .recording && !currentMode.prompt.isEmpty && currentMode.executionKind == .recording {
-                scheduleSpeculativeLLM()
-            }
 
         case .error(let error):
             lastStreamingError = error
@@ -2921,134 +2866,7 @@ actor RecognitionSession {
         logger.info("Recording started")
     }
 
-    // MARK: - Speculative LLM
 
-    private var isSpeculativeLLMEnabled: Bool {
-        let provider = KeychainService.selectedLLMProvider
-        guard provider.supportsSpeculativeProcessing else { return false }
-        if let override = UserDefaults.standard.object(forKey: "tf_enableSpeculativeLLM") as? Bool {
-            return override
-        }
-        return true
-    }
-
-
-    /// Debounce: after each transcript update, wait 800ms of silence before
-    /// speculatively sending current text to LLM. If the user is still
-    /// speaking, the timer resets.
-    private func scheduleSpeculativeLLM() {
-        guard case .input = recordingPurpose else { return }
-        guard isSpeculativeLLMEnabled else { return }
-        #if HAS_CLOUD_SUBSCRIPTION
-        if isCloudMode { return }
-        #endif
-        var text = currentTranscript.composedText
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        text = SnippetStorage.applyEffective(to: text, bundleId: targetBundleId)
-        scheduleSpeculativeLLM(text: text)
-    }
-
-    private func scheduleSpeculativeLLM(text: String) {
-        guard case .input = recordingPurpose else { return }
-        guard state == .recording else { return }
-        switch speculativeThrottle.submit(text) {
-        case .tooShort:
-            DebugFileLogger.log("speculative LLM: skipped reason=tooShort len=\(text.count)")
-            speculativeDebounceTask?.cancel()
-            speculativeDebounceTask = nil
-            return
-        case .duplicate:
-            DebugFileLogger.log("speculative LLM: skipped reason=duplicate len=\(text.count)")
-            speculativeDebounceTask?.cancel()
-            speculativeDebounceTask = nil
-            return
-        case .deltaTooSmall:
-            DebugFileLogger.log(
-                "speculative LLM: skipped reason=deltaTooSmall len=\(text.count) last=\(speculativeThrottle.lastStartedText.count)"
-            )
-            speculativeDebounceTask?.cancel()
-            speculativeDebounceTask = nil
-            return
-        case .queued:
-            DebugFileLogger.log("speculative LLM: queued pending len=\(text.count)")
-            return
-        case .debounce:
-            break
-        }
-
-        speculativeDebounceTask?.cancel()
-        speculativeDebounceTask = Task { [text] in
-            try? await Task.sleep(for: SpeculativeLLMThrottle.debounceDuration)
-            guard !Task.isCancelled, state == .recording else { return }
-            await fireSpeculativeLLM(text: text)
-        }
-    }
-
-    private func fireSpeculativeLLM(text: String) async {
-        guard speculativeThrottle.beginDebouncedRequest(for: text) else { return }
-        let contextGeneration = sessionGeneration
-        await resolvePromptContextIfNeeded(generation: contextGeneration)
-        guard !Task.isCancelled,
-              sessionGeneration == contextGeneration,
-              state == .recording else {
-            _ = speculativeThrottle.requestCompleted(input: text)
-            return
-        }
-        guard let runtime = await resolveLLMRuntime() else {
-            _ = speculativeThrottle.requestCompleted(input: text)
-            return
-        }
-        rememberHistoryLLM(runtime)
-        let llmConfig = runtime.config
-
-        speculativeLLMText = text
-        let prompt = await promptForCurrentMode(text: text)
-        let inputBoundary = llmInputBoundaryForCurrentMode()
-
-        let client = runtime.client
-        DebugFileLogger.log("speculative LLM: firing mode=\(currentMode.name) model=\(llmConfig.model) with \(text.count) chars")
-        let requestStartedAt = Date()
-        speculativeLLMTask = Task {
-            do {
-                let result = try await client.process(
-                    text: text,
-                    prompt: prompt,
-                    config: llmConfig,
-                    inputBoundary: inputBoundary
-                )
-                guard !Task.isCancelled else {
-                    _ = self.speculativeThrottle.requestCompleted(input: text)
-                    return TimedLLMResult(
-                        text: nil,
-                        durationSeconds: max(0, Date().timeIntervalSince(requestStartedAt))
-                    )
-                }
-                DebugFileLogger.log("speculative LLM: done \(result.count) chars")
-                if let pending = self.speculativeThrottle.requestCompleted(input: text),
-                   self.state == .recording {
-                    self.scheduleSpeculativeLLM(text: pending)
-                }
-                return TimedLLMResult(
-                    text: result,
-                    durationSeconds: max(0, Date().timeIntervalSince(requestStartedAt))
-                )
-            } catch {
-                _ = self.speculativeThrottle.requestCompleted(input: text)
-                guard !Task.isCancelled else {
-                    return TimedLLMResult(
-                        text: nil,
-                        durationSeconds: max(0, Date().timeIntervalSince(requestStartedAt))
-                    )
-                }
-                DebugFileLogger.log("speculative LLM: failed \(error)")
-                self.setPendingLLMError(error)
-                return TimedLLMResult(
-                    text: nil,
-                    durationSeconds: max(0, Date().timeIntervalSince(requestStartedAt))
-                )
-            }
-        }
-    }
 
     private func rememberHistoryLLM(_ runtime: ResolvedLLMRuntime) {
         let provider = runtime.providerID.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -3057,11 +2875,6 @@ actor RecognitionSession {
         historyLLMModel = model.isEmpty ? nil : String(model.prefix(160))
     }
 
-    private func cancelSpeculativeLLM() {
-        speculativeDebounceTask?.cancel()
-        speculativeDebounceTask = nil
-        // Don't cancel speculativeLLMTask here — stopRecording may reuse it
-    }
 
     /// The clipboard policy applies only to text modes that ultimately target
     /// another application. Ask Anything, Revise and Mac Action keep their
@@ -3077,13 +2890,6 @@ actor RecognitionSession {
             && !clipboardOutputPolicy.processesCancelledResult
     }
 
-    private func cancelAllSpeculativeLLM() {
-        speculativeDebounceTask?.cancel()
-        speculativeDebounceTask = nil
-        speculativeLLMTask?.cancel()
-        speculativeLLMTask = nil
-        speculativeLLMText = ""
-    }
 
     private func clearHistoryLLMMetadata() {
         historyLLMProvider = nil
@@ -3424,8 +3230,7 @@ actor RecognitionSession {
             currentTranscript = .empty
             hasEmittedReadyForCurrentSession = false
         }
-        resetSpeculativeLLM()
-        clearTranslationSessionContext()
+        resetSessionLLMState()
         SystemVolumeManager.restore()
         if !isManualInput { warmUpASRConnection() }
     }
@@ -3473,13 +3278,7 @@ actor RecognitionSession {
         return String(decoding: data, as: UTF8.self)
     }
 
-    private func resetSpeculativeLLM() {
-        speculativeDebounceTask?.cancel()
-        speculativeDebounceTask = nil
-        speculativeLLMTask?.cancel()
-        speculativeLLMTask = nil
-        speculativeLLMText = ""
-        speculativeThrottle.reset()
+    private func resetSessionLLMState() {
         clearIntelliSenseSessionContext()
         clearTranslationSessionContext()
     }
@@ -3736,7 +3535,7 @@ actor RecognitionSession {
         asrCleanupGeneration = nil
         recoveryTask?.cancel()
         recoveryTask = nil
-        resetSpeculativeLLM()
+        resetSessionLLMState()
 
         audioEngine.stop()
         audioEngine.onAudioChunk = nil
@@ -3972,7 +3771,7 @@ actor RecognitionSession {
             recordingPurpose = .input(.direct)
             warmUpASRConnection()
         }
-        resetSpeculativeLLM()
+        resetSessionLLMState()
         SystemVolumeManager.restore()
     }
 

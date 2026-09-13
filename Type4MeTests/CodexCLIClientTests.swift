@@ -14,11 +14,10 @@ final class CodexCLIClientTests: XCTestCase {
         XCTAssertEqual(config.toLLMConfig().apiKey, "")
     }
 
-    func testProviderExposesSparkAndDisablesSpeculativeProcessing() {
+    func testProviderExposesSparkAndDisablesRequiresAPIKey() {
         XCTAssertEqual(LLMProvider.codexCLI.modelOptions.first?.value, "gpt-5.6-luna")
         XCTAssertTrue(LLMProvider.codexCLI.modelOptions.contains { $0.value == "gpt-5.3-codex-spark" })
         XCTAssertFalse(LLMProvider.codexCLI.requiresAPIKey)
-        XCTAssertFalse(LLMProvider.codexCLI.supportsSpeculativeProcessing)
     }
 
     func testRuntimeCandidatesPreferChatGPTBundledCodex() {
