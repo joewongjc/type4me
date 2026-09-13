@@ -216,6 +216,7 @@ enum ModeSelectionPreference {
 /// machine still drives layout, this just modulates the look of `.done`/`.error`.
 enum FeedbackKind: Equatable {
     case standard
+    case warning
     case macActionSuccess
     case macActionFailure
     case macActionUnsure
@@ -1621,7 +1622,7 @@ final class AppState {
         showDone(message: message, delay: .seconds(2.5))
     }
 
-    func finalize(text: String, outcome: InjectionOutcome) {
+    func finalize(text: String, outcome: InjectionOutcome, llmFailed: Bool = false) {
         // Only accept finalization while the bar is in processing state.
         // A suppressed raw/no-copy cancellation can also finalize from .hidden.
         // A stale event from a previous session is still rejected because a
@@ -1638,7 +1639,24 @@ final class AppState {
             return
         }
         segments = [TranscriptionSegment(text: text, isConfirmed: true)]
-        showDone(message: outcome.completionMessage)
+        if llmFailed {
+            feedbackKind = .warning
+            let message: String
+            switch outcome {
+            case .copiedToClipboard:
+                message = L("处理失败，原文已保留至剪贴板", "Processing failed; raw text copied to clipboard")
+            case .notInserted:
+                message = L("处理失败，未找到输入位置", "Processing failed; no editable field found")
+            case .discarded:
+                message = outcome.completionMessage
+            case .inserted, .pasteAttemptedClipboardRetained:
+                message = L("处理失败，已输出原文", "Processing failed; raw text output")
+            }
+            showDone(message: message, delay: .seconds(2.0))
+        } else {
+            feedbackKind = .standard
+            showDone(message: outcome.completionMessage)
+        }
         if shouldRevealSuppressedFinalization {
             onShowPanel?()
         }

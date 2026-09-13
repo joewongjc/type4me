@@ -733,6 +733,63 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(appState.feedbackMessage, InjectionOutcome.copiedToClipboard.completionMessage)
     }
 
+    func testFinalizeWithLLMFailureShowsWarningAndFallbackMessage() {
+        let appState = AppState()
+        appState.barPhase = .processing
+
+        appState.finalize(text: "原始识别文本", outcome: .inserted, llmFailed: true)
+
+        XCTAssertEqual(appState.barPhase, .done)
+        XCTAssertEqual(appState.feedbackKind, .warning)
+        XCTAssertEqual(appState.feedbackMessage, L("处理失败，已输出原文", "Processing failed; raw text output"))
+        XCTAssertEqual(appState.transcriptionText, "原始识别文本")
+    }
+
+    func testFinalizeWithLLMFailureAndClipboardRetentionShowsClipboardWarning() {
+        let appState = AppState()
+        appState.barPhase = .processing
+
+        appState.finalize(text: "原始识别文本", outcome: .copiedToClipboard, llmFailed: true)
+
+        XCTAssertEqual(appState.barPhase, .done)
+        XCTAssertEqual(appState.feedbackKind, .warning)
+        XCTAssertEqual(appState.feedbackMessage, L("处理失败，原文已保留至剪贴板", "Processing failed; raw text copied to clipboard"))
+    }
+
+
+    func testFinalizeWithLLMFailureAndNotInsertedShowsNoDestinationWarning() {
+        let appState = AppState()
+        appState.barPhase = .processing
+
+        appState.finalize(text: "原始识别文本", outcome: .notInserted, llmFailed: true)
+
+        XCTAssertEqual(appState.barPhase, .done)
+        XCTAssertEqual(appState.feedbackKind, .warning)
+        XCTAssertEqual(appState.feedbackMessage, L("处理失败，未找到输入位置", "Processing failed; no editable field found"))
+    }
+
+    func testFinalizeWithLLMFailureAndDiscardedShowsCancelledMessage() {
+        let appState = AppState()
+        appState.barPhase = .processing
+
+        appState.finalize(text: "原始识别文本", outcome: .discarded, llmFailed: true)
+
+        XCTAssertEqual(appState.barPhase, .done)
+        XCTAssertEqual(appState.feedbackKind, .warning)
+        XCTAssertEqual(appState.feedbackMessage, InjectionOutcome.discarded.completionMessage)
+    }
+    func testFinalizeSuccessResetsFeedbackKindToStandard() {
+        let appState = AppState()
+        appState.barPhase = .processing
+        appState.feedbackKind = .warning
+
+        appState.finalize(text: "处理后的文本", outcome: .inserted, llmFailed: false)
+
+        XCTAssertEqual(appState.barPhase, .done)
+        XCTAssertEqual(appState.feedbackKind, .standard)
+        XCTAssertEqual(appState.feedbackMessage, InjectionOutcome.inserted.completionMessage)
+    }
+
     func testLocalASREngineSelectionNeverDisablesBothEngines() {
         let qwenOnly = LocalASREngineSelection(
             senseVoiceEnabled: true,

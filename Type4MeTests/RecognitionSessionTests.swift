@@ -376,6 +376,26 @@ final class RecognitionSessionTests: XCTestCase {
         XCTAssertEqual(effective.displayText, batchFallbackText)
         XCTAssertNotEqual(effective.displayText, partialTranscript.displayText)
     }
+
+    func testFinalizedEventPreservesLLMFailedFlag() {
+        let successEvent = RecognitionEvent.finalized(text: "输出文本", injection: .inserted, llmFailed: false)
+        if case .finalized(let text, let injection, let llmFailed) = successEvent {
+            XCTAssertEqual(text, "输出文本")
+            XCTAssertEqual(injection, .inserted)
+            XCTAssertFalse(llmFailed)
+        } else {
+            XCTFail("Expected .finalized event")
+        }
+
+        let failedEvent = RecognitionEvent.finalized(text: "原文文本", injection: .copiedToClipboard, llmFailed: true)
+        if case .finalized(let text, let injection, let llmFailed) = failedEvent {
+            XCTAssertEqual(text, "原文文本")
+            XCTAssertEqual(injection, .copiedToClipboard)
+            XCTAssertTrue(llmFailed)
+        } else {
+            XCTFail("Expected .finalized event")
+        }
+    }
 }
 
 private actor MockLLMProcessCounter: LLMClient {

@@ -298,8 +298,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         }
                         self.hotkeyManager.isProcessing = false
                         self.hotkeyManager.resetActiveState()
-                    case .finalized(let text, let injection):
-                        appState.finalize(text: text, outcome: injection)
+                    case .finalized(let text, let injection, let llmFailed):
+                        appState.finalize(text: text, outcome: injection, llmFailed: llmFailed)
                         self.hotkeyManager.isProcessing = false
                         self.safeResetHotkeyState()
                     case .macActionResult(let message, let status):

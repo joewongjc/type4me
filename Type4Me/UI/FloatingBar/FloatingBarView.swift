@@ -1040,6 +1040,8 @@ struct FloatingBarView<S: FloatingBarState>: View {
         switch state.feedbackKind {
         case .standard:
             return nil
+        case .warning:
+            return ("exclamationmark.triangle.fill", TF.amber)
         case .macActionSuccess:
             return ("checkmark.circle.fill", TF.success)
         case .macActionFailure:
@@ -1097,7 +1099,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
 
     private var feedbackBorderColor: Color {
         switch state.feedbackKind {
-        case .macActionUnsure:
+        case .warning, .macActionUnsure:
             TF.amber.opacity(0.40)
         case .macActionSuccess, .macActionFailure, .standard:
             TF.success.opacity(0.40)

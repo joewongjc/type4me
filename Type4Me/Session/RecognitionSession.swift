@@ -2202,6 +2202,7 @@ actor RecognitionSession {
             // immediately after paste, without waiting for actor re-scheduling.
             let engine = injectionEngine
             let onEvent = self.onASREvent
+            let failedLLM = llmFailed
             let recordId = UUID().uuidString
             let modeID = currentMode.id
             let sessionSettings = intelliSenseRequestContext?.settings ?? intelliSenseSettings
@@ -2296,8 +2297,8 @@ actor RecognitionSession {
                         }
                     }
                     // Notify UI immediately from this thread, before actor resumes
-                    onEvent?(.finalized(text: finalText, injection: result.outcome))
-                    DebugFileLogger.log("stop: finalized emitted from injection task")
+                    onEvent?(.finalized(text: finalText, injection: result.outcome, llmFailed: failedLLM))
+                    DebugFileLogger.log("stop: finalized emitted from injection task (llmFailed=\(failedLLM))")
                     // Restoring policies must restore even when there was no
                     // editable destination, otherwise a failed paste leaks text.
                     if !retainsClipboardResult && !wasCancelled {
@@ -2417,10 +2418,9 @@ actor RecognitionSession {
             }
             if !isManualInput { KeychainService.addASRUsage(seconds: duration) }
 
-            // Note: cancellation and LLM-failure details are already conveyed
-            // through the .finalized event's InjectionOutcome / completionMessage.
-            // No separate .error emission here to avoid green→red UI flash.
-
+            // Note: cancellation details are conveyed through InjectionOutcome / completionMessage,
+            // while LLM-failure is conveyed through the .finalized event's llmFailed flag
+            // with a distinct warning presentation instead of a green→red error flash.
         } else {
             // No text recognized: skip history entry (don't save empty records)
             let duration = recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0
