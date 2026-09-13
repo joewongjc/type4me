@@ -191,6 +191,12 @@ actor RecognitionSession {
     #endif
 
     private func resolveLLMRuntime() async -> ResolvedLLMRuntime? {
+        #if DEBUG
+        if let client = injectedLLMClient {
+            let dummyConfig = LLMConfig(apiKey: "test", model: "test-model", baseURL: "https://example.com")
+            return ResolvedLLMRuntime(providerID: "mock", client: client, config: dummyConfig)
+        }
+        #endif
         guard let resolution = LLMRuntime.resolve(
             isCloudMode: isCloudModeForLLM,
             cache: &llmClientCache
@@ -360,6 +366,15 @@ actor RecognitionSession {
         handleASREvent(event, expectedGeneration: sessionGeneration)
     }
     #endif
+    #if DEBUG
+    /// Test seam: test-injected LLM client override to precisely verify invocation count and input text.
+    private var injectedLLMClient: (any LLMClient)?
+
+    func setInjectedLLMClientForTesting(_ client: (any LLMClient)?) {
+        injectedLLMClient = client
+    }
+    #endif
+
 
     /// Called with normalized audio level (0..1) for UI visualization.
     private var onAudioLevel: (@Sendable (Float) -> Void)?

@@ -319,8 +319,10 @@ final class RecognitionSessionTests: XCTestCase {
         XCTAssertEqual(result.displayText, "前半句后半句")
     }
 
-    func testRecordingTimeTranscriptUpdatesDoNotScheduleOrTriggerLLM() async {
+    func testRecordingTimeTranscriptUpdatesDoNotScheduleOrTriggerLLM() async throws {
         let session = RecognitionSession()
+        let mockClient = MockLLMProcessCounter()
+        await session.setInjectedLLMClientForTesting(mockClient)
         await session.setState(.recording)
 
         // Emitting multiple streaming transcript events during recording
@@ -337,7 +339,11 @@ final class RecognitionSessionTests: XCTestCase {
             isFinal: false
         )))
 
-        // Verify state is still recording and no speculative task is created/running
+        // Wait beyond old speculative debounce duration (800ms) to prove no background call is fired
+        try await Task.sleep(for: .milliseconds(900))
+
+        let processCalls = await mockClient.processCallCount
+        XCTAssertEqual(processCalls, 0, "No LLM process call should be scheduled or triggered during recording")
         let state = await session.state
         XCTAssertEqual(state, .recording)
         await session.setState(.idle)
@@ -371,4 +377,23 @@ final class RecognitionSessionTests: XCTestCase {
         XCTAssertNotEqual(effective.displayText, partialTranscript.displayText)
     }
 
+
+private actor MockLLMProcessCounter: LLMClient {
+    private(set) var processCallCount = 0
+    private(set) var lastProcessedText: String?
+
+    func process(
+        text: String,
+        prompt: String,
+        config: LLMConfig,
+        inputBoundary: LLMInputBoundary
+    ) async throws -> String {
+        processCallCount += 1
+        lastProcessedText = text
+        return text
+    }
+
+    func warmUp(baseURL: String) async {}
+    func invalidate() async {}
+}
 }
