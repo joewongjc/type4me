@@ -756,6 +756,20 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(appState.feedbackMessage, L("处理失败，原文已保留至剪贴板", "Processing failed; raw text copied to clipboard"))
     }
 
+    func testFinalizeWithLLMFailureAndPasteAttemptedShowsPasteAttemptedWarning() {
+        let appState = AppState()
+        appState.barPhase = .processing
+
+        appState.finalize(text: "原始识别文本", outcome: .pasteAttemptedClipboardRetained, llmFailed: true)
+
+        XCTAssertEqual(appState.barPhase, .done)
+        XCTAssertEqual(appState.feedbackKind, .warning)
+        XCTAssertEqual(
+            appState.feedbackMessage,
+            L("处理失败，已尝试输入，原文已保留至剪贴板", "Processing failed; paste attempted, raw text kept in clipboard")
+        )
+    }
+
 
     func testFinalizeWithLLMFailureAndNotInsertedShowsNoDestinationWarning() {
         let appState = AppState()

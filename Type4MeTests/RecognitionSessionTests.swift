@@ -377,6 +377,59 @@ final class RecognitionSessionTests: XCTestCase {
         XCTAssertNotEqual(effective.displayText, partialTranscript.displayText)
     }
 
+    func testFinalizeEmitsLLMFailedTrueWhenLLMThrows() async throws {
+        let session = RecognitionSession()
+        let throwingClient = ThrowingMockLLMClient()
+        await session.setInjectedLLMClientForTesting(throwingClient)
+        let eventBox = FinalizedEventBox()
+        await session.setOnASREvent { event in
+            Task { await eventBox.record(event) }
+        }
+
+        let polishMode = ProcessingMode(
+            id: UUID(),
+            name: "Test Polish",
+            prompt: "Please polish this text",
+            isBuiltin: false,
+            executionKind: .recording
+        )
+        let started = await session.startManualInput(modes: [polishMode])
+        XCTAssertTrue(started, "Session should start manual input")
+
+        await session.submitManualInput("需要润色的原始文本", mode: polishMode)
+
+        let event = try await eventBox.waitForFinalized(timeout: .seconds(2))
+        XCTAssertEqual(event.text, "需要润色的原始文本")
+        XCTAssertTrue(event.llmFailed, "When LLM throws, llmFailed must be true in finalized event")
+    }
+
+    func testFinalizeEmitsLLMFailedFalseWhenLLMSucceeds() async throws {
+        let session = RecognitionSession()
+        let successClient = SuccessMockLLMClient(result: "已润色的精炼文本")
+        await session.setInjectedLLMClientForTesting(successClient)
+
+        let eventBox = FinalizedEventBox()
+        await session.setOnASREvent { event in
+            Task { await eventBox.record(event) }
+        }
+
+        let polishMode = ProcessingMode(
+            id: UUID(),
+            name: "Test Polish",
+            prompt: "Please polish this text",
+            isBuiltin: false,
+            executionKind: .recording
+        )
+        let started = await session.startManualInput(modes: [polishMode])
+        XCTAssertTrue(started, "Session should start manual input")
+
+        await session.submitManualInput("需要润色的原始文本", mode: polishMode)
+
+        let event = try await eventBox.waitForFinalized(timeout: .seconds(2))
+        XCTAssertEqual(event.text, "已润色的精炼文本")
+        XCTAssertFalse(event.llmFailed, "When LLM succeeds, llmFailed must be false in finalized event")
+    }
+
     func testFinalizedEventPreservesLLMFailedFlag() {
         let successEvent = RecognitionEvent.finalized(text: "输出文本", injection: .inserted, llmFailed: false)
         if case .finalized(let text, let injection, let llmFailed) = successEvent {
@@ -411,6 +464,65 @@ private actor MockLLMProcessCounter: LLMClient {
         processCallCount += 1
         lastProcessedText = text
         return text
+    }
+
+    func warmUp(baseURL: String) async {}
+    func invalidate() async {}
+}
+
+private actor FinalizedEventBox {
+    private var finalizedEvent: (text: String, injection: InjectionOutcome, llmFailed: Bool)?
+
+    func record(_ event: RecognitionEvent) {
+        guard case .finalized(let text, let injection, let llmFailed) = event else { return }
+        finalizedEvent = (text, injection, llmFailed)
+    }
+
+    func waitForFinalized(timeout: Duration) async throws -> (text: String, injection: InjectionOutcome, llmFailed: Bool) {
+        let start = ContinuousClock.now
+        while ContinuousClock.now - start < timeout {
+            if let event = finalizedEvent {
+                return event
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        struct TimeoutError: Error {}
+        throw TimeoutError()
+    }
+}
+
+private actor ThrowingMockLLMClient: LLMClient {
+    enum MockError: Error {
+        case simulatedFailure
+    }
+
+    func process(
+        text: String,
+        prompt: String,
+        config: LLMConfig,
+        inputBoundary: LLMInputBoundary
+    ) async throws -> String {
+        throw MockError.simulatedFailure
+    }
+
+    func warmUp(baseURL: String) async {}
+    func invalidate() async {}
+}
+
+private actor SuccessMockLLMClient: LLMClient {
+    let result: String
+
+    init(result: String) {
+        self.result = result
+    }
+
+    func process(
+        text: String,
+        prompt: String,
+        config: LLMConfig,
+        inputBoundary: LLMInputBoundary
+    ) async throws -> String {
+        return result
     }
 
     func warmUp(baseURL: String) async {}

@@ -1649,8 +1649,13 @@ final class AppState {
                 message = L("处理失败，未找到输入位置", "Processing failed; no editable field found")
             case .discarded:
                 message = outcome.completionMessage
-            case .inserted, .pasteAttemptedClipboardRetained:
+            case .inserted:
                 message = L("处理失败，已输出原文", "Processing failed; raw text output")
+            case .pasteAttemptedClipboardRetained:
+                message = L(
+                    "处理失败，已尝试输入，原文已保留至剪贴板",
+                    "Processing failed; paste attempted, raw text kept in clipboard"
+                )
             }
             showDone(message: message, delay: .seconds(2.0))
         } else {
