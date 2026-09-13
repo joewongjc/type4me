@@ -1025,7 +1025,6 @@ func startReviseRecording(_ target: RevisePreparedTarget) async {
 - translation target freeze；
 - Ask Anything request context；
 - `PromptContext` 或剪贴板上下文；
-- speculative LLM；
 - short-text exemption；
 - Mac Action / Selection Ask 分流。
 
@@ -2162,7 +2161,6 @@ fake AX/pasteboard：
 - revise purpose 不改变 currentMode；
 - 不捕获 PromptContext/selection/clipboard；
 - 不调用 SnippetStorage；
-- 不启用 speculative LLM；
 - 复用 LLM cache；
 - empty instruction；
 - local undo 不调用 LLM；

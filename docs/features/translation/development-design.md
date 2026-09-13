@@ -59,7 +59,7 @@ promptContext.expandContextVariables(currentMode.prompt)
 
 LLM Client 再将 `{text}` 替换为本次 ASR 文本。
 
-翻译目标必须在请求开始前加入 Prompt，不能在 UI 改变后影响已经运行的 speculative 或同步 LLM 请求。
+翻译目标必须在请求开始前加入 Prompt，不能在 UI 改变后影响已经运行的停止后 final 或同步 LLM 请求。
 
 ### 2.4 设置界面
 
@@ -710,9 +710,9 @@ private func failTranslation(
 
 其他模式的现有 raw-text fallback 保持不变。
 
-### 12.4 Speculative 与同步路径一致
+### 12.4 Final 与同步路径一致
 
-当前 early LLM 和同步 LLM 有两套结果分支。翻译输出必须进入同一个 helper：
+当前 final LLM 和同步 LLM 有两套结果分支。翻译输出必须进入同一个 helper：
 
 ```swift
 private func resolveTranslationOutput(
@@ -721,7 +721,7 @@ private func resolveTranslationOutput(
 ) throws -> String
 ```
 
-避免 speculative 路径执行 validator，而同步路径漏掉，或一条路径仍回落原文。
+避免 final 路径执行 validator，而同步路径漏掉，或一条路径仍回落原文。
 
 ## 13. 设置界面实现
 
@@ -909,7 +909,7 @@ translation failed reason=unexpectedOutputLanguage target=ja detected=en
 - 目标语言在录音开始时冻结；
 - 处理中修改设置不改变 Prompt；
 - 同模式另一快捷键结束仍用冻结 target；
-- speculative 和同步路径使用相同 validator；
+- final 和同步路径使用相同 validator；
 - 错误语言重试使用完整最终输入且最多一次；
 - 重试成功后正常注入，重试仍不匹配时写入 `translation_error`；
 - LLM 失败不注入 ASR 原文；

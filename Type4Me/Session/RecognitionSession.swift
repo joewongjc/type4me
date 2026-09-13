@@ -1755,59 +1755,6 @@ actor RecognitionSession {
         }
         historyASRDurationSeconds = max(0, Date().timeIntervalSince(asrFinishingStartedAt))
 
-        // The final transcript is available; fire the one and only LLM request.
-        let canFireLLMAtStop = providerIsStreaming
-        var finalLLMTask: Task<TimedLLMResult, Never>?
-        if needsLLM && canFireLLMAtStop {
-            var finalASRText = currentTranscript.displayText
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            finalASRText = SnippetStorage.applyEffective(to: finalASRText, bundleId: targetBundleId)
-
-            // Short text exemption: skip LLM for short texts (per-mode threshold)
-            let exemptionThreshold = currentMode.shortTextExemption
-            if exemptionThreshold > 0 && finalASRText.count < exemptionThreshold {
-                DebugFileLogger.log("stop: short text exemption (\(finalASRText.count) < \(exemptionThreshold) chars), skipping LLM")
-                needsLLM = false
-                clearHistoryLLMMetadata()
-                onASREvent?(.processingLabelOverride(L("校准中", "Calibrating")))
-            }
-
-            DebugFileLogger.log(
-                "stop: needsLLM=\(needsLLM) mode=\(currentMode.name) text=\(finalASRText.count)chars"
-            )
-            if needsLLM && !finalASRText.isEmpty, let runtime = await resolveLLMRuntime() {
-                rememberHistoryLLM(runtime)
-                let llmConfig = runtime.config
-                let prompt = await promptForCurrentMode(text: finalASRText)
-                let inputBoundary = llmInputBoundaryForCurrentMode()
-                let client = runtime.client
-                state = .postProcessing
-                DebugFileLogger.log("stop: final LLM firing mode=\(currentMode.name) model=\(llmConfig.model) with \(finalASRText.count) chars +\(ContinuousClock.now - stopT0)")
-                let requestStartedAt = Date()
-                finalLLMTask = Task {
-                    do {
-                        let result = try await client.process(
-                            text: finalASRText,
-                            prompt: prompt,
-                            config: llmConfig,
-                            inputBoundary: inputBoundary
-                        )
-                        DebugFileLogger.log("stop: final LLM done \(result.count) chars +\(ContinuousClock.now - stopT0)")
-                        return TimedLLMResult(
-                            text: result,
-                            durationSeconds: max(0, Date().timeIntervalSince(requestStartedAt))
-                        )
-                    } catch {
-                        DebugFileLogger.log("stop: final LLM FAILED +\(ContinuousClock.now - stopT0) error=\(error)")
-                        self.setPendingLLMError(error)
-                        return TimedLLMResult(
-                            text: nil,
-                            durationSeconds: max(0, Date().timeIntervalSince(requestStartedAt))
-                        )
-                    }
-                }
-            }
-        }
         eventConsumptionTask = nil
         asrClient = nil
         hasEmittedReadyForCurrentSession = false
@@ -1864,6 +1811,60 @@ actor RecognitionSession {
         // Combine confirmed segments + any trailing unconfirmed partial.
         let effectiveText = currentTranscript.displayText
         currentConfig = nil
+
+        // The final transcript is available after teardown and any batch fallback.
+        let canFireLLMAtStop = providerIsStreaming
+        var finalLLMTask: Task<TimedLLMResult, Never>?
+        if needsLLM && canFireLLMAtStop {
+            var finalASRText = effectiveText
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            finalASRText = SnippetStorage.applyEffective(to: finalASRText, bundleId: targetBundleId)
+
+            // Short text exemption: skip LLM for short texts (per-mode threshold)
+            let exemptionThreshold = currentMode.shortTextExemption
+            if exemptionThreshold > 0 && finalASRText.count < exemptionThreshold {
+                DebugFileLogger.log("stop: short text exemption (\(finalASRText.count) < \(exemptionThreshold) chars), skipping LLM")
+                needsLLM = false
+                clearHistoryLLMMetadata()
+                onASREvent?(.processingLabelOverride(L("校准中", "Calibrating")))
+            }
+
+            DebugFileLogger.log(
+                "stop: needsLLM=\(needsLLM) mode=\(currentMode.name) text=\(finalASRText.count)chars"
+            )
+            if needsLLM && !finalASRText.isEmpty, let runtime = await resolveLLMRuntime() {
+                rememberHistoryLLM(runtime)
+                let llmConfig = runtime.config
+                let prompt = await promptForCurrentMode(text: finalASRText)
+                let inputBoundary = llmInputBoundaryForCurrentMode()
+                let client = runtime.client
+                state = .postProcessing
+                DebugFileLogger.log("stop: final LLM firing mode=\(currentMode.name) model=\(llmConfig.model) with \(finalASRText.count) chars +\(ContinuousClock.now - stopT0)")
+                let requestStartedAt = Date()
+                finalLLMTask = Task {
+                    do {
+                        let result = try await client.process(
+                            text: finalASRText,
+                            prompt: prompt,
+                            config: llmConfig,
+                            inputBoundary: inputBoundary
+                        )
+                        DebugFileLogger.log("stop: final LLM done \(result.count) chars +\(ContinuousClock.now - stopT0)")
+                        return TimedLLMResult(
+                            text: result,
+                            durationSeconds: max(0, Date().timeIntervalSince(requestStartedAt))
+                        )
+                    } catch {
+                        DebugFileLogger.log("stop: final LLM FAILED +\(ContinuousClock.now - stopT0) error=\(error)")
+                        self.setPendingLLMError(error)
+                        return TimedLLMResult(
+                            text: nil,
+                            durationSeconds: max(0, Date().timeIntervalSince(requestStartedAt))
+                        )
+                    }
+                }
+            }
+        }
 
         await finishTextOutput(effectiveText, generation: myGeneration, stopStartedAt: stopT0,
                                needsLLM: needsLLM, finalLLMTask: finalLLMTask, needsBatchFallback: needsBatchFallback)

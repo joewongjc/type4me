@@ -319,4 +319,56 @@ final class RecognitionSessionTests: XCTestCase {
         XCTAssertEqual(result.displayText, "前半句后半句")
     }
 
+    func testRecordingTimeTranscriptUpdatesDoNotScheduleOrTriggerLLM() async {
+        let session = RecognitionSession()
+        await session.setState(.recording)
+
+        // Emitting multiple streaming transcript events during recording
+        await session.ingestASREventForTesting(.transcript(RecognitionTranscript(
+            confirmedSegments: ["今天天气"],
+            partialText: "真不错",
+            authoritativeText: "",
+            isFinal: false
+        )))
+        await session.ingestASREventForTesting(.transcript(RecognitionTranscript(
+            confirmedSegments: ["今天天气真不错"],
+            partialText: "我们出去走走",
+            authoritativeText: "",
+            isFinal: false
+        )))
+
+        // Verify state is still recording and no speculative task is created/running
+        let state = await session.state
+        XCTAssertEqual(state, .recording)
+        await session.setState(.idle)
+    }
+
+    func testResolveEffectiveTranscriptFeedsBatchFallbackResultToFinalPipeline() {
+        // Given a streaming session that failed with only a partial transcript
+        let partialTranscript = RecognitionTranscript(
+            confirmedSegments: [],
+            partialText: "明天下午开",
+            authoritativeText: "",
+            isFinal: false
+        )
+
+        // And batch fallback recovers the full text
+        let batchFallbackText = "明天下午开会讨论报价"
+        let recoveredTranscript = RecognitionTranscript(
+            confirmedSegments: [batchFallbackText],
+            partialText: "",
+            authoritativeText: batchFallbackText,
+            isFinal: true
+        )
+
+        // resolveEffectiveTranscript preserves the authoritative recovered text
+        let effective = RecognitionSession.resolveEffectiveTranscript(
+            currentTranscript: recoveredTranscript,
+            providerIsStreaming: true
+        )
+
+        XCTAssertEqual(effective.displayText, batchFallbackText)
+        XCTAssertNotEqual(effective.displayText, partialTranscript.displayText)
+    }
+
 }

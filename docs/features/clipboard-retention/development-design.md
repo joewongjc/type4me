@@ -14,7 +14,7 @@
 
 ## 会话与注入
 
-`RecognitionSession` 在 `startRecording` 冻结当前策略，并以 `CompletionIntent.normal` 或 `.cancelled` 表示本轮收尾。取消后的原始识别和从不复制策略会取消 speculative LLM 并禁止使用 LLM 结果；若正在飞行的请求返回，其结果会被忽略，最终输出恢复为最终 ASR 文本。
+`RecognitionSession` 在 `startRecording` 冻结当前策略，并以 `CompletionIntent.normal` 或 `.cancelled` 表示本轮收尾。取消后的原始识别和从不复制策略会跳过 LLM 后处理；若正在飞行的停止后请求返回，其结果会被忽略，最终输出恢复为最终 ASR 文本。
 
 这两种无需 LLM 的取消路径会通知 `AppState` 隐藏浮层，而不是切换到 `.processing`。最终 ASR 结果仍可写入历史与剪贴板；若需要显示结果，`.finalized` 从这个受控隐藏状态恢复为短暂的完成提示。新一轮录音会清除该受控状态，避免旧会话事件覆盖新录音。
 

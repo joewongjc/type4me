@@ -9,7 +9,6 @@ This fork carries Mac-local fixes that are useful before they are accepted
 upstream. The goals are:
 
 - keep the local Apple Silicon ASR path stable for daily use;
-- avoid high sustained load from speculative LLM calls while recording;
 - keep patches small enough to submit upstream as focused PRs.
 
 ## Current Patch Set
@@ -30,33 +29,14 @@ long SenseVoice + Qwen3 sessions:
 Runtime expectation: the Qwen3-ASR helper should idle around hundreds of MB
 and should not grow monotonically into multi-GB RSS during long dictation.
 
-### Disable recording-time speculative LLM by default
+### Single final LLM request after recording stops
 
 Source: `Type4Me/Session/RecognitionSession.swift`
 
-The upstream app speculatively calls the configured LLM during recording when
-streaming ASR emits partial transcript updates. This reduces stop-time latency
-for fast cloud LLMs, but it is expensive for local large models. On a local
-Qwen3.6 35B endpoint it repeatedly wakes the model, cancels in-flight requests,
-and causes high sustained power draw before the user finishes speaking.
-
-This fork adds a `tf_enableSpeculativeLLM` override. When the key is not set,
-speculative LLM remains enabled for cloud providers and is disabled for local
-LLM providers such as Ollama. Final post-processing after the user stops
-recording is unchanged.
-
-To explicitly re-enable it for fast local or small-model setups:
-
-```bash
-defaults write com.type4me.localfixed tf_enableSpeculativeLLM -bool true
-```
-
-To explicitly disable it again:
-
-```bash
-defaults write com.type4me.localfixed tf_enableSpeculativeLLM -bool false
-```
-
+Recording-time speculative LLM processing has been removed. All modes perform
+exactly one LLM post-processing request after the user finishes speaking and
+the final ASR transcript is settled. Older installs' `tf_enableSpeculativeLLM`
+defaults keys are automatically cleaned up at launch.
 ## Local Build Notes
 
 The public source tree does not include `Frameworks/sherpa-onnx.xcframework`.
@@ -123,17 +103,17 @@ ps -axo pid,ppid,pcpu,pmem,rss,etime,args \
   | egrep -v 'egrep|Codex'
 ```
 
-Check for unwanted recording-time LLM calls:
+Check for single post-stop LLM call:
 
 ```bash
 tail -f "$HOME/Library/Application Support/Type4Me/debug.log" \
-  | egrep 'speculative LLM|fresh LLM|sync LLM|q3Port|ASR transcript'
+  | egrep 'final LLM|sync LLM|q3Port|ASR transcript'
 ```
 
-Expected after this fork patch:
+Expected after this patch:
 
-- no `speculative LLM: firing` lines while recording;
-- exactly one final `fresh LLM` or `sync LLM` call after stop when the selected
+- no LLM requests while recording;
+- exactly one `final LLM` (or `sync LLM`) call after stop when the selected
   mode has a prompt;
 - Qwen3-ASR RSS stays bounded over repeated long recordings.
 
@@ -142,10 +122,5 @@ Expected after this fork patch:
 Submit small PRs independently:
 
 1. Qwen3-ASR memory fix, based on PR #157 or as a review/continuation.
-2. Add a user/defaults setting for speculative LLM and disable it by default
-   for local LLM providers or large local models.
-3. Optional UI toggle: "Low-latency speculative LLM" vs "Energy-saving final
-   LLM only".
-
 Avoid bundling signing or local wrapper changes in upstream PRs; those are
 local distribution concerns.
