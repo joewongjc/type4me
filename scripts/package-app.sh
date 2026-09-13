@@ -29,9 +29,12 @@ APP_BUILD="${APP_BUILD:-1}"
 MIN_SYSTEM_VERSION="${MIN_SYSTEM_VERSION:-14.0}"
 VARIANT="${VARIANT:-cloud}"    # cloud or local
 ARCH="${ARCH:-universal}"      # arm64 or universal
-MICROPHONE_USAGE_DESCRIPTION="${MICROPHONE_USAGE_DESCRIPTION:-Type4Me 需要访问麦克风以录制语音并将其转换为文本。}"
-SPEECH_RECOGNITION_USAGE_DESCRIPTION="${SPEECH_RECOGNITION_USAGE_DESCRIPTION:-Type4Me 需要语音识别权限以将你的语音转写为文字。}"
-APPLE_EVENTS_USAGE_DESCRIPTION="${APPLE_EVENTS_USAGE_DESCRIPTION:-Type4Me 需要辅助功能权限来注入转写文字到其他应用}"
+# Base (development region: en) usage descriptions. zh-Hans overrides live in
+# Type4Me/Resources/zh-Hans.lproj/InfoPlist.strings; macOS shows the TCC prompt
+# in the user's system language.
+MICROPHONE_USAGE_DESCRIPTION="${MICROPHONE_USAGE_DESCRIPTION:-Type4Me needs microphone access to capture your voice for transcription.}"
+SPEECH_RECOGNITION_USAGE_DESCRIPTION="${SPEECH_RECOGNITION_USAGE_DESCRIPTION:-Type4Me needs speech recognition access to transcribe your voice into text.}"
+APPLE_EVENTS_USAGE_DESCRIPTION="${APPLE_EVENTS_USAGE_DESCRIPTION:-Type4Me needs accessibility access to inject transcribed text into other apps.}"
 INFO_PLIST="$APP_PATH/Contents/Info.plist"
 
 ENTITLEMENTS="$PROJECT_DIR/entitlements.plist"
@@ -193,6 +196,14 @@ cp "$PROJECT_DIR/Type4Me/Resources/Sounds/"*.wav "$APP_PATH/Contents/Resources/S
 
 mkdir -p "$APP_PATH/Contents/Resources/Icons"
 cp "$PROJECT_DIR/Type4Me/Resources/Icons/"*.png "$APP_PATH/Contents/Resources/Icons/" 2>/dev/null || true
+
+# Localized Info.plist overrides (TCC permission prompts shown by macOS).
+# Remove first so re-running over an existing bundle does not nest copies.
+for lproj_dir in "$PROJECT_DIR/Type4Me/Resources/"*.lproj; do
+    [ -d "$lproj_dir" ] || continue
+    rm -rf "$APP_PATH/Contents/Resources/$(basename "$lproj_dir")"
+    cp -R "$lproj_dir" "$APP_PATH/Contents/Resources/"
+done
 
 # --- Models and local ASR server (local variant only) ---
 if [ "$VARIANT" = "local" ]; then
