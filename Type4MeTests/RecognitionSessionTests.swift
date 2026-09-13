@@ -376,7 +376,7 @@ final class RecognitionSessionTests: XCTestCase {
         XCTAssertEqual(effective.displayText, batchFallbackText)
         XCTAssertNotEqual(effective.displayText, partialTranscript.displayText)
     }
-
+}
 
 private actor MockLLMProcessCounter: LLMClient {
     private(set) var processCallCount = 0
@@ -395,5 +395,4 @@ private actor MockLLMProcessCounter: LLMClient {
 
     func warmUp(baseURL: String) async {}
     func invalidate() async {}
-}
 }
