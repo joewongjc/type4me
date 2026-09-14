@@ -115,6 +115,7 @@ actor GeminiASRClient: SpeechRecognizer {
     private var didEmitFinal = false
     private var audioPayloadCount = 0
     private var connectDate: Date?
+    private var sessionHotwords: [String] = []
 
     var events: AsyncStream<RecognitionEvent> {
         if let existing = _events { return existing }
@@ -157,6 +158,7 @@ actor GeminiASRClient: SpeechRecognizer {
         self.didEmitFinal = false
         self.audioPayloadCount = 0
         self.connectDate = Date()
+        self.sessionHotwords = options.hotwords
 
         try await gate.waitUntilOpen(timeout: .seconds(5))
         startReceiveLoop()
@@ -237,6 +239,7 @@ actor GeminiASRClient: SpeechRecognizer {
         didEmitFinal = false
         audioPayloadCount = 0
         connectDate = nil
+        sessionHotwords = []
         logger.info("Gemini disconnected")
     }
 
@@ -299,7 +302,8 @@ actor GeminiASRClient: SpeechRecognizer {
             if let update = try GeminiTranscribeProtocol.makeTranscriptUpdate(
                 from: data,
                 confirmedSegments: confirmedSegments,
-                didEndAudio: didEndAudio
+                didEndAudio: didEndAudio,
+                hotwords: sessionHotwords
             ) {
                 if update.isSetupComplete {
                     Task { await connectionGate?.markSetupComplete() }
@@ -309,7 +313,13 @@ actor GeminiASRClient: SpeechRecognizer {
                 // Dedup before mutating state: applying `confirmedSegments`
                 // first would let an identical repeated final append twice
                 // while the transcript comparison below still saw a change.
-                guard update.transcript != lastTranscript else { return }
+                // An empty sanitized final may be identical to the initial
+                // transcript. It still has to pass through so stopRecording()
+                // receives the completion signal instead of waiting for a
+                // timeout.
+                guard update.transcript != lastTranscript
+                    || (update.transcript.isFinal && didEndAudio)
+                else { return }
                 confirmedSegments = update.confirmedSegments
                 lastTranscript = update.transcript
 
