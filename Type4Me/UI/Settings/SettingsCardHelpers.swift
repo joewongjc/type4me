@@ -46,6 +46,9 @@ final class SettingsTooltipCoordinator {
 
     var activeTooltip: TooltipState?
     var isPresented: Bool = false
+    /// Measured size of the currently rendered bubble; the position clamps
+    /// in `SettingsTooltipRootHost` rely on it to stay inside the window.
+    var activeBubbleSize: CGSize?
 
     private var showTask: Task<Void, Never>?
     private var hideTask: Task<Void, Never>?
@@ -61,6 +64,8 @@ final class SettingsTooltipCoordinator {
         currentHoverID = id
         hideTask?.cancel()
         hideTask = nil
+
+        activeBubbleSize = nil
 
         showTask?.cancel()
         showTask = Task { @MainActor in
@@ -84,6 +89,11 @@ final class SettingsTooltipCoordinator {
         activeTooltip?.targetRect = targetRect
     }
 
+    func updateActiveSize(_ size: CGSize) {
+        guard activeTooltip != nil else { return }
+        activeBubbleSize = size
+    }
+
     func hide(id: UUID) {
         // A hover-enter for another trigger can arrive before this trigger's
         // hover-exit. Ignore the stale exit so it cannot cancel the new owner's
@@ -101,6 +111,7 @@ final class SettingsTooltipCoordinator {
             try? await Task.sleep(nanoseconds: 50_000_000) // 50ms exit
             guard !Task.isCancelled, currentHoverID == nil else { return }
             activeTooltip = nil
+            activeBubbleSize = nil
         }
     }
 }
@@ -119,7 +130,10 @@ struct SettingsTooltipBubble: View {
         Text(text)
             .font(.system(size: 11, weight: .medium))
             .foregroundStyle(TF.settingsText)
-            .lineLimit(1)
+            .lineLimit(3)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: 260, alignment: .center)
+            .fixedSize(horizontal: true, vertical: true)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .background(
@@ -132,7 +146,6 @@ struct SettingsTooltipBubble: View {
             )
             .shadow(color: Color.black.opacity(0.03), radius: 2, x: 0, y: 1)
             .shadow(color: Color.black.opacity(0.03), radius: 8, x: 0, y: 2)
-            .fixedSize(horizontal: true, vertical: false)
             .allowsHitTesting(false)
     }
 }
@@ -144,10 +157,6 @@ struct SettingsTooltipRootHost: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let coordinator = SettingsTooltipCoordinator.shared
 
-    init(scope: SettingsTooltipHostScope = .settings) {
-        self.scope = scope
-    }
-
     var body: some View {
         GeometryReader { windowGeo in
             if let tooltip = coordinator.activeTooltip, tooltip.scope == scope {
@@ -157,6 +166,21 @@ struct SettingsTooltipRootHost: View {
                         anchor: scaleAnchor(for: tooltip.placement)
                     )
                     .opacity(coordinator.isPresented ? 1.0 : 0.0)
+                    .background(
+                        // Measure the bubble's actual (wrapped) size so the
+                        // window-edge clamps below stay accurate for long text.
+                        // onChange alone misses the first layout pass, so seed
+                        // the size via onAppear too.
+                        GeometryReader { bubbleGeo in
+                            Color.clear
+                                .onAppear {
+                                    coordinator.updateActiveSize(bubbleGeo.size)
+                                }
+                                .onChange(of: bubbleGeo.size) { _, newSize in
+                                    coordinator.updateActiveSize(newSize)
+                                }
+                        }
+                    )
                     .position(calculatedPosition(for: tooltip, in: windowGeo.size))
                     .allowsHitTesting(false)
             }
@@ -176,29 +200,30 @@ struct SettingsTooltipRootHost: View {
         in windowSize: CGSize
     ) -> CGPoint {
         let target = tooltip.targetRect
-        let bubbleHeight: CGFloat = 28
+        let bubbleSize = coordinator.activeBubbleSize ?? CGSize(width: 140, height: 28)
         let gap: CGFloat = 8
 
         var y: CGFloat
         switch tooltip.placement {
         case .top:
-            y = target.minY - gap - (bubbleHeight / 2)
+            y = target.minY - gap - (bubbleSize.height / 2)
             // Auto flip to bottom if clipped by window top
-            if y - (bubbleHeight / 2) < 8 {
-                y = target.maxY + gap + (bubbleHeight / 2)
+            if y - (bubbleSize.height / 2) < 8 {
+                y = target.maxY + gap + (bubbleSize.height / 2)
             }
         case .bottom:
-            y = target.maxY + gap + (bubbleHeight / 2)
+            y = target.maxY + gap + (bubbleSize.height / 2)
             // Auto flip to top if clipped by window bottom
-            if y + (bubbleHeight / 2) > windowSize.height - 8 {
-                y = target.minY - gap - (bubbleHeight / 2)
+            if y + (bubbleSize.height / 2) > windowSize.height - 8 {
+                y = target.minY - gap - (bubbleSize.height / 2)
             }
         }
 
-        var x = target.midX
-        let minX: CGFloat = 50
-        let maxX: CGFloat = max(minX, windowSize.width - 50)
-        x = min(max(x, minX), maxX)
+        // Keep the whole bubble (not just its center) inside the window.
+        let margin: CGFloat = 12
+        let minX = margin + bubbleSize.width / 2
+        let maxX = max(minX, windowSize.width - margin - bubbleSize.width / 2)
+        let x = min(max(target.midX, minX), maxX)
 
         return CGPoint(x: x, y: y)
     }

@@ -88,7 +88,13 @@ actor ASRVariantGenerator {
 
         let response: String
         do {
-            response = try await client.process(text: " ", prompt: prompt, config: config)
+            response = try await client.process(
+                text: " ",
+                prompt: prompt,
+                config: config,
+                inputBoundary: .inline,
+                invocationContext: LLMInvocationContext(featureSource: .vocabSuggestion)
+            )
         } catch {
             logger.error("Local LLM failed: \(error.localizedDescription)")
             throw GenerationError.llmFailed(error.localizedDescription)
