@@ -25,6 +25,13 @@ struct HistoryRecord: Identifiable, Hashable {
     let userEditStatus: UserEditObservationStatus?
     let userEditObservedAt: Date?
     let userEditVersion: Int?
+    /// Text after replacement rules and before any LLM, translation or formatting.
+    /// `nil` when not recorded: older records, recovery saves, or rows written by a
+    /// build that predates this column.
+    let postSnippetText: String?
+    /// The rules that rewrote this record's recognised text, captured when they
+    /// fired. `nil` means unknown, which is not the same as `[]` — no rule fired.
+    let appliedSnippets: [AppliedSnippetRule]?
 
     init(
         id: String,
@@ -46,7 +53,9 @@ struct HistoryRecord: Identifiable, Hashable {
         userEditedText: String? = nil,
         userEditStatus: UserEditObservationStatus? = nil,
         userEditObservedAt: Date? = nil,
-        userEditVersion: Int? = nil
+        userEditVersion: Int? = nil,
+        postSnippetText: String? = nil,
+        appliedSnippets: [AppliedSnippetRule]? = nil
     ) {
         self.id = id
         self.createdAt = createdAt
@@ -68,6 +77,8 @@ struct HistoryRecord: Identifiable, Hashable {
         self.userEditStatus = userEditStatus
         self.userEditObservedAt = userEditObservedAt
         self.userEditVersion = userEditVersion
+        self.postSnippetText = postSnippetText
+        self.appliedSnippets = appliedSnippets
     }
 }
 
@@ -528,7 +539,7 @@ struct HistoryTab: View {
             }
         }
         .sheet(item: $correctionRecord) { record in
-            QuickCorrectionSheet(text: record.rawText)
+            QuickCorrectionSheet(text: record.rawText, provenance: CorrectionProvenance(record: record))
         }
         .alert(L("删除所选记录", "Delete selected records"), isPresented: $showBatchDeleteConfirm) {
             Button(L("取消", "Cancel"), role: .cancel) {}

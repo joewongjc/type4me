@@ -187,6 +187,12 @@ struct VocabularyTab: View {
 
     // Highlight & scroll
     @State private var highlightedGroup: String? = nil
+    /// An existing rule to reveal. Resolved inside the scroll reader, the only place
+    /// that can scroll.
+    @State private var pendingReveal: SnippetRevealTarget? = nil
+    /// The scope an in-flight reveal switched to, so its own switch is not mistaken
+    /// for the user leaving the list it is revealing.
+    @State private var activeRevealScope: String? = nil
 
     // Sort
     @State private var hotwordSort: VocabSort = .byTime
@@ -239,51 +245,20 @@ struct VocabularyTab: View {
                 }
                 guard let replacement = note.object as? String else { return }
                 // Quick Correction always writes to the global snippet store.
-                // Reset view-only filters before resolving the scroll target so
-                // the newly added group is guaranteed to exist in the hierarchy.
-                searchQuery = ""
-                switchScope(to: nil)
-                withAnimation(.easeInOut(duration: 0.18)) {
-                    selectedSection = .snippets
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                    guard activeNavigationToken == token else { return }
-                    guard selectedSection == .snippets,
-                          selectedAppScope == nil,
-                          displaySnippets.contains(where: { $0.replacement == replacement })
-                    else { return }
-
-                    if reduceMotion {
-                        proxy.scrollTo("snippet-\(replacement)", anchor: .center)
-                        highlightedGroup = replacement
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                            if highlightedGroup == replacement {
-                                highlightedGroup = nil
-                            }
-                        }
-                    } else {
-                        withAnimation(.easeInOut(duration: 0.4), completionCriteria: .removed) {
-                            proxy.scrollTo("snippet-\(replacement)", anchor: .center)
-                        } completion: {
-                            guard activeNavigationToken == token else { return }
-                            guard selectedSection == .snippets,
-                                  selectedAppScope == nil,
-                                  displaySnippets.contains(where: { $0.replacement == replacement })
-                            else { return }
-                            proxy.scrollTo("snippet-\(replacement)", anchor: .center)
-                        }
-                        withAnimation(.easeIn(duration: 0.3).delay(0.2)) {
-                            highlightedGroup = replacement
-                        }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                            if highlightedGroup == replacement {
-                                withAnimation(.easeOut(duration: 0.8)) {
-                                    highlightedGroup = nil
-                                }
-                            }
-                        }
-                    }
-                }
+                revealSnippetGroup(replacement: replacement, scope: nil, token: token, proxy: proxy)
+            }
+            .onChange(of: pendingReveal) { _, target in
+                guard let target else { return }
+                pendingReveal = nil
+                let token = UUID()
+                activeNavigationToken = token
+                highlightedGroup = nil
+                revealSnippetGroup(
+                    replacement: target.replacement,
+                    scope: target.scope,
+                    token: token,
+                    proxy: proxy
+                )
             }
         } // ScrollViewReader
         .onAppear {
@@ -303,7 +278,8 @@ struct VocabularyTab: View {
             }
         }
         .onChange(of: selectedAppScope) { _, newScope in
-            if newScope != nil {
+            // A reveal that switched to a scope itself must survive its own switch.
+            if newScope != activeRevealScope {
                 activeNavigationToken = nil
                 highlightedGroup = nil
             }
@@ -1115,9 +1091,71 @@ struct VocabularyTab: View {
         saveCurrentSnippets()
     }
 
+    /// Clears view-only filters, switches to the rule's scope, then scrolls to and
+    /// briefly highlights its group. Shared by Quick Correction, which has just added
+    /// a global rule, and by requests to open a rule that already exists — which may
+    /// live in an app's scope, and previously landed on a prefilled new-rule form.
+    private func revealSnippetGroup(
+        replacement: String,
+        scope: String?,
+        token: UUID,
+        proxy: ScrollViewProxy
+    ) {
+        searchQuery = ""
+        activeRevealScope = scope
+        switchScope(to: scope)
+        withAnimation(.easeInOut(duration: 0.18)) {
+            selectedSection = .snippets
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            guard activeNavigationToken == token else { return }
+            guard selectedSection == .snippets,
+                  selectedAppScope == scope,
+                  displaySnippets.contains(where: { $0.replacement == replacement })
+            else { return }
+
+            if reduceMotion {
+                proxy.scrollTo("snippet-\(replacement)", anchor: .center)
+                highlightedGroup = replacement
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                    if highlightedGroup == replacement {
+                        highlightedGroup = nil
+                    }
+                }
+            } else {
+                withAnimation(.easeInOut(duration: 0.4), completionCriteria: .removed) {
+                    proxy.scrollTo("snippet-\(replacement)", anchor: .center)
+                } completion: {
+                    guard activeNavigationToken == token else { return }
+                    guard selectedSection == .snippets,
+                          selectedAppScope == scope,
+                          displaySnippets.contains(where: { $0.replacement == replacement })
+                    else { return }
+                    proxy.scrollTo("snippet-\(replacement)", anchor: .center)
+                }
+                withAnimation(.easeIn(duration: 0.3).delay(0.2)) {
+                    highlightedGroup = replacement
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                    if highlightedGroup == replacement {
+                        withAnimation(.easeOut(duration: 0.8)) {
+                            highlightedGroup = nil
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: - Actions
 
     private func applyNavigationRequest(_ request: VocabularyNavigationRequest) {
+        if request.revealExisting, request.section == .snippets, let replacement = request.replacement {
+            isSearchExpanded = false
+            VocabularyNavigationCenter.shared.consume(request)
+            pendingReveal = SnippetRevealTarget(replacement: replacement, scope: request.scopeBundleId)
+            return
+        }
         searchQuery = ""
         isSearchExpanded = false
         switchScope(to: nil)
@@ -1786,4 +1824,11 @@ private struct SnippetGroupRow: View, Equatable {
         .background(Capsule().fill(TF.settingsControl))
         .overlay(Capsule().stroke(TF.settingsInk.opacity(0.045), lineWidth: 1))
     }
+}
+
+/// An existing replacement rule to scroll to, in the scope it lives in.
+private struct SnippetRevealTarget: Equatable {
+    let id = UUID()
+    let replacement: String
+    let scope: String?
 }

@@ -589,6 +589,9 @@ actor RecognitionSession {
     private var historyLLMModel: String?
     private var historyASRDurationSeconds: Double?
     private var historyLLMDurationSeconds: Double?
+    /// The replacement pass this session's output went through, captured where the
+    /// rules are applied rather than reconstructed afterwards (#300).
+    private var historySnippetApplication: SnippetApplication?
 
     /// Bundle identifier of the frontmost app when recording started.
     /// Used to select app-specific snippet rules.
@@ -899,6 +902,7 @@ actor RecognitionSession {
         historyLLMModel = nil
         historyASRDurationSeconds = nil
         historyLLMDurationSeconds = nil
+        historySnippetApplication = nil
         clearIntelliSenseSessionContext()
         clearTranslationSessionContext()
         intelliSenseGuardRejected = false
@@ -1404,7 +1408,9 @@ actor RecognitionSession {
             llmProvider: historyLLMProvider,
             llmModel: historyLLMModel,
             asrDurationSeconds: historyASRDurationSeconds,
-            llmDurationSeconds: historyLLMDurationSeconds
+            llmDurationSeconds: historyLLMDurationSeconds,
+            postSnippetText: historySnippetApplication?.text,
+            appliedSnippets: historySnippetApplication?.appliedRules
         ))
 
         onASREvent?(.macActionResult(message: message, status: status))
@@ -1923,10 +1929,16 @@ actor RecognitionSession {
                 return
             }
 
-            // Apply snippet replacements before LLM (e.g. "我的邮箱" → actual email)
-            if !isManualInput {
-                finalText = SnippetStorage.applyEffective(to: finalText, bundleId: targetBundleId)
-            }
+            // Apply snippet replacements before LLM (e.g. "我的邮箱" → actual email).
+            // The rules that fired are kept with the history record: once text has been
+            // rewritten nothing downstream can tell a replacement from a misrecognition,
+            // and re-running rules later would describe whatever rules exist by then.
+            // Typed input skips the rules, which is itself a known fact: none fired.
+            let snippetApplication = isManualInput
+                ? SnippetApplication(text: finalText, appliedRules: [])
+                : SnippetStorage.applyEffectiveTracking(to: finalText, bundleId: targetBundleId)
+            finalText = snippetApplication.text
+            historySnippetApplication = snippetApplication
             let intelliSenseGuardInput = finalText
 
             if cancellationSkipsLLM {
@@ -2344,7 +2356,9 @@ actor RecognitionSession {
                 llmModel: historyLLMModel,
                 asrDurationSeconds: historyASRDurationSeconds,
                 llmDurationSeconds: historyLLMDurationSeconds,
-                intelliSenseTraceJSON: intelliSenseTraceJSON
+                intelliSenseTraceJSON: intelliSenseTraceJSON,
+                postSnippetText: historySnippetApplication?.text,
+                appliedSnippets: historySnippetApplication?.appliedRules
             ))
             if injectionResult.outcome == .inserted,
                let context = injectionResult.observationContext {
@@ -3235,7 +3249,9 @@ actor RecognitionSession {
             llmProvider: historyLLMProvider,
             llmModel: historyLLMModel,
             asrDurationSeconds: historyASRDurationSeconds,
-            llmDurationSeconds: historyLLMDurationSeconds
+            llmDurationSeconds: historyLLMDurationSeconds,
+            postSnippetText: historySnippetApplication?.text,
+            appliedSnippets: historySnippetApplication?.appliedRules
         ))
         if !isManualInput { KeychainService.addASRUsage(seconds: duration) }
         SoundFeedback.playError()

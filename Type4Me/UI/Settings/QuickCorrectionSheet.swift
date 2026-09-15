@@ -2,7 +2,11 @@ import SwiftUI
 
 struct QuickCorrectionSheet: View {
 
+    /// The recogniser's own output. Corrections are built from this, because a
+    /// replacement rule is matched against what the recogniser produced.
     let text: String
+    /// Why the delivered text differs from `text`, for a history record.
+    var provenance: CorrectionProvenance?
     var onComplete: (() -> Void)?
 
     @Environment(\.dismiss) private var dismiss
@@ -26,6 +30,92 @@ struct QuickCorrectionSheet: View {
         !correctText.trimmingCharacters(in: .whitespaces).isEmpty && !selectedChars.isEmpty
     }
 
+    @AppStorage("tf_language") private var language = AppLanguage.systemDefault
+
+    /// Read through the stored value so switching languages re-renders the sheet.
+    private var currentLanguage: AppLanguage {
+        AppLanguage(rawValue: language) ?? AppLanguage.current
+    }
+
+    private func openRule(_ rule: AppliedSnippetRule) {
+        dismiss()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            VocabularyNavigationCenter.shared.submit(
+                VocabularyNavigationRequest(
+                    section: .snippets,
+                    trigger: rule.trigger,
+                    replacement: rule.value,
+                    scopeBundleId: rule.bundleId,
+                    revealExisting: true
+                )
+            )
+        }
+    }
+
+    private func ruleStillExists(_ rule: AppliedSnippetRule) -> Bool {
+        let current = rule.bundleId.map { SnippetStorage.loadAppSnippets(bundleId: $0) } ?? SnippetStorage.load()
+        return CorrectionProvenance.ruleStillExists(rule, in: current)
+    }
+
+    private func scopeLabel(for rule: AppliedSnippetRule) -> String {
+        let appName = rule.bundleId.flatMap { id in
+            SnippetStorage.loadRegistry().first(where: { $0.bundleId == id })?.name
+        }
+        return CorrectionProvenance.scopeLabel(bundleId: rule.bundleId, appName: appName, language: currentLanguage)
+    }
+
+    /// Explains why the characters below differ from the history list, using only
+    /// what the record captured when it was produced.
+    @ViewBuilder
+    private var rewriteNotice: some View {
+        if let provenance, let message = provenance.message(language: currentLanguage) {
+            VStack(alignment: .leading, spacing: TF.spacingXS) {
+                Text(message)
+                    .font(.system(size: 11))
+                    .foregroundStyle(TF.settingsTextSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack(alignment: .firstTextBaseline, spacing: TF.spacingXS) {
+                    Text(L("实际输出", "Delivered"))
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(TF.settingsTextTertiary)
+                    Text(provenance.deliveredText)
+                        .font(.system(size: 11))
+                        .foregroundStyle(TF.settingsText)
+                        .textSelection(.enabled)
+                }
+
+                ForEach(Array(provenance.appliedRules.enumerated()), id: \.offset) { _, rule in
+                    HStack(spacing: TF.spacingXS) {
+                        Text("\(rule.trigger) → \(rule.value)")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(TF.settingsText)
+                        Text(scopeLabel(for: rule))
+                            .font(.system(size: 10))
+                            .foregroundStyle(TF.settingsTextTertiary)
+                        if ruleStillExists(rule) {
+                            Button(L("查看规则", "Open rule")) { openRule(rule) }
+                                .buttonStyle(.plain)
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(TF.settingsAccentBlue)
+                        } else {
+                            Text(L("规则已修改或删除", "Rule since changed or removed"))
+                                .font(.system(size: 10))
+                                .foregroundStyle(TF.settingsTextTertiary)
+                        }
+                    }
+                }
+            }
+            .padding(TF.spacingSM)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: TF.cornerSM, style: .continuous)
+                    .fill(TF.settingsCardAlt.opacity(0.6))
+            )
+            .padding(.bottom, TF.spacingSM)
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Top bar
@@ -42,6 +132,8 @@ struct QuickCorrectionSheet: View {
                 .buttonStyle(.plain)
             }
             .padding(.bottom, TF.spacingLG)
+
+            rewriteNotice
 
             // Scrollable character grid
             ScrollView {

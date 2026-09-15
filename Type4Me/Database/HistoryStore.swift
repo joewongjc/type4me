@@ -54,7 +54,9 @@ actor HistoryStore {
                 user_edited_text TEXT,
                 user_edit_status TEXT,
                 user_edit_observed_at TEXT,
-                user_edit_version INTEGER
+                user_edit_version INTEGER,
+                post_snippet_text TEXT,
+                applied_snippets TEXT
             );
             """
             sqlite3_exec(db, sql, nil, nil, nil)
@@ -166,6 +168,12 @@ actor HistoryStore {
             sqlite3_exec(db, "ALTER TABLE recognition_history ADD COLUMN user_edit_observed_at TEXT;", nil, nil, nil)
             sqlite3_exec(db, "ALTER TABLE recognition_history ADD COLUMN user_edit_version INTEGER;", nil, nil, nil)
 
+            // Replacement provenance (#300), appended after every existing column. Rows
+            // are decoded by position, so a build that predates these columns still
+            // reads indexes 0-19 unchanged and simply never sees them.
+            sqlite3_exec(db, "ALTER TABLE recognition_history ADD COLUMN post_snippet_text TEXT;", nil, nil, nil)
+            sqlite3_exec(db, "ALTER TABLE recognition_history ADD COLUMN applied_snippets TEXT;", nil, nil, nil)
+
             // Index for ORDER BY created_at DESC pagination
             sqlite3_exec(db, "CREATE INDEX IF NOT EXISTS idx_history_created_at ON recognition_history(created_at DESC);", nil, nil, nil)
         } else if let db {
@@ -182,11 +190,39 @@ actor HistoryStore {
 
     // MARK: - CRUD
 
+    /// Versioned so a future change to the shape reads as "unknown" in this build
+    /// instead of being misread.
+    private struct AppliedSnippetsPayload: Codable {
+        let version: Int
+        let rules: [AppliedSnippetRule]
+    }
+
+    static let appliedSnippetsFormatVersion = 1
+
+    /// `nil` stays `nil` (not recorded); `[]` is stored as a real, empty list.
+    static func encodeAppliedSnippets(_ rules: [AppliedSnippetRule]?) -> String? {
+        guard let rules,
+              let data = try? JSONEncoder().encode(
+                AppliedSnippetsPayload(version: appliedSnippetsFormatVersion, rules: rules)
+              )
+        else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    static func decodeAppliedSnippets(_ json: String?) -> [AppliedSnippetRule]? {
+        guard let json,
+              let data = json.data(using: .utf8),
+              let payload = try? JSONDecoder().decode(AppliedSnippetsPayload.self, from: data),
+              payload.version == appliedSnippetsFormatVersion
+        else { return nil }
+        return payload.rules
+    }
+
     func insert(_ record: HistoryRecord) {
         let sql = """
         INSERT OR REPLACE INTO recognition_history
-        (id, created_at, duration_seconds, raw_text, processing_mode, processed_text, final_text, status, character_count, asr_provider, asr_model, intelli_sense_trace, llm_provider, llm_model, asr_duration_seconds, llm_duration_seconds, user_edited_text, user_edit_status, user_edit_observed_at, user_edit_version)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+        (id, created_at, duration_seconds, raw_text, processing_mode, processed_text, final_text, status, character_count, asr_provider, asr_model, intelli_sense_trace, llm_provider, llm_model, asr_duration_seconds, llm_duration_seconds, user_edited_text, user_edit_status, user_edit_observed_at, user_edit_version, post_snippet_text, applied_snippets)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
         """
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
@@ -221,6 +257,8 @@ actor HistoryStore {
         } else {
             sqlite3_bind_null(stmt, 20)
         }
+        bindOptional(stmt, 21, record.postSnippetText)
+        bindOptional(stmt, 22, Self.encodeAppliedSnippets(record.appliedSnippets))
         if sqlite3_step(stmt) == SQLITE_DONE {
             postDidChangeNotification()
         }
@@ -339,7 +377,9 @@ actor HistoryStore {
                 userEditedText: optionalColumn(stmt, 16),
                 userEditStatus: optionalColumn(stmt, 17).flatMap(UserEditObservationStatus.init(rawValue:)),
                 userEditObservedAt: optionalColumn(stmt, 18).flatMap(iso.date(from:)),
-                userEditVersion: optionalIntColumn(stmt, 19)
+                userEditVersion: optionalIntColumn(stmt, 19),
+                postSnippetText: optionalColumn(stmt, 20),
+                appliedSnippets: Self.decodeAppliedSnippets(optionalColumn(stmt, 21))
             ))
         }
         return records

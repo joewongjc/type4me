@@ -360,6 +360,8 @@ enum SnippetStorage {
         let regex: NSRegularExpression
         let pattern: String   // original flex pattern (for conflict detection)
         let template: String  // pre-escaped replacement
+        let trigger: String
+        let value: String
     }
 
     /// Thread-safe compiled rules cache for global snippets. Rebuilt only when snippets change.
@@ -380,26 +382,14 @@ enum SnippetStorage {
 
     private static func compiledRules() -> [CompiledRule] {
         if let cached = cacheLock.withLock({ $0 }) { return cached }
-        let allSnippets = load()
-
-        let rules = allSnippets.compactMap { snippet -> CompiledRule? in
-            let pattern = buildFlexPattern(snippet.trigger)
-            guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return nil }
-            return CompiledRule(regex: regex, pattern: pattern, template: NSRegularExpression.escapedTemplate(for: snippet.value))
-        }
+        let rules = compile(load())
         cacheLock.withLock { $0 = rules }
         return rules
     }
 
     private static func compiledAppRules(bundleId: String) -> [CompiledRule] {
         if let cached = appCacheLock.withLock({ $0[bundleId] }) { return cached }
-        let snippets = loadAppSnippets(bundleId: bundleId)
-
-        let rules = snippets.compactMap { snippet -> CompiledRule? in
-            let pattern = buildFlexPattern(snippet.trigger)
-            guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return nil }
-            return CompiledRule(regex: regex, pattern: pattern, template: NSRegularExpression.escapedTemplate(for: snippet.value))
-        }
+        let rules = compile(loadAppSnippets(bundleId: bundleId))
         appCacheLock.withLock { $0[bundleId] = rules }
         return rules
     }
@@ -408,47 +398,87 @@ enum SnippetStorage {
 
     /// Apply built-in + user snippets. User entries override built-in on trigger conflict.
     static func applyEffective(to text: String) -> String {
-        var result = text
-        for rule in compiledRules() {
-            result = rule.regex.stringByReplacingMatches(
-                in: result,
-                range: NSRange(result.startIndex..., in: result),
-                withTemplate: rule.template
-            )
-        }
-        return result
+        applyEffectiveTracking(to: text, bundleId: nil).text
     }
 
     /// Apply global + app-specific snippets. App rules win on trigger conflict.
     static func applyEffective(to text: String, bundleId: String?) -> String {
-        guard let bundleId, !bundleId.isEmpty else { return applyEffective(to: text) }
+        applyEffectiveTracking(to: text, bundleId: bundleId).text
+    }
 
-        let appRules = compiledAppRules(bundleId: bundleId)
-        guard !appRules.isEmpty else { return applyEffective(to: text) }
+    /// The same replacement pass as `applyEffective(to:bundleId:)`, also reporting
+    /// which rules actually rewrote the text and which scope each came from.
+    ///
+    /// The output and the report come from one pass on purpose. Asking later which
+    /// rules "would" match re-runs whatever rules exist by then, and describes rules
+    /// that may have been edited, deleted or added since the text was produced.
+    static func applyEffectiveTracking(to text: String, bundleId: String?) -> SnippetApplication {
+        let appRules: [CompiledRule]
+        if let bundleId, !bundleId.isEmpty {
+            appRules = compiledAppRules(bundleId: bundleId)
+        } else {
+            appRules = []
+        }
+        return apply(to: text, globalRules: compiledRules(), appRules: appRules, bundleId: bundleId)
+    }
 
-        // Collect app rule patterns for conflict detection
+    /// Rule application over explicit lists, independent of stored snippets.
+    static func apply(
+        to text: String,
+        globalRules: [(trigger: String, value: String)],
+        appRules: [(trigger: String, value: String)],
+        bundleId: String?
+    ) -> SnippetApplication {
+        let hasScope = !(bundleId ?? "").isEmpty
+        return apply(
+            to: text,
+            globalRules: compile(globalRules),
+            appRules: hasScope ? compile(appRules) : [],
+            bundleId: bundleId
+        )
+    }
+
+    private static func compile(_ snippets: [(trigger: String, value: String)]) -> [CompiledRule] {
+        snippets.compactMap { snippet -> CompiledRule? in
+            let pattern = buildFlexPattern(snippet.trigger)
+            guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return nil }
+            return CompiledRule(
+                regex: regex,
+                pattern: pattern,
+                template: NSRegularExpression.escapedTemplate(for: snippet.value),
+                trigger: snippet.trigger,
+                value: snippet.value
+            )
+        }
+    }
+
+    /// Global rules run first, skipping any whose pattern an app rule overrides;
+    /// app rules run last. A rule is reported only when it matched at the point it
+    /// ran, so a rule that fires on an earlier rule's output is included too.
+    private static func apply(
+        to text: String,
+        globalRules: [CompiledRule],
+        appRules: [CompiledRule],
+        bundleId: String?
+    ) -> SnippetApplication {
         let appPatterns = Set(appRules.map(\.pattern))
-
-        // Apply global rules first, skipping any that conflict with app rules
         var result = text
-        for rule in compiledRules() {
-            if appPatterns.contains(rule.pattern) { continue }
-            result = rule.regex.stringByReplacingMatches(
-                in: result,
-                range: NSRange(result.startIndex..., in: result),
-                withTemplate: rule.template
-            )
+        var applied: [AppliedSnippetRule] = []
+
+        func run(_ rule: CompiledRule, scope: String?) {
+            let range = NSRange(result.startIndex..., in: result)
+            guard rule.regex.firstMatch(in: result, range: range) != nil else { return }
+            result = rule.regex.stringByReplacingMatches(in: result, range: range, withTemplate: rule.template)
+            applied.append(AppliedSnippetRule(trigger: rule.trigger, value: rule.value, bundleId: scope))
         }
 
-        // Then apply app-specific rules (higher priority)
-        for rule in appRules {
-            result = rule.regex.stringByReplacingMatches(
-                in: result,
-                range: NSRange(result.startIndex..., in: result),
-                withTemplate: rule.template
-            )
+        for rule in globalRules where !appPatterns.contains(rule.pattern) {
+            run(rule, scope: nil)
         }
-        return result
+        for rule in appRules {
+            run(rule, scope: bundleId)
+        }
+        return SnippetApplication(text: result, appliedRules: applied)
     }
 
     // MARK: - Pattern building
@@ -486,4 +516,18 @@ enum SnippetStorage {
         let data = try encoder.encode(entries)
         try data.write(to: url, options: .atomic)
     }
+}
+
+/// One replacement rule that rewrote text, and the scope it came from.
+struct AppliedSnippetRule: Codable, Equatable, Hashable, Sendable {
+    let trigger: String
+    let value: String
+    /// `nil` for a global rule; the app's bundle identifier for an app rule.
+    let bundleId: String?
+}
+
+/// Replacement output together with the rules that produced it.
+struct SnippetApplication: Equatable, Sendable {
+    let text: String
+    let appliedRules: [AppliedSnippetRule]
 }

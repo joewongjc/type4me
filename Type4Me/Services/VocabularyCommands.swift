@@ -17,19 +17,28 @@ struct VocabularyNavigationRequest: Equatable, Sendable {
     let word: String?
     let trigger: String?
     let replacement: String?
+    /// The app scope the rule lives in; `nil` for the global list.
+    let scopeBundleId: String?
+    /// Scroll to and highlight a rule that already exists, instead of prefilling
+    /// the form for a new one.
+    let revealExisting: Bool
 
     init(
         id: UUID = UUID(),
         section: VocabularySection,
         word: String? = nil,
         trigger: String? = nil,
-        replacement: String? = nil
+        replacement: String? = nil,
+        scopeBundleId: String? = nil,
+        revealExisting: Bool = false
     ) {
         self.id = id
         self.section = section
         self.word = word
         self.trigger = trigger
         self.replacement = replacement
+        self.scopeBundleId = scopeBundleId
+        self.revealExisting = revealExisting
     }
 
     var focus: VocabularyDraftFocus? {
@@ -37,6 +46,8 @@ struct VocabularyNavigationRequest: Equatable, Sendable {
         case .hotwords:
             return .hotword
         case .snippets:
+            // Revealing an existing rule must not pull focus into the new-rule form.
+            if revealExisting { return nil }
             if trigger != nil && replacement == nil { return .snippetReplacement }
             if trigger == nil && replacement != nil { return .snippetTrigger }
             if trigger != nil || replacement != nil { return .snippetReplacement }
