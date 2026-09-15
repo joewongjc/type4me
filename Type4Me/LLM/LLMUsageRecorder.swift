@@ -30,12 +30,16 @@ public enum LLMUsageRecorder {
             isEstimated = true
         }
 
-        let costUSD = LLMPricingRegistry.calculateCostUSD(
-            model: model,
-            provider: provider,
-            promptTokens: promptTokens,
-            completionTokens: completionTokens
-        )
+        // Failed invocations never reached a billable completion: heuristic
+        // tokens are diagnostic only and must not accrue cost.
+        let costUSD = status == "success"
+            ? LLMPricingRegistry.calculateCostUSD(
+                model: model,
+                provider: provider,
+                promptTokens: promptTokens,
+                completionTokens: completionTokens
+            )
+            : 0.0
 
         let record = LLMUsageRecord(
             featureSource: featureSource,

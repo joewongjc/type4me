@@ -14,6 +14,7 @@ public struct LLMUsageAnalyticsView: View {
     @State private var activeTab: LLMAnalyticsDisplayMode = .aggregated
     @State private var trendMetric: TrendMetric = .tokens
     @State private var isLoading = false
+    @State private var pricingSync = LLMPricingSyncService.shared
     @State private var hoveredDayIdentifier: String?
 
     private let historyStore = HistoryStore.shared
@@ -68,6 +69,8 @@ public struct LLMUsageAnalyticsView: View {
                                     Capsule().fill(TF.settingsControl)
                                 )
                         }
+
+                        pricingStatusBadge
                     }
 
                     Spacer()
@@ -115,10 +118,63 @@ public struct LLMUsageAnalyticsView: View {
             recentCurrentPage = 1
             await loadData()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .llmPricingTableDidChange)) { _ in
+            // rate(for:) is synchronous; re-render rows that were computed
+            // against the previous (possibly empty) pricing table.
+            Task { await loadData() }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .llmUsageStoreDidChange)) { _ in
             Task { await loadData() }
         }
     }
+
+    // MARK: - Pricing Sync Status
+
+    /// Header badge showing pricing table freshness plus a manual refresh control.
+    private var pricingStatusBadge: some View {
+        HStack(spacing: 6) {
+            if pricingSync.isSyncing {
+                ProgressView()
+                    .controlSize(.small)
+            } else {
+                if let error = pricingSync.lastSyncError {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.orange)
+                        .settingsTooltip(error)
+                }
+                if let lastSync = pricingSync.lastSyncDate {
+                    Text(L("价格更新于 \(Self.pricingRelativeTime(lastSync))", "Prices updated \(Self.pricingRelativeTime(lastSync))"))
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(TF.settingsTextTertiary)
+                } else {
+                    Text(L("使用内置价目表", "Using built-in prices"))
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(TF.settingsTextTertiary)
+                }
+                Button {
+                    Task { await pricingSync.syncNow() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 11))
+                        .foregroundStyle(TF.settingsTextSecondary)
+                }
+                .buttonStyle(.plain)
+                .settingsTooltip(L("同步最新模型价格", "Sync latest model prices"))
+            }
+        }
+    }
+
+    /// Localized relative time ("just now" / "3 days ago") honoring the app language.
+    private static func pricingRelativeTime(_ date: Date) -> String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        formatter.locale = AppLanguage.current == .zh
+            ? Locale(identifier: "zh_CN")
+            : Locale(identifier: "en_US")
+        return formatter.localizedString(for: date, relativeTo: Date())
+    }
+
     // MARK: - Time Range Filter
 
     private var timeRangePicker: some View {
@@ -456,13 +512,17 @@ public struct LLMUsageAnalyticsView: View {
                                     .frame(width: 65, alignment: .trailing)
 
                                 HStack {
-                                    if row.isFreeTier {
+                                    if row.priceSource == .free {
                                         Text(L("免费", "Free"))
                                             .font(.system(size: 9, weight: .semibold))
                                             .foregroundStyle(.green)
                                             .padding(.horizontal, 6)
                                             .padding(.vertical, 2)
                                             .background(Capsule().fill(Color.green.opacity(0.12)))
+                                    } else if row.priceSource == .unknown {
+                                        Text("—")
+                                            .foregroundStyle(TF.settingsTextTertiary)
+                                            .settingsTooltip(L("该模型暂未收录费率，仅统计 Token", "Rate not in catalog; tokens only"))
                                     } else {
                                         Text(formatCostUSD(row.costUSD))
                                             .font(.system(size: 11, weight: .medium, design: .rounded))
@@ -689,10 +749,15 @@ public struct LLMUsageAnalyticsView: View {
                                     .frame(width: 65, alignment: .trailing)
 
                                 HStack {
-                                    if LLMPricingRegistry.rate(for: record.model, provider: record.provider).isFree {
+                                    let rate = LLMPricingRegistry.rate(for: record.model, provider: record.provider)
+                                    if rate.isFree {
                                         Text(L("免费", "Free"))
                                             .font(.system(size: 9, weight: .semibold))
                                             .foregroundStyle(.green)
+                                    } else if rate.isUnknown {
+                                        Text("—")
+                                            .foregroundStyle(TF.settingsTextTertiary)
+                                            .settingsTooltip(L("该模型暂未收录费率，仅统计 Token", "Rate not in catalog; tokens only"))
                                     } else {
                                         Text(formatCostUSD(record.costUSD))
                                             .font(.system(size: 11, weight: .medium, design: .rounded))

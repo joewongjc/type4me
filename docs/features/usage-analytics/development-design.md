@@ -182,7 +182,7 @@ extension HistoryStore {
         let totalTokens: Int
         let averageDurationSeconds: Double
         let costUSD: Double
-        let isFreeTier: Bool
+        let priceSource: ModelPriceSource
         let hasEstimatedUsage: Bool
 
         var id: String { "\(provider):\(modelName)" }

@@ -88,7 +88,7 @@ extension HistoryStore {
         public let totalTokens: Int
         public let averageDurationSeconds: Double
         public let costUSD: Double
-        public let isFreeTier: Bool
+        public let priceSource: ModelPriceSource
         public let hasEstimatedUsage: Bool
 
         public var id: String { "\(provider):\(modelName)" }
@@ -103,7 +103,7 @@ extension HistoryStore {
             totalTokens: Int,
             averageDurationSeconds: Double,
             costUSD: Double,
-            isFreeTier: Bool,
+            priceSource: ModelPriceSource,
             hasEstimatedUsage: Bool
         ) {
             self.modelName = modelName
@@ -115,7 +115,7 @@ extension HistoryStore {
             self.totalTokens = totalTokens
             self.averageDurationSeconds = averageDurationSeconds
             self.costUSD = costUSD
-            self.isFreeTier = isFreeTier
+            self.priceSource = priceSource
             self.hasEstimatedUsage = hasEstimatedUsage
         }
     }
@@ -345,7 +345,7 @@ extension HistoryStore {
             let model = column(stmt, 0)
             let provider = column(stmt, 1)
             let estimatedCount = Int(sqlite3_column_int(stmt, 9))
-            let isFree = LLMPricingRegistry.rate(for: model, provider: provider).isFree
+            let priceSource = LLMPricingRegistry.rate(for: model, provider: provider).source
 
             results.append(LLMModelBreakdown(
                 modelName: model,
@@ -357,7 +357,7 @@ extension HistoryStore {
                 totalTokens: Int(sqlite3_column_int(stmt, 6)),
                 averageDurationSeconds: sqlite3_column_double(stmt, 7),
                 costUSD: sqlite3_column_double(stmt, 8),
-                isFreeTier: isFree,
+                priceSource: priceSource,
                 hasEstimatedUsage: estimatedCount > 0
             ))
         }
