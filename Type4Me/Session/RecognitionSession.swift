@@ -1057,7 +1057,7 @@ actor RecognitionSession {
                 NSLog("[Session] Loaded %@ config from file store", provider.rawValue)
             } else if let defaultConfig = SherpaASRConfig(credentials: ["modelDir": ModelManager.defaultModelsDir]) {
                 config = defaultConfig
-                NSLog("[Session] Using default directory for %@", provider.rawValue)
+                NSLog("[Session] Using default model directory for %@", provider.rawValue)
             } else {
                 NSLog("[Session] Failed to create default config for %@!", provider.rawValue)
                 SoundFeedback.playError()
@@ -3542,7 +3542,6 @@ actor RecognitionSession {
     private func resumeFirstStreamingTextOnTimeout() {
         if let cont = firstStreamingTextCont {
             firstStreamingTextCont = nil
-            firstStreamingTextTimeoutTask?.cancel()
             firstStreamingTextTimeoutTask = nil
             cont.resume(returning: false)
         }
