@@ -156,6 +156,76 @@ extension LLMClient {
         return result
     }
 
+
+    func process(
+        text: String,
+        prompt: String,
+        config: LLMConfig,
+        inputBoundary: LLMInputBoundary = .inline,
+        invocationContext: LLMInvocationContext? = nil
+    ) async throws -> String {
+        if let doubao = self as? DoubaoChatClient {
+            return try await doubao.process(
+                text: text,
+                prompt: prompt,
+                config: config,
+                inputBoundary: inputBoundary,
+                invocationContext: invocationContext
+            )
+        }
+        if let claude = self as? ClaudeChatClient {
+            return try await claude.process(
+                text: text,
+                prompt: prompt,
+                config: config,
+                inputBoundary: inputBoundary,
+                invocationContext: invocationContext
+            )
+        }
+        return try await process(
+            text: text,
+            prompt: prompt,
+            config: config,
+            inputBoundary: inputBoundary
+        )
+    }
+
+    func processStreaming(
+        text: String,
+        prompt: String,
+        config: LLMConfig,
+        inputBoundary: LLMInputBoundary = .inline,
+        invocationContext: LLMInvocationContext? = nil,
+        onDelta: @escaping @Sendable (String) async -> Void
+    ) async throws -> String {
+        if let doubao = self as? DoubaoChatClient {
+            return try await doubao.processStreaming(
+                text: text,
+                prompt: prompt,
+                config: config,
+                inputBoundary: inputBoundary,
+                invocationContext: invocationContext,
+                onDelta: onDelta
+            )
+        }
+        if let claude = self as? ClaudeChatClient {
+            return try await claude.processStreaming(
+                text: text,
+                prompt: prompt,
+                config: config,
+                inputBoundary: inputBoundary,
+                invocationContext: invocationContext,
+                onDelta: onDelta
+            )
+        }
+        return try await processStreaming(
+            text: text,
+            prompt: prompt,
+            config: config,
+            inputBoundary: inputBoundary,
+            onDelta: onDelta
+        )
+    }
     func invalidate() async {}
 }
 
