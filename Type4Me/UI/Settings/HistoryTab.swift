@@ -218,6 +218,8 @@ struct HistoryTab: View {
 
     let isActive: Bool
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var selectedSubtab: HistorySubtab = .transcripts
     private let historyStore = HistoryStore.shared
 
     @State private var records: [HistoryRecord] = []
@@ -340,15 +342,75 @@ struct HistoryTab: View {
             SettingsSectionHeader(
                 label: L("历史", "HISTORY"),
                 title: L("识别历史", "History"),
-                description: L("浏览和管理语音识别记录。", "Browse and manage speech recognition records.")
+                description: L("浏览和管理语音识别记录，查看语音引擎与大模型用量统计。", "Browse and manage speech recognition records, and inspect engine and LLM analytics.")
             )
 
-            // Statistics Section
-            if let stats = statistics, stats.recordCount > 0 {
-                statisticsSection(stats: stats)
-                    .padding(.bottom, TF.spacingMD)
-                    .zIndex(30)
+            HStack(spacing: 16) {
+                subtabPicker
+                Spacer(minLength: 20)
             }
+            .padding(.bottom, 8)
+
+            Text(headerDescription)
+                .font(.system(size: 11))
+                .foregroundStyle(TF.settingsTextTertiary)
+                .padding(.bottom, 18)
+
+            Group {
+                switch selectedSubtab {
+                case .transcripts:
+                    transcriptsContentView
+                case .asrEngines:
+                    ASRUsageAnalyticsView()
+                case .llmAnalytics:
+                    LLMUsageAnalyticsView()
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var headerDescription: String {
+        switch selectedSubtab {
+        case .transcripts:
+            return L("浏览和管理语音识别记录。", "Browse and manage speech recognition records.")
+        case .asrEngines:
+            return L("查看各语音识别引擎的时长分布与识别质量。", "View audio duration and recognition quality across speech engines.")
+        case .llmAnalytics:
+            return L("查看全应用大模型 Token 消耗、耗时与预估成本。", "Monitor application-wide LLM token usage, latency, and estimated costs.")
+        }
+    }
+
+    private var subtabPicker: some View {
+        LiquidGlassTabPicker(
+            items: HistorySubtab.allCases,
+            selection: selectedSubtab,
+            onSelectionChange: { newSubtab in
+                if reduceMotion {
+                    selectedSubtab = newSubtab
+                } else {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 1.0)) {
+                        selectedSubtab = newSubtab
+                    }
+                }
+            }
+        ) { tab, isSelected, _ in
+            HStack(spacing: 6) {
+                Image(systemName: tab.icon)
+                    .font(.system(size: 11, weight: .medium))
+                Text(tab.displayName)
+                    .font(.system(size: 12, weight: isSelected ? .semibold : .medium))
+            }
+            .foregroundStyle(isSelected ? TF.settingsText : TF.settingsTextSecondary)
+            .padding(.horizontal, 16)
+            .frame(height: 32)
+        }
+        .fixedSize()
+    }
+
+    private var transcriptsContentView: some View {
+        VStack(alignment: .leading, spacing: 0) {
 
             HStack(spacing: 8) {
                 HStack(spacing: 8) {
@@ -489,8 +551,8 @@ struct HistoryTab: View {
                                     guard !isLoadingMore else { return }
                                     Task { await loadMore() }
                                 }
-                            }
                         }
+                    }
                     .padding(.bottom, 16)
                 }
             }
@@ -1403,8 +1465,7 @@ struct HistoryTab: View {
             historyMetric(
                 icon: "clock",
                 label: L("累计时长", "Total Time"),
-                value: formatDuration(stats.totalDuration),
-                showsDetails: true
+                value: formatDuration(stats.totalDuration)
             )
 
             historyMetricDivider
@@ -1437,10 +1498,9 @@ struct HistoryTab: View {
     private func historyMetric(
         icon: String,
         label: String,
-        value: String,
-        showsDetails: Bool = false
+        value: String
     ) -> some View {
-        let content = HStack(spacing: 10) {
+        HStack(spacing: 10) {
             Image(systemName: icon)
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(TF.settingsTextSecondary)
@@ -1451,16 +1511,10 @@ struct HistoryTab: View {
                 )
 
             VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 3) {
-                    Text(label)
-                    if showsDetails {
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 7, weight: .bold))
-                    }
-                }
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(TF.settingsTextTertiary)
-                .lineLimit(1)
+                Text(label)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(TF.settingsTextTertiary)
+                    .lineLimit(1)
 
                 Text(value)
                     .font(.system(size: 15, weight: .bold, design: .rounded))
@@ -1475,26 +1529,6 @@ struct HistoryTab: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-
-        return Group {
-            if showsDetails {
-                Button {
-                    showUsageDetails = true
-                    Task { await loadUsageBreakdown() }
-                } label: {
-                    content
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .settingsTooltip(L("查看用量详情", "View usage details"), isEnabled: !showUsageDetails)
-                .popover(isPresented: $showUsageDetails, arrowEdge: .bottom) {
-                    usageDetailsPopover
-                        .task { await loadUsageBreakdown() }
-                }
-            } else {
-                content
-            }
-        }
     }
 
     private var historyMetricDivider: some View {

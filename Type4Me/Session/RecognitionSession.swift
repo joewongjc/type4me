@@ -1583,7 +1583,9 @@ actor RecognitionSession {
             _ = try await client.processStreaming(
                 text: prompt,
                 prompt: "{text}",
-                config: llmConfig
+                config: llmConfig,
+                inputBoundary: .inline,
+                invocationContext: LLMInvocationContext(featureSource: .askAnything)
             ) { [weak self] delta in
                 await self?.emitSelectionAskDelta(delta, requestID: requestID)
             }
@@ -1923,14 +1925,17 @@ actor RecognitionSession {
                 let client = runtime.client
                 state = .postProcessing
                 DebugFileLogger.log("stop: final LLM firing mode=\(currentMode.name) model=\(llmConfig.model) with \(finalASRText.count) chars +\(ContinuousClock.now - stopT0)")
-                let requestStartedAt = Date()
                 finalLLMTask = Task {
+                    let requestStartedAt = Date()
                     do {
                         let result = try await client.process(
                             text: finalASRText,
                             prompt: prompt,
                             config: llmConfig,
-                            inputBoundary: inputBoundary
+                            inputBoundary: inputBoundary,
+                            invocationContext: self.currentMode.id == ProcessingMode.macActionId
+                                ? LLMInvocationContext(featureSource: .macAction, modeName: self.currentMode.name)
+                                : .dictation(modeName: self.currentMode.name)
                         )
                         DebugFileLogger.log("stop: final LLM done \(result.count) chars +\(ContinuousClock.now - stopT0)")
                         return TimedLLMResult(
@@ -2161,7 +2166,10 @@ actor RecognitionSession {
                                     text: textForLLM,
                                     prompt: prompt,
                                     config: llmConfig,
-                                    inputBoundary: inputBoundary
+                                    inputBoundary: inputBoundary,
+                                    invocationContext: self.currentMode.id == ProcessingMode.macActionId
+                                        ? LLMInvocationContext(featureSource: .macAction, modeName: self.currentMode.name)
+                                        : .dictation(modeName: self.currentMode.name)
                                 )
                                 return TimedLLMResult(
                                     text: result.isEmpty ? nil : result,
@@ -3355,7 +3363,9 @@ actor RecognitionSession {
                     let result = try await runtime.client.process(
                         text: text,
                         prompt: prompt,
-                        config: runtime.config
+                        config: runtime.config,
+                        inputBoundary: .inline,
+                        invocationContext: .dictation(modeName: self.currentMode.name)
                     )
                     DebugFileLogger.log(
                         "translation retry response chars=\(result.count) model=\(runtime.config.model)"
@@ -3822,17 +3832,14 @@ actor RecognitionSession {
             return
         }
 
-        // Resolve LLM runtime
         guard let runtime = await resolveLLMRuntime() else {
             await ReviseCoordinator.shared.cancel(transactionID: prepared.transactionID)
             onASREvent?(.reviseFailed(.llmUnavailable))
             cleanupSessionAfterRevise(myGeneration: myGeneration)
             return
         }
-
-        onASREvent?(.reviseProcessing)
         await ReviseCoordinator.shared.setProcessing(transactionID: prepared.transactionID)
-
+        onASREvent?(.reviseProcessing)
         let request = ReviseRequest(
             targetText: prepared.currentText,
             instruction: trimmedInstruction,
@@ -3848,10 +3855,11 @@ actor RecognitionSession {
             let rawModelResponse = try await runtime.client.process(
                 text: userPrompt,
                 prompt: systemPrompt,
-                config: runtime.config
+                config: runtime.config,
+                inputBoundary: .inline,
+                invocationContext: LLMInvocationContext(featureSource: .voiceRevise)
             )
             let llmDuration = max(0, Date().timeIntervalSince(llmStart))
-
             guard sessionGeneration == myGeneration else {
                 await ReviseCoordinator.shared.cancel(transactionID: prepared.transactionID)
                 return

@@ -10,7 +10,7 @@ actor HistoryStore {
 
     static let shared = HistoryStore()
 
-    private var db: OpaquePointer?
+    var db: OpaquePointer?
 
     init(path: String? = nil) {
         let dbPath: String
@@ -176,6 +176,35 @@ actor HistoryStore {
 
             // Index for ORDER BY created_at DESC pagination
             sqlite3_exec(db, "CREATE INDEX IF NOT EXISTS idx_history_created_at ON recognition_history(created_at DESC);", nil, nil, nil)
+            // LLM usage history table and indexes
+            let llmUsageTableSQL = """
+            CREATE TABLE IF NOT EXISTS llm_usage_history (
+                id TEXT PRIMARY KEY,
+                created_at TEXT NOT NULL,
+                feature_source TEXT NOT NULL,
+                provider TEXT NOT NULL,
+                model TEXT NOT NULL,
+                prompt_tokens INTEGER NOT NULL,
+                completion_tokens INTEGER NOT NULL,
+                total_tokens INTEGER NOT NULL,
+                duration_seconds REAL NOT NULL,
+                cost_usd REAL NOT NULL,
+                status TEXT NOT NULL,
+                is_estimated INTEGER NOT NULL DEFAULT 0,
+                mode_name TEXT
+            );
+            """
+            sqlite3_exec(db, llmUsageTableSQL, nil, nil, nil)
+            sqlite3_exec(db, "ALTER TABLE llm_usage_history ADD COLUMN mode_name TEXT;", nil, nil, nil)
+            sqlite3_exec(db, "CREATE INDEX IF NOT EXISTS idx_llm_usage_created_at ON llm_usage_history(created_at DESC);", nil, nil, nil)
+            sqlite3_exec(db, "CREATE INDEX IF NOT EXISTS idx_llm_usage_model ON llm_usage_history(model);", nil, nil, nil)
+            sqlite3_exec(db, "CREATE INDEX IF NOT EXISTS idx_llm_usage_feature ON llm_usage_history(feature_source);", nil, nil, nil)
+
+            // Lazy backfill trigger & cost recalculation
+            Task { [weak self] in
+                await self?.backfillHistoricalLLMUsageIfNeeded()
+                await self?.recalculateZeroCostRecordsIfNeeded()
+            }
         } else if let db {
             sqlite3_close_v2(db)
             self.db = nil
@@ -830,11 +859,11 @@ actor HistoryStore {
 
     // MARK: - SQLite Helpers
 
-    private func bind(_ stmt: OpaquePointer?, _ index: Int32, _ value: String) {
+    func bind(_ stmt: OpaquePointer?, _ index: Int32, _ value: String) {
         sqlite3_bind_text(stmt, index, (value as NSString).utf8String, -1, unsafeBitCast(-1, to: sqlite3_destructor_type.self))
     }
 
-    private func bindOptional(_ stmt: OpaquePointer?, _ index: Int32, _ value: String?) {
+    func bindOptional(_ stmt: OpaquePointer?, _ index: Int32, _ value: String?) {
         if let value {
             bind(stmt, index, value)
         } else {
@@ -858,8 +887,9 @@ actor HistoryStore {
         sqlite3_column_type(stmt, index) == SQLITE_NULL ? nil : Int(sqlite3_column_int(stmt, index))
     }
 
-    private func column(_ stmt: OpaquePointer?, _ index: Int32) -> String {
-        String(cString: sqlite3_column_text(stmt, index))
+    func column(_ stmt: OpaquePointer?, _ index: Int32) -> String {
+        guard let text = sqlite3_column_text(stmt, index) else { return "" }
+        return String(cString: text)
     }
 
     private func optionalColumn(_ stmt: OpaquePointer?, _ index: Int32) -> String? {

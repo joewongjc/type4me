@@ -554,7 +554,13 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
                 }
                 let llmConfig = config.toLLMConfig()
                 let client = LLMClientFactory.make(for: currentProvider)
-                let reply = try await client.process(text: "hi", prompt: "{text}", config: llmConfig)
+                let reply = try await client.process(
+                    text: "hi",
+                    prompt: "{text}",
+                    config: llmConfig,
+                    inputBoundary: .inline,
+                    invocationContext: LLMInvocationContext(featureSource: .other, modeName: L("连接测试", "Connection Test"))
+                )
                 guard !Task.isCancelled else { return }
                 llmTestStatus = .success
                 NSLog("[LLMProviderDetailView] LLM test OK (%@): %d chars", currentProvider.rawValue, reply.count)
