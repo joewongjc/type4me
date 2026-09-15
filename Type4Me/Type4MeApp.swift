@@ -156,6 +156,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// recording the user triggered via Stream Deck / Shortcuts / etc.
     private var suppressSetupWizardForHeadlessLaunch = false
     private var recognitionEventTask: Task<Void, Never>?
+    private var backupSchedulerTask: Task<Void, Never>?
     private var recognitionEventContinuation: AsyncStream<RecognitionEvent>.Continuation?
     private var inputDeviceChangeObservers: [NSObjectProtocol] = []
 
@@ -205,7 +206,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let session = self.session
 
         // 历史记录字数迁移（用 session 自带的 historyStore，迁移后 UI 能刷新）
-        Task { await session.historyStore.migrateCharacterCounts() }
+        Task { [weak self] in
+            await session.historyStore.migrateCharacterCounts()
+            // Every synchronous migration above has already run, and this is the
+            // only one that writes history.db. Starting backups only now keeps the
+            // launch snapshot a copy of the data the app will actually run on.
+            self?.startDataBackupScheduler()
+        }
         Task { await askAnythingCoordinator.restoreAfterLaunch() }
         let appState = self.appState
 
@@ -1746,6 +1753,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     #endif
 
+    /// Checks at launch, then keeps re-checking for as long as the app runs. A
+    /// menu bar app can go weeks without a relaunch, and a launch-only check would
+    /// leave a single snapshot from the day it started.
+    private func startDataBackupScheduler() {
+        backupSchedulerTask?.cancel()
+        // Off the main actor: copying the databases should never block the UI.
+        backupSchedulerTask = Task.detached(priority: .utility) {
+            await DataBackupScheduler.run()
+        }
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         hotkeyManager.stop()
         inputDeviceChangeObservers.forEach(NotificationCenter.default.removeObserver)
@@ -1753,6 +1771,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         recognitionEventContinuation?.finish()
         recognitionEventTask?.cancel()
+        backupSchedulerTask?.cancel()
         SystemVolumeManager.restore()
         // Synchronous kill: don't rely on async Task, app exits immediately after this returns
         SenseVoiceServerManager.killAllServerProcesses()

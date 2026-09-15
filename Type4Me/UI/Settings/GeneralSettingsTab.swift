@@ -22,6 +22,21 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
     private var clipboardOutputPolicyRaw = ClipboardOutputPolicy.defaultValue.rawValue
     @AppStorage("tf_showDockIcon") private var showDockIcon = true
     @AppStorage("tf_bypassProxy") private var bypassProxy = "off"
+
+    /// Reports the newest snapshot, so the user can tell the backup is actually
+    /// running rather than having to trust that it is.
+    private var backupSubtitle: String {
+        let snapshots = DataBackupManager.snapshots()
+        guard let newest = snapshots.last?.lastPathComponent,
+              let date = DataBackupManager.date(fromSnapshotName: newest)
+        else {
+            return L("每天自动保留最近几份识别历史与配置的副本",
+                     "Keeps a few recent copies of your history and settings, once a day")
+        }
+        let formatted = date.formatted(date: .abbreviated, time: .shortened)
+        return L("最近备份 \(formatted)，共 \(snapshots.count) 份",
+                 "Last backup \(formatted), \(snapshots.count) kept")
+    }
     @AppStorage("tf_micKeepAlive") private var micKeepAlive = false
     @AppStorage(CrossModeFinishPreference.storageKey) private var allowCrossModeFinish = CrossModeFinishPreference.defaultValue
     @AppStorage(AudioInputDevicePreferenceStore.modeKey) private var microphonePreferenceMode = AudioInputDevicePreferenceMode.systemDefault.rawValue
@@ -183,6 +198,20 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
                             ("llm", L("文本处理 LLM 绕过", "LLM Only")),
                         ]
                     )
+                }
+
+                SettingsDivider()
+
+                settingsOptionRow(
+                    L("本地数据备份", "Local Data Backup"),
+                    subtitle: backupSubtitle
+                ) {
+                    Button(L("在 Finder 中显示", "Show in Finder")) {
+                        DataBackupManager.revealInFinder()
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(TF.settingsAccentBlue)
                 }
             }
 
