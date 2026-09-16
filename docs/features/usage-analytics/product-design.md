@@ -1,10 +1,12 @@
 # Type4Me 历史与用量看板（History & Usage Analytics）产品设计
 
 > 文档类型：产品设计  
-> 文档状态：设计完成，待评审  
+> 文档状态：当前有效（已实现，持续验证）
 > 适用平台：Type4Me macOS (Apple Silicon & Intel)  
 > 文档范围：历史记录页面重组、ASR 语音引擎用量看板、LLM 全局大模型用量与成本看板、交互规范与动效物理规则  
 > 设计日期：2026-09-14  
+> 最后校验：2026-09-16
+> 实现基线：`b627606`（PR #310）
 > 下游文档：`docs/features/usage-analytics/development-design.md`  
 
 ---

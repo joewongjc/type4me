@@ -28,7 +28,9 @@
 - **模型接入与设置**：支持主流 ASR 与 LLM 厂商 API、本地 Ollama，并以统一的主从界面管理服务商、配置状态、凭证、连接测试和默认引擎；
 - **当前焦点文本输入**：手动录音、菜单栏和手动输入窗口会把结果直接粘贴到结束时当前接收键盘事件的位置，兼容终端和自定义渲染编辑器；URL 自动化仍会固定并验证目标应用，避免后台任务误写；
 - **词汇管理**：支持热词、映射词，2种模式。热词用于校正语音识别引擎，映射词可作为兜底或个性化场景使用（如 Web coding -> Vibe Coding, "我的邮箱地址" -> xxx@gmail.com）；
-- **历史记录**：存储所有历史识别记录，包括原始文本、处理后文本与实际识别模型；支持标记识别质量、查看统计并导出 CSV；
+- **历史与用量看板**：在统一的历史页面切换听写记录、语音引擎和大模型用量；查看 Token、预估费用、请求成功率与耗时、每日趋势、模型/场景汇总及逐条请求明细，旧的 LLM 历史会自动估算补全；
+- **本地数据备份**：每天为历史、模式、词汇、快捷键和配置创建本地快照，最多保留七份；可从设置中查看最新备份并在 Finder 中打开备份文件夹；
+- **历史修正可追溯**：纠正页会说明最终输出与原始识别文本不同的原因，并可定位当时实际生效的全局或 App 专属片段替换规则；
 - **配套Skill**：真正做到100%准确率，打造只属于你的输入法，[点这里安装Skill](https://github.com/joewongjc/type4me-vocab-skill)后跟你的agent说"Qwen3.5 不要识别成 Queen 3.5"，他就能自动帮你管理热词和映射词，同类错误不再犯
 - **URL Scheme**：支持从 Stream Deck、快捷指令、Raycast / Alfred、终端、浏览器或脚本直接控制录音（开始、结束、切换）；后台调用不抢前台焦点，注入目标无法确认时安全保留文本到剪贴板；同样可打开设置、管理词库、静默写入热词与片段替换规则；
 
@@ -42,8 +44,8 @@
 
 | 版本                                                         | 说明                                                         | 安装包大小   |
 | ------------------------------------------------------------ | ------------------------------------------------------------ | ------ |
-| ✨推荐：**[云端版本（点击下载）](https://github.com/joewongjc/type4me/releases/download/v2.8.0/Type4Me-v2.8.0-cloud.dmg)** | 支持云端识别 (Intel + Apple Silicon)，需配置语音、大模型API Key。语音识别推荐火山-豆包语音/Soniox、体验最好。火山注册有送额度，单价都十分便宜。[配置指引](https://my.feishu.cn/wiki/QdEnwBMfUi0mN4k3ucMcNYhUnXr) | ~10MB  |
-| **[本地版本（点击下载）](https://github.com/joewongjc/type4me/releases/download/v2.8.0/Type4Me-v2.8.0-local-apple-silicon.dmg)** | 内嵌 SenseVoice + Qwen3-ASR 本地识别引擎 (Apple Silicon only，约占用8GB内存，建议32GB以上)，大模型依旧需要配置 API Key 或 Ollama 本地服务。 | ~700MB |
+| ✨推荐：**[云端版本（点击下载）](https://github.com/joewongjc/type4me/releases/download/v2.9.0/Type4Me-v2.9.0-cloud.dmg)** | 支持云端识别 (Intel + Apple Silicon)，需配置语音、大模型API Key。语音识别推荐火山-豆包语音/Soniox、体验最好。火山注册有送额度，单价都十分便宜。[配置指引](https://my.feishu.cn/wiki/QdEnwBMfUi0mN4k3ucMcNYhUnXr) | ~10MB  |
+| **[本地版本（点击下载）](https://github.com/joewongjc/type4me/releases/download/v2.9.0/Type4Me-v2.9.0-local-apple-silicon.dmg)** | 内嵌 SenseVoice + Qwen3-ASR 本地识别引擎 (Apple Silicon only，约占用8GB内存，建议32GB以上)，大模型依旧需要配置 API Key 或 Ollama 本地服务。 | ~700MB |
 
 系统要求：macOS 14+ (Sonoma)
 
@@ -741,7 +743,9 @@ ASR Provider 架构设计为可插拔：实现 `ASRProviderConfig`（定义凭�
 - **Model Integration & Settings**: Connect mainstream ASR and LLM provider APIs or local Ollama, then manage providers, configuration status, credentials, connection tests, and default engines in one master-detail interface;
 - **Current-Focus Text Input**: Manual recording, the menu bar, and the manual-input window paste into the destination receiving keyboard events at completion, including terminals and custom-rendered editors; URL automation still pins and verifies its target app to prevent unintended background delivery;
 - **Vocabulary Management**: Two modes: hotwords and snippet replacements. Hotwords improve ASR accuracy for proper nouns; snippets enable personalized substitutions (e.g., "Web coding" -> "Vibe Coding", "my email" -> xxx@gmail.com);
-- **History**: Stores raw and processed recognition records with the ASR model used; mark transcription quality, review aggregates, and export CSV;
+- **History & Usage Analytics**: Switch between transcripts, speech engines, and LLM usage in one History page; review tokens, estimated costs, success rates, latency, daily trends, model/feature summaries, and individual requests, with older LLM records backfilled by estimate;
+- **Local Data Backups**: Create a daily local snapshot of history, modes, vocabulary, hotkeys, and configuration, retaining up to seven copies; inspect the newest snapshot and open its folder from Settings;
+- **Traceable History Corrections**: Explain why final output differs from raw recognition text, and reveal the global or app-specific snippet rules that actually applied at the time;
 - **Companion Skill**: Achieve 100% recognition accuracy. [Install the Skill](https://github.com/joewongjc/type4me-vocab-skill) and tell your agent "Don't recognize Qwen3.5 as Queen 3.5" to automatically manage hotwords and snippets. Same mistakes won't happen again.
 - **URL Scheme**: Control recording directly (start, stop, toggle) from Stream Deck, Shortcuts, Raycast / Alfred, Terminal, or scripts without simulating keystrokes; background calls keep the foreground app intact and fall back safely to the clipboard when an injection target cannot be confirmed; open Settings, manage vocabulary, and silently write hotwords/snippets.
 
@@ -755,8 +759,8 @@ Two editions, sharing the same config files. You can switch between them at any 
 
 | Edition | Description | Size |
 | ------- | ----------- | ---- |
-| ✨Recommended: **[Cloud Edition (Download)](https://github.com/joewongjc/type4me/releases/download/v2.8.0/Type4Me-v2.8.0-cloud.dmg)** | Cloud recognition (Intel + Apple Silicon). Requires ASR and LLM API keys. Recommended: Volcano/Doubao or Soniox for best experience. [Setup Guide](https://my.feishu.cn/wiki/QdEnwBMfUi0mN4k3ucMcNYhUnXr) | ~10MB |
-| **[Local Edition (Download)](https://github.com/joewongjc/type4me/releases/download/v2.8.0/Type4Me-v2.8.0-local-apple-silicon.dmg)** | Bundled SenseVoice + Qwen3-ASR local recognition (Apple Silicon only, ~8GB RAM, 32GB+ recommended). LLM still requires API key or local Ollama. | ~700MB |
+| ✨Recommended: **[Cloud Edition (Download)](https://github.com/joewongjc/type4me/releases/download/v2.9.0/Type4Me-v2.9.0-cloud.dmg)** | Cloud recognition (Intel + Apple Silicon). Requires ASR and LLM API keys. Recommended: Volcano/Doubao or Soniox for best experience. [Setup Guide](https://my.feishu.cn/wiki/QdEnwBMfUi0mN4k3ucMcNYhUnXr) | ~10MB |
+| **[Local Edition (Download)](https://github.com/joewongjc/type4me/releases/download/v2.9.0/Type4Me-v2.9.0-local-apple-silicon.dmg)** | Bundled SenseVoice + Qwen3-ASR local recognition (Apple Silicon only, ~8GB RAM, 32GB+ recommended). LLM still requires API key or local Ollama. | ~700MB |
 
 System requirements: macOS 14+ (Sonoma)
 
