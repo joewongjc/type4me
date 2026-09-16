@@ -10,15 +10,21 @@ actor DoubaoChatClient: LLMClient {
 
     init(
         provider: LLMProvider = .doubao,
-        bypassProxy: Bool = ProxyBypassMode.current.bypassLLM
+        bypassProxy: Bool = ProxyBypassMode.current.bypassLLM,
+        customSession: URLSession? = nil
     ) {
         self.provider = provider
-        let resources = LLMURLSessionFactory.make(
-            providerID: provider.rawValue,
-            bypassProxy: bypassProxy
-        )
-        session = resources.session
-        metricsDelegate = resources.metricsDelegate
+        if let customSession {
+            session = customSession
+            metricsDelegate = LLMURLSessionMetricsDelegate(providerID: provider.rawValue)
+        } else {
+            let resources = LLMURLSessionFactory.make(
+                providerID: provider.rawValue,
+                bypassProxy: bypassProxy
+            )
+            session = resources.session
+            metricsDelegate = resources.metricsDelegate
+        }
     }
 
     /// Pre-establish TCP+TLS connection so the first real request skips handshake.
@@ -228,7 +234,7 @@ actor DoubaoChatClient: LLMClient {
         var loggedFirstToken = false
         var promptTokens: Int?
         var completionTokens: Int?
-
+        var receivedDone = false
         do {
             for try await line in bytes.lines {
                 lineCount += 1
@@ -238,7 +244,10 @@ actor DoubaoChatClient: LLMClient {
                     DebugFileLogger.log("llm: first SSE event +\(ContinuousClock.now - requestStart) model=\(model)")
                 }
                 let payload = String(line.dropFirst(6))
-                if payload == "[DONE]" { break }
+                if payload == "[DONE]" {
+                    receivedDone = true
+                    break
+                }
                 guard let data = payload.data(using: .utf8) else { continue }
 
                 if let chunk = try? JSONDecoder().decode(ChatStreamChunk.self, from: data) {
@@ -257,6 +266,10 @@ actor DoubaoChatClient: LLMClient {
                         }
                     }
                 }
+            }
+            guard receivedDone else {
+                DebugFileLogger.log("LLM[\(model)]: stream closed without [DONE] marker (lines=\(lineCount), chars=\(result.count))")
+                throw LLMError.streamIncomplete(L("未收到结束标记 [DONE]", "missing [DONE] terminal marker"))
             }
             if result.isEmpty && lineCount > 0 {
                 DebugFileLogger.log("LLM[\(model)]: \(lineCount) lines but 0 content chars")
@@ -409,7 +422,7 @@ enum LLMError: Error, LocalizedError {
     case invalidURL
     case requestFailed(Int)
     case emptyResponse(String?)
-
+    case streamIncomplete(String?)
     var errorDescription: String? {
         switch self {
         case .invalidURL:
@@ -426,6 +439,11 @@ enum LLMError: Error, LocalizedError {
                 return L("LLM 未返回内容: \(raw)", "LLM returned no content: \(raw)")
             }
             return L("LLM 未返回内容", "LLM returned no content")
+        case .streamIncomplete(let detail):
+            if let detail {
+                return L("流式连接中断: \(detail)", "Stream connection interrupted: \(detail)")
+            }
+            return L("流式连接异常中断", "Stream connection interrupted prematurely")
         }
     }
 }

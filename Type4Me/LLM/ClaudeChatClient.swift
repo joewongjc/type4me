@@ -7,13 +7,21 @@ actor ClaudeChatClient: LLMClient {
     private let session: URLSession
     private let metricsDelegate: LLMURLSessionMetricsDelegate
 
-    init(bypassProxy: Bool = ProxyBypassMode.current.bypassLLM) {
-        let resources = LLMURLSessionFactory.make(
-            providerID: LLMProvider.claude.rawValue,
-            bypassProxy: bypassProxy
-        )
-        session = resources.session
-        metricsDelegate = resources.metricsDelegate
+    init(
+        bypassProxy: Bool = ProxyBypassMode.current.bypassLLM,
+        customSession: URLSession? = nil
+    ) {
+        if let customSession {
+            session = customSession
+            metricsDelegate = LLMURLSessionMetricsDelegate(providerID: LLMProvider.claude.rawValue)
+        } else {
+            let resources = LLMURLSessionFactory.make(
+                providerID: LLMProvider.claude.rawValue,
+                bypassProxy: bypassProxy
+            )
+            session = resources.session
+            metricsDelegate = resources.metricsDelegate
+        }
     }
 
     /// Pre-establish TCP+TLS connection so the first real request skips handshake.
@@ -158,6 +166,7 @@ actor ClaudeChatClient: LLMClient {
         var result = ""
         var promptTokens: Int?
         var completionTokens: Int?
+        var receivedMessageStop = false
 
         do {
             for try await line in bytes.lines {
@@ -178,6 +187,7 @@ actor ClaudeChatClient: LLMClient {
                         await onDelta(text)
                     }
                 case "message_stop":
+                    receivedMessageStop = true
                     break
                 case "error":
                     let detail = event.error?.message ?? "unknown"
@@ -194,6 +204,10 @@ actor ClaudeChatClient: LLMClient {
                 default:
                     continue
                 }
+            }
+            guard receivedMessageStop else {
+                logger.error("Claude stream closed without message_stop marker (chars=\(result.count))")
+                throw LLMError.streamIncomplete(L("未收到结束标记 message_stop", "missing message_stop terminal marker"))
             }
         } catch {
             let durationSec = Double((ContinuousClock.now - requestStart).components.seconds) +
