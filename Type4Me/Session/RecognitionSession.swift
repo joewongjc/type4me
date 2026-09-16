@@ -369,6 +369,64 @@ actor RecognitionSession {
     #if DEBUG
     /// Test seam: test-injected LLM client override to precisely verify invocation count and input text.
     private var injectedLLMClient: (any LLMClient)?
+    private var targetForTesting: (@Sendable () -> TargetApplicationContext)?
+    private var captureContextForTesting: (@Sendable (TargetApplicationContext, IntelliSenseSettings) async -> IntelliSenseContextSnapshot)?
+    private var applySnippetsForTesting: (@Sendable (String, String?) -> SnippetApplication)?
+    private var capturesTextOutputForTesting = false
+
+    typealias IntelliSenseOutputForTesting = (
+        text: String,
+        trace: String?,
+        snippets: SnippetApplication?,
+        contextAvailability: ContextAvailability?,
+        learningPlan: PostInjectionLearningPlan,
+        shouldTrackLearning: Bool
+    )
+    private var capturedTextOutputForTesting: IntelliSenseOutputForTesting?
+
+    func processIntelliSenseForTesting(
+        text: String,
+        startingSnapshot: IntelliSenseContextSnapshot,
+        settings: IntelliSenseSettings,
+        isAutomation: Bool = false,
+        manualInput: Bool = false,
+        cancelled: Bool = false,
+        shortTextExemption: Int = 0,
+        applySnippets: @escaping @Sendable (String, String?) -> SnippetApplication = { text, _ in
+            SnippetApplication(text: text, appliedRules: [])
+        },
+        currentTarget: @escaping @Sendable () -> TargetApplicationContext,
+        capture: @escaping @Sendable (TargetApplicationContext, IntelliSenseSettings) async -> IntelliSenseContextSnapshot
+    ) async -> IntelliSenseOutputForTesting? {
+        freezeIntelliSenseForTesting(snapshot: startingSnapshot, settings: settings)
+        intelliSenseSettings = settings
+        targetBundleId = startingSnapshot.bundleIdentifier
+        intelliSenseTarget = TargetApplicationContext(
+            processIdentifier: nil,
+            bundleIdentifier: startingSnapshot.bundleIdentifier,
+            displayName: startingSnapshot.appName
+        )
+        historySnippetApplication = nil
+        currentMode.shortTextExemption = shortTextExemption
+        recordingPurpose = .input(currentMode)
+        completionIntent = cancelled ? .cancelled : .normal
+        clipboardOutputPolicy = .cancelRawTranscript
+        isAutomationTarget = isAutomation
+        isManualInput = manualInput
+        targetForTesting = currentTarget
+        captureContextForTesting = capture
+        applySnippetsForTesting = applySnippets
+        capturesTextOutputForTesting = true
+        capturedTextOutputForTesting = nil
+        defer {
+            targetForTesting = nil
+            captureContextForTesting = nil
+            applySnippetsForTesting = nil
+            capturesTextOutputForTesting = false
+        }
+        await finishTextOutput(text, generation: sessionGeneration, stopStartedAt: .now, needsLLM: true)
+        return capturedTextOutputForTesting
+    }
 
     func setInjectedLLMClientForTesting(_ client: (any LLMClient)?) {
         injectedLLMClient = client
@@ -594,7 +652,7 @@ actor RecognitionSession {
     private var historySnippetApplication: SnippetApplication?
 
     /// Bundle identifier of the frontmost app when recording started.
-    /// Used to select app-specific snippet rules.
+    /// Used to select app-specific snippet rules outside interactive Intelli Sense.
     private var targetBundleId: String?
     /// The frontmost application captured when recording starts, used to restore focus if needed.
     private var targetApplication: NSRunningApplication?
@@ -954,8 +1012,12 @@ actor RecognitionSession {
                 intelliSenseSettings = settings
                 intelliSenseTarget = target
                 intelliSenseStartedModeID = effectiveMode.id
-                intelliSenseContextTask = Task {
-                    await IntelliSenseContextCapturer.capture(target: target, settings: settings)
+                // Interactive speech chooses its environment after ASR finishes.
+                // Automation retains the context of its pinned destination.
+                if isAutomation {
+                    intelliSenseContextTask = Task {
+                        await IntelliSenseContextCapturer.capture(target: target, settings: settings)
+                    }
                 }
             }
 
@@ -1834,7 +1896,7 @@ actor RecognitionSession {
         currentConfig = nil
 
         // The final transcript is available after teardown and any batch fallback.
-        let canFireLLMAtStop = providerIsStreaming
+        let canFireLLMAtStop = providerIsStreaming && !refreshesIntelliSenseAtProcessing
         var finalLLMTask: Task<TimedLLMResult, Never>?
         if needsLLM && canFireLLMAtStop {
             var finalASRText = effectiveText
@@ -1929,6 +1991,10 @@ actor RecognitionSession {
                 return
             }
 
+            if refreshesIntelliSenseAtProcessing, !cancellationSkipsLLM {
+                intelliSenseTarget = currentIntelliSenseTarget()
+            }
+
             // Apply snippet replacements before LLM (e.g. "我的邮箱" → actual email).
             // The rules that fired are kept with the history record: once text has been
             // rewritten nothing downstream can tell a replacement from a misrecognition,
@@ -1936,10 +2002,14 @@ actor RecognitionSession {
             // Typed input skips the rules, which is itself a known fact: none fired.
             let snippetApplication = isManualInput
                 ? SnippetApplication(text: finalText, appliedRules: [])
-                : SnippetStorage.applyEffectiveTracking(to: finalText, bundleId: targetBundleId)
+                : applyOutputSnippets(
+                    to: finalText,
+                    bundleId: refreshesIntelliSenseAtProcessing
+                        ? intelliSenseTarget?.bundleIdentifier : targetBundleId
+                )
             finalText = snippetApplication.text
             historySnippetApplication = snippetApplication
-            let intelliSenseGuardInput = finalText
+            var intelliSenseGuardInput = finalText
 
             if cancellationSkipsLLM {
                 // A cancellation may arrive while ASR teardown is awaiting.
@@ -2059,18 +2129,33 @@ actor RecognitionSession {
             } else if needsLLM {
                 state = .postProcessing
                 if let runtime = await resolveLLMRuntime() {
+                    if refreshesIntelliSenseAtProcessing, !cancellationSkipsLLM {
+                        await refreshIntelliSenseProcessingContext(generation: myGeneration)
+                        guard sessionGeneration == myGeneration else { return }
+                        // Recompute from the raw transcript for the final processing target.
+                        // Replace the text and its provenance together, even when no rule fires.
+                        let snippetApplication = applyOutputSnippets(
+                            to: effectiveText, bundleId: intelliSenseTarget?.bundleIdentifier
+                        )
+                        finalText = snippetApplication.text
+                        historySnippetApplication = snippetApplication
+                        intelliSenseGuardInput = finalText
+                    }
                     rememberHistoryLLM(runtime)
                     let llmConfig = runtime.config
                     DebugFileLogger.log("stop: sync LLM firing mode=\(currentMode.name) model=\(llmConfig.model) with \(finalText.count) chars")
                     let client = runtime.client
                     let prompt = await promptForCurrentMode(text: finalText)
                     let inputBoundary = llmInputBoundaryForCurrentMode()
+                    guard sessionGeneration == myGeneration else { return }
                     let textForLLM = finalText
+                    let skipsCancelledRequest = cancellationSkipsLLM
 
                     let requestStartedAt = Date()
                     let llmOutcome: TimedLLMResult = await withCheckedContinuation { continuation in
                         let finished = OSAllocatedUnfairLock(initialState: false)
                         let llmTask = Task {
+                            if skipsCancelledRequest { return TimedLLMResult(text: nil, durationSeconds: 0) }
                             do {
                                 let result = try await client.process(
                                     text: textForLLM,
@@ -2198,6 +2283,7 @@ actor RecognitionSession {
                 clearHistoryLLMMetadata()
             }
 
+            guard sessionGeneration == myGeneration else { return }
             finalText = formattedOutputText(finalText)
 
             state = .injecting
@@ -2220,12 +2306,15 @@ actor RecognitionSession {
             let sessionSettings = intelliSenseRequestContext?.settings ?? intelliSenseSettings
             let contextAvailability = intelliSenseRequestContext?.snapshot.availability
             let isAutomation = isAutomationTarget
-            let currentFrontmostBundleId = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+            let currentFrontmostBundleId = currentIntelliSenseTarget().bundleIdentifier
             let effectiveTargetBundleId = (!isAutomation && currentFrontmostBundleId != nil)
                 ? currentFrontmostBundleId
                 : targetBundleId
             let effectiveContextAvailability: ContextAvailability? = {
-                if !isAutomation, let currentFrontmostBundleId, currentFrontmostBundleId != targetBundleId {
+                // The snapshot belongs to the processing target, not the recording start.
+                // Dropping a known sensitive snapshot here would permit tracked AX reads.
+                if !isAutomation, let currentFrontmostBundleId,
+                   currentFrontmostBundleId != intelliSenseTarget?.bundleIdentifier {
                     if sessionSettings?.isBlacklisted(bundleIdentifier: currentFrontmostBundleId) == true {
                         return .blacklisted
                     }
@@ -2244,6 +2333,23 @@ actor RecognitionSession {
                 targetBundleIdentifier: effectiveTargetBundleId
             )
             let shouldTrackLearning = !isManualInput && learningPlan.shouldTrackInjection
+
+            #if DEBUG
+            if capturesTextOutputForTesting {
+                // Exercise the actual pre-injection decision without touching AX,
+                // the clipboard, or the shared history/learning stores.
+                capturedTextOutputForTesting = (
+                    finalText,
+                    await makeIntelliSenseHistoryTraceJSON(input: rawText, finalText: finalText, processingFailed: llmFailed),
+                    historySnippetApplication,
+                    effectiveContextAvailability,
+                    learningPlan,
+                    shouldTrackLearning
+                )
+                return
+            }
+            #endif
+
             let targetApp = targetApplication
             let manualInputHasNoTarget = isManualInput && targetApp == nil
             let injectLog = "stop: injecting method=clipboard len=\(finalText.count) +\(ContinuousClock.now - stopT0)"
@@ -2367,7 +2473,7 @@ actor RecognitionSession {
                     if intelliSenseSettings?.isBlacklisted(bundleIdentifier: actualBundleID) == true {
                         return .blacklisted
                     }
-                    if actualBundleID == targetBundleId {
+                    if actualBundleID == intelliSenseTarget?.bundleIdentifier {
                         return contextAvailability
                     }
                     return nil
@@ -2383,7 +2489,7 @@ actor RecognitionSession {
                     targetBundleIdentifier: actualBundleID
                 )
                 let actualCategory = {
-                    if actualBundleID == targetBundleId,
+                    if actualBundleID == intelliSenseTarget?.bundleIdentifier,
                        let startCategory = intelliSenseRequestContext?.snapshot.appCategory {
                         return startCategory
                     }
@@ -3048,6 +3154,65 @@ actor RecognitionSession {
             settings: settings,
             expressionProfile: expressionProfile
         ))
+    }
+
+    private func applyOutputSnippets(to text: String, bundleId: String?) -> SnippetApplication {
+        #if DEBUG
+        if let applySnippetsForTesting { return applySnippetsForTesting(text, bundleId) }
+        #endif
+        return SnippetStorage.applyEffectiveTracking(to: text, bundleId: bundleId)
+    }
+
+    private var refreshesIntelliSenseAtProcessing: Bool {
+        currentMode.id == ProcessingMode.intelliSenseId
+            && intelliSenseStartedModeID == ProcessingMode.intelliSenseId
+            && !intelliSenseCrossModeFallback && !isAutomationTarget && !isManualInput
+    }
+
+    private func currentIntelliSenseTarget() -> TargetApplicationContext {
+        #if DEBUG
+        if let targetForTesting { return targetForTesting() }
+        #endif
+        let app = NSWorkspace.shared.frontmostApplication
+        return TargetApplicationContext(
+            processIdentifier: app?.processIdentifier,
+            bundleIdentifier: app?.bundleIdentifier,
+            displayName: app?.localizedName
+        )
+    }
+
+    private func refreshIntelliSenseProcessingContext(generation: Int) async {
+        guard let settings = intelliSenseSettings else { return }
+        var target = currentIntelliSenseTarget()
+        var snapshot: IntelliSenseContextSnapshot
+        #if DEBUG
+        if let captureContextForTesting {
+            snapshot = await captureContextForTesting(target, settings)
+        } else {
+            snapshot = await IntelliSenseContextCapturer.capture(target: target, settings: settings)
+        }
+        #else
+        snapshot = await IntelliSenseContextCapturer.capture(target: target, settings: settings)
+        #endif
+        guard sessionGeneration == generation else { return }
+        // AX capture can take up to 300 ms. If the app changed meanwhile, discard
+        // its text and use the new app's scene rather than chase focus or delay LLM.
+        let currentTarget = currentIntelliSenseTarget()
+        if currentTarget.processIdentifier != target.processIdentifier
+            || currentTarget.bundleIdentifier != target.bundleIdentifier {
+            target = currentTarget
+            snapshot = .appOnly(target)
+            if settings.isBlacklisted(bundleIdentifier: target.bundleIdentifier) {
+                snapshot.availability = .blacklisted
+            }
+        }
+        intelliSenseContextTask?.cancel()
+        intelliSenseTarget = target
+        intelliSenseContextTask = Task { snapshot }
+        intelliSenseRequestContext = nil
+        intelliSenseLastProcessingResult = nil
+        intelliSenseGuardRejected = false
+        DebugFileLogger.log("intelli sense processing context refreshed bundle=\(target.bundleIdentifier ?? "none")")
     }
 
     private func clearIntelliSenseSessionContext() {
