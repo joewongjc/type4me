@@ -2,7 +2,7 @@ import Foundation
 
 /// Syncs LLM pricing tables from OpenRouter's public Models API.
 ///
-/// - Cache file: `~/Library/Application Support/Type4Me/llm-pricing-cache.json`
+/// - Cache file: `llm-pricing-cache.json` in the shared profile directory
 /// - Cooldown: 7 days between automatic fetches (`tf_lastPricingSync`)
 /// - Failures keep the current snapshot (seed catalog on first run) and leave
 ///   the cooldown untouched so the next launch retries.
@@ -27,12 +27,18 @@ final class LLMPricingSyncService {
     private(set) var lastSyncError: String?
     private(set) var entryCount = 0
 
-    private init() {
-        let directory = FileManager.default.urls(
+    /// Kept with the shared profile: the prices are the same for every build.
+    nonisolated static var defaultCacheFileURL: URL {
+        FileManager.default.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask
-        ).first!.appendingPathComponent("Type4Me", isDirectory: true)
-        self.cacheFileURL = directory.appendingPathComponent("llm-pricing-cache.json")
+        ).first!
+            .appendingPathComponent(AppDataLocation.profileDirectoryName, isDirectory: true)
+            .appendingPathComponent("llm-pricing-cache.json")
+    }
+
+    private init() {
+        self.cacheFileURL = Self.defaultCacheFileURL
     }
 
     // MARK: - Lifecycle
