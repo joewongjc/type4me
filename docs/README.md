@@ -1,7 +1,7 @@
 # Type4Me 文档中心
 
 > 文档状态：当前有效
-> 最后整理：2026-08-30
+> 最后整理：2026-09-16
 
 这里是仓库文档的唯一入口。功能设计、开发设计和历史材料不再平铺在 `docs/` 根目录。
 
@@ -21,6 +21,7 @@
 
 | 功能 | 文档 | 类型 | 状态 | 设计日期 | 实现基线 |
 |---|---|---|---|---:|---|
+| 历史与用量看板 | [产品设计](features/usage-analytics/product-design.md) / [开发设计](features/usage-analytics/development-design.md) | 产品与开发设计 | 已实现，持续验证 | 2026-09-14 | `b627606`（PR #310） |
 | 当前键盘焦点回写（简化输入目标） | [产品设计](features/current-focus-injection/product-design.md) / [开发设计](features/current-focus-injection/development-design.md) | 产品与开发设计 | 已实现，持续验证 | 2026-09-10 | `0da8693`（PR #297） |
 | 首次设置与权限引导 | [产品设计](features/setup-guide/product-design.md) | 产品设计 | 已实现，待用户验收 | 2026-09-08 | `bafecde` |
 | Meta Muse 实时 ASR | [产品设计](features/meta-muse-asr/product-design.md) / [开发设计](features/meta-muse-asr/development-design.md) | 产品与开发设计 | 已实现，持续验证 | 2026-09-03 | `6fdfb8d`（#286） |

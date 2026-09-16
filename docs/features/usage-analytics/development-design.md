@@ -1,11 +1,13 @@
 # Type4Me 历史与用量看板（History & Usage Analytics）技术实现设计
 
 > 文档类型：技术设计  
-> 文档状态：设计完成，待评审  
+> 文档状态：当前有效（已实现，持续验证）
 > 适用平台：Type4Me macOS (Swift 6 Concurrency, SQLite)  
 > 上游文档：`docs/features/usage-analytics/product-design.md`  
 > 核心模块：`HistoryStore` (SQLite 数据底座), `LLMPricingRegistry` (计价服务), `LLMClient` (协议与 Token 提取改造), `UsageAnalyticsUI` (SwiftUI 界面层)  
 > 设计日期：2026-09-14  
+> 最后校验：2026-09-16
+> 实现基线：`b627606`（PR #310）
 
 ---
 
