@@ -4,4 +4,4 @@
 
 "NSSpeechRecognitionUsageDescription" = "Type4Me 需要语音识别权限以将你的语音转写为文字。";
 
-"NSAppleEventsUsageDescription" = "Type4Me 需要辅助功能权限来注入转写文字到其他应用";
+"NSAppleEventsUsageDescription" = "Type4Me 需要控制其他应用程序以执行系统自动化操作。";
