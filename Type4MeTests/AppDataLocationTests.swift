@@ -89,12 +89,24 @@ final class AppDataLocationTests: XCTestCase {
             SnippetStorage.userFileURL,
             HotwordStorage.userFileURL,
             KeychainService.credentialsFileURL,
+            LLMPricingSyncService.defaultCacheFileURL,
         ] {
             XCTAssertTrue(
                 url.standardizedFileURL.path.hasPrefix(profile + "/"),
                 "\(url.lastPathComponent) is not under the profile directory"
             )
         }
+    }
+
+    /// Backups follow the profile they protect: they are a sibling of it, and a
+    /// test run can never snapshot or rotate the user's real backups.
+    func testDataBackupsFollowTheProfile() {
+        let profile = AppDataLocation.profileDirectory.standardizedFileURL
+        XCTAssertEqual(DataBackupManager.dataDirectory.standardizedFileURL, profile)
+        XCTAssertEqual(
+            DataBackupManager.backupRoot.standardizedFileURL,
+            profile.deletingLastPathComponent().appendingPathComponent("Type4MeTests Backups").standardizedFileURL
+        )
     }
 
     /// Under test profile and runtime both resolve to the isolated directory, so

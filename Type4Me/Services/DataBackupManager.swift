@@ -38,7 +38,8 @@ enum DataBackupManager {
 
     // Deliberately excluded: `models/` (large and re-downloadable), `Sounds/`
     // (a fallback lookup for bundled sounds), `debug.log*`, `Updates/` and
-    // `server-pids.txt` (runtime state), and the SQLite `-wal` / `-shm`
+    // `server-pids.txt` (runtime state), `llm-pricing-cache.json` (re-fetched
+    // from upstream), and the SQLite `-wal` / `-shm`
     // sidecars, whose committed contents `VACUUM INTO` folds into the copy.
 
     static let retainedSnapshots = 7
@@ -58,11 +59,14 @@ enum DataBackupManager {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
     }
 
-    static var dataDirectory: URL { appSupport.appendingPathComponent("Type4Me", isDirectory: true) }
+    static var dataDirectory: URL {
+        appSupport.appendingPathComponent(AppDataLocation.profileDirectoryName, isDirectory: true)
+    }
 
-    /// A sibling of the data directory, not a child of it.
+    /// A sibling of the data directory, not a child of it. Named after the
+    /// profile, so production keeps `Type4Me Backups` and tests get their own.
     static var backupRoot: URL {
-        appSupport.appendingPathComponent("Type4Me Backups", isDirectory: true)
+        appSupport.appendingPathComponent("\(AppDataLocation.profileDirectoryName) Backups", isDirectory: true)
     }
 
     // MARK: - Entry point
