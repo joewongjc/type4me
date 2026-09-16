@@ -36,7 +36,6 @@ public enum AnalyticsTimeRange: String, CaseIterable, Identifiable, Sendable {
 
 /// Standalone dashboard for speech engine (ASR) metrics, migrated out of HistoryTab's drawer.
 public struct ASRUsageAnalyticsView: View {
-    @State private var selectedRange: AnalyticsTimeRange = .last7Days
     @State private var statistics: HistoryStore.Statistics?
     @State private var usageBreakdown: [HistoryStore.UsageBreakdown] = []
     @State private var isLoading = false
@@ -48,17 +47,11 @@ public struct ASRUsageAnalyticsView: View {
     public var body: some View {
         ScrollView(.vertical, showsIndicators: true) {
             VStack(alignment: .leading, spacing: 16) {
-                // Header with Time Range Picker
-                HStack {
-                    Text(L("语音引擎用量看板", "Speech Engines Analytics"))
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(TF.settingsText)
-
-                    Spacer()
-
-                    timeRangePicker
-                }
-                .padding(.bottom, 2)
+                // Header
+                Text(L("语音引擎用量看板", "Speech Engines Analytics"))
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(TF.settingsText)
+                    .padding(.bottom, 2)
 
                 // KPI Summary Section
                 if let stats = statistics {
@@ -75,7 +68,7 @@ public struct ASRUsageAnalyticsView: View {
             .padding(.horizontal, 2)
             .padding(.bottom, 24)
         }
-        .task(id: selectedRange) {
+        .task {
             await loadData()
         }
         .onReceive(NotificationCenter.default.publisher(for: .historyStoreDidChange)) { _ in
@@ -84,28 +77,6 @@ public struct ASRUsageAnalyticsView: View {
         .onReceive(NotificationCenter.default.publisher(for: .historyFeedbackDidChange)) { _ in
             Task { await loadData() }
         }
-    }
-
-    // MARK: - Time Range Picker
-
-    private var timeRangePicker: some View {
-        LiquidGlassTabPicker(
-            items: AnalyticsTimeRange.allCases,
-            selection: selectedRange,
-            spacing: 2,
-            onSelectionChange: { newRange in
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
-                    selectedRange = newRange
-                }
-            }
-        ) { range, isSelected, _ in
-            Text(range.localizedDisplayName)
-                .font(.system(size: 11, weight: isSelected ? .semibold : .medium))
-                .foregroundStyle(isSelected ? TF.settingsText : TF.settingsTextSecondary)
-                .padding(.horizontal, 10)
-                .frame(height: 24)
-        }
-        .fixedSize()
     }
 
     // MARK: - KPI Section
@@ -290,17 +261,13 @@ public struct ASRUsageAnalyticsView: View {
         isLoading = true
         defer { isLoading = false }
 
-        let iso = ISO8601DateFormatter()
-        let fromDate = selectedRange.startDate
-        let fromStr = fromDate.map { iso.string(from: $0) }
-        async let statsFetch = historyStore.getStatistics(from: fromStr, to: nil)
-        async let breakdownFetch = historyStore.getFilteredUsageBreakdown(from: fromDate, to: nil)
+        async let statsFetch = historyStore.getStatistics(from: nil, to: nil)
+        async let breakdownFetch = historyStore.getFilteredUsageBreakdown()
 
         let (stats, breakdown) = await (statsFetch, breakdownFetch)
         self.statistics = stats
         self.usageBreakdown = breakdown
     }
-
     // MARK: - Formatters
 
     private func formatDuration(_ seconds: Double) -> String {

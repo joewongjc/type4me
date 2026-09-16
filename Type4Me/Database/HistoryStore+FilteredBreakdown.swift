@@ -5,8 +5,6 @@ extension HistoryStore {
 
     /// Fetches usage breakdown strictly filtered by optional date range (e.g. fromDate ~ toDate).
     public func getFilteredUsageBreakdown(
-        from fromDate: Date? = nil,
-        to toDate: Date? = nil,
         now: Date = Date()
     ) async -> [UsageBreakdown] {
         let iso = ISO8601DateFormatter()
@@ -15,20 +13,7 @@ extension HistoryStore {
         let last30Days = iso.string(from: now.addingTimeInterval(-30 * 24 * 60 * 60))
         let unknown = L("未知", "Unknown")
 
-        var conditions: [String] = [Self.activeStatusSQLCondition]
-        var params: [String] = []
-
-        if let fromDate {
-            conditions.append("created_at >= ?")
-            params.append(iso.string(from: fromDate))
-        }
-        if let toDate {
-            conditions.append("created_at < ?")
-            params.append(iso.string(from: toDate))
-        }
-
-        let whereClause = "WHERE " + conditions.joined(separator: " AND ")
-
+        let whereClause = "WHERE " + Self.activeStatusSQLCondition
         let sql = """
         SELECT
             CASE
@@ -67,20 +52,12 @@ extension HistoryStore {
         // 2: lastDay
         // 3: last7Days
         // 4: last30Days
-        // 5..N: where conditions (from / to)
-        // N+1: unknown (ORDER BY)
+        // 5: unknown (ORDER BY)
         bind(stmt, 1, unknown)
         bind(stmt, 2, lastDay)
         bind(stmt, 3, last7Days)
         bind(stmt, 4, last30Days)
-
-        var currentIdx: Int32 = 5
-        for p in params {
-            bind(stmt, currentIdx, p)
-            currentIdx += 1
-        }
-        bind(stmt, currentIdx, unknown)
-
+        bind(stmt, 5, unknown)
         var rows: [UsageBreakdown] = []
         while sqlite3_step(stmt) == SQLITE_ROW {
             rows.append(UsageBreakdown(

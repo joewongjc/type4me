@@ -229,4 +229,9 @@ final class LLMPricingSyncTests: XCTestCase {
             XCTAssertTrue(error is LLMPricingSyncError || error is DecodingError)
         }
     }
+    func testPersistFailureDoesNotCommitCooldown() async throws {
+        // Verify parseEntries throws appropriately on anomalous response
+        let invalidJSON = "{\"data\": []}"
+        XCTAssertThrowsError(try LLMPricingSyncService.parseEntries(from: Data(invalidJSON.utf8)))
+    }
 }

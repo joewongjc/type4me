@@ -447,10 +447,11 @@ extension HistoryStore {
             let mode = column(selectStmt, 8)
             let modeName = mode.isEmpty ? nil : mode
 
+            let isError = status.contains("error")
             // Token heuristics: ~0.7 tokens per char for Chinese / word for English
             let promptTokens = max(1, Int(Double(rawText.count) * 0.7))
-            let completionTokens = max(1, Int(Double(finalText.count) * 0.7))
-            let costUSD = LLMPricingRegistry.calculateCostUSD(
+            let completionTokens = isError ? 0 : max(1, Int(Double(finalText.count) * 0.7))
+            let costUSD = isError ? 0.0 : LLMPricingRegistry.calculateCostUSD(
                 model: model,
                 provider: provider,
                 promptTokens: promptTokens,
@@ -468,7 +469,7 @@ extension HistoryStore {
                 totalTokens: promptTokens + completionTokens,
                 durationSeconds: duration,
                 costUSD: costUSD,
-                status: status.contains("error") ? "error" : "success",
+                status: isError ? "error" : "success",
                 isEstimated: true,
                 modeName: modeName
             ))
@@ -484,7 +485,7 @@ extension HistoryStore {
         UserDefaults.standard.set(true, forKey: defaultsKey)
     }
 
-    private func postLLMUsageDidChangeNotification() {
+    func postLLMUsageDidChangeNotification() {
         Task { @MainActor in
             NotificationCenter.default.post(name: .llmUsageStoreDidChange, object: nil)
         }

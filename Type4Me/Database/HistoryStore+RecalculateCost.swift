@@ -8,7 +8,7 @@ extension HistoryStore {
         let selectSQL = """
         SELECT id, provider, model, prompt_tokens, completion_tokens
         FROM llm_usage_history
-        WHERE cost_usd = 0.0 AND total_tokens > 0;
+        WHERE cost_usd = 0.0 AND total_tokens > 0 AND status = 'success';
         """
         var selectStmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, selectSQL, -1, &selectStmt, nil) == SQLITE_OK else { return }
@@ -51,5 +51,6 @@ extension HistoryStore {
         }
         sqlite3_exec(db, "COMMIT;", nil, nil, nil)
         NSLog("[HistoryStore] Recalculated cost for %d historical LLM records", updates.count)
+        postLLMUsageDidChangeNotification()
     }
 }

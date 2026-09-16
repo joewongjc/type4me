@@ -110,18 +110,16 @@ final class LLMPricingSyncService {
             entryCount = entries.count
             lastSyncError = nil
 
-            // Views (analytics dashboard) read `rate(...)` synchronously; notify
-            // them so rows rendered before this sync don't show stale unknowns.
-            NotificationCenter.default.post(name: .llmPricingTableDidChange, object: nil)
-
-
+            try Self.persist(snapshot, to: cacheFileURL)
             UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: lastSyncKey)
 
-            try Self.persist(snapshot, to: cacheFileURL)
-
             // Backfill historical rows whose cost was recorded as 0 because the
-            // rate was unknown at write time. Non-zero rows stay frozen.
-            Task { await HistoryStore.shared.recalculateZeroCostRecordsIfNeeded() }
+            // rate was unknown at write time, then notify the dashboard to refresh.
+            await HistoryStore.shared.recalculateZeroCostRecordsIfNeeded()
+
+            // Notify after in-memory registry is active and historical 0-cost
+            // records have finished recalculating.
+            NotificationCenter.default.post(name: .llmPricingTableDidChange, object: nil)
         } catch {
             lastSyncError = error.localizedDescription
             NSLog("[LLMPricingSync] fetch failed: \(error)")

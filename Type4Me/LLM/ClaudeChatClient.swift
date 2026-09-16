@@ -118,49 +118,38 @@ actor ClaudeChatClient: LLMClient {
 
         logger.info("Claude request: \(text.count) chars, model=\(config.model)")
 
+        var recordedOutcome = false
+        func recordOutcome(status: String, completionText: String, metrics: LLMExecutionMetrics?) {
+            guard !recordedOutcome else { return }
+            recordedOutcome = true
+            let durationSec = Double((ContinuousClock.now - requestStart).components.seconds) +
+                              Double((ContinuousClock.now - requestStart).components.attoseconds) / 1e18
+            LLMUsageRecorder.record(
+                featureSource: invocationContext?.featureSource ?? .dictationPolish,
+                provider: LLMProvider.claude.rawValue,
+                model: config.model,
+                promptText: text,
+                completionText: completionText,
+                durationSeconds: durationSec,
+                metrics: metrics,
+                status: status,
+                modeName: invocationContext?.modeName
+            )
+        }
+
         let (bytes, response): (URLSession.AsyncBytes, URLResponse)
         do {
             (bytes, response) = try await session.bytes(for: request)
         } catch {
-            let durationSec = Double((ContinuousClock.now - requestStart).components.seconds)
-            LLMUsageRecorder.record(
-                featureSource: invocationContext?.featureSource ?? .dictationPolish,
-                provider: LLMProvider.claude.rawValue,
-                model: config.model,
-                promptText: text,
-                completionText: "",
-                durationSeconds: durationSec,
-                status: "error",
-                modeName: invocationContext?.modeName
-            )
+            recordOutcome(status: "error", completionText: "", metrics: nil)
             throw error
         }
         guard let http = response as? HTTPURLResponse else {
-            let durationSec = Double((ContinuousClock.now - requestStart).components.seconds)
-            LLMUsageRecorder.record(
-                featureSource: invocationContext?.featureSource ?? .dictationPolish,
-                provider: LLMProvider.claude.rawValue,
-                model: config.model,
-                promptText: text,
-                completionText: "",
-                durationSeconds: durationSec,
-                status: "error",
-                modeName: invocationContext?.modeName
-            )
+            recordOutcome(status: "error", completionText: "", metrics: nil)
             throw LLMError.requestFailed(0)
         }
         guard http.statusCode == 200 else {
-            let durationSec = Double((ContinuousClock.now - requestStart).components.seconds)
-            LLMUsageRecorder.record(
-                featureSource: invocationContext?.featureSource ?? .dictationPolish,
-                provider: LLMProvider.claude.rawValue,
-                model: config.model,
-                promptText: text,
-                completionText: "",
-                durationSeconds: durationSec,
-                status: "error",
-                modeName: invocationContext?.modeName
-            )
+            recordOutcome(status: "error", completionText: "", metrics: nil)
             logger.error("Claude HTTP \(http.statusCode)")
             throw LLMError.requestFailed(http.statusCode)
         }
@@ -170,40 +159,53 @@ actor ClaudeChatClient: LLMClient {
         var promptTokens: Int?
         var completionTokens: Int?
 
-        for try await line in bytes.lines {
-            guard line.hasPrefix("data: ") else { continue }
-            let payload = String(line.dropFirst(6))
-            guard let data = payload.data(using: .utf8),
-                  let event = try? JSONDecoder().decode(ClaudeStreamEvent.self, from: data)
-            else { continue }
+        do {
+            for try await line in bytes.lines {
+                guard line.hasPrefix("data: ") else { continue }
+                let payload = String(line.dropFirst(6))
+                guard let data = payload.data(using: .utf8),
+                      let event = try? JSONDecoder().decode(ClaudeStreamEvent.self, from: data)
+                else { continue }
 
-            switch event.type {
-            case "message_start":
-                if let inputTokens = event.message?.usage?.input_tokens {
-                    promptTokens = inputTokens
-                }
-            case "content_block_delta":
-                if let delta = event.delta, let text = delta.text {
-                    result += text
-                    await onDelta(text)
-                }
-            case "message_stop":
-                break
-            case "error":
-                let detail = event.error?.message ?? "unknown"
-                logger.error("Claude SSE error event: \(detail)")
-                throw LLMError.requestFailed(-1)
-            case "message_delta":
-                if let outputTokens = event.usage?.output_tokens {
-                    completionTokens = outputTokens
-                }
-                if let stopReason = event.delta?.stop_reason, stopReason == "error" {
-                    logger.error("Claude message_delta stop_reason=error")
+                switch event.type {
+                case "message_start":
+                    if let inputTokens = event.message?.usage?.input_tokens {
+                        promptTokens = inputTokens
+                    }
+                case "content_block_delta":
+                    if let delta = event.delta, let text = delta.text {
+                        result += text
+                        await onDelta(text)
+                    }
+                case "message_stop":
+                    break
+                case "error":
+                    let detail = event.error?.message ?? "unknown"
+                    logger.error("Claude SSE error event: \(detail)")
                     throw LLMError.requestFailed(-1)
+                case "message_delta":
+                    if let outputTokens = event.usage?.output_tokens {
+                        completionTokens = outputTokens
+                    }
+                    if let stopReason = event.delta?.stop_reason, stopReason == "error" {
+                        logger.error("Claude message_delta stop_reason=error")
+                        throw LLMError.requestFailed(-1)
+                    }
+                default:
+                    continue
                 }
-            default:
-                continue
             }
+        } catch {
+            let durationSec = Double((ContinuousClock.now - requestStart).components.seconds) +
+                              Double((ContinuousClock.now - requestStart).components.attoseconds) / 1e18
+            let metrics = LLMExecutionMetrics(
+                promptTokens: promptTokens,
+                completionTokens: completionTokens,
+                durationSeconds: durationSec,
+                isEstimated: promptTokens == nil || completionTokens == nil
+            )
+            recordOutcome(status: "error", completionText: result, metrics: metrics)
+            throw error
         }
 
         let durationSec = Double((ContinuousClock.now - requestStart).components.seconds) +
@@ -216,17 +218,7 @@ actor ClaudeChatClient: LLMClient {
             durationSeconds: durationSec,
             isEstimated: promptTokens == nil || completionTokens == nil
         )
-        LLMUsageRecorder.record(
-            featureSource: invocationContext?.featureSource ?? .dictationPolish,
-            provider: LLMProvider.claude.rawValue,
-            model: config.model,
-            promptText: text,
-            completionText: result,
-            durationSeconds: durationSec,
-            metrics: metrics,
-            status: "success",
-            modeName: invocationContext?.modeName
-        )
+        recordOutcome(status: "success", completionText: result, metrics: metrics)
         return result.strippingThinkTags()
     }
 }

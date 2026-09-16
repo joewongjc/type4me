@@ -59,6 +59,33 @@ final class LLMUsageAnalyticsTests: XCTestCase {
         XCTAssertEqual(freeCost, 0.0)
     }
 
+    func testFailedRecordHasZeroCostAndIsExcludedFromRecalculate() async {
+        // Insert a failed record with 0 cost
+        let failedRecord = LLMUsageRecord(
+            id: "failed_rec_1",
+            createdAt: Date(),
+            featureSource: .dictationPolish,
+            provider: "deepseek",
+            model: "deepseek-chat",
+            promptTokens: 1000,
+            completionTokens: 0,
+            totalTokens: 1000,
+            durationSeconds: 1.5,
+            costUSD: 0.0,
+            status: "error",
+            isEstimated: true
+        )
+        await store.insertLLMUsage(failedRecord)
+
+        // Run recalculate: failed record must NOT be given a cost
+        await store.recalculateZeroCostRecordsIfNeeded()
+
+        let report = await store.getLLMUsageReport()
+        let fetched = report.modelBreakdowns.first { $0.modelName == "deepseek-chat" }
+        XCTAssertEqual(fetched?.costUSD ?? 0.0, 0.0, accuracy: 0.0001)
+        XCTAssertEqual(fetched?.failedCount, 1)
+    }
+
     func testTokenEstimationHeuristics() {
         // Empty
         XCTAssertEqual(LLMUsageRecorder.estimateTokens(for: ""), 0)
