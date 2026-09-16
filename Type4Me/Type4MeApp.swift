@@ -381,6 +381,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Start periodic update checking
         UpdateChecker.shared.startPeriodicChecking(appState: appState)
+        LLMPricingSyncService.shared.start()
         appUpdater.checkPostUpdateStatus()
 
         // Reconcile current mode against the active provider before hotkeys are registered.
