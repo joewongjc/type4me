@@ -299,6 +299,9 @@ actor RecognitionSession {
     }
 
     private func pingASREndpoint() async {
+        #if DEBUG
+        if recordedAudioForTesting != nil { return }
+        #endif
         let endpoint: String
         #if HAS_CLOUD_SUBSCRIPTION
         if KeychainService.selectedASRProvider == .cloud {
@@ -365,6 +368,54 @@ actor RecognitionSession {
     func ingestASREventForTesting(_ event: RecognitionEvent) {
         handleASREvent(event, expectedGeneration: sessionGeneration)
     }
+
+    private var recordedAudioForTesting: Data?
+    private var batchFallbackForTesting: (@Sendable () async -> String?)?
+
+    /// Exercise stop/cancel with a scripted recognizer, without opening the
+    /// microphone, contacting a provider, or injecting into the user's app.
+    func prepareRecordingStopForTesting(
+        client: any SpeechRecognizer,
+        config: any ASRProviderConfig,
+        provider: ASRProvider = .stepfun,
+        policy: ClipboardOutputPolicy = .cancelProcessed,
+        uploadFailed: Bool = false,
+        audioSender: Task<Void, Never>? = nil,
+        batchFallback: @escaping @Sendable () async -> String?
+    ) async {
+        sessionGeneration &+= 1
+        state = .recording
+        currentMode = .direct
+        recordingPurpose = .input(.direct)
+        completionIntent = .normal
+        clipboardOutputPolicy = policy
+        activeProvider = provider
+        recordingStartTime = Date().addingTimeInterval(-10)
+        currentTranscript = .empty
+        hasReceivedASRText = false
+        speechDetected = true // noise tripped the level-only speech heuristic
+        asrClient = client
+        currentConfig = config
+        lastStreamingError = nil
+        uploadFailureFlag = UploadFailureFlag()
+        uploadFailureFlag?.failed = uploadFailed
+        audioChunkSenderTask = audioSender
+        recordedAudioForTesting = Data(repeating: 0, count: 320_000)
+        batchFallbackForTesting = batchFallback
+        capturesTextOutputForTesting = true
+        capturedTextOutputForTesting = nil
+        let events = await client.events
+        let generation = sessionGeneration
+        eventConsumptionTask = Task { [weak self] in
+            for await event in events {
+                guard !Task.isCancelled else { break }
+                await self?.handleASREvent(event, expectedGeneration: generation)
+                if case .completed = event { break }
+            }
+        }
+    }
+
+    func stoppedTextForTesting() -> String? { capturedTextOutputForTesting?.text }
     #endif
     #if DEBUG
     /// Test seam: test-injected LLM client override to precisely verify invocation count and input text.
@@ -460,6 +511,9 @@ actor RecognitionSession {
     }
 
     private var currentTranscript: RecognitionTranscript = .empty
+    /// Keep evidence of speech even if a provider later clears its partial text.
+    /// Audio levels alone cannot distinguish speech from background noise.
+    private var hasReceivedASRText = false
     private var eventConsumptionTask: Task<Void, Never>?
     private var maxDurationTask: Task<Void, Never>?
     private var asrCleanupTask: Task<Void, Never>?
@@ -911,6 +965,7 @@ actor RecognitionSession {
         sessionGeneration &+= 1
         let myGeneration = sessionGeneration
         state = .starting
+        hasReceivedASRText = false
         await MainActor.run {
             CorrectionLearningCoordinator.shared.finalizeBeforeNextRecording()
         }
@@ -1653,7 +1708,7 @@ actor RecognitionSession {
         // Stop capture first so flushRemaining() can emit the tail audio chunk.
         audioEngine.stop()
         audioEngine.onAudioChunk = nil
-        await finishAudioChunkPipeline()
+        let audioUploadDrained = await finishAudioChunkPipeline()
         DebugFileLogger.log("stop: audio stopped +\(ContinuousClock.now - stopT0)")
         guard sessionGeneration == myGeneration else {
             DebugFileLogger.log("stopRecording: zombie after audio pipeline, bailing")
@@ -1791,11 +1846,13 @@ actor RecognitionSession {
         // For streaming providers we wait for the precise isFinal signal rather than
         // draining the entire event stream, so we can fire LLM sooner.
         var asrTeardownClean = true
+        var endAudioSucceeded = false
         if let client = asrClient {
             let endAudioTimeout: Duration = providerIsStreaming ? .seconds(3) : .seconds(60)
             let endAudioOK = await withTimeout(endAudioTimeout) {
                 try await client.endAudio()
             }
+            endAudioSucceeded = endAudioOK
             if !endAudioOK {
                 DebugFileLogger.log("endAudio timeout or failed")
                 asrTeardownClean = false
@@ -1848,9 +1905,10 @@ actor RecognitionSession {
             return
         }
 
-        // Batch fallback: only when the server is truly missing audio (upload failed).
-        // If upload was fine but drain timed out, the server already has all audio;
-        // use whatever streaming produced rather than re-sending everything.
+        // Preserve recovery for interrupted uploads, explicit errors and missing
+        // results. A cancelled stream that never produced text is the exception:
+        // after the normal finalization grace, don't replay it solely because the
+        // provider omitted its final event. This is not a general silence detector.
         let uploadFailed = uploadFailureFlag?.failed == true
         let hasUsableStreamingResult = !currentTranscript.confirmedSegments.isEmpty
         let streamingFailed = Self.shouldAttemptBatchFallback(
@@ -1858,9 +1916,24 @@ actor RecognitionSession {
             asrTeardownClean: asrTeardownClean,
             streamingError: lastStreamingError
         )
+        let skipCancelledEmptyRetry = Self.shouldSkipCancelledEmptyRetry(
+            isCancelled: completionIntent == .cancelled,
+            providerIsStreaming: providerIsStreaming,
+            hasReceivedASRText: hasReceivedASRText,
+            audioUploadDrained: audioUploadDrained,
+            endAudioSucceeded: endAudioSucceeded,
+            uploadFailed: uploadFailed,
+            streamingError: lastStreamingError
+        )
         let needsBatchFallback = streamingFailed
             && (uploadFailed || lastStreamingError != nil || !hasUsableStreamingResult)
-        if streamingFailed && !needsBatchFallback {
+            && !skipCancelledEmptyRetry
+        if streamingFailed && skipCancelledEmptyRetry {
+            DebugFileLogger.log("stop: cancelled stream stayed empty through finalization; skipping batch fallback")
+            // Whitespace-only provider updates must use the empty-result cleanup
+            // too, without sending blank text to the LLM, clipboard or history.
+            currentTranscript = .empty
+        } else if streamingFailed && !needsBatchFallback {
             DebugFileLogger.log("stop: drain timeout but streaming has confirmed text, skipping batch fallback")
         }
         if needsBatchFallback {
@@ -1868,7 +1941,10 @@ actor RecognitionSession {
             DebugFileLogger.log(
                 "stop: streaming failed (partial=\(partialText.count) chars, uploadFailed=\(uploadFailed), hasStreamingError=\(lastStreamingError != nil)), attempting batch fallback"
             )
-            let fullAudio = audioEngine.getRecordedAudio()
+            var fullAudio = audioEngine.getRecordedAudio()
+            #if DEBUG
+            if let recordedAudioForTesting { fullAudio = recordedAudioForTesting }
+            #endif
             if !fullAudio.isEmpty, let config = currentConfig {
                 onASREvent?(.processingResult(text: partialText.isEmpty ? L("重新识别中...", "Retrying recognition...") : partialText))
                 if let batchText = await attemptBatchFallback(audio: fullAudio, config: config, provider: activeProvider) {
@@ -2823,6 +2899,10 @@ actor RecognitionSession {
 
         case .transcript(let transcript):
             currentTranscript = transcript
+            if !transcript.displayText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                || !transcript.composedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                hasReceivedASRText = true
+            }
             if !transcript.displayText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 speechDetected = true
                 if let cont = firstStreamingTextCont {
@@ -2983,14 +3063,15 @@ actor RecognitionSession {
         return continuation
     }
 
-    private func finishAudioChunkPipeline(timeout: Duration = .seconds(1)) async {
+    @discardableResult
+    private func finishAudioChunkPipeline(timeout: Duration = .seconds(1)) async -> Bool {
         audioChunkContinuation?.finish()
         audioChunkContinuation = nil
 
         // Give the detached sender a brief window to drain remaining chunks
         // (especially the tail audio from flushRemaining). Since it's detached,
         // this wait does NOT block the actor.
-        guard let senderTask = audioChunkSenderTask else { return }
+        guard let senderTask = audioChunkSenderTask else { return true }
         let drained = await withTimeout(timeout) {
             await senderTask.value
         }
@@ -2999,6 +3080,7 @@ actor RecognitionSession {
             DebugFileLogger.log("audio chunk pipeline drain timeout; sender cancelled")
         }
         audioChunkSenderTask = nil
+        return drained
     }
 
     private func markReadyIfNeeded() {
@@ -3593,6 +3675,23 @@ actor RecognitionSession {
         uploadFailed || !asrTeardownClean || streamingError != nil
     }
 
+    /// Only suppress a *new* retry after a cancelled, text-free streaming session
+    /// has had its full finalization grace. Normal stops, batch providers, any
+    /// previously received text and transport failures keep the recovery path.
+    static func shouldSkipCancelledEmptyRetry(
+        isCancelled: Bool,
+        providerIsStreaming: Bool,
+        hasReceivedASRText: Bool,
+        audioUploadDrained: Bool,
+        endAudioSucceeded: Bool,
+        uploadFailed: Bool,
+        streamingError: Error?
+    ) -> Bool {
+        isCancelled && providerIsStreaming && !hasReceivedASRText
+            && audioUploadDrained && endAudioSucceeded
+            && !uploadFailed && streamingError == nil
+    }
+
     /// Batch / non-streaming providers must strictly produce finalized output.
     /// If a batch provider or its fallback failed without emitting isFinal,
     /// discard unconfirmed partial text to avoid injecting truncated fragments.
@@ -3623,6 +3722,9 @@ actor RecognitionSession {
         config: any ASRProviderConfig,
         provider: ASRProvider
     ) async -> String? {
+        #if DEBUG
+        if let batchFallbackForTesting { return await batchFallbackForTesting() }
+        #endif
         // Soniox: use async REST API instead of re-streaming
         if provider == .soniox, let sonioxConfig = config as? SonioxASRConfig {
             let bypass = ProxyBypassMode.current.bypassASR
