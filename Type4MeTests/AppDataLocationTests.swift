@@ -105,7 +105,7 @@ final class AppDataLocationTests: XCTestCase {
         XCTAssertEqual(DataBackupManager.dataDirectory.standardizedFileURL, profile)
         XCTAssertEqual(
             DataBackupManager.backupRoot.standardizedFileURL,
-            profile.deletingLastPathComponent().appendingPathComponent("Type4MeTests Backups").standardizedFileURL
+            profile.deletingLastPathComponent().appendingPathComponent("Type4MeTests Backups", isDirectory: true).standardizedFileURL
         )
     }
 
