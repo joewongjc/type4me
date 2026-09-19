@@ -1,6 +1,17 @@
 {
-  "latest": "2.8.0",
+  "latest": "2.9.0",
   "releases": [
+    {
+      "version": "2.9.0",
+      "date": "2026-09-18",
+      "notes": "### 新功能\n\n- **历史与用量看板**：历史页面新增听写记录、语音引擎和大模型用量三段视图；集中查看 Token、预估费用、请求成功率与耗时、每日趋势、模型/场景汇总及逐条请求明细，旧的 LLM 历史会自动估算补全。\n\n<p align=\"center\">\n  <img src=\"https://github.com/user-attachments/assets/3008f47a-7718-4f83-9961-7a0339568ceb\" width=\"900\" alt=\"历史与用量看板中的听写记录、语音引擎和大模型用量视图\" />\n</p>\n\n- **本地数据备份**：每天自动为历史、模式、词汇、快捷键和配置创建本地快照，最多保留七份；设置中可查看最新备份并在 Finder 中打开备份文件夹。\n- **历史修正来源说明**：历史中的纠正页会说明最终输出为何不同于原始识别文本，并可直接定位当时实际生效的全局或 App 专属片段替换规则。\n\n### 改进与修复\n\n- **只处理最终转写**：移除录音中的推测式 LLM 请求，改为在最终转写就绪后只发起一次处理，避免未完成文本、重复调用和不必要的 Token 消耗。\n- **处理失败提示**：LLM 处理失败而回退原文时，录音浮窗会以警告状态明确提示，区分正常完成与原文降级输出。\n- **智能感知场景更准确**：停止录音后再读取当前输入位置的上下文；录音期间切换 App 时，润色提示和历史会归属到实际接收文本的场景。\n- **系统权限文案本地化**：macOS 麦克风、语音识别和自动化权限提示会随系统语言显示中文或英文。",
+      "cloud_dmg_url": "https://github.com/joewongjc/type4me/releases/download/v2.9.0/Type4Me-v2.9.0-cloud.dmg",
+      "cloud_dmg_size": 13871068,
+      "cloud_dmg_sha256": "aed434c2d3473e13fb2b6c01daa632604bf8d683203edbccf20515ae0bb5752d",
+      "local_dmg_url": "https://github.com/joewongjc/type4me/releases/download/v2.9.0/Type4Me-v2.9.0-local-apple-silicon.dmg",
+      "local_dmg_size": 718048076,
+      "local_dmg_sha256": "a4622914d13daae0f43e062f424acbc35b72d3e6e0aaa28976fea6a12126ddef"
+    },
     {
       "version": "2.8.0",
       "date": "2026-09-11",
