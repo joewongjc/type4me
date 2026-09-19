@@ -22,6 +22,7 @@ final class GrokProtocolTests: XCTestCase {
         XCTAssertEqual(components.scheme, "wss")
         XCTAssertEqual(components.host, "api.x.ai")
         XCTAssertEqual(components.path, "/v1/stt")
+        XCTAssertEqual(items.value(for: "model"), "grok-voice-transcribe-2.0")
         XCTAssertEqual(items.value(for: "sample_rate"), "16000")
         XCTAssertEqual(items.value(for: "encoding"), "pcm")
         XCTAssertEqual(items.value(for: "interim_results"), "true")

@@ -57,6 +57,7 @@ enum GrokProtocol {
 
         // See https://docs.x.ai/developers/model-capabilities/audio/speech-to-text#streaming-speech-to-text-websocket
         var queryItems = [
+            URLQueryItem(name: "model", value: GrokASRConfig.model),
             URLQueryItem(name: "sample_rate", value: String(sampleRate)),
             URLQueryItem(name: "encoding", value: "pcm"),
             URLQueryItem(name: "interim_results", value: "true"),

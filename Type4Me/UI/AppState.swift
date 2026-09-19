@@ -1906,6 +1906,9 @@ private struct RecordingDisplayMetadata {
                 modelName: CartesiaASRConfig.model
             )
         }
+        if provider == .grok {
+            return Self(modelName: GrokASRConfig.model)
+        }
 
         let model: String?
         if let credentials = KeychainService.loadASRConfig(for: provider)?.toCredentials() {

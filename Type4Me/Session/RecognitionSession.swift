@@ -240,6 +240,9 @@ actor RecognitionSession {
         if provider == .stepfun {
             return "\(providerName) · \(StepFunASRConfig.model)"
         }
+        if provider == .grok {
+            return "\(providerName) · \(GrokASRConfig.model)"
+        }
 
         guard let credentials = KeychainService.loadASRConfig(for: provider)?.toCredentials() else {
             return providerName

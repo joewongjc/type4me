@@ -4,6 +4,7 @@ struct GrokASRConfig: ASRProviderConfig, Sendable {
 
     static let provider = ASRProvider.grok
     static let displayName = "Grok"
+    static let model = "grok-voice-transcribe-2.0"
 
     static let supportedLanguages = [
         "",         // auto-detect
