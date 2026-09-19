@@ -13,6 +13,10 @@ final class GrokASRConfigTests: XCTestCase {
         XCTAssertTrue(config.isValid)
     }
 
+    func testUsesCurrentStreamingModel() {
+        XCTAssertEqual(GrokASRConfig.model, "grok-voice-transcribe-2.0")
+    }
+
     func testInit_acceptsLanguage() throws {
         let config = try XCTUnwrap(GrokASRConfig(credentials: [
             "apiKey": "xai_test_key",
