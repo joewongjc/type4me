@@ -62,7 +62,7 @@ actor StepFunASRClient: SpeechRecognizer {
         didRequestCommit = false
         didComplete = false
 
-        var request = URLRequest(url: StepFunASRConfig.endpoint)
+        var request = URLRequest(url: config.endpoint)
         request.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
 
         let gate = StepFunSessionReadinessGate()

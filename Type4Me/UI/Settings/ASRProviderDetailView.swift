@@ -131,11 +131,14 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
                 (L("可用模型", "Models"), L("查看", "view"), URL(string: "https://help.aliyun.com/zh/model-studio/fun-asr-realtime-websocket-api")!),
                 (L("API Key", "API Key"), L("获取", "get"), URL(string: "https://help.aliyun.com/zh/model-studio/get-api-key")!),
             ]
-        case .stepfun, .stepfunBatch:
+        case .stepfun:
             return [
-                (L("接入文档", "Setup guide"), L("查看", "view"), URL(string: provider == .stepfun
-                    ? "https://platform.stepfun.com/docs/zh/api-reference/audio/asr-stream"
-                    : "https://platform.stepfun.com/docs/zh/api-reference/audio/asr-sse")!),
+                (L("接入文档", "Setup guide"), L("查看", "view"), stepFunRealtimeDocsURL),
+                ("API Key", L("获取", "get"), stepFunPlatformURL.appendingPathComponent("interface-key")),
+            ]
+        case .stepfunBatch:
+            return [
+                (L("接入文档", "Setup guide"), L("查看", "view"), URL(string: "https://platform.stepfun.com/docs/zh/api-reference/audio/asr-sse")!),
                 ("API Key", L("获取", "get"), URL(string: "https://platform.stepfun.com/interface-key")!),
             ]
         case .mimo:
@@ -146,6 +149,21 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
         default:
             return []
         }
+    }
+
+    private var stepFunRegion: StepFunASRRegion {
+        StepFunASRRegion(rawValue: effectiveASRValues["region"] ?? "") ?? StepFunASRConfig.defaultRegion
+    }
+
+    private var stepFunPlatformURL: URL {
+        URL(string: stepFunRegion.platformBaseURL)!
+    }
+
+    private var stepFunRealtimeDocsURL: URL {
+        if stepFunRegion == .global {
+            return stepFunPlatformURL.appendingPathComponent("docs/en/api-reference/audio/asr-stream")
+        }
+        return stepFunPlatformURL.appendingPathComponent("docs/zh/api-reference/audio/asr-stream")
     }
 
     private var currentProviderNote: String? {
@@ -174,8 +192,8 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
             )
         case .stepfun:
             return L(
-                "实时流式识别使用开放平台按量付费 API Key，不支持 Step Plan 路径。",
-                "Real-time streaming recognition uses a standard pay-as-you-go API key and is not available through the Step Plan endpoint."
+                "实时流式识别使用开放平台按量付费 API Key；可选择中国站或全球站，当前固定使用 stepaudio-2.5-asr-stream。",
+                "Real-time streaming recognition uses a standard pay-as-you-go API key. Choose the China or Global site; the current model is fixed to stepaudio-2.5-asr-stream."
             )
         case .stepfunBatch:
             return L(

@@ -325,7 +325,8 @@ actor RecognitionSession {
         case .volcano:
             return "https://openspeech.bytedance.com"
         case .stepfun:
-            return "https://api.stepfun.com"
+            return (KeychainService.loadASRConfig(for: .stepfun) as? StepFunASRConfig)?.region.healthEndpoint
+                ?? StepFunASRConfig.defaultRegion.healthEndpoint
         case .stepfunBatch:
             return "https://api.stepfun.com"
         case .soniox:
