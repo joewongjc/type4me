@@ -3,7 +3,7 @@ import XCTest
 
 final class Qwen3HotwordLeakSanitizerTests: XCTestCase {
     func testStripsSingleChineseHotwordLeakWhenPreviewMatchesTail() {
-        let text = Qwen3HotwordLeakSanitizer.sanitize(
+        let text = ASRHotwordLeakSanitizer.sanitize(
             "一二三四三字",
             hotwords: ["一二三四"],
             fallbackText: "三字"
@@ -13,7 +13,7 @@ final class Qwen3HotwordLeakSanitizerTests: XCTestCase {
     }
 
     func testKeepsFullHotwordUtterance() {
-        let text = Qwen3HotwordLeakSanitizer.sanitize(
+        let text = ASRHotwordLeakSanitizer.sanitize(
             "一二三四",
             hotwords: ["一二三四"],
             fallbackText: "一二三四"
@@ -22,8 +22,45 @@ final class Qwen3HotwordLeakSanitizerTests: XCTestCase {
         XCTAssertEqual(text, "一二三四")
     }
 
+    func testStripsPureHotwordDumpWithoutContextLabel() {
+        let text = ASRHotwordLeakSanitizer.sanitize(
+            "Type4Me Qwen Deepgram",
+            hotwords: ["Type4Me", "Qwen", "Deepgram"]
+        )
+
+        XCTAssertEqual(text, "")
+    }
+
+    func testStripsPureLabeledHotwordDump() {
+        let text = ASRHotwordLeakSanitizer.sanitize(
+            "Vocabulary: Type4Me, Qwen, Deepgram",
+            hotwords: ["Type4Me", "Qwen", "Deepgram"]
+        )
+
+        XCTAssertEqual(text, "")
+    }
+
+    func testUsesFallbackForPureHotwordDump() {
+        let text = ASRHotwordLeakSanitizer.sanitize(
+            "Type4Me Qwen",
+            hotwords: ["Type4Me", "Qwen"],
+            fallbackText: "真实内容"
+        )
+
+        XCTAssertEqual(text, "真实内容")
+    }
+
+    func testKeepsSingleHotwordUtteranceWithoutFallback() {
+        let text = ASRHotwordLeakSanitizer.sanitize(
+            "Qwen",
+            hotwords: ["Qwen"]
+        )
+
+        XCTAssertEqual(text, "Qwen")
+    }
+
     func testKeepsHotwordCorrectionWhenPreviewAlreadyStartsWithHotword() {
-        let text = Qwen3HotwordLeakSanitizer.sanitize(
+        let text = ASRHotwordLeakSanitizer.sanitize(
             "张三今天开会",
             hotwords: ["张三"],
             fallbackText: "张三今天开会"
@@ -33,7 +70,7 @@ final class Qwen3HotwordLeakSanitizerTests: XCTestCase {
     }
 
     func testStripsLabeledHotwordDumpWithoutFallback() {
-        let text = Qwen3HotwordLeakSanitizer.sanitize(
+        let text = ASRHotwordLeakSanitizer.sanitize(
             "Vocabulary: OpenAI, Qwen, hello world",
             hotwords: ["OpenAI", "Qwen"]
         )
@@ -42,7 +79,7 @@ final class Qwen3HotwordLeakSanitizerTests: XCTestCase {
     }
 
     func testFallsBackWhenDumpTailDoesNotMatchPreview() {
-        let text = Qwen3HotwordLeakSanitizer.sanitize(
+        let text = ASRHotwordLeakSanitizer.sanitize(
             "Claude, OpenAI, unrelated",
             hotwords: ["Claude", "OpenAI"],
             fallbackText: "真实内容"
@@ -52,7 +89,7 @@ final class Qwen3HotwordLeakSanitizerTests: XCTestCase {
     }
 
     func testKeepsSingleHotwordPrefixWithoutFallback() {
-        let text = Qwen3HotwordLeakSanitizer.sanitize(
+        let text = ASRHotwordLeakSanitizer.sanitize(
             "一二三四三字",
             hotwords: ["一二三四"]
         )
