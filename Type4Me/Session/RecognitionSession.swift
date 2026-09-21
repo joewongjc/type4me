@@ -172,6 +172,13 @@ actor RecognitionSession {
         )
     }
 
+    static func shouldTrackInjection(
+        shouldTrackLearning: Bool,
+        isReviseActive: Bool
+    ) -> Bool {
+        shouldTrackLearning || isReviseActive
+    }
+
     // MARK: - Dependencies
 
     private let audioEngine = AudioCaptureEngine()
@@ -2421,6 +2428,10 @@ actor RecognitionSession {
                 targetBundleIdentifier: effectiveTargetBundleId
             )
             let shouldTrackLearning = !isManualInput && learningPlan.shouldTrackInjection
+            let shouldTrackInjection = Self.shouldTrackInjection(
+                shouldTrackLearning: shouldTrackLearning,
+                isReviseActive: ReviseSettingsStore.shared.isReviseActive()
+            )
 
             #if DEBUG
             if capturesTextOutputForTesting {
@@ -2474,7 +2485,7 @@ actor RecognitionSession {
                         }
                         if allowInjection {
                             DebugFileLogger.log(injectLog)
-                            if shouldTrackLearning {
+                            if shouldTrackInjection {
                                 result = engine.injectTracked(
                                     finalText,
                                     sourceText: rawText,

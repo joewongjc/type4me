@@ -209,6 +209,17 @@ final class RecognitionSessionTests: XCTestCase {
         ))
     }
 
+    func testInjectionTrackingIsEnabledIndependentlyForVoiceRevise() {
+        XCTAssertTrue(RecognitionSession.shouldTrackInjection(
+            shouldTrackLearning: false,
+            isReviseActive: true
+        ))
+        XCTAssertFalse(RecognitionSession.shouldTrackInjection(
+            shouldTrackLearning: false,
+            isReviseActive: false
+        ))
+    }
+
     func testSessionFormattingUsesTheSelectedModeAcrossOutputKinds() throws {
         let suite = "RecognitionSessionTests.Formatting.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
