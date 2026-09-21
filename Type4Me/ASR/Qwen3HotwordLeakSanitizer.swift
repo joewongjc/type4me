@@ -1,6 +1,6 @@
 import Foundation
 
-enum Qwen3HotwordLeakSanitizer {
+enum ASRHotwordLeakSanitizer {
     private struct PrefixMatch {
         let consumedText: String
         let remainder: String
@@ -29,10 +29,22 @@ enum Qwen3HotwordLeakSanitizer {
         let fallback = fallbackText.trimmingCharacters(in: .whitespacesAndNewlines)
         let (searchText, hadContextLabel) = droppingLeadingContextLabel(from: trimmedText)
         guard let match = bestPrefixMatch(in: searchText, hotwords: cleanedHotwords, hadContextLabel: hadContextLabel),
-              !match.remainder.isEmpty,
               shouldTreatAsLeak(match: match, fallbackText: fallback)
         else {
             return trimmedText
+        }
+
+        // With very short or silent audio, Qwen3 can return the entire hotword
+        // context as the transcription. There is no remainder in this case,
+        // so the normal "hotwords followed by real text" path cannot identify
+        // it. A context label is unambiguously a prompt echo; an unlabeled run
+        // of multiple hotwords is also a strong signal, while a single exact
+        // hotword is still allowed to be a legitimate utterance.
+        if match.remainder.isEmpty {
+            guard match.hadContextLabel || match.wordCount >= 2 else {
+                return trimmedText
+            }
+            return fallback
         }
 
         guard !fallback.isEmpty else { return match.remainder }
@@ -123,6 +135,10 @@ enum Qwen3HotwordLeakSanitizer {
     }
 
     private static func shouldTreatAsLeak(match: PrefixMatch, fallbackText: String) -> Bool {
+        if match.remainder.isEmpty {
+            return match.hadContextLabel || match.wordCount >= 2
+        }
+
         if match.hadContextLabel || match.wordCount >= 2 {
             return true
         }
