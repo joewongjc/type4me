@@ -232,6 +232,59 @@ final class RecognitionSessionTests: XCTestCase {
         ))
     }
 
+    private func reviseSettingsExcluding(_ bundleIdentifiers: String...) -> ReviseSettings {
+        ReviseSettings(
+            enabled: true,
+            excludedApps: bundleIdentifiers.map {
+                ReviseExcludedApp(bundleIdentifier: $0, displayName: $0)
+            }
+        )
+    }
+
+    func testReviseOnlyTrackingRejectsExcludedFrontmostApp() {
+        let authorize = RecognitionSession.trackedCaptureAuthorization(
+            shouldTrackLearning: false,
+            isReviseActive: true,
+            reviseSettings: reviseSettingsExcluding("com.apple.Terminal")
+        )
+        XCTAssertFalse(authorize("com.apple.Terminal"))
+        XCTAssertTrue(authorize("com.apple.Notes"))
+    }
+
+    func testLearningKeepsTrackingWhenReviseExcludesFrontmostApp() {
+        let authorize = RecognitionSession.trackedCaptureAuthorization(
+            shouldTrackLearning: true,
+            isReviseActive: true,
+            reviseSettings: reviseSettingsExcluding("com.apple.Terminal")
+        )
+        XCTAssertTrue(authorize("com.apple.Terminal"))
+    }
+
+    func testAppSwitchAfterDecisionStopsAXReadInExcludedApp() {
+        let authorize = RecognitionSession.trackedCaptureAuthorization(
+            shouldTrackLearning: false,
+            isReviseActive: true,
+            reviseSettings: reviseSettingsExcluding("com.apple.Terminal")
+        )
+        XCTAssertTrue(authorize("com.apple.Notes"))
+
+        var didReadB = false
+        let snapshot = TextInjectionEngine.authorizedSnapshot(
+            bundleIdentifier: "com.apple.Terminal",
+            authorize: authorize
+        ) {
+            didReadB = true
+            return TextInjectionEngine.FocusedElementSnapshot(
+                bundleIdentifier: "com.apple.Terminal",
+                value: "secret draft",
+                hasFocusedElement: true
+            )
+        }
+
+        XCTAssertNil(snapshot)
+        XCTAssertFalse(didReadB)
+    }
+
     func testSessionFormattingUsesTheSelectedModeAcrossOutputKinds() throws {
         let suite = "RecognitionSessionTests.Formatting.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))

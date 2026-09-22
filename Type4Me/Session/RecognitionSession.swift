@@ -179,6 +179,22 @@ actor RecognitionSession {
     ) -> Bool {
         shouldTrackLearning || (isReviseActive && !isReviseExcluded)
     }
+    /// Tracking authorization evaluated against whichever app actually holds
+    /// focus at AX-read time, not the app observed when the decision was made.
+    static func trackedCaptureAuthorization(
+        shouldTrackLearning: Bool,
+        isReviseActive: Bool,
+        reviseSettings: ReviseSettings
+    ) -> @Sendable (String?) -> Bool {
+        { bundleIdentifier in
+            shouldTrackInjection(
+                shouldTrackLearning: shouldTrackLearning,
+                isReviseActive: isReviseActive,
+                isReviseExcluded: reviseSettings.isExcluded(bundleIdentifier: bundleIdentifier)
+            )
+        }
+    }
+
 
     // MARK: - Dependencies
 
@@ -2430,11 +2446,12 @@ actor RecognitionSession {
             )
             let shouldTrackLearning = !isManualInput && learningPlan.shouldTrackInjection
             let reviseSettings = ReviseSettingsStore.shared.load()
-            let shouldTrackInjection = Self.shouldTrackInjection(
+            let authorizeTrackedCapture = Self.trackedCaptureAuthorization(
                 shouldTrackLearning: shouldTrackLearning,
                 isReviseActive: reviseSettings.enabled && ReviseSettingsStore.isRuntimeEnabled,
-                isReviseExcluded: reviseSettings.isExcluded(bundleIdentifier: effectiveTargetBundleId)
+                reviseSettings: reviseSettings
             )
+            let shouldTrackInjection = authorizeTrackedCapture(effectiveTargetBundleId)
 
             #if DEBUG
             if capturesTextOutputForTesting {
@@ -2493,7 +2510,8 @@ actor RecognitionSession {
                                     finalText,
                                     sourceText: rawText,
                                     sourceRecordID: recordId,
-                                    modeID: modeID
+                                    modeID: modeID,
+                                    shouldCaptureApp: authorizeTrackedCapture
                                 )
                             } else {
                                 result = TrackedInjectionResult(
