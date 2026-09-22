@@ -212,11 +212,23 @@ final class RecognitionSessionTests: XCTestCase {
     func testInjectionTrackingIsEnabledIndependentlyForVoiceRevise() {
         XCTAssertTrue(RecognitionSession.shouldTrackInjection(
             shouldTrackLearning: false,
-            isReviseActive: true
+            isReviseActive: true,
+            isReviseExcluded: false
         ))
         XCTAssertFalse(RecognitionSession.shouldTrackInjection(
             shouldTrackLearning: false,
-            isReviseActive: false
+            isReviseActive: false,
+            isReviseExcluded: false
+        ))
+        XCTAssertFalse(RecognitionSession.shouldTrackInjection(
+            shouldTrackLearning: false,
+            isReviseActive: true,
+            isReviseExcluded: true
+        ))
+        XCTAssertTrue(RecognitionSession.shouldTrackInjection(
+            shouldTrackLearning: true,
+            isReviseActive: true,
+            isReviseExcluded: true
         ))
     }
 

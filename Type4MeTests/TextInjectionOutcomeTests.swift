@@ -44,6 +44,21 @@ final class TextInjectionOutcomeTests: XCTestCase {
             .fallbackToClipboard
         )
     }
+
+    func testSecureRoleDoesNotReadTrackedValue() {
+        var didReadValue = false
+
+        let value = TextInjectionEngine.trackedValue(
+            role: "AXTextField",
+            subrole: "AXSecureTextField"
+        ) {
+            didReadValue = true
+            return "secret"
+        }
+
+        XCTAssertNil(value)
+        XCTAssertFalse(didReadValue)
+    }
 }
 
 private final class StubRunningApplication: NSRunningApplication {

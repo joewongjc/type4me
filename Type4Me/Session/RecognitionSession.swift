@@ -174,9 +174,10 @@ actor RecognitionSession {
 
     static func shouldTrackInjection(
         shouldTrackLearning: Bool,
-        isReviseActive: Bool
+        isReviseActive: Bool,
+        isReviseExcluded: Bool
     ) -> Bool {
-        shouldTrackLearning || isReviseActive
+        shouldTrackLearning || (isReviseActive && !isReviseExcluded)
     }
 
     // MARK: - Dependencies
@@ -2428,9 +2429,11 @@ actor RecognitionSession {
                 targetBundleIdentifier: effectiveTargetBundleId
             )
             let shouldTrackLearning = !isManualInput && learningPlan.shouldTrackInjection
+            let reviseSettings = ReviseSettingsStore.shared.load()
             let shouldTrackInjection = Self.shouldTrackInjection(
                 shouldTrackLearning: shouldTrackLearning,
-                isReviseActive: ReviseSettingsStore.shared.isReviseActive()
+                isReviseActive: reviseSettings.enabled && ReviseSettingsStore.isRuntimeEnabled,
+                isReviseExcluded: reviseSettings.isExcluded(bundleIdentifier: effectiveTargetBundleId)
             )
 
             #if DEBUG
