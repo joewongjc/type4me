@@ -36,4 +36,13 @@ final class ReleaseNotesMarkupParserTests: XCTestCase {
         XCTAssertTrue(markdown.contains("## Fixes"))
         XCTAssertTrue(markdown.contains("Line one\nLine two & more"))
     }
+
+    func testPreservesSourceLineBreaksInMarkdownBlock() {
+        let blocks = ReleaseNotesMarkupParser.blocks(from: "### Fixes\n\n- **First**\n- **Second**")
+
+        guard case .markdown(let markdown) = blocks.first else {
+            return XCTFail("Expected a Markdown text block")
+        }
+        XCTAssertEqual(markdown, "### Fixes\n\n- **First**\n- **Second**")
+    }
 }

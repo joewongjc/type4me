@@ -129,9 +129,33 @@ struct ReleaseNotesMarkupView: View {
 
     @ViewBuilder
     private func markdownText(_ text: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(Array(text.split(separator: "\n", omittingEmptySubsequences: false).enumerated()), id: \.offset) { _, rawLine in
+                let line = String(rawLine)
+                if line.isEmpty {
+                    Spacer().frame(height: 4)
+                } else if let heading = headingContent(in: line) {
+                    inlineMarkdown(heading.text)
+                        .font(.system(size: heading.fontSize, weight: .semibold))
+                        .padding(.top, 3)
+                } else if line.hasPrefix("- ") || line.hasPrefix("* ") {
+                    HStack(alignment: .firstTextBaseline, spacing: 5) {
+                        Text("•")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(TF.settingsTextSecondary)
+                        inlineMarkdown(String(line.dropFirst(2)))
+                    }
+                } else {
+                    inlineMarkdown(line)
+                }
+            }
+        }
+    }
+
+    private func inlineMarkdown(_ text: String) -> some View {
         if let attributed = try? AttributedString(
             markdown: text,
-            options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .full)
+            options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
         ) {
             Text(attributed)
                 .font(.system(size: 12))
@@ -143,6 +167,13 @@ struct ReleaseNotesMarkupView: View {
                 .foregroundStyle(TF.settingsTextSecondary)
                 .textSelection(.enabled)
         }
+    }
+
+    private func headingContent(in line: String) -> (text: String, fontSize: CGFloat)? {
+        if line.hasPrefix("### ") { return (String(line.dropFirst(4)), 13) }
+        if line.hasPrefix("## ") { return (String(line.dropFirst(3)), 14) }
+        if line.hasPrefix("# ") { return (String(line.dropFirst(2)), 15) }
+        return nil
     }
 
     private func releaseImage(url: URL, altText: String?) -> some View {
