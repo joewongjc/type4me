@@ -656,6 +656,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    func selectLLMProviderFromMenu(_ provider: LLMProvider) {
+        guard menuBarRuntimeSettingsAreEditable,
+              ModelSettingsHelpers.hasConfiguredCredentials(for: provider)
+        else { return }
+        guard provider != KeychainService.selectedLLMProvider else { return }
+        KeychainService.selectedLLMProvider = provider
+    }
+
     func setTranslationTargetFromMenu(_ language: TranslationLanguage) {
         guard menuBarRuntimeSettingsAreEditable,
               let index = appState.availableModes.firstIndex(

@@ -39,6 +39,18 @@ struct MenuBarASRProviderItem: Identifiable, Equatable {
         return provider.displayName
     }
 }
+struct MenuBarLLMProviderItem: Identifiable, Equatable {
+    let provider: LLMProvider
+    let isConfigured: Bool
+
+    var id: String { provider.rawValue }
+    var title: String {
+        isConfigured
+            ? provider.displayName
+            : "\(provider.displayName) (\(L("未配置", "Not configured")))"
+    }
+}
+
 
 enum MenuBarPermissionIssue: Equatable {
     case microphone
@@ -65,6 +77,7 @@ final class MenuBarControlCenterModel {
 
     private(set) var inputDevices: [AudioInputDevice] = []
     private(set) var configuredASRProviders: [MenuBarASRProviderItem] = []
+    private(set) var configuredLLMProviders: [MenuBarLLMProviderItem] = []
     private(set) var canCopyLatestResult = false
     private(set) var permissionIssue: MenuBarPermissionIssue?
     private(set) var canStartRevise = false
@@ -76,6 +89,7 @@ final class MenuBarControlCenterModel {
         .audioInputDevicesDidChange,
         .audioInputDevicePreferenceDidChange,
         .asrProviderDidChange,
+        .credentialsDidChange,
         .modesDidChange,
         .historyStoreDidChange,
         .reviseSettingsDidChange,
@@ -133,6 +147,7 @@ final class MenuBarControlCenterModel {
             ? AudioInputDeviceMonitor.shared.refreshSynchronously()
             : cached
         configuredASRProviders = MenuBarASRProviderAvailability.configuredItems()
+        configuredLLMProviders = MenuBarLLMProviderAvailability.configuredItems()
         permissionIssue = Self.currentPermissionIssue()
         refreshHistoryAvailability()
         refreshReviseAvailability()
@@ -201,6 +216,19 @@ enum MenuBarASRProviderAvailability {
         }
     }
 }
+enum MenuBarLLMProviderAvailability {
+    /// The active provider is always listed even when its credentials are
+    /// incomplete, so the menu can still show what the next run will use.
+    static func configuredItems() -> [MenuBarLLMProviderItem] {
+        let selected = KeychainService.selectedLLMProvider
+        return LLMProvider.allCases.compactMap { provider in
+            let isConfigured = ModelSettingsHelpers.hasConfiguredCredentials(for: provider)
+            guard isConfigured || provider == selected else { return nil }
+            return MenuBarLLMProviderItem(provider: provider, isConfigured: isConfigured)
+        }
+    }
+}
+
 
 /// Routes all menu side effects through AppDelegate's existing runtime
 /// ownership. The menu itself therefore never starts a second Session or
@@ -243,6 +271,11 @@ final class MenuBarActionCoordinator {
 
     func setASRProvider(_ provider: ASRProvider) {
         appDelegate.selectASRProviderFromMenu(provider)
+        model.refresh()
+    }
+
+    func setLLMProvider(_ provider: LLMProvider) {
+        appDelegate.selectLLMProviderFromMenu(provider)
         model.refresh()
     }
 
@@ -331,6 +364,16 @@ final class MenuBarActionCoordinator {
 
     func openModels() {
         openApplication(.models)
+    }
+
+    func openASRSettings() {
+        appDelegate.navigationModel.pendingModelCategory = .asr
+        openModels()
+    }
+
+    func openProcessingEngineSettings() {
+        appDelegate.navigationModel.pendingModelCategory = .llm
+        openModels()
     }
 
     private func openApplication(_ destination: MenuBarApplicationDestination) {
@@ -472,6 +515,7 @@ struct MenuBarControlCenterView: View {
     private var runtimeControls: some View {
         microphoneMenu
         asrProviderMenu
+        processingEngineMenu
         if model.translationMode != nil {
             translationTargetMenu
         }
@@ -487,13 +531,11 @@ struct MenuBarControlCenterView: View {
 
     private var microphoneMenu: some View {
         Menu(L("麦克风", "Microphone")) {
-            Button {
+            menuSelectionToggle(
+                systemDefaultMicrophoneTitle,
+                isSelected: AudioInputDevicePreferenceStore.mode() == .systemDefault
+            ) {
                 actions.setMicrophone(.systemDefault)
-            } label: {
-                menuChoiceLabel(
-                    systemDefaultMicrophoneTitle,
-                    isSelected: AudioInputDevicePreferenceStore.mode() == .systemDefault
-                )
             }
             if AudioInputDevicePreferenceStore.mode() == .priority,
                let effectiveInputDevice = model.effectiveInputDevice {
@@ -509,13 +551,11 @@ struct MenuBarControlCenterView: View {
             if !model.inputDevices.isEmpty {
                 Divider()
                 ForEach(model.inputDevices) { device in
-                    Button {
+                    menuSelectionToggle(
+                        device.name,
+                        isSelected: model.selectedPriorityMicrophoneUID == device.uid
+                    ) {
                         actions.setMicrophone(.device(device))
-                    } label: {
-                        menuChoiceLabel(
-                            device.name,
-                            isSelected: model.selectedPriorityMicrophoneUID == device.uid
-                        )
                     }
                 }
             }
@@ -544,19 +584,40 @@ struct MenuBarControlCenterView: View {
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(model.configuredASRProviders) { item in
-                    Button {
+                    menuSelectionToggle(
+                        item.title,
+                        isSelected: item.provider == KeychainService.selectedASRProvider
+                    ) {
                         actions.setASRProvider(item.provider)
-                    } label: {
-                        menuChoiceLabel(
-                            item.title,
-                            isSelected: item.provider == KeychainService.selectedASRProvider
-                        )
                     }
                 }
             }
             Divider()
             Button(L("配置识别引擎…", "Configure Recognition…")) {
-                actions.openModels()
+                actions.openASRSettings()
+            }
+        }
+        .disabled(runtimeSettingsLocked)
+    }
+
+    private var processingEngineMenu: some View {
+        Menu(L("处理引擎", "Processing Engine")) {
+            if model.configuredLLMProviders.isEmpty {
+                Text(L("没有已配置的处理引擎", "No configured processing engine"))
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(model.configuredLLMProviders) { item in
+                    menuSelectionToggle(
+                        item.title,
+                        isSelected: item.provider == KeychainService.selectedLLMProvider
+                    ) {
+                        actions.setLLMProvider(item.provider)
+                    }
+                }
+            }
+            Divider()
+            Button(L("配置处理引擎…", "Configure Processing Engine…")) {
+                actions.openProcessingEngineSettings()
             }
         }
         .disabled(runtimeSettingsLocked)
@@ -565,10 +626,11 @@ struct MenuBarControlCenterView: View {
     private var translationTargetMenu: some View {
         Menu(L("翻译目标", "Translation Target")) {
             ForEach(TranslationLanguage.allCases) { language in
-                Button {
+                menuSelectionToggle(
+                    language.displayName,
+                    isSelected: language == model.translationTarget
+                ) {
                     actions.setTranslationTarget(language)
-                } label: {
-                    menuChoiceLabel(language.displayName, isSelected: language == model.translationTarget)
                 }
             }
         }
@@ -579,13 +641,11 @@ struct MenuBarControlCenterView: View {
         Menu(L("输出格式", "Output Formatting")) {
             Menu(L("剪贴板保留", "Clipboard Retention")) {
                 ForEach(ClipboardOutputPolicy.allCases) { policy in
-                    Button {
+                    menuSelectionToggle(
+                        policy.displayName,
+                        isSelected: policy.rawValue == clipboardOutputPolicyRaw
+                    ) {
                         actions.setClipboardOutputPolicy(policy)
-                    } label: {
-                        menuChoiceLabel(
-                            policy.displayName,
-                            isSelected: policy.rawValue == clipboardOutputPolicyRaw
-                        )
                     }
                 }
             }
@@ -594,10 +654,11 @@ struct MenuBarControlCenterView: View {
             }
             Menu(L("中英文间距", "CJK Spacing")) {
                 ForEach(CJKSpacingMode.allCases, id: \.rawValue) { mode in
-                    Button {
+                    menuSelectionToggle(
+                        cjkSpacingTitle(mode),
+                        isSelected: mode.rawValue == cjkSpacingRaw
+                    ) {
                         actions.setCJKSpacing(mode)
-                    } label: {
-                        menuChoiceLabel(cjkSpacingTitle(mode), isSelected: mode.rawValue == cjkSpacingRaw)
                     }
                 }
             }
@@ -619,13 +680,11 @@ struct MenuBarControlCenterView: View {
     private var punctuationMenu: some View {
         Menu(L("当前模式标点", "Current Mode Punctuation")) {
             ForEach(ModePunctuationMode.allCases, id: \.rawValue) { mode in
-                Button {
+                menuSelectionToggle(
+                    punctuationTitle(mode),
+                    isSelected: mode == appState.currentMode.punctuationMode
+                ) {
                     actions.setPunctuationMode(mode)
-                } label: {
-                    menuChoiceLabel(
-                        punctuationTitle(mode),
-                        isSelected: mode == appState.currentMode.punctuationMode
-                    )
                 }
             }
         }
@@ -728,16 +787,21 @@ struct MenuBarControlCenterView: View {
             .joined(separator: " / ")
     }
 
-    @ViewBuilder
-    private func menuChoiceLabel(_ title: String, isSelected: Bool) -> some View {
-        HStack(spacing: 6) {
-            if isSelected {
-                Image(systemName: "checkmark")
-            } else {
-                Color.clear.frame(width: 14, height: 14)
+    /// macOS menu items only render Text/Label-shaped content, so a custom
+    /// HStack checkmark is dropped. `Toggle` is the native checked-item API.
+    /// Unchecking the active row is a no-op, giving radio-group behavior.
+    private func menuSelectionToggle(
+        _ title: String,
+        isSelected: Bool,
+        select: @escaping () -> Void
+    ) -> some View {
+        Toggle(title, isOn: Binding(
+            get: { isSelected },
+            set: { newValue in
+                guard newValue, !isSelected else { return }
+                select()
             }
-            Text(title)
-        }
+        ))
     }
 
     private func punctuationTitle(_ mode: ModePunctuationMode) -> String {

@@ -101,6 +101,9 @@ struct ModelSettingsTab: View, SettingsCardHelpers {
                 defaultASRProvider = KeychainService.selectedASRProvider
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .credentialsDidChange)) { _ in
+            defaultLLMProvider = KeychainService.selectedLLMProvider
+        }
     }
 
     // MARK: - Transition & Selection Guards
