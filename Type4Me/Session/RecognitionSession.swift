@@ -179,6 +179,29 @@ actor RecognitionSession {
     ) -> Bool {
         shouldTrackLearning || (isReviseActive && !isReviseExcluded)
     }
+    /// Tracking authorization evaluated against whichever app actually holds
+    /// focus at AX-read time, not the app observed when the decision was made.
+    static func trackedCaptureAuthorization(
+        baseLearningEligible: Bool,
+        intelliSenseSettings: IntelliSenseSettings? = nil,
+        isReviseActive: Bool,
+        reviseSettings: ReviseSettings
+    ) -> @Sendable (String?) -> Bool {
+        { bundleIdentifier in
+            guard let bundleIdentifier, !bundleIdentifier.isEmpty else {
+                return false
+            }
+
+            let learningAllowed = baseLearningEligible
+                && intelliSenseSettings?.isBlacklisted(bundleIdentifier: bundleIdentifier) != true
+
+            let reviseAllowed = isReviseActive
+                && !reviseSettings.isExcluded(bundleIdentifier: bundleIdentifier)
+
+            return learningAllowed || reviseAllowed
+        }
+    }
+
 
     // MARK: - Dependencies
 
@@ -2428,13 +2451,24 @@ actor RecognitionSession {
                 contextAvailability: effectiveContextAvailability,
                 targetBundleIdentifier: effectiveTargetBundleId
             )
+            let baseLearningEligible = !isManualInput && PostInjectionLearningPlan.isBaseEligible(
+                settings: sessionSettings,
+                modeID: modeID,
+                startedModeID: intelliSenseStartedModeID,
+                isCrossModeFallback: intelliSenseCrossModeFallback,
+                aborted: wasCancelled,
+                guardRejected: intelliSenseGuardRejected,
+                contextAvailability: effectiveContextAvailability
+            )
             let shouldTrackLearning = !isManualInput && learningPlan.shouldTrackInjection
             let reviseSettings = ReviseSettingsStore.shared.load()
-            let shouldTrackInjection = Self.shouldTrackInjection(
-                shouldTrackLearning: shouldTrackLearning,
+            let authorizeTrackedCapture = Self.trackedCaptureAuthorization(
+                baseLearningEligible: baseLearningEligible,
+                intelliSenseSettings: sessionSettings,
                 isReviseActive: reviseSettings.enabled && ReviseSettingsStore.isRuntimeEnabled,
-                isReviseExcluded: reviseSettings.isExcluded(bundleIdentifier: effectiveTargetBundleId)
+                reviseSettings: reviseSettings
             )
+            let shouldTrackInjection = authorizeTrackedCapture(effectiveTargetBundleId)
 
             #if DEBUG
             if capturesTextOutputForTesting {
@@ -2493,7 +2527,8 @@ actor RecognitionSession {
                                     finalText,
                                     sourceText: rawText,
                                     sourceRecordID: recordId,
-                                    modeID: modeID
+                                    modeID: modeID,
+                                    shouldCaptureApp: authorizeTrackedCapture
                                 )
                             } else {
                                 result = TrackedInjectionResult(

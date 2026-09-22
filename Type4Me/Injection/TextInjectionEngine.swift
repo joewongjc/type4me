@@ -84,7 +84,8 @@ final class TextInjectionEngine: @unchecked Sendable {
         _ text: String,
         sourceText: String,
         sourceRecordID: String,
-        modeID: UUID
+        modeID: UUID,
+        shouldCaptureApp: @Sendable (String?) -> Bool
     ) -> TrackedInjectionResult {
         guard !text.isEmpty else {
             return TrackedInjectionResult(outcome: .inserted, observationContext: nil)
@@ -95,7 +96,8 @@ final class TextInjectionEngine: @unchecked Sendable {
                 sourceText: sourceText,
                 sourceRecordID: sourceRecordID,
                 modeID: modeID
-            )
+            ),
+            authorizeCapture: shouldCaptureApp
         )
     }
 
@@ -122,7 +124,8 @@ final class TextInjectionEngine: @unchecked Sendable {
 
     private func injectViaClipboard(
         _ text: String,
-        trackingMetadata: (sourceText: String, sourceRecordID: String, modeID: UUID)?
+        trackingMetadata: (sourceText: String, sourceRecordID: String, modeID: UUID)?,
+        authorizeCapture: (String?) -> Bool = { _ in false }
     ) -> TrackedInjectionResult {
         let shouldRestoreClipboard = Self.shouldRestoreClipboard(retention: clipboardRetention)
         let savedClipboard = shouldRestoreClipboard ? ClipboardSnapshot.capture() : nil
@@ -139,8 +142,9 @@ final class TextInjectionEngine: @unchecked Sendable {
             return TrackedInjectionResult(outcome: .copiedToClipboard, observationContext: nil)
         }
 
-        let before = trackingMetadata != nil ? captureFocusedElementSnapshot(isPrePaste: true) : nil
-
+        let before = trackingMetadata != nil
+            ? captureFocusedElementSnapshot(isPrePaste: true, authorize: authorizeCapture)
+            : nil
 
         copyToClipboard(text, transient: shouldRestoreClipboard)
         let postWriteChangeCount = NSPasteboard.general.changeCount
@@ -155,7 +159,9 @@ final class TextInjectionEngine: @unchecked Sendable {
         }
         usleep(100_000)
 
-        let after = trackingMetadata != nil ? captureFocusedElementSnapshot(isPrePaste: false) : nil
+        let after = trackingMetadata != nil
+            ? captureFocusedElementSnapshot(isPrePaste: false, authorize: authorizeCapture)
+            : nil
         let outcome: InjectionOutcome = .inserted
 
         if let savedClipboard {
@@ -213,10 +219,31 @@ final class TextInjectionEngine: @unchecked Sendable {
         )
     }
 
-    private func captureFocusedElementSnapshot(isPrePaste: Bool = false) -> FocusedElementSnapshot? {
+    private func captureFocusedElementSnapshot(
+        isPrePaste: Bool,
+        authorize: (String?) -> Bool
+    ) -> FocusedElementSnapshot? {
         let frontmostApp = NSWorkspace.shared.frontmostApplication
         let frontmostBundleID = frontmostApp?.bundleIdentifier
+        return Self.authorizedSnapshot(
+            bundleIdentifier: frontmostBundleID,
+            authorize: authorize
+        ) {
+            focusedElementSnapshot(
+                frontmostApp: frontmostApp,
+                frontmostBundleID: frontmostBundleID,
+                isPrePaste: isPrePaste,
+                authorize: authorize
+            )
+        }
+    }
 
+    private func focusedElementSnapshot(
+        frontmostApp: NSRunningApplication?,
+        frontmostBundleID: String?,
+        isPrePaste: Bool,
+        authorize: (String?) -> Bool
+    ) -> FocusedElementSnapshot? {
         guard AXIsProcessTrusted() else {
             return FocusedElementSnapshot(
                 element: nil,
@@ -248,7 +275,7 @@ final class TextInjectionEngine: @unchecked Sendable {
         if isPrePaste {
             if status == .success, let focusedValue {
                 let element = unsafeDowncast(focusedValue, to: AXUIElement.self)
-                return snapshotFromElement(element, bundleIdentifier: frontmostBundleID, timeout: 0.05)
+                return snapshotFromElement(element, authorize: authorize, timeout: 0.05)
             }
             if let frontmostApp {
                 enableEnhancedAX(for: frontmostApp)
@@ -259,7 +286,7 @@ final class TextInjectionEngine: @unchecked Sendable {
                 )
                 if status == .success, let focusedValue {
                     let element = unsafeDowncast(focusedValue, to: AXUIElement.self)
-                    return snapshotFromElement(element, bundleIdentifier: frontmostBundleID, timeout: 0.05)
+                    return snapshotFromElement(element, authorize: authorize, timeout: 0.05)
                 }
             }
             return nil
@@ -280,7 +307,7 @@ final class TextInjectionEngine: @unchecked Sendable {
         // to find an editable element. Common for WeChat, Feishu, etc.
         if status != .success || focusedValue == nil, let frontmostApp {
             if let found = findEditableElementInApp(frontmostApp) {
-                return snapshotFromElement(found, bundleIdentifier: frontmostBundleID, timeout: 0.25)
+                return snapshotFromElement(found, authorize: authorize, timeout: 0.25)
             }
             return FocusedElementSnapshot(
                 element: nil,
@@ -298,48 +325,58 @@ final class TextInjectionEngine: @unchecked Sendable {
         }
 
         let element = unsafeDowncast(focusedValue!, to: AXUIElement.self)
-        return snapshotFromElement(element, bundleIdentifier: frontmostBundleID, timeout: 0.25)
+        return snapshotFromElement(element, authorize: authorize, timeout: 0.25)
     }
 
     private func snapshotFromElement(
         _ element: AXUIElement,
-        bundleIdentifier: String?,
+        authorize: (String?) -> Bool,
         timeout: Float = 0.05
-    ) -> FocusedElementSnapshot {
+    ) -> FocusedElementSnapshot? {
         AXUIElementSetMessagingTimeout(element, timeout)
-        let role = copyStringAttribute(kAXRoleAttribute as CFString, from: element)
-        let subrole = copyStringAttribute(kAXSubroleAttribute as CFString, from: element)
-        let value = Self.trackedValue(role: role, subrole: subrole) {
-            copyStringAttribute(kAXValueAttribute as CFString, from: element)
-        }
-        let placeholder = copyStringAttribute(kAXPlaceholderValueAttribute as CFString, from: element)
-        let accessibilityDescription = copyStringAttribute(kAXDescriptionAttribute as CFString, from: element)
-        let selectedRange = copyRangeAttribute(kAXSelectedTextRangeAttribute as CFString, from: element)
+
         var processIdentifier: pid_t = 0
         let pidStatus = AXUIElementGetPid(element, &processIdentifier)
-        let isEditable =
-            isAttributeSettable(kAXSelectedTextRangeAttribute as CFString, on: element)
-            || isAttributeSettable(kAXValueAttribute as CFString, on: element)
-            || [
-            kAXTextFieldRole as String,
-            kAXTextAreaRole as String,
-            kAXComboBoxRole as String,
-            "AXSearchField",
-        ].contains(role)
-
-        return FocusedElementSnapshot(
-            element: element,
-            processIdentifier: pidStatus == .success ? processIdentifier : nil,
-            bundleIdentifier: bundleIdentifier,
-            role: role,
-            subrole: subrole,
-            value: value,
-            placeholder: placeholder,
-            accessibilityDescription: accessibilityDescription,
-            selectedRange: selectedRange,
-            isEditable: isEditable,
-            hasFocusedElement: true
+        let actualBundleID = Self.resolveElementBundleIdentifier(
+            pidStatus: pidStatus,
+            pid: processIdentifier
         )
+        return Self.authorizedSnapshot(
+            bundleIdentifier: actualBundleID,
+            authorize: authorize
+        ) {
+            let role = copyStringAttribute(kAXRoleAttribute as CFString, from: element)
+            let subrole = copyStringAttribute(kAXSubroleAttribute as CFString, from: element)
+            let value = Self.trackedValue(role: role, subrole: subrole) {
+                copyStringAttribute(kAXValueAttribute as CFString, from: element)
+            }
+            let placeholder = copyStringAttribute(kAXPlaceholderValueAttribute as CFString, from: element)
+            let accessibilityDescription = copyStringAttribute(kAXDescriptionAttribute as CFString, from: element)
+            let selectedRange = copyRangeAttribute(kAXSelectedTextRangeAttribute as CFString, from: element)
+            let isEditable =
+                isAttributeSettable(kAXSelectedTextRangeAttribute as CFString, on: element)
+                || isAttributeSettable(kAXValueAttribute as CFString, on: element)
+                || [
+                kAXTextFieldRole as String,
+                kAXTextAreaRole as String,
+                kAXComboBoxRole as String,
+                "AXSearchField",
+            ].contains(role)
+
+            return FocusedElementSnapshot(
+                element: element,
+                processIdentifier: pidStatus == .success ? processIdentifier : nil,
+                bundleIdentifier: actualBundleID,
+                role: role,
+                subrole: subrole,
+                value: value,
+                placeholder: placeholder,
+                accessibilityDescription: accessibilityDescription,
+                selectedRange: selectedRange,
+                isEditable: isEditable,
+                hasFocusedElement: true
+            )
+        }
     }
 
     /// Traverse the app's focused window tree to find the first editable element.
@@ -471,6 +508,34 @@ final class TextInjectionEngine: @unchecked Sendable {
             sourceRecordID: sourceRecordID,
             modeID: modeID
         )
+    }
+
+    /// Resolve the bundle identifier of the application owning the AX element.
+    /// Fails closed (returns `nil`) if the PID cannot be retrieved or the owning
+    /// application bundle identifier cannot be resolved, avoiding fail-open
+    /// access to an element from an unknown or excluded process.
+    static func resolveElementBundleIdentifier(
+        pidStatus: AXError,
+        pid: pid_t,
+        appLookup: (pid_t) -> String? = { pid in
+            NSRunningApplication(processIdentifier: pid)?.bundleIdentifier
+        }
+    ) -> String? {
+        guard pidStatus == .success else { return nil }
+        return appLookup(pid)
+    }
+
+    /// Gate every focused-element read on the app that actually holds focus
+    /// right now. Fails closed (returns `nil` without invoking `read`) when
+    /// the app identity is unknown or empty, or when no tracking consumer is
+    /// allowed to observe that app's text.
+    static func authorizedSnapshot(
+        bundleIdentifier: String?,
+        authorize: (String?) -> Bool,
+        read: () -> FocusedElementSnapshot?
+    ) -> FocusedElementSnapshot? {
+        guard let bundleIdentifier, !bundleIdentifier.isEmpty, authorize(bundleIdentifier) else { return nil }
+        return read()
     }
 
     static func trackedValue(
