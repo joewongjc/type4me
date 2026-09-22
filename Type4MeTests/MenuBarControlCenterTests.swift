@@ -54,4 +54,20 @@ final class MenuBarControlCenterTests: XCTestCase {
         let volcanoItem = MenuBarASRProviderItem(provider: .volcano)
         XCTAssertEqual(volcanoItem.title, volcanoItem.provider.displayName)
     }
+
+    func testLLMProviderItemMarksUnconfiguredProviders() {
+        let configured = MenuBarLLMProviderItem(provider: .doubao, isConfigured: true)
+        XCTAssertEqual(configured.title, LLMProvider.doubao.displayName)
+
+        let unconfigured = MenuBarLLMProviderItem(provider: .doubao, isConfigured: false)
+        XCTAssertEqual(
+            unconfigured.title,
+            "\(LLMProvider.doubao.displayName) (\(L("未配置", "Not configured")))"
+        )
+    }
+
+    func testLLMProviderListAlwaysContainsSelectedProvider() {
+        let items = MenuBarLLMProviderAvailability.configuredItems()
+        XCTAssertTrue(items.contains { $0.provider == KeychainService.selectedLLMProvider })
+    }
 }
