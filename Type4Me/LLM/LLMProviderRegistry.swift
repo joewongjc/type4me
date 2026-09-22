@@ -13,6 +13,7 @@ enum LLMProviderRegistry {
         .gemini:      OpenAICompatibleLLMConfig<GeminiLLMTag>.self,
         .deepseek:    OpenAICompatibleLLMConfig<DeepSeekLLMTag>.self,
         .zhipu:       OpenAICompatibleLLMConfig<ZhipuLLMTag>.self,
+        .mimo:        OpenAICompatibleLLMConfig<MiMoLLMTag>.self,
         .claude:      ClaudeLLMConfig.self,
         .codexCLI:    CodexCLILLMConfig.self,
         .ollama:      OpenAICompatibleLLMConfig<OllamaLLMTag>.self,

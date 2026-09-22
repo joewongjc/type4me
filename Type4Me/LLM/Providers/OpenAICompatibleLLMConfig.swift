@@ -20,6 +20,7 @@ enum OpenAILLMTag:      OpenAICompatibleLLMTag { static let provider = LLMProvid
 enum GeminiLLMTag:      OpenAICompatibleLLMTag { static let provider = LLMProvider.gemini }
 enum DeepSeekLLMTag:    OpenAICompatibleLLMTag { static let provider = LLMProvider.deepseek }
 enum ZhipuLLMTag:       OpenAICompatibleLLMTag { static let provider = LLMProvider.zhipu }
+enum MiMoLLMTag:        OpenAICompatibleLLMTag { static let provider = LLMProvider.mimo }
 enum OllamaLLMTag:      OpenAICompatibleLLMTag { static let provider = LLMProvider.ollama }
 enum CustomLLMTag:      OpenAICompatibleLLMTag { static let provider = LLMProvider.custom }
 

@@ -108,6 +108,7 @@ struct BrandIconView: View {
             case .openai:      return "openai"
             case .gemini:      return "gemini"
             case .zhipu:       return "zhipu"
+            case .mimo:        return "mimo"
             case .claude:      return "claude"
             case .codexCLI:    return "codex"
             case .ollama:      return "ollama"
