@@ -559,6 +559,29 @@ struct PostInjectionLearningPlan: Equatable, Sendable {
         correctionEnabled || expressionLearningEnabled
     }
 
+    static func isBaseEligible(
+        settings: IntelliSenseSettings?,
+        modeID: UUID,
+        startedModeID: UUID?,
+        isCrossModeFallback: Bool,
+        aborted: Bool,
+        guardRejected: Bool,
+        contextAvailability: ContextAvailability?
+    ) -> Bool {
+        guard !aborted,
+              !guardRejected,
+              contextAvailability != .sensitive,
+              modeID == ProcessingMode.intelliSenseId,
+              let settings else { return false }
+
+        let correctionEligible = settings.correctionDetectionEnabled
+        let expressionEligible = settings.expressionLearningEnabled
+            && !isCrossModeFallback
+            && startedModeID == ProcessingMode.intelliSenseId
+
+        return correctionEligible || expressionEligible
+    }
+
     static func resolve(
         settings: IntelliSenseSettings?,
         modeID: UUID,
@@ -569,13 +592,18 @@ struct PostInjectionLearningPlan: Equatable, Sendable {
         contextAvailability: ContextAvailability?,
         targetBundleIdentifier: String?
     ) -> Self {
+        let isBase = isBaseEligible(
+            settings: settings,
+            modeID: modeID,
+            startedModeID: startedModeID,
+            isCrossModeFallback: isCrossModeFallback,
+            aborted: aborted,
+            guardRejected: guardRejected,
+            contextAvailability: contextAvailability
+        )
         let blocked = contextAvailability == .blacklisted
-            || contextAvailability == .sensitive
             || settings?.isBlacklisted(bundleIdentifier: targetBundleIdentifier) == true
-        let common = !aborted
-            && !guardRejected
-            && !blocked
-            && modeID == ProcessingMode.intelliSenseId
+        let common = isBase && !blocked
         return Self(
             correctionEnabled: common && settings?.correctionDetectionEnabled == true,
             expressionLearningEnabled: common

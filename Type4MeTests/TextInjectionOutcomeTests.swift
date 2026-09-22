@@ -79,7 +79,6 @@ final class TextInjectionOutcomeTests: XCTestCase {
         let resolved = TextInjectionEngine.resolveElementBundleIdentifier(
             pidStatus: .success,
             pid: 1234,
-            fallback: "fallback.app",
             appLookup: { pid in
                 pid == 1234 ? "actual.element.app" : nil
             }
@@ -87,24 +86,46 @@ final class TextInjectionOutcomeTests: XCTestCase {
         XCTAssertEqual(resolved, "actual.element.app")
     }
 
-    func testResolveElementBundleIdentifierWithFailedPidStatusFallsBack() {
+    func testResolveElementBundleIdentifierWithFailedPidStatusReturnsNil() {
         let resolved = TextInjectionEngine.resolveElementBundleIdentifier(
             pidStatus: .cannotComplete,
             pid: 1234,
-            fallback: "fallback.app",
             appLookup: { _ in "actual.element.app" }
         )
-        XCTAssertEqual(resolved, "fallback.app")
+        XCTAssertNil(resolved)
     }
 
-    func testResolveElementBundleIdentifierWithNilAppLookupFallsBack() {
+    func testResolveElementBundleIdentifierWithNilAppLookupReturnsNil() {
         let resolved = TextInjectionEngine.resolveElementBundleIdentifier(
             pidStatus: .success,
             pid: 1234,
-            fallback: "fallback.app",
             appLookup: { _ in nil }
         )
-        XCTAssertEqual(resolved, "fallback.app")
+        XCTAssertNil(resolved)
+    }
+
+    func testAuthorizedSnapshotFailsClosedOnNilOrEmptyBundleIdentifier() {
+        var didReadNil = false
+        let nilSnapshot = TextInjectionEngine.authorizedSnapshot(
+            bundleIdentifier: nil,
+            authorize: { _ in true }
+        ) {
+            didReadNil = true
+            return TextInjectionEngine.FocusedElementSnapshot(hasFocusedElement: true)
+        }
+        XCTAssertNil(nilSnapshot)
+        XCTAssertFalse(didReadNil)
+
+        var didReadEmpty = false
+        let emptySnapshot = TextInjectionEngine.authorizedSnapshot(
+            bundleIdentifier: "",
+            authorize: { _ in true }
+        ) {
+            didReadEmpty = true
+            return TextInjectionEngine.FocusedElementSnapshot(hasFocusedElement: true)
+        }
+        XCTAssertNil(emptySnapshot)
+        XCTAssertFalse(didReadEmpty)
     }
 
     func testElementLevelAuthorizationRejectsElementOwnedByExcludedApp() {
@@ -118,7 +139,6 @@ final class TextInjectionOutcomeTests: XCTestCase {
         let elementActualApp = TextInjectionEngine.resolveElementBundleIdentifier(
             pidStatus: .success,
             pid: 9999,
-            fallback: initialApp,
             appLookup: { _ in "com.apple.Terminal" }
         )
         XCTAssertEqual(elementActualApp, "com.apple.Terminal")
@@ -132,6 +152,32 @@ final class TextInjectionOutcomeTests: XCTestCase {
             return TextInjectionEngine.FocusedElementSnapshot(
                 bundleIdentifier: elementActualApp,
                 value: "terminal password",
+                hasFocusedElement: true
+            )
+        }
+
+        XCTAssertNil(snapshot)
+        XCTAssertFalse(didRead)
+    }
+
+    func testElementLevelResolutionFailureFailsClosedWithoutReadingSnapshot() {
+        // Even if authorize would allow anything, an unresolvable element PID fails closed
+        let elementActualApp = TextInjectionEngine.resolveElementBundleIdentifier(
+            pidStatus: .cannotComplete,
+            pid: 9999,
+            appLookup: { _ in "com.apple.Notes" }
+        )
+        XCTAssertNil(elementActualApp)
+
+        var didRead = false
+        let snapshot = TextInjectionEngine.authorizedSnapshot(
+            bundleIdentifier: elementActualApp,
+            authorize: { _ in true }
+        ) {
+            didRead = true
+            return TextInjectionEngine.FocusedElementSnapshot(
+                bundleIdentifier: elementActualApp,
+                value: "unverified element text",
                 hasFocusedElement: true
             )
         }

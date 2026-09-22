@@ -243,7 +243,7 @@ final class RecognitionSessionTests: XCTestCase {
 
     func testReviseOnlyTrackingRejectsExcludedFrontmostApp() {
         let authorize = RecognitionSession.trackedCaptureAuthorization(
-            shouldTrackLearning: false,
+            baseLearningEligible: false,
             isReviseActive: true,
             reviseSettings: reviseSettingsExcluding("com.apple.Terminal")
         )
@@ -253,7 +253,8 @@ final class RecognitionSessionTests: XCTestCase {
 
     func testLearningKeepsTrackingWhenReviseExcludesFrontmostApp() {
         let authorize = RecognitionSession.trackedCaptureAuthorization(
-            shouldTrackLearning: true,
+            baseLearningEligible: true,
+            intelliSenseSettings: IntelliSenseSettings(),
             isReviseActive: true,
             reviseSettings: reviseSettingsExcluding("com.apple.Terminal")
         )
@@ -262,7 +263,7 @@ final class RecognitionSessionTests: XCTestCase {
 
     func testAppSwitchAfterDecisionStopsAXReadInExcludedApp() {
         let authorize = RecognitionSession.trackedCaptureAuthorization(
-            shouldTrackLearning: false,
+            baseLearningEligible: false,
             isReviseActive: true,
             reviseSettings: reviseSettingsExcluding("com.apple.Terminal")
         )
@@ -283,6 +284,70 @@ final class RecognitionSessionTests: XCTestCase {
 
         XCTAssertNil(snapshot)
         XCTAssertFalse(didReadB)
+    }
+
+    func testIntelliSenseBlacklistStopsAXReadEvenWhenT1DecisionWasEligible() {
+        var settings = IntelliSenseSettings()
+        settings.correctionDetectionEnabled = true
+        settings.blacklistedApps = [
+            BlacklistedApp(bundleIdentifier: "com.apple.Terminal", displayName: "Terminal")
+        ]
+
+        // T1 decision at App A (Notes): eligible
+        let authorize = RecognitionSession.trackedCaptureAuthorization(
+            baseLearningEligible: true,
+            intelliSenseSettings: settings,
+            isReviseActive: false,
+            reviseSettings: ReviseSettings(enabled: false)
+        )
+        XCTAssertTrue(authorize("com.apple.Notes"))
+
+        // T2/T3 switch to App B (Terminal, blacklisted in IntelliSense): rejected
+        XCTAssertFalse(authorize("com.apple.Terminal"))
+
+        var didReadB = false
+        let snapshot = TextInjectionEngine.authorizedSnapshot(
+            bundleIdentifier: "com.apple.Terminal",
+            authorize: authorize
+        ) {
+            didReadB = true
+            return TextInjectionEngine.FocusedElementSnapshot(
+                bundleIdentifier: "com.apple.Terminal",
+                value: "sensitive terminal text",
+                hasFocusedElement: true
+            )
+        }
+
+        XCTAssertNil(snapshot)
+        XCTAssertFalse(didReadB)
+    }
+
+    func testSwitchingFromBlacklistedAppToAllowedAppPermitsLearningCapture() {
+        var settings = IntelliSenseSettings()
+        settings.correctionDetectionEnabled = true
+        settings.blacklistedApps = [
+            BlacklistedApp(bundleIdentifier: "com.apple.Terminal", displayName: "Terminal")
+        ]
+
+        let authorize = RecognitionSession.trackedCaptureAuthorization(
+            baseLearningEligible: true,
+            intelliSenseSettings: settings,
+            isReviseActive: false,
+            reviseSettings: ReviseSettings(enabled: false)
+        )
+        XCTAssertFalse(authorize("com.apple.Terminal"))
+        XCTAssertTrue(authorize("com.apple.Notes"))
+    }
+
+    func testAuthorizationFailsClosedOnNilOrEmptyBundleIdentifier() {
+        let authorize = RecognitionSession.trackedCaptureAuthorization(
+            baseLearningEligible: true,
+            intelliSenseSettings: IntelliSenseSettings(),
+            isReviseActive: true,
+            reviseSettings: ReviseSettings(enabled: true)
+        )
+        XCTAssertFalse(authorize(nil))
+        XCTAssertFalse(authorize(""))
     }
 
     func testSessionFormattingUsesTheSelectedModeAcrossOutputKinds() throws {

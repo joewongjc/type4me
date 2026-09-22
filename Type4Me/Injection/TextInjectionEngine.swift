@@ -275,7 +275,7 @@ final class TextInjectionEngine: @unchecked Sendable {
         if isPrePaste {
             if status == .success, let focusedValue {
                 let element = unsafeDowncast(focusedValue, to: AXUIElement.self)
-                return snapshotFromElement(element, bundleIdentifier: frontmostBundleID, authorize: authorize, timeout: 0.05)
+                return snapshotFromElement(element, authorize: authorize, timeout: 0.05)
             }
             if let frontmostApp {
                 enableEnhancedAX(for: frontmostApp)
@@ -286,7 +286,7 @@ final class TextInjectionEngine: @unchecked Sendable {
                 )
                 if status == .success, let focusedValue {
                     let element = unsafeDowncast(focusedValue, to: AXUIElement.self)
-                    return snapshotFromElement(element, bundleIdentifier: frontmostBundleID, authorize: authorize, timeout: 0.05)
+                    return snapshotFromElement(element, authorize: authorize, timeout: 0.05)
                 }
             }
             return nil
@@ -307,7 +307,7 @@ final class TextInjectionEngine: @unchecked Sendable {
         // to find an editable element. Common for WeChat, Feishu, etc.
         if status != .success || focusedValue == nil, let frontmostApp {
             if let found = findEditableElementInApp(frontmostApp) {
-                return snapshotFromElement(found, bundleIdentifier: frontmostBundleID, authorize: authorize, timeout: 0.25)
+                return snapshotFromElement(found, authorize: authorize, timeout: 0.25)
             }
             return FocusedElementSnapshot(
                 element: nil,
@@ -325,12 +325,11 @@ final class TextInjectionEngine: @unchecked Sendable {
         }
 
         let element = unsafeDowncast(focusedValue!, to: AXUIElement.self)
-        return snapshotFromElement(element, bundleIdentifier: frontmostBundleID, authorize: authorize, timeout: 0.25)
+        return snapshotFromElement(element, authorize: authorize, timeout: 0.25)
     }
 
     private func snapshotFromElement(
         _ element: AXUIElement,
-        bundleIdentifier: String?,
         authorize: (String?) -> Bool,
         timeout: Float = 0.05
     ) -> FocusedElementSnapshot? {
@@ -340,10 +339,8 @@ final class TextInjectionEngine: @unchecked Sendable {
         let pidStatus = AXUIElementGetPid(element, &processIdentifier)
         let actualBundleID = Self.resolveElementBundleIdentifier(
             pidStatus: pidStatus,
-            pid: processIdentifier,
-            fallback: bundleIdentifier
+            pid: processIdentifier
         )
-
         return Self.authorizedSnapshot(
             bundleIdentifier: actualBundleID,
             authorize: authorize
@@ -513,29 +510,31 @@ final class TextInjectionEngine: @unchecked Sendable {
         )
     }
 
-    /// Resolve the bundle identifier of the application owning the AX element,
-    /// falling back to the expected target bundle identifier if unavailable.
+    /// Resolve the bundle identifier of the application owning the AX element.
+    /// Fails closed (returns `nil`) if the PID cannot be retrieved or the owning
+    /// application bundle identifier cannot be resolved, avoiding fail-open
+    /// access to an element from an unknown or excluded process.
     static func resolveElementBundleIdentifier(
         pidStatus: AXError,
         pid: pid_t,
-        fallback: String?,
         appLookup: (pid_t) -> String? = { pid in
             NSRunningApplication(processIdentifier: pid)?.bundleIdentifier
         }
     ) -> String? {
-        guard pidStatus == .success else { return fallback }
-        return appLookup(pid) ?? fallback
+        guard pidStatus == .success else { return nil }
+        return appLookup(pid)
     }
 
     /// Gate every focused-element read on the app that actually holds focus
-    /// right now. Returns `nil` without invoking `read` when no tracking
-    /// consumer is allowed to look at that app's text.
+    /// right now. Fails closed (returns `nil` without invoking `read`) when
+    /// the app identity is unknown or empty, or when no tracking consumer is
+    /// allowed to observe that app's text.
     static func authorizedSnapshot(
         bundleIdentifier: String?,
         authorize: (String?) -> Bool,
         read: () -> FocusedElementSnapshot?
     ) -> FocusedElementSnapshot? {
-        guard authorize(bundleIdentifier) else { return nil }
+        guard let bundleIdentifier, !bundleIdentifier.isEmpty, authorize(bundleIdentifier) else { return nil }
         return read()
     }
 
