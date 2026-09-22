@@ -13,6 +13,7 @@ enum LLMProvider: String, CaseIterable, Codable, Sendable {
     case gemini
     case deepseek
     case zhipu
+    case mimo
     case claude
     case codexCLI
     case ollama
@@ -30,6 +31,7 @@ enum LLMProvider: String, CaseIterable, Codable, Sendable {
         case .gemini:      return "Gemini (Google)"
         case .deepseek:    return L("DeepSeek (深度求索)", "DeepSeek")
         case .zhipu:       return L("智谱 (GLM)", "Zhipu (GLM)")
+        case .mimo:        return L("小米 MiMo", "Xiaomi MiMo")
         case .claude:      return "Claude (Anthropic)"
         case .codexCLI:    return L("Codex CLI（本地账号）", "Codex CLI (Local Account)")
         case .ollama:      return L("Ollama (本地模型)", "Ollama (Local)")
@@ -49,6 +51,7 @@ enum LLMProvider: String, CaseIterable, Codable, Sendable {
         case .gemini:      return "https://generativelanguage.googleapis.com/v1beta/openai"
         case .deepseek:    return "https://api.deepseek.com"
         case .zhipu:       return "https://open.bigmodel.cn/api/paas/v4"
+        case .mimo:        return "https://api.xiaomimimo.com/v1"
         case .claude:      return "https://api.anthropic.com/v1"
         case .codexCLI:    return ""
         case .ollama:      return "http://localhost:11434/v1"
@@ -136,6 +139,13 @@ enum LLMProvider: String, CaseIterable, Codable, Sendable {
                 FieldOption(value: "glm-4.5-airx", label: "glm-4.5-airx"),
                 FieldOption(value: "glm-4-long", label: "glm-4-long"),
             ]
+        case .mimo:
+            return [
+                FieldOption(value: "mimo-v2.6-flash", label: "mimo-v2.6-flash"),
+                FieldOption(value: "mimo-v2.6-pro", label: "mimo-v2.6-pro"),
+                FieldOption(value: "mimo-v2.6-pro-ultraspeed", label: "mimo-v2.6-pro-ultraspeed"),
+                FieldOption(value: "mimo-v2.5-pro", label: "mimo-v2.5-pro"),
+            ]
         case .claude:
             return [
                 FieldOption(value: "claude-sonnet-5", label: "claude-sonnet-5"),
@@ -177,7 +187,7 @@ enum LLMProvider: String, CaseIterable, Codable, Sendable {
 
     func thinkingDisableField(for model: String?) -> ThinkingDisableField? {
         switch self {
-        case .doubao, .deepseek:
+        case .doubao, .deepseek, .mimo:
             // thinking: { type: "disabled" }
             return .thinking
         case .kimi:

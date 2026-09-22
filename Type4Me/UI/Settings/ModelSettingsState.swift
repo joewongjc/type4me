@@ -214,6 +214,7 @@ enum ModelSettingsHelpers {
         case .openai:      return "circle.grid.cross.fill"
         case .gemini:      return "sparkles"
         case .zhipu:       return "lightbulb.fill"
+        case .mimo:        return "text.bubble.fill"
         case .claude:      return "brain.head.profile"
         case .codexCLI:    return "terminal.fill"
         case .ollama:      return "server.rack"

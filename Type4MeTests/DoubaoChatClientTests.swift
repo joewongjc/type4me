@@ -251,4 +251,58 @@ final class DoubaoChatClientTests: XCTestCase {
             XCTFail("Unexpected error type: \(error)")
         }
     }
+
+    func testMiMoProviderRequestTargetsXiaomiEndpointWithThinkingDisabled() async throws {
+        let captured = NSMutableDictionary()
+        MockStreamProtocol.setHandler { request in
+            captured["url"] = request.url?.absoluteString ?? ""
+            captured["auth"] = request.allHTTPHeaderFields?["Authorization"] ?? ""
+            if let stream = request.httpBodyStream {
+                stream.open()
+                var data = Data()
+                var buffer = [UInt8](repeating: 0, count: 4096)
+                while stream.hasBytesAvailable {
+                    let read = stream.read(&buffer, maxLength: buffer.count)
+                    if read <= 0 { break }
+                    data.append(buffer, count: read)
+                }
+                stream.close()
+                captured["body"] = data
+            } else {
+                captured["body"] = request.httpBody ?? Data()
+            }
+            let sse = """
+            data: {"choices":[{"delta":{"content":"你好"}}]}
+            data: [DONE]
+
+            """
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil,
+                                           headerFields: ["Content-Type": "text/event-stream"])!
+            return (response, Data(sse.utf8))
+        }
+        defer { MockStreamProtocol.clearHandler() }
+
+        let defaults = UserDefaults.standard
+        let previous = defaults.object(forKey: "tf_disableThinking")
+        defaults.set(true, forKey: "tf_disableThinking")
+        defer {
+            if let previous { defaults.set(previous, forKey: "tf_disableThinking") }
+            else { defaults.removeObject(forKey: "tf_disableThinking") }
+        }
+
+        let client = DoubaoChatClient(provider: .mimo, customSession: makeMockSession())
+        let config = LLMConfig(apiKey: "test", model: "mimo-v2.6-pro",
+                               baseURL: LLMProvider.mimo.defaultBaseURL)
+        let result = try await client.process(text: "hi", prompt: "{text}", config: config, inputBoundary: .inline)
+
+        XCTAssertEqual(result, "你好")
+        XCTAssertEqual(captured["url"] as? String, "https://api.xiaomimimo.com/v1/chat/completions")
+        XCTAssertEqual(captured["auth"] as? String, "Bearer test")
+        let body = try XCTUnwrap(captured["body"] as? Data)
+        let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+        XCTAssertEqual(json["model"] as? String, "mimo-v2.6-pro")
+        let thinking = try XCTUnwrap(json["thinking"] as? [String: String])
+        XCTAssertEqual(thinking["type"], "disabled")
+        XCTAssertNil(json["reasoning_split"])
+    }
 }

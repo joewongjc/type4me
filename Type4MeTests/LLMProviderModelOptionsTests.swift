@@ -43,6 +43,11 @@ final class LLMProviderModelOptionsTests: XCTestCase {
 
         XCTAssertEqual(LLMProvider.codexCLI.optionValues.first, "gpt-5.6-luna")
         XCTAssertTrue(LLMProvider.codexCLI.optionValues.contains("gpt-5.3-codex-spark"))
+
+        XCTAssertEqual(LLMProvider.mimo.optionValues.first, "mimo-v2.6-flash")
+        XCTAssertTrue(LLMProvider.mimo.optionValues.contains("mimo-v2.6-pro"))
+        XCTAssertEqual(LLMProvider.mimo.defaultBaseURL, "https://api.xiaomimimo.com/v1")
+        XCTAssertEqual(LLMProvider.mimo.thinkingDisableField(for: "mimo-v2.6-pro"), .thinking)
     }
 
     func testProviderModelOptionsHaveNoDuplicates() {
