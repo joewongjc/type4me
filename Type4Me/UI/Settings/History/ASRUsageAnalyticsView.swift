@@ -222,15 +222,15 @@ public struct ASRUsageAnalyticsView: View {
                                 }
                                 .frame(width: 80, alignment: .trailing)
 
-                                HStack(spacing: 2) {
-                                    if row.badCount > 0 {
-                                        Text("\(row.badCount)")
-                                            .font(.system(size: 9, weight: .semibold))
-                                            .foregroundStyle(.red)
-                                    }
+                                VStack(alignment: .trailing, spacing: 2) {
                                     Text(formatBadPercentage(row.badPercentage))
                                         .font(.system(size: 11, weight: .medium, design: .rounded))
                                         .foregroundStyle(row.badCount > 0 ? .red : TF.settingsTextSecondary)
+                                    if row.badCount > 0 {
+                                        Text(String(format: L("%d 条", "%d recs"), row.badCount))
+                                            .font(.system(size: 9))
+                                            .foregroundStyle(TF.settingsTextTertiary)
+                                    }
                                 }
                                 .frame(width: 68, alignment: .trailing)
                             }
