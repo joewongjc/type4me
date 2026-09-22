@@ -309,7 +309,9 @@ final class TextInjectionEngine: @unchecked Sendable {
         AXUIElementSetMessagingTimeout(element, timeout)
         let role = copyStringAttribute(kAXRoleAttribute as CFString, from: element)
         let subrole = copyStringAttribute(kAXSubroleAttribute as CFString, from: element)
-        let value = copyStringAttribute(kAXValueAttribute as CFString, from: element)
+        let value = Self.trackedValue(role: role, subrole: subrole) {
+            copyStringAttribute(kAXValueAttribute as CFString, from: element)
+        }
         let placeholder = copyStringAttribute(kAXPlaceholderValueAttribute as CFString, from: element)
         let accessibilityDescription = copyStringAttribute(kAXDescriptionAttribute as CFString, from: element)
         let selectedRange = copyRangeAttribute(kAXSelectedTextRangeAttribute as CFString, from: element)
@@ -441,7 +443,7 @@ final class TextInjectionEngine: @unchecked Sendable {
               let bundleIdentifier = after.bundleIdentifier,
               let beforeValue = before.value,
               let afterValue = after.value,
-              !isSecureTextRole(role: after.role, subrole: after.subrole),
+              !Self.isSecureTextRole(role: after.role, subrole: after.subrole),
               let insertedRange = inferInsertedRange(
                   beforeValue: beforeValue,
                   afterValue: afterValue,
@@ -471,7 +473,16 @@ final class TextInjectionEngine: @unchecked Sendable {
         )
     }
 
-    private func isSecureTextRole(role: String?, subrole: String?) -> Bool {
+    static func trackedValue(
+        role: String?,
+        subrole: String?,
+        read: () -> String?
+    ) -> String? {
+        guard !isSecureTextRole(role: role, subrole: subrole) else { return nil }
+        return read()
+    }
+
+    private static func isSecureTextRole(role: String?, subrole: String?) -> Bool {
         [role, subrole]
             .compactMap { $0?.lowercased() }
             .contains { $0.contains("secure") || $0.contains("password") }
