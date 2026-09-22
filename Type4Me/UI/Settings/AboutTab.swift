@@ -265,15 +265,7 @@ struct AboutTab: View {
                     .foregroundStyle(TF.settingsTextTertiary)
             }
 
-            // Render each line of notes
-            let lines = update.notes.split(separator: "\n", omittingEmptySubsequences: false)
-            VStack(alignment: .leading, spacing: 2) {
-                ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
-                    Text(String(line))
-                        .font(.system(size: 12))
-                        .foregroundStyle(TF.settingsTextSecondary)
-                }
-            }
+            ReleaseNotesMarkupView(markup: update.notes)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
