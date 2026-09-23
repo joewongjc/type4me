@@ -4,16 +4,18 @@ struct BailianASRConfig: ASRProviderConfig, Sendable {
 
     static let provider = ASRProvider.bailian
     static let displayName = L("阿里云百炼", "Alibaba Cloud Bailian")
-    static let defaultModel = "fun-asr-realtime"
+    static let defaultModel = "qwen-audio-3.1-asr-flash-streaming"
     static let supportedModels = [
+        "qwen-audio-3.1-asr-flash-streaming",
+        "qwen-audio-3.0-asr-flash-streaming",
         "fun-asr-realtime",
-        "fun-asr-realtime-2026-02-28",
-        "fun-asr-realtime-2025-11-07",
-        "fun-asr-realtime-2025-09-15",
         "fun-asr-flash-8k-realtime",
-        "fun-asr-flash-8k-realtime-2026-01-28",
     ]
-    static let supportedLanguageHints = ["zh", "en", "ja"]
+    static let supportedLanguageHints = [
+        "zh", "en", "ja", "ko",
+        "fr", "de", "es", "ru", "it",
+        "pt", "ar", "th", "vi", "id",
+    ]
 
     static var credentialFields: [CredentialField] {[
         CredentialField(
@@ -37,7 +39,7 @@ struct BailianASRConfig: ASRProviderConfig, Sendable {
         CredentialField(
             key: "languageHint",
             label: L("语言提示", "Language Hint"),
-            placeholder: "zh / en / ja",
+            placeholder: "zh / en / ja / ko ...",
             isSecure: false,
             isOptional: true,
             defaultValue: ""

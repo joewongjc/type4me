@@ -128,7 +128,7 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
             ]
         case .bailian:
             return [
-                (L("可用模型", "Models"), L("查看", "view"), URL(string: "https://help.aliyun.com/zh/model-studio/fun-asr-realtime-websocket-api")!),
+                (L("可用模型", "Models"), L("查看", "view"), URL(string: "https://help.aliyun.com/zh/model-studio/asr-model")!),
                 (L("API Key", "API Key"), L("获取", "get"), URL(string: "https://help.aliyun.com/zh/model-studio/get-api-key")!),
             ]
         case .stepfun:

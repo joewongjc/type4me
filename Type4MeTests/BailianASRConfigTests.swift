@@ -20,11 +20,13 @@ final class BailianASRConfigTests: XCTestCase {
         XCTAssertTrue(config.isValid)
     }
 
-    func testSupportedModelsExposeCurrentFunASRRealtimeSnapshots() {
-        XCTAssertEqual(BailianASRConfig.supportedModels.first, "fun-asr-realtime")
-        XCTAssertTrue(BailianASRConfig.supportedModels.contains("fun-asr-realtime-2026-02-28"))
-        XCTAssertTrue(BailianASRConfig.supportedModels.contains("fun-asr-flash-8k-realtime"))
+    func testSupportedModelsExposeCurrentRealtimeModels() {
+        XCTAssertEqual(BailianASRConfig.defaultModel, "qwen-audio-3.1-asr-flash-streaming")
+        XCTAssertEqual(BailianASRConfig.supportedModels.first, "qwen-audio-3.1-asr-flash-streaming")
+        XCTAssertTrue(BailianASRConfig.supportedModels.contains("qwen-audio-3.0-asr-flash-streaming"))
         XCTAssertFalse(BailianASRConfig.supportedModels.contains("qwen3-asr-flash-realtime"))
+        XCTAssertTrue(BailianASRConfig.supportedModels.contains("fun-asr-realtime"))
+        XCTAssertTrue(BailianASRConfig.supportedModels.contains("fun-asr-flash-8k-realtime"))
     }
 
     func testCredentialFieldsExposeModelPickerWithCustomFallback() throws {
@@ -32,7 +34,8 @@ final class BailianASRConfigTests: XCTestCase {
 
         XCTAssertEqual(modelField.defaultValue, BailianASRConfig.defaultModel)
         XCTAssertTrue(modelField.allowCustomInput)
-        XCTAssertTrue(modelField.options.map(\.value).contains("fun-asr-realtime-2026-02-28"))
+        XCTAssertTrue(modelField.options.map(\.value).contains("qwen-audio-3.1-asr-flash-streaming"))
+        XCTAssertTrue(modelField.options.map(\.value).contains("fun-asr-realtime"))
     }
 
     func testInit_rejectsMissingAPIKey() {
@@ -53,6 +56,27 @@ final class BailianASRConfigTests: XCTestCase {
         XCTAssertEqual(config.toCredentials()["vocabularyId"], "vocab-123")
     }
 
+    func testInit_acceptsExtendedLanguageHints() throws {
+        let config = try XCTUnwrap(BailianASRConfig(credentials: [
+            "apiKey": "sk-test-key",
+            "languageHint": "ko",
+        ]))
+        XCTAssertEqual(config.languageHint, "ko")
+
+        let frenchConfig = try XCTUnwrap(BailianASRConfig(credentials: [
+            "apiKey": "sk-test-key",
+            "languageHint": "fr",
+        ]))
+        XCTAssertEqual(frenchConfig.languageHint, "fr")
+    }
+
+    func testInit_rejectsUnsupportedLanguageHints() throws {
+        let config = try XCTUnwrap(BailianASRConfig(credentials: [
+            "apiKey": "sk-test-key",
+            "languageHint": "invalid-lang",
+        ]))
+        XCTAssertEqual(config.languageHint, "")
+    }
     func testRegistry_exposesAliyunProvider() {
         let entry = ASRProviderRegistry.entry(for: .bailian)
 

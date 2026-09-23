@@ -91,28 +91,34 @@ if [ -z "$BINARY" ]; then
     fi
 
     if [ "$ARCH" = "arm64" ]; then
-        # arm64 builds can leave a stale universal artifact under .build/apple.
-        for candidate in \
-            "$PROJECT_DIR/.build/arm64-apple-macosx/release/Type4Me" \
-            "$PROJECT_DIR/.build/release/Type4Me" \
-            "$PROJECT_DIR/.build/apple/Products/Release/Type4Me"
-        do
-            if [ -f "$candidate" ]; then
-                BINARY="$candidate"
-                break
-            fi
-        done
-    else
-        for candidate in \
-            "$PROJECT_DIR/.build/apple/Products/Release/Type4Me" \
+        candidates=(
             "$PROJECT_DIR/.build/release/Type4Me"
-        do
-            if [ -f "$candidate" ]; then
-                BINARY="$candidate"
-                break
-            fi
-        done
+            "$PROJECT_DIR/.build/arm64-apple-macosx/release/Type4Me"
+            "$PROJECT_DIR/.build/apple/Products/Release/Type4Me"
+        )
+    else
+        candidates=(
+            "$PROJECT_DIR/.build/apple/Products/Release/Type4Me"
+            "$PROJECT_DIR/.build/release/Type4Me"
+        )
     fi
+
+    for candidate in "${candidates[@]}"; do
+        if [ -f "$candidate" ]; then
+            archs="$(lipo -archs "$candidate" 2>/dev/null || true)"
+            if [ "$ARCH" = "universal" ]; then
+                if echo "$archs" | grep -q "arm64" && echo "$archs" | grep -q "x86_64"; then
+                    BINARY="$candidate"
+                    break
+                fi
+            else
+                if echo "$archs" | grep -q "$ARCH"; then
+                    BINARY="$candidate"
+                    break
+                fi
+            fi
+        fi
+    done
 
     if [ -z "$BINARY" ]; then
         BINARY="$(find "$PROJECT_DIR/.build" -path '*/release/Type4Me' -type f -not -path '*/x86_64/*' -not -path '*/arm64/*' | head -n 1)"
