@@ -8,12 +8,11 @@ struct BailianASRConfig: ASRProviderConfig, Sendable {
     static let supportedModels = [
         "qwen-audio-3.1-asr-flash-streaming",
         "qwen-audio-3.0-asr-flash-streaming",
-        "qwen3-asr-flash-realtime",
         "fun-asr-realtime",
         "fun-asr-flash-8k-realtime",
     ]
     static let supportedLanguageHints = [
-        "zh", "en", "ja", "ko", "yue",
+        "zh", "en", "ja", "ko",
         "fr", "de", "es", "ru", "it",
         "pt", "ar", "th", "vi", "id",
     ]
@@ -40,7 +39,7 @@ struct BailianASRConfig: ASRProviderConfig, Sendable {
         CredentialField(
             key: "languageHint",
             label: L("语言提示", "Language Hint"),
-            placeholder: "zh / en / ja / ko / yue ...",
+            placeholder: "zh / en / ja / ko ...",
             isSecure: false,
             isOptional: true,
             defaultValue: ""
@@ -77,7 +76,8 @@ struct BailianASRConfig: ASRProviderConfig, Sendable {
         self.apiKey = apiKey
         self.model = Self.sanitized(credentials["model"]) ?? Self.defaultModel
 
-        self.languageHint = Self.sanitized(credentials["languageHint"])?.lowercased() ?? ""
+        let rawLanguageHint = Self.sanitized(credentials["languageHint"])?.lowercased() ?? ""
+        self.languageHint = Self.supportedLanguageHints.contains(rawLanguageHint) ? rawLanguageHint : ""
         self.vocabularyId = Self.sanitized(credentials["vocabularyId"]) ?? ""
         self.baseURL = Self.sanitized(credentials["baseURL"]) ?? ""
     }

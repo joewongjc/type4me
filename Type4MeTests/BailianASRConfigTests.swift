@@ -24,7 +24,7 @@ final class BailianASRConfigTests: XCTestCase {
         XCTAssertEqual(BailianASRConfig.defaultModel, "qwen-audio-3.1-asr-flash-streaming")
         XCTAssertEqual(BailianASRConfig.supportedModels.first, "qwen-audio-3.1-asr-flash-streaming")
         XCTAssertTrue(BailianASRConfig.supportedModels.contains("qwen-audio-3.0-asr-flash-streaming"))
-        XCTAssertTrue(BailianASRConfig.supportedModels.contains("qwen3-asr-flash-realtime"))
+        XCTAssertFalse(BailianASRConfig.supportedModels.contains("qwen3-asr-flash-realtime"))
         XCTAssertTrue(BailianASRConfig.supportedModels.contains("fun-asr-realtime"))
         XCTAssertTrue(BailianASRConfig.supportedModels.contains("fun-asr-flash-8k-realtime"))
     }
@@ -59,17 +59,24 @@ final class BailianASRConfigTests: XCTestCase {
     func testInit_acceptsExtendedLanguageHints() throws {
         let config = try XCTUnwrap(BailianASRConfig(credentials: [
             "apiKey": "sk-test-key",
-            "languageHint": "yue",
-        ]))
-        XCTAssertEqual(config.languageHint, "yue")
-
-        let koreanConfig = try XCTUnwrap(BailianASRConfig(credentials: [
-            "apiKey": "sk-test-key",
             "languageHint": "ko",
         ]))
-        XCTAssertEqual(koreanConfig.languageHint, "ko")
+        XCTAssertEqual(config.languageHint, "ko")
+
+        let frenchConfig = try XCTUnwrap(BailianASRConfig(credentials: [
+            "apiKey": "sk-test-key",
+            "languageHint": "fr",
+        ]))
+        XCTAssertEqual(frenchConfig.languageHint, "fr")
     }
 
+    func testInit_rejectsUnsupportedLanguageHints() throws {
+        let config = try XCTUnwrap(BailianASRConfig(credentials: [
+            "apiKey": "sk-test-key",
+            "languageHint": "invalid-lang",
+        ]))
+        XCTAssertEqual(config.languageHint, "")
+    }
     func testRegistry_exposesAliyunProvider() {
         let entry = ASRProviderRegistry.entry(for: .bailian)
 

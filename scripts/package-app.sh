@@ -105,8 +105,17 @@ if [ -z "$BINARY" ]; then
 
     for candidate in "${candidates[@]}"; do
         if [ -f "$candidate" ]; then
-            if [ -z "$BINARY" ] || [ "$candidate" -nt "$BINARY" ]; then
-                BINARY="$candidate"
+            archs="$(lipo -archs "$candidate" 2>/dev/null || true)"
+            if [ "$ARCH" = "universal" ]; then
+                if echo "$archs" | grep -q "arm64" && echo "$archs" | grep -q "x86_64"; then
+                    BINARY="$candidate"
+                    break
+                fi
+            else
+                if echo "$archs" | grep -q "$ARCH"; then
+                    BINARY="$candidate"
+                    break
+                fi
             fi
         fi
     done
