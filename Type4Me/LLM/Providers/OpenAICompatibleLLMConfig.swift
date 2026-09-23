@@ -16,6 +16,7 @@ enum MinimaxIntlLLMTag: OpenAICompatibleLLMTag { static let provider = LLMProvid
 enum BailianLLMTag:     OpenAICompatibleLLMTag { static let provider = LLMProvider.bailian }
 enum KimiLLMTag:        OpenAICompatibleLLMTag { static let provider = LLMProvider.kimi }
 enum OpenRouterLLMTag:  OpenAICompatibleLLMTag { static let provider = LLMProvider.openrouter }
+enum RequestyLLMTag:    OpenAICompatibleLLMTag { static let provider = LLMProvider.requesty }
 enum OpenAILLMTag:      OpenAICompatibleLLMTag { static let provider = LLMProvider.openai }
 enum GeminiLLMTag:      OpenAICompatibleLLMTag { static let provider = LLMProvider.gemini }
 enum DeepSeekLLMTag:    OpenAICompatibleLLMTag { static let provider = LLMProvider.deepseek }

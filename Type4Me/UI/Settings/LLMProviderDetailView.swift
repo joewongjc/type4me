@@ -585,7 +585,7 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
                       let config = configType.init(credentials: values)
                 else { return }
                 let llmConfig = config.toLLMConfig()
-                guard let url = URL(string: "\(llmConfig.baseURL)/models") else { return }
+                guard let url = URL(string: "\(llmConfig.baseURL)/\(currentProvider.modelListPath)") else { return }
                 var request = URLRequest(url: url)
                 request.httpMethod = "GET"
                 request.setValue("Bearer \(llmConfig.apiKey)", forHTTPHeaderField: "Authorization")

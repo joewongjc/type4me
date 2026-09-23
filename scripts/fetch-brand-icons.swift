@@ -125,6 +125,15 @@ let sources: [ProviderIconSource] = [
         fallbackSVG: nil
     ),
     ProviderIconSource(
+        filename: "requesty.png",
+        urls: [],
+        fallbackSVG: """
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+          <path fill="#000000" fill-rule="evenodd" d="M4 4a2 2 0 00-2 2v5a2 2 0 002 2h4.586l-1.293 1.293a1 1 0 101.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L8.586 11H4V6h11a1 1 0 100-2H4zm16 7a2 2 0 012 2v5a2 2 0 01-2 2H9a1 1 0 110-2h11v-5h-4.586l1.293 1.293a1 1 0 11-1.414 1.414l-3-3a1 1 0 010-1.414l3-3a1 1 0 111.414 1.414L15.414 13H20z"/>
+        </svg>
+        """
+    ),
+    ProviderIconSource(
         filename: "apple.png",
         urls: [
             "https://unpkg.com/@lobehub/icons-static-svg@latest/icons/apple.svg",

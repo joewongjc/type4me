@@ -211,6 +211,7 @@ enum ModelSettingsHelpers {
         case .minimaxCN, .minimaxIntl: return "cube.fill"
         case .bailian:     return "cloud.fill"
         case .openrouter:  return "arrow.triangle.swap"
+        case .requesty:    return "arrow.triangle.branch"
         case .openai:      return "circle.grid.cross.fill"
         case .gemini:      return "sparkles"
         case .zhipu:       return "lightbulb.fill"
