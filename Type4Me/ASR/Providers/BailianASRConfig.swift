@@ -10,11 +10,7 @@ struct BailianASRConfig: ASRProviderConfig, Sendable {
         "qwen-audio-3.0-asr-flash-streaming",
         "qwen3-asr-flash-realtime",
         "fun-asr-realtime",
-        "fun-asr-realtime-2026-02-28",
-        "fun-asr-realtime-2025-11-07",
-        "fun-asr-realtime-2025-09-15",
         "fun-asr-flash-8k-realtime",
-        "fun-asr-flash-8k-realtime-2026-01-28",
     ]
     static let supportedLanguageHints = [
         "zh", "en", "ja", "ko", "yue",

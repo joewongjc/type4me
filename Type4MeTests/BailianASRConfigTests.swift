@@ -26,7 +26,6 @@ final class BailianASRConfigTests: XCTestCase {
         XCTAssertTrue(BailianASRConfig.supportedModels.contains("qwen-audio-3.0-asr-flash-streaming"))
         XCTAssertTrue(BailianASRConfig.supportedModels.contains("qwen3-asr-flash-realtime"))
         XCTAssertTrue(BailianASRConfig.supportedModels.contains("fun-asr-realtime"))
-        XCTAssertTrue(BailianASRConfig.supportedModels.contains("fun-asr-realtime-2026-02-28"))
         XCTAssertTrue(BailianASRConfig.supportedModels.contains("fun-asr-flash-8k-realtime"))
     }
 
@@ -36,7 +35,7 @@ final class BailianASRConfigTests: XCTestCase {
         XCTAssertEqual(modelField.defaultValue, BailianASRConfig.defaultModel)
         XCTAssertTrue(modelField.allowCustomInput)
         XCTAssertTrue(modelField.options.map(\.value).contains("qwen-audio-3.1-asr-flash-streaming"))
-        XCTAssertTrue(modelField.options.map(\.value).contains("fun-asr-realtime-2026-02-28"))
+        XCTAssertTrue(modelField.options.map(\.value).contains("fun-asr-realtime"))
     }
 
     func testInit_rejectsMissingAPIKey() {
