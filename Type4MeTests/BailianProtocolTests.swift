@@ -73,6 +73,25 @@ final class BailianProtocolTests: XCTestCase {
         XCTAssertNil(parameters["vocabulary_id"])
     }
 
+    func testBuildRunTaskMessage_defaultsToQwenAudio31() throws {
+        let config = try XCTUnwrap(BailianASRConfig(credentials: [
+            "apiKey": "sk-test-key",
+        ]))
+
+        XCTAssertEqual(config.model, "qwen-audio-3.1-asr-flash-streaming")
+
+        let message = BailianProtocol.buildRunTaskMessage(
+            config: config,
+            options: ASRRequestOptions(),
+            taskID: "task-qwen"
+        )
+        let json = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: Data(message.utf8)) as? [String: Any]
+        )
+        let payload = try XCTUnwrap(json["payload"] as? [String: Any])
+        XCTAssertEqual(payload["model"] as? String, "qwen-audio-3.1-asr-flash-streaming")
+    }
+
     func testParseServerEvent_buildsPartialTranscript() throws {
         let message = """
         {

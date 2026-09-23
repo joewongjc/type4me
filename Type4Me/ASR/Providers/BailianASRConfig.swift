@@ -4,8 +4,11 @@ struct BailianASRConfig: ASRProviderConfig, Sendable {
 
     static let provider = ASRProvider.bailian
     static let displayName = L("阿里云百炼", "Alibaba Cloud Bailian")
-    static let defaultModel = "fun-asr-realtime"
+    static let defaultModel = "qwen-audio-3.1-asr-flash-streaming"
     static let supportedModels = [
+        "qwen-audio-3.1-asr-flash-streaming",
+        "qwen-audio-3.0-asr-flash-streaming",
+        "qwen3-asr-flash-realtime",
         "fun-asr-realtime",
         "fun-asr-realtime-2026-02-28",
         "fun-asr-realtime-2025-11-07",
@@ -13,7 +16,11 @@ struct BailianASRConfig: ASRProviderConfig, Sendable {
         "fun-asr-flash-8k-realtime",
         "fun-asr-flash-8k-realtime-2026-01-28",
     ]
-    static let supportedLanguageHints = ["zh", "en", "ja"]
+    static let supportedLanguageHints = [
+        "zh", "en", "ja", "ko", "yue",
+        "fr", "de", "es", "ru", "it",
+        "pt", "ar", "th", "vi", "id",
+    ]
 
     static var credentialFields: [CredentialField] {[
         CredentialField(
@@ -37,7 +44,7 @@ struct BailianASRConfig: ASRProviderConfig, Sendable {
         CredentialField(
             key: "languageHint",
             label: L("语言提示", "Language Hint"),
-            placeholder: "zh / en / ja",
+            placeholder: "zh / en / ja / ko / yue ...",
             isSecure: false,
             isOptional: true,
             defaultValue: ""
@@ -74,8 +81,7 @@ struct BailianASRConfig: ASRProviderConfig, Sendable {
         self.apiKey = apiKey
         self.model = Self.sanitized(credentials["model"]) ?? Self.defaultModel
 
-        let rawLanguageHint = Self.sanitized(credentials["languageHint"])?.lowercased() ?? ""
-        self.languageHint = Self.supportedLanguageHints.contains(rawLanguageHint) ? rawLanguageHint : ""
+        self.languageHint = Self.sanitized(credentials["languageHint"])?.lowercased() ?? ""
         self.vocabularyId = Self.sanitized(credentials["vocabularyId"]) ?? ""
         self.baseURL = Self.sanitized(credentials["baseURL"]) ?? ""
     }
