@@ -48,6 +48,13 @@ final class LLMProviderModelOptionsTests: XCTestCase {
         XCTAssertTrue(LLMProvider.mimo.optionValues.contains("mimo-v2.6-pro"))
         XCTAssertEqual(LLMProvider.mimo.defaultBaseURL, "https://api.xiaomimimo.com/v1")
         XCTAssertEqual(LLMProvider.mimo.thinkingDisableField(for: "mimo-v2.6-pro"), .thinking)
+
+        XCTAssertEqual(LLMProvider.requesty.optionValues.first, "gpt-5.4-mini")
+        XCTAssertTrue(LLMProvider.requesty.optionValues.contains("claude-haiku-4-5"))
+        XCTAssertEqual(LLMProvider.requesty.defaultBaseURL, "https://router.requesty.ai/v1")
+        XCTAssertEqual(LLMProvider.requesty.modelListPath, "models/managed")
+        XCTAssertEqual(LLMProvider.openrouter.modelListPath, "models")
+        XCTAssertNil(LLMProvider.requesty.thinkingDisableField(for: "gpt-5.4-mini"))
     }
 
     func testProviderModelOptionsHaveNoDuplicates() {

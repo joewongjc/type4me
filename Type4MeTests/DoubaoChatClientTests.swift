@@ -305,4 +305,50 @@ final class DoubaoChatClientTests: XCTestCase {
         XCTAssertEqual(thinking["type"], "disabled")
         XCTAssertNil(json["reasoning_split"])
     }
+
+    func testRequestyProviderRequestTargetsRouterEndpoint() async throws {
+        let captured = NSMutableDictionary()
+        MockStreamProtocol.setHandler { request in
+            captured["url"] = request.url?.absoluteString ?? ""
+            captured["auth"] = request.allHTTPHeaderFields?["Authorization"] ?? ""
+            if let stream = request.httpBodyStream {
+                stream.open()
+                var data = Data()
+                var buffer = [UInt8](repeating: 0, count: 4096)
+                while stream.hasBytesAvailable {
+                    let read = stream.read(&buffer, maxLength: buffer.count)
+                    if read <= 0 { break }
+                    data.append(buffer, count: read)
+                }
+                stream.close()
+                captured["body"] = data
+            } else {
+                captured["body"] = request.httpBody ?? Data()
+            }
+            let sse = """
+            data: {"choices":[{"delta":{"content":"你好"}}]}
+            data: [DONE]
+
+            """
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil,
+                                           headerFields: ["Content-Type": "text/event-stream"])!
+            return (response, Data(sse.utf8))
+        }
+        defer { MockStreamProtocol.clearHandler() }
+
+        let client = DoubaoChatClient(provider: .requesty, customSession: makeMockSession())
+        let config = LLMConfig(apiKey: "test", model: "openai/gpt-4o-mini",
+                               baseURL: LLMProvider.requesty.defaultBaseURL)
+        let result = try await client.process(text: "hi", prompt: "{text}", config: config, inputBoundary: .inline)
+
+        XCTAssertEqual(result, "你好")
+        XCTAssertEqual(captured["url"] as? String, "https://router.requesty.ai/v1/chat/completions")
+        XCTAssertEqual(captured["auth"] as? String, "Bearer test")
+        let body = try XCTUnwrap(captured["body"] as? Data)
+        let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+        XCTAssertEqual(json["model"] as? String, "openai/gpt-4o-mini")
+        XCTAssertNil(json["thinking"])
+        XCTAssertNil(json["reasoning"])
+        XCTAssertNil(json["reasoning_effort"])
+    }
 }

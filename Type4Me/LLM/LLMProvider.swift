@@ -9,6 +9,7 @@ enum LLMProvider: String, CaseIterable, Codable, Sendable {
     case bailian
     case kimi
     case openrouter
+    case requesty
     case openai
     case gemini
     case deepseek
@@ -27,6 +28,7 @@ enum LLMProvider: String, CaseIterable, Codable, Sendable {
         case .bailian:     return L("百炼 (阿里云)", "Bailian (Alibaba Cloud)")
         case .kimi:        return L("Kimi (月之暗面)", "Kimi (Moonshot)")
         case .openrouter:  return "OpenRouter"
+        case .requesty:    return "Requesty"
         case .openai:      return "OpenAI"
         case .gemini:      return "Gemini (Google)"
         case .deepseek:    return L("DeepSeek (深度求索)", "DeepSeek")
@@ -47,6 +49,7 @@ enum LLMProvider: String, CaseIterable, Codable, Sendable {
         case .bailian:     return "https://dashscope.aliyuncs.com/compatible-mode/v1"
         case .kimi:        return "https://api.moonshot.ai/v1"
         case .openrouter:  return "https://openrouter.ai/api/v1"
+        case .requesty:    return "https://router.requesty.ai/v1"
         case .openai:      return "https://api.openai.com/v1"
         case .gemini:      return "https://generativelanguage.googleapis.com/v1beta/openai"
         case .deepseek:    return "https://api.deepseek.com"
@@ -101,6 +104,14 @@ enum LLMProvider: String, CaseIterable, Codable, Sendable {
                 FieldOption(value: "moonshot-v1-128k", label: "moonshot-v1-128k"),
                 FieldOption(value: "moonshot-v1-32k", label: "moonshot-v1-32k"),
                 FieldOption(value: "moonshot-v1-8k", label: "moonshot-v1-8k"),
+            ]
+        case .requesty:
+            return [
+                FieldOption(value: "gpt-5.4-mini", label: "gpt-5.4-mini"),
+                FieldOption(value: "claude-haiku-4-5", label: "claude-haiku-4-5"),
+                FieldOption(value: "gemini-3.5-flash", label: "gemini-3.5-flash"),
+                FieldOption(value: "deepseek-v4-flash", label: "deepseek-v4-flash"),
+                FieldOption(value: "claude-sonnet-4-5", label: "claude-sonnet-4-5"),
             ]
         case .openai:
             return [
@@ -161,6 +172,12 @@ enum LLMProvider: String, CaseIterable, Codable, Sendable {
         case .openrouter, .ollama, .custom:
             return []
         }
+    }
+
+    /// Path appended to the base URL when fetching the model list.
+    /// Requesty lists its curated managed models at `/models/managed`.
+    var modelListPath: String {
+        self == .requesty ? "models/managed" : "models"
     }
 
     var isOpenAICompatible: Bool {
