@@ -75,8 +75,10 @@ enum VolcProtocol: Sendable {
             // Cloud boosting table: skip inline hotwords, use table ID only
             corpus["boosting_table_id"] = boostingTableID
         } else if let contextString = buildContextString(hotwords: options.hotwords) {
-            // No cloud table: fall back to inline hotwords
-            requestDict["context"] = contextString
+            // No cloud table: fall back to inline hotwords. The documented
+            // field is `request.corpus.context`; a top-level `request.context`
+            // is not part of the bigmodel request schema.
+            corpus["context"] = contextString
         }
         if !corpus.isEmpty {
             requestDict["corpus"] = corpus
@@ -101,14 +103,54 @@ enum VolcProtocol: Sendable {
         return try! JSONSerialization.data(withJSONObject: payload)
     }
 
+    /// Documented direct-hotword budget for the bidirectional streaming endpoint.
+    static let inlineHotwordTokenBudget = 100
+
+    /// Hotwords that fit the direct-pass budget, in the user's list order.
+    static func inlineHotwords(_ hotwords: [String]) -> [String] {
+        var selected: [String] = []
+        var seen = Set<String>()
+        var usedTokens = 0
+        for raw in hotwords {
+            let word = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !word.isEmpty, seen.insert(word.lowercased()).inserted else { continue }
+            let cost = estimatedTokenCount(word)
+            guard usedTokens + cost <= inlineHotwordTokenBudget else { continue }
+            usedTokens += cost
+            selected.append(word)
+        }
+        return selected
+    }
+
+    /// Conservative estimate: one token per CJK character, and one token per
+    /// three characters of each Latin/digit run.
+    static func estimatedTokenCount(_ word: String) -> Int {
+        var tokens = 0
+        var latinRun = 0
+        func flushLatin() {
+            if latinRun > 0 { tokens += (latinRun + 2) / 3 }
+            latinRun = 0
+        }
+        for scalar in word.unicodeScalars {
+            if scalar.properties.isIdeographic {
+                flushLatin()
+                tokens += 1
+            } else if CharacterSet.alphanumerics.contains(scalar) {
+                latinRun += 1
+            } else {
+                flushLatin()
+            }
+        }
+        flushLatin()
+        return max(tokens, 1)
+    }
+
     private static func buildContextString(hotwords: [String]) -> String? {
         var contextObject: [String: Any] = [:]
 
-        let cleanedHotwords = hotwords
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
+        let cleanedHotwords = inlineHotwords(hotwords)
         if !cleanedHotwords.isEmpty {
-            contextObject["hotwords"] = cleanedHotwords.map { ["word": $0, "scale": 5.0] as [String: Any] }
+            contextObject["hotwords"] = cleanedHotwords.map { ["word": $0] }
         }
 
         guard !contextObject.isEmpty,

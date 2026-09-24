@@ -143,13 +143,32 @@ final class VolcProtocolTests: XCTestCase {
         )
         let json = try JSONSerialization.jsonObject(with: payload) as? [String: Any]
         let request = try XCTUnwrap(json?["request"] as? [String: Any])
-        let contextString = try XCTUnwrap(request["context"] as? String)
+        XCTAssertNil(request["context"])
+        let corpus = try XCTUnwrap(request["corpus"] as? [String: Any])
+        XCTAssertNil(corpus["boosting_table_id"])
+        let contextString = try XCTUnwrap(corpus["context"] as? String)
         let contextData = try XCTUnwrap(contextString.data(using: .utf8))
         let context = try JSONSerialization.jsonObject(with: contextData) as? [String: Any]
         let hotwords = try XCTUnwrap(context?["hotwords"] as? [[String: Any]])
         XCTAssertEqual(hotwords.count, 2)
         XCTAssertEqual(hotwords.first?["word"] as? String, "Type4Me")
-        XCTAssertNil(request["corpus"])
+        XCTAssertEqual(hotwords.first?.keys.sorted(), ["word"])
+    }
+
+    func testInlineHotwords_dedupesAndRespectsTokenBudget() {
+        XCTAssertEqual(VolcProtocol.estimatedTokenCount("生财有术"), 4)
+        XCTAssertEqual(VolcProtocol.estimatedTokenCount("Claude code"), 4)
+        XCTAssertEqual(
+            VolcProtocol.inlineHotwords([" 虎码 ", "虎码", "", "Codex", "codex"]),
+            ["虎码", "Codex"]
+        )
+
+        let manyTerms = (0..<80).map { "词条\($0)" }
+        let selected = VolcProtocol.inlineHotwords(manyTerms)
+        let used = selected.map(VolcProtocol.estimatedTokenCount).reduce(0, +)
+        XCTAssertLessThanOrEqual(used, VolcProtocol.inlineHotwordTokenBudget)
+        XCTAssertEqual(selected.first, "词条0")
+        XCTAssertLessThan(selected.count, manyTerms.count)
     }
 
     // MARK: - Full Message Encoding

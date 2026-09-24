@@ -214,6 +214,12 @@ actor VolcASRClient: SpeechRecognizer {
 
         // Send full_client_request (no compression, plain JSON)
         let payload = VolcProtocol.buildClientRequest(uid: volcConfig.uid, options: options)
+        let hasBoostingTable = !(options.boostingTableID ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let inlineHotwordCount = hasBoostingTable ? 0 : VolcProtocol.inlineHotwords(options.hotwords).count
+        DebugFileLogger.log(
+            "volc hotwords field=\(hasBoostingTable ? "corpus.boosting_table_id" : "corpus.context") inline=\(inlineHotwordCount) configured=\(options.hotwords.count)"
+        )
 
         let header = VolcHeader(
             messageType: .fullClientRequest,
