@@ -1,6 +1,17 @@
 {
-  "latest": "2.9.0",
+  "latest": "2.10.0",
   "releases": [
+    {
+      "version": "2.10.0",
+      "date": "2026-09-23",
+      "notes": "### 新功能\n\n- **小米 MiMo 文本处理服务**：新增 MiMo 服务商，可在设置中配置凭证并选择常用模型。\n- **百炼 Qwen-Audio 3.1 流式识别**：支持新一代实时识别模型，扩展语言提示选项；原有百炼配置继续可用。\n- **StepFun 实时识别区域选择**：可选择中国或全球服务区域；现有配置继续默认使用中国区。\n\n<p align=\"center\">\n  <img src=\"https://github.com/user-attachments/assets/2e66c13c-511d-4dfa-97d8-4f325e39a0d2\" width=\"646\" alt=\"StepFun 实时语音识别的区域选择设置\" />\n</p>\n\n- **Grok 实时识别模型**：固定使用 Grok Voice Transcribe 2.0，并在录音信息和历史记录中显示模型名称。\n- **菜单栏切换文本处理引擎**：新增处理引擎子菜单，可直接切换已配置的 LLM；麦克风、识别引擎和翻译目标等当前选项也会正确显示系统勾选标记。\n\n### 改进与修复\n\n- **语音改口支持所有输入模式**：无论文字来自哪种输入模式，都可在符合现有定位和写入安全检查时追踪并修改。\n- **改口文本读取权限检查**：读取无障碍文本前再次确认前台应用和焦点元素归属，避免切换应用时读取排除应用的内容。\n- **火山引擎热词生效**：将直传热词放入服务端定义的请求字段，去重并遵守请求容量限制，避免配置的热词被服务端忽略。\n- **短录音识别更干净**：抑制 Gemini 短录音中的纯热词回声，同时保留用户真实说出的单个热词。\n- **历史质量统计更清晰**：在识别引擎统计中突出差评比例，并在下方显示差评条数。\n\n<p align=\"center\">\n  <img src=\"https://github.com/user-attachments/assets/17f976d1-c9bf-4e75-afb6-0e0a632d5478\" width=\"154\" alt=\"识别质量统计中的差评比例和记录条数\" />\n</p>\n\n- **应用内更新说明支持格式和图片**：更新说明可按 Markdown 排版，并显示其中的图片，阅读更清晰。\n\n<p align=\"center\">\n  <img src=\"https://github.com/user-attachments/assets/fc409463-a887-4712-93ac-8a28ab592c19\" width=\"900\" alt=\"应用内格式化显示带图片的更新说明\" />\n</p>",
+      "cloud_dmg_url": "https://github.com/joewongjc/type4me/releases/download/v2.10.0/Type4Me-v2.10.0-cloud.dmg",
+      "cloud_dmg_size": 13952837,
+      "cloud_dmg_sha256": "9d4b485ffd329526aca658a90bd4cf4b84780ed9dea2b16b0c208583db1af9b8",
+      "local_dmg_url": "https://github.com/joewongjc/type4me/releases/download/v2.10.0/Type4Me-v2.10.0-local-apple-silicon.dmg",
+      "local_dmg_size": 718083648,
+      "local_dmg_sha256": "ca9d4a14a7390ab3252215bdd039bdb9dc9e4f219e6c553f7d6cda3db94b8978"
+    },
     {
       "version": "2.9.0",
       "date": "2026-09-18",
