@@ -1,7 +1,7 @@
 # Type4Me 文档中心
 
 > 文档状态：当前有效
-> 最后整理：2026-09-16
+> 最后整理：2026-09-24
 
 这里是仓库文档的唯一入口。功能设计、开发设计和历史材料不再平铺在 `docs/` 根目录。
 
@@ -21,7 +21,7 @@
 
 | 功能 | 文档 | 类型 | 状态 | 设计日期 | 实现基线 |
 |---|---|---|---|---:|---|
-| 历史与用量看板 | [产品设计](features/usage-analytics/product-design.md) / [开发设计](features/usage-analytics/development-design.md) | 产品与开发设计 | 已实现，持续验证 | 2026-09-14 | `b627606`（PR #310） |
+| 历史与用量看板 | [产品设计](features/usage-analytics/product-design.md) / [开发设计](features/usage-analytics/development-design.md) | 产品与开发设计 | 已实现，持续验证 | 2026-09-22 | `927f84b`（PR #318） |
 | 当前键盘焦点回写（简化输入目标） | [产品设计](features/current-focus-injection/product-design.md) / [开发设计](features/current-focus-injection/development-design.md) | 产品与开发设计 | 已实现，持续验证 | 2026-09-10 | `0da8693`（PR #297） |
 | 首次设置与权限引导 | [产品设计](features/setup-guide/product-design.md) | 产品设计 | 已实现，待用户验收 | 2026-09-08 | `bafecde` |
 | Meta Muse 实时 ASR | [产品设计](features/meta-muse-asr/product-design.md) / [开发设计](features/meta-muse-asr/development-design.md) | 产品与开发设计 | 已实现，持续验证 | 2026-09-03 | `6fdfb8d`（#286） |
@@ -34,8 +34,8 @@
 | 液态玻璃录音指示条 | [开发设计](features/liquid-glass-recording-indicator/development-design.md) | 开发设计 | 当前有效（已实现，持续验证） | 2026-09-01 | `b67ee103`（PR #279） |
 | 录音外观增强 | [产品设计](features/appearance-settings-enhancements/product-design.md) | 产品设计 | 当前有效（已实现，持续验证） | 2026-08-25 | `06c06a0` |
 | 录音外观增强 | [开发设计](features/appearance-settings-enhancements/development-design.md) | 开发设计 | 当前有效（已实现，持续验证） | 2026-08-25 | `06c06a0` |
-| 改口 | [产品设计](features/revise/product-design.md) | 产品设计 | 设计完成，待实现 | 2026-08-18 | — |
-| 改口 | [开发设计](features/revise/development-design.md) | 开发设计 | 设计完成，待实现 | 2026-08-18 | 当前工作树（待实现） |
+| 改口 | [产品设计](features/revise/product-design.md) | 产品设计 | 已实现，持续验证 | 2026-09-24 | `d57ce17`（PR #322） |
+| 改口 | [开发设计](features/revise/development-design.md) | 开发设计 | 已实现，持续验证 | 2026-09-24 | `d57ce17`（PR #322） |
 | 运行时性能 | [运行时内存优化二期](features/runtime/runtime-memory-optimization-v2-design.md) | 专项开发设计 | 设计完成，待评审与实现 | 2026-08-15 | 当前工作树（待合并） |
 | Intelli Sense | [用户纠正文本识别](features/intelli-sense/user-correction-text-recognition-design.md) | 专项开发设计 | 已实现，待 Beta 验证 | 2026-08-12 | 当前工作树（待合并） |
 | 翻译模式 | [产品设计](features/translation/product-design.md) | 产品设计 | 已实现，持续验证 | 2026-08-11 | `5076296`，修订至 `0bc9bf8` |

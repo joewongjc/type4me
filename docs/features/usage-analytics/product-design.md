@@ -5,8 +5,8 @@
 > 适用平台：Type4Me macOS (Apple Silicon & Intel)  
 > 文档范围：历史记录页面重组、ASR 语音引擎用量看板、LLM 全局大模型用量与成本看板、交互规范与动效物理规则  
 > 设计日期：2026-09-14  
-> 最后校验：2026-09-16
-> 实现基线：`b627606`（PR #310）
+> 最后校验：2026-09-24
+> 实现基线：`927f84b`（PR #318）
 > 下游文档：`docs/features/usage-analytics/development-design.md`  
 
 ---

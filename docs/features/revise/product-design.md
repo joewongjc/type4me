@@ -1,11 +1,12 @@
 # Type4Me 改口（Revise）产品功能设计
 
 > 文档类型：产品设计
-> 文档状态：当前有效（设计完成，待实现）
+> 文档状态：当前有效（已实现，持续验证）
 > 适用平台：Type4Me macOS
 > 文档范围：最近一次文字输出的语音修改、目标定位、交互状态、安全边界、历史与隐私
 > 设计日期：2026-08-18
-> 最后校验：2026-08-18
+> 最后校验：2026-09-24
+> 实现基线：`d57ce17`（PR #322）
 > 上游文档：`docs/features/intelli-sense/product-design.md`、`docs/features/intelli-sense/user-correction-text-recognition-design.md`
 > 下游文档：`docs/features/revise/development-design.md`；专项评测设计由该文档第 23 节定义
 

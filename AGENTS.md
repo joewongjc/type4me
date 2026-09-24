@@ -259,7 +259,7 @@ API keys and other secure values are stored in Keychain, not in this file.
 | `Type4Me/Database/HistoryStore.swift` | Persistent transcription and processing history |
 | `Type4MeIntelliSenseCore/` | Intelli Sense context, guard, and preference-learning core |
 | `Type4MeReviseCore/` | Voice Revise tracking, slot targeting, and replacement core |
-| `Type4Me/LLM/LLMProvider.swift` | 14 LLM providers, including Codex CLI and local Ollama |
+| `Type4Me/LLM/LLMProvider.swift` | 15 LLM providers, including Xiaomi MiMo, Codex CLI, and local Ollama |
 | `Type4Me/LLM/LLMProviderRegistry.swift` | LLM provider → config + client factory |
 | `Type4Me/Session/SoundFeedback.swift` | Start/stop/error sounds, multiple sound styles |
 | `qwen3-asr-server/server.py` | Qwen3-ASR calibration engine (MLX/Metal, Apple Silicon) |

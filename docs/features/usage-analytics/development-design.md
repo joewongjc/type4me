@@ -6,8 +6,8 @@
 > 上游文档：`docs/features/usage-analytics/product-design.md`  
 > 核心模块：`HistoryStore` (SQLite 数据底座), `LLMPricingRegistry` (计价服务), `LLMClient` (协议与 Token 提取改造), `UsageAnalyticsUI` (SwiftUI 界面层)  
 > 设计日期：2026-09-14  
-> 最后校验：2026-09-16
-> 实现基线：`b627606`（PR #310）
+> 最后校验：2026-09-24
+> 实现基线：`927f84b`（PR #318）
 
 ---
 
