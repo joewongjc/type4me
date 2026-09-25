@@ -10,6 +10,7 @@ enum LLMProviderRegistry {
         .kimi:        OpenAICompatibleLLMConfig<KimiLLMTag>.self,
         .openrouter:  OpenAICompatibleLLMConfig<OpenRouterLLMTag>.self,
         .requesty:    OpenAICompatibleLLMConfig<RequestyLLMTag>.self,
+        .apiRoute:    OpenAICompatibleLLMConfig<APIRouteLLMTag>.self,
         .openai:      OpenAICompatibleLLMConfig<OpenAILLMTag>.self,
         .gemini:      OpenAICompatibleLLMConfig<GeminiLLMTag>.self,
         .deepseek:    OpenAICompatibleLLMConfig<DeepSeekLLMTag>.self,

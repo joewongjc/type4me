@@ -212,6 +212,7 @@ enum ModelSettingsHelpers {
         case .bailian:     return "cloud.fill"
         case .openrouter:  return "arrow.triangle.swap"
         case .requesty:    return "arrow.triangle.branch"
+        case .apiRoute:    return "globe"
         case .openai:      return "circle.grid.cross.fill"
         case .gemini:      return "sparkles"
         case .zhipu:       return "lightbulb.fill"

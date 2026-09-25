@@ -106,6 +106,7 @@ struct BrandIconView: View {
             case .bailian:     return "bailian"
             case .openrouter:  return "openrouter"
             case .requesty:    return "requesty"
+            case .apiRoute:    return "api-route"
             case .openai:      return "openai"
             case .gemini:      return "gemini"
             case .zhipu:       return "zhipu"
