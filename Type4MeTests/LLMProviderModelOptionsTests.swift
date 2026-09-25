@@ -55,6 +55,12 @@ final class LLMProviderModelOptionsTests: XCTestCase {
         XCTAssertEqual(LLMProvider.requesty.modelListPath, "models/managed")
         XCTAssertEqual(LLMProvider.openrouter.modelListPath, "models")
         XCTAssertNil(LLMProvider.requesty.thinkingDisableField(for: "gpt-5.4-mini"))
+
+        XCTAssertEqual(LLMProvider.apiRoute.optionValues.first, "gpt-5.4-mini")
+        XCTAssertEqual(LLMProvider.apiRoute.defaultBaseURL, "https://global.api-route.com/v1")
+        XCTAssertEqual(LLMProvider.apiRoute.modelListPath, "models")
+        XCTAssertNil(LLMProvider.apiRoute.thinkingDisableField(for: "gpt-5.4-mini"))
+        XCTAssertNotNil(LLMProviderRegistry.configType(for: .apiRoute))
     }
 
     func testProviderModelOptionsHaveNoDuplicates() {

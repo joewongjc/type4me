@@ -10,6 +10,7 @@ enum LLMProvider: String, CaseIterable, Codable, Sendable {
     case kimi
     case openrouter
     case requesty
+    case apiRoute
     case openai
     case gemini
     case deepseek
@@ -29,6 +30,7 @@ enum LLMProvider: String, CaseIterable, Codable, Sendable {
         case .kimi:        return L("Kimi (月之暗面)", "Kimi (Moonshot)")
         case .openrouter:  return "OpenRouter"
         case .requesty:    return "Requesty"
+        case .apiRoute:    return "API Route"
         case .openai:      return "OpenAI"
         case .gemini:      return "Gemini (Google)"
         case .deepseek:    return L("DeepSeek (深度求索)", "DeepSeek")
@@ -50,6 +52,7 @@ enum LLMProvider: String, CaseIterable, Codable, Sendable {
         case .kimi:        return "https://api.moonshot.ai/v1"
         case .openrouter:  return "https://openrouter.ai/api/v1"
         case .requesty:    return "https://router.requesty.ai/v1"
+        case .apiRoute:    return "https://global.api-route.com/v1"
         case .openai:      return "https://api.openai.com/v1"
         case .gemini:      return "https://generativelanguage.googleapis.com/v1beta/openai"
         case .deepseek:    return "https://api.deepseek.com"
@@ -112,6 +115,14 @@ enum LLMProvider: String, CaseIterable, Codable, Sendable {
                 FieldOption(value: "gemini-3.5-flash", label: "gemini-3.5-flash"),
                 FieldOption(value: "deepseek-v4-flash", label: "deepseek-v4-flash"),
                 FieldOption(value: "claude-sonnet-4-5", label: "claude-sonnet-4-5"),
+            ]
+        case .apiRoute:
+            return [
+                FieldOption(value: "gpt-5.4-mini", label: "gpt-5.4-mini"),
+                FieldOption(value: "gemini-3.7-flash", label: "gemini-3.7-flash"),
+                FieldOption(value: "deepseek-v4-flash", label: "deepseek-v4-flash"),
+                FieldOption(value: "kimi-k2.6", label: "kimi-k2.6"),
+                FieldOption(value: "claude-sonnet-4-6", label: "claude-sonnet-4-6"),
             ]
         case .openai:
             return [
