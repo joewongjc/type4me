@@ -6,6 +6,8 @@ struct AssemblyAIASRConfig: ASRProviderConfig, Sendable {
     static let displayName = "AssemblyAI"
     static let defaultModel = "universal-3-6-pro"
     static let supportedModels = [
+        "universal-3-6-pro",
+        "universal-3-6",
         "universal-3-5-pro",
         "u3-rt-pro",
         "universal-streaming-multilingual",
