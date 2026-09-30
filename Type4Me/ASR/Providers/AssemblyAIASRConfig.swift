@@ -4,7 +4,7 @@ struct AssemblyAIASRConfig: ASRProviderConfig, Sendable {
 
     static let provider = ASRProvider.assemblyai
     static let displayName = "AssemblyAI"
-    static let defaultModel = "universal-3-5-pro"
+    static let defaultModel = "universal-3-6-pro"
     static let supportedModels = [
         "universal-3-5-pro",
         "u3-rt-pro",
