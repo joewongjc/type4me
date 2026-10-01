@@ -163,6 +163,11 @@ Multi-provider ASR support via `ASRProvider` enum + `ASRProviderConfig` protocol
 2. Write the client (implementing `SpeechRecognizer` protocol)
 3. Register `createClient` in `ASRProviderRegistry.all`
 
+
+### LLM Provider Inclusion Policy
+
+- Built-in first-class LLM providers are reserved for primary foundation model vendors (e.g., OpenAI, Anthropic, Google Gemini, DeepSeek, Moonshot, Baidu, Xiaomi MiMo, Ollama, etc.) and established baseline routers (OpenRouter).
+- Commercial third-party aggregation routers/gateways (such as Requesty, API Route, and similar services) should connect via the built-in **Custom OpenAI Compatible** provider (`.custom`) using their respective base URL and API key, rather than being added as dedicated first-class entries. This prevents the provider menu from turning into an uncurated directory of third-party proxy gateways.
 ## Local ASR Architecture (SenseVoice + Qwen3-ASR)
 
 ### Dual-Engine Design
