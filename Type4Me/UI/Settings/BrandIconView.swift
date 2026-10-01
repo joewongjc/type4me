@@ -55,6 +55,8 @@ private final class BrandIconCache: @unchecked Sendable {
 // MARK: - Brand Icon View
 
 struct BrandIconView: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     enum ProviderKind {
         case asr(ASRProvider)
         case llm(LLMProvider)
@@ -118,16 +120,33 @@ struct BrandIconView: View {
         }
     }
 
+    /// Monochromatic dark icons that need color inversion in dark mode (aligned with OpenRouter's dark:invert).
+    private var shouldInvertInDarkMode: Bool {
+        switch iconName {
+        case "openai", "deepgram", "elevenlabs", "apple", "grok", "ollama":
+            return true
+        default:
+            return false
+        }
+    }
+
     var body: some View {
         Group {
             if let nsImage = BrandIconCache.shared.image(named: iconName) {
-                Image(nsImage: nsImage)
+                let img = Image(nsImage: nsImage)
                     .resizable()
                     .interpolation(.high)
                     .antialiased(true)
                     .scaledToFit()
-                    .frame(width: size, height: size)
-                    .clipShape(RoundedRectangle(cornerRadius: size * 0.22, style: .continuous))
+
+                if colorScheme == .dark && shouldInvertInDarkMode {
+                    img.colorInvert()
+                        .frame(width: size, height: size)
+                        .clipShape(RoundedRectangle(cornerRadius: size * 0.22, style: .continuous))
+                } else {
+                    img.frame(width: size, height: size)
+                        .clipShape(RoundedRectangle(cornerRadius: size * 0.22, style: .continuous))
+                }
             } else {
                 fallbackIcon
             }
