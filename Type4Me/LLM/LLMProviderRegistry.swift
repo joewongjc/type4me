@@ -9,7 +9,6 @@ enum LLMProviderRegistry {
         .bailian:     OpenAICompatibleLLMConfig<BailianLLMTag>.self,
         .kimi:        OpenAICompatibleLLMConfig<KimiLLMTag>.self,
         .openrouter:  OpenAICompatibleLLMConfig<OpenRouterLLMTag>.self,
-        .requesty:    OpenAICompatibleLLMConfig<RequestyLLMTag>.self,
         .openai:      OpenAICompatibleLLMConfig<OpenAILLMTag>.self,
         .gemini:      OpenAICompatibleLLMConfig<GeminiLLMTag>.self,
         .deepseek:    OpenAICompatibleLLMConfig<DeepSeekLLMTag>.self,
