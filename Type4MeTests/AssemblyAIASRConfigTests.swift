@@ -9,12 +9,12 @@ final class AssemblyAIASRConfigTests: XCTestCase {
         ]))
 
         XCTAssertEqual(config.model, AssemblyAIASRConfig.defaultModel)
-        XCTAssertEqual(config.model, "universal-3-5-pro")
+        XCTAssertEqual(config.model, "universal-3-6-pro")
         XCTAssertTrue(config.isValid)
     }
 
-    func testSupportedModelsExposeUniversal35ProFirst() {
-        XCTAssertEqual(AssemblyAIASRConfig.supportedModels.first, "universal-3-5-pro")
+    func testSupportedModelsExposeUniversal36ProFirst() {
+        XCTAssertEqual(AssemblyAIASRConfig.supportedModels.first, "universal-3-6-pro")
         XCTAssertTrue(AssemblyAIASRConfig.supportedModels.contains("u3-rt-pro"))
         XCTAssertTrue(AssemblyAIASRConfig.supportedModels.contains("universal-streaming-multilingual"))
     }
