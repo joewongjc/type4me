@@ -107,7 +107,6 @@ struct BrandIconView: View {
                  .minimaxIntl: return "minimax"
             case .bailian:     return "bailian"
             case .openrouter:  return "openrouter"
-            case .requesty:    return "requesty"
             case .openai:      return "openai"
             case .gemini:      return "gemini"
             case .zhipu:       return "zhipu"
