@@ -56,12 +56,21 @@
 
 - [统一入口与自适应输入窗](features/manual-input/product-and-development.md)：快捷键、鼠标操作、外观、迁移和验收边界。
 
-## 3. 当前维护指南
+## 3. 用户指南
+
+从仓库首页 README 拆出的详细说明，面向使用者，中英文各一份：
+
+- [模式与功能详解](usage/modes.md) / [Modes & Features](usage/modes.en.md)：八种默认模式的示例、选择建议、自定义模式、词汇管理与语音改口。
+- [URL Scheme 命令参考](usage/url-scheme.md) / [URL Scheme reference](usage/url-scheme.en.md)：录音控制、设置与词汇命令及参数限制。
+
+从源码构建、签名和架构概览见仓库根目录的 [CONTRIBUTING.md](../CONTRIBUTING.md)。README 头图由 `scripts/readme/gen_header.py` 生成。
+
+## 4. 当前维护指南
 
 - [本地 Fork 维护](guides/local-fork-maintenance.md)：本地补丁、上游同步和运行时维护说明。
 - [运行时内存优化与验收](guides/runtime-memory-optimization.md)：设置页、Ask 面板和 CppJieba 的生命周期、预算与实机测量方法。
 
-## 4. 历史归档
+## 5. 历史归档
 
 [归档索引](archive/README.md)按日期和材料类型列出历史计划、评审、实施报告、测试计划与草稿。
 
@@ -70,7 +79,7 @@
 - 不作为当前实现要求；
 - 不因内容过时而改写历史结论，只修复链接或补充归档说明。
 
-## 5. 目录结构
+## 6. 目录结构
 
 ```text
 docs/
@@ -85,6 +94,7 @@ docs/
 │   ├── revise/
 │   └── translation/
 ├── guides/                           # 当前维护与操作指南
+├── usage/                            # 用户指南（README 拆出的详细说明）
 ├── archive/                          # 不再生效的历史材料
 │   ├── drafts/
 │   ├── assets/
@@ -92,19 +102,19 @@ docs/
 │   ├── reports/
 │   ├── reviews/
 │   └── test-plans/
-├── images/                           # 当前 README 营销素材
+├── images/                           # 当前 README 营销素材（头图由 scripts/readme/gen_header.py 生成）
 └── screenshots/                      # 当前产品界面截图
 ```
 
 以下文档与产物按代码职责留在原目录，不搬入 `docs/`：
 
-- `README.md`、`CHANGELOG.md`、`AGENTS.md`（及其 `CLAUDE.md` 符号链接）：仓库入口、版本记录和代理说明；
+- `README.md`、`README.en.md`、`CONTRIBUTING.md`、`CHANGELOG.md`、`AGENTS.md`（及其 `CLAUDE.md` 符号链接）：仓库入口、版本记录和代理说明；
 - `Evaluation/IntelliSenseEval/README.md`：独立评测包使用说明；
 - `tests/*.md`、`tests/*.html`：Prompt 实验和测试报告；
 - `scripts/*.html`：脚本生成的本地质量报告；
 - `website-demos/*.html`：网站视觉实验，不是产品规范。
 
-## 6. 命名规范
+## 7. 命名规范
 
 ### 当前文档
 
@@ -133,7 +143,7 @@ docs/archive/<category>/YYYY-MM-DD-<topic>-<document-type>.md
 
 归档文件必须保留日期前缀，并在标题下方说明“归档原因”和“是否被替代”。
 
-## 7. 页首元数据模板
+## 8. 页首元数据模板
 
 ```markdown
 # 文档标题
@@ -148,7 +158,7 @@ docs/archive/<category>/YYYY-MM-DD-<topic>-<document-type>.md
 
 状态发生变化时更新“最后校验”和实现基线，不用重命名当前文件。文档失效时整体移入 `archive/`，补日期前缀与归档说明，并同步本索引。
 
-## 8. 维护检查表
+## 9. 维护检查表
 
 新增或更新文档时：
 
