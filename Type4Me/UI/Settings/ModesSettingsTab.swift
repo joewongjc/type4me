@@ -267,9 +267,7 @@ struct ModesSettingsTab: View, SettingsCardHelpers {
         let isHovered = hoveredModeId == mode.id
         let isDragging = draggingModeId == mode.id
 
-        let rowFill: Color = isActive
-            ? TF.settingsSidebarActive
-            : (isHovered ? TF.settingsSidebarHover : .clear)
+        let rowFill: Color = isActive ? TF.settingsSidebarActive : TF.settingsSidebarHover
 
         return HStack(spacing: 8) {
             dragDots
@@ -324,6 +322,7 @@ struct ModesSettingsTab: View, SettingsCardHelpers {
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(rowFill)
+                .opacity(isActive || isHovered ? 1 : 0)
         )
         .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .opacity(isDragging ? 0.45 : 1)

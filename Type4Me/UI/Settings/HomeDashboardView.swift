@@ -619,7 +619,11 @@ struct HomeDashboardView: View {
         .padding(.horizontal, 15)
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(hoveredModeID == mode.id ? TF.settingsRowHover : Color.clear)
+        .background(
+            Rectangle()
+                .fill(TF.settingsRowHover)
+                .opacity(hoveredModeID == mode.id ? 1 : 0)
+        )
         .overlay(alignment: .leading) {
             // Drag affordance pinned inside the row's left padding, so revealing
             // it never shifts the name or the capsules below (both stay aligned).
