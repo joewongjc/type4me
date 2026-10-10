@@ -298,11 +298,8 @@ struct SettingsView: View {
             .contentShape(Rectangle())
             .background(
                 RoundedRectangle(cornerRadius: 11, style: .continuous)
-                    .fill(
-                        isActive
-                            ? TF.settingsSidebarActive
-                            : (hoveredTab == tab ? TF.settingsSidebarHover : .clear)
-                    )
+                    .fill(isActive ? TF.settingsSidebarActive : TF.settingsSidebarHover)
+                    .opacity(isActive || hoveredTab == tab ? 1 : 0)
             )
         }
         .buttonStyle(SidebarNavButtonStyle())

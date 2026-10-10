@@ -121,11 +121,8 @@ struct ModelProviderListView: View {
             .contentShape(Rectangle())
             .background(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(
-                        isSelected
-                            ? TF.settingsSidebarActive
-                            : (isHovered ? TF.settingsSidebarHover : Color.clear)
-                    )
+                    .fill(isSelected ? TF.settingsSidebarActive : TF.settingsSidebarHover)
+                    .opacity(isSelected || isHovered ? 1 : 0)
             )
         }
         .buttonStyle(SettingsListRowButtonStyle())
@@ -209,11 +206,8 @@ struct ModelProviderListView: View {
             .contentShape(Rectangle())
             .background(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(
-                        isSelected
-                            ? TF.settingsSidebarActive
-                            : (isHovered ? TF.settingsSidebarHover : Color.clear)
-                    )
+                    .fill(isSelected ? TF.settingsSidebarActive : TF.settingsSidebarHover)
+                    .opacity(isSelected || isHovered ? 1 : 0)
             )
         }
         .buttonStyle(SettingsListRowButtonStyle())
