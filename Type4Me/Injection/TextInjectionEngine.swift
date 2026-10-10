@@ -45,6 +45,39 @@ final class TextInjectionEngine: @unchecked Sendable {
         return .app(frontmost)
     }
 
+    /// The editable text view inside Type4Me's own key window that should receive
+    /// dictated text, or `nil` when Type4Me is not active or nothing editable has
+    /// keyboard focus. Covers SwiftUI `TextEditor` and the field editor of a
+    /// `TextField` that is currently being edited.
+    @MainActor
+    static func ownEditableTextView(
+        isAppActive: Bool,
+        firstResponder: NSResponder?
+    ) -> NSTextView? {
+        guard isAppActive,
+              let textView = firstResponder as? NSTextView,
+              textView.isEditable
+        else { return nil }
+        return textView
+    }
+
+    /// Inserts `text` at the selection of Type4Me's own focused text view.
+    /// Returns `false` without side effects when no such view exists.
+    static func insertIntoOwnFocusedTextView(_ text: String) -> Bool {
+        let insert: @MainActor () -> Bool = {
+            guard let textView = ownEditableTextView(
+                isAppActive: NSApp.isActive,
+                firstResponder: NSApp.keyWindow?.firstResponder
+            ) else { return false }
+            textView.insertText(text, replacementRange: textView.selectedRange())
+            return true
+        }
+        if Thread.isMainThread {
+            return MainActor.assumeIsolated(insert)
+        }
+        return DispatchQueue.main.sync { MainActor.assumeIsolated(insert) }
+    }
+
 
     struct FocusedElementSnapshot {
         var element: AXUIElement? = nil
@@ -134,6 +167,17 @@ final class TextInjectionEngine: @unchecked Sendable {
             frontmost: NSWorkspace.shared.frontmostApplication
         )
         guard case .app = deliveryTarget else {
+            // Type4Me itself is frontmost (e.g. Settings → About → Report an Issue).
+            // Insert in-process into our own focused text view instead of posting
+            // Cmd+V, so we never paste into another app and never touch the clipboard.
+            if Self.insertIntoOwnFocusedTextView(text) {
+                if !shouldRestoreClipboard {
+                    copyToClipboard(text, transient: false)
+                }
+                pendingClipboardRestore = nil
+                DebugFileLogger.log("injection: inserted into Type4Me's own focused text view")
+                return TrackedInjectionResult(outcome: .inserted, observationContext: nil)
+            }
             // Delivery fallback: no valid external target application. Always preserve the
             // dictated text in the system clipboard so the user's speech is never lost.
             copyToClipboard(text, transient: false)

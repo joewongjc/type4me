@@ -185,6 +185,41 @@ final class TextInjectionOutcomeTests: XCTestCase {
         XCTAssertNil(snapshot)
         XCTAssertFalse(didRead)
     }
+
+    @MainActor
+    func testOwnEditableTextViewRequiresActiveAppAndEditableTextView() {
+        let editable = NSTextView()
+        XCTAssertIdentical(
+            TextInjectionEngine.ownEditableTextView(isAppActive: true, firstResponder: editable),
+            editable
+        )
+
+        // Type4Me is not the active app: the text belongs to whichever app is frontmost.
+        XCTAssertNil(TextInjectionEngine.ownEditableTextView(isAppActive: false, firstResponder: editable))
+
+        // Nothing focused, or the focused responder is not text: fall back to clipboard.
+        XCTAssertNil(TextInjectionEngine.ownEditableTextView(isAppActive: true, firstResponder: nil))
+        XCTAssertNil(TextInjectionEngine.ownEditableTextView(isAppActive: true, firstResponder: NSView()))
+
+        // Read-only text (e.g. diagnostics) must never receive dictation.
+        let readOnly = NSTextView()
+        readOnly.isEditable = false
+        XCTAssertNil(TextInjectionEngine.ownEditableTextView(isAppActive: true, firstResponder: readOnly))
+    }
+
+    @MainActor
+    func testOwnTextViewInsertionReplacesSelection() throws {
+        let textView = NSTextView()
+        textView.string = "问题：XX"
+        textView.setSelectedRange(NSRange(location: 3, length: 2))
+        let target = try XCTUnwrap(
+            TextInjectionEngine.ownEditableTextView(isAppActive: true, firstResponder: textView)
+        )
+
+        target.insertText("语音输入无效", replacementRange: target.selectedRange())
+
+        XCTAssertEqual(textView.string, "问题：语音输入无效")
+    }
 }
 
 private final class StubRunningApplication: NSRunningApplication {
