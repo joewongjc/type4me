@@ -171,6 +171,31 @@ final class BatchASRTranscribersTests: XCTestCase {
         )
     }
 
+    func testGemini_abnormalFinishIsAnErrorNotSilence() {
+        let transcriber = GeminiBatchTranscriber()
+        let options = ASRRequestOptions()
+        XCTAssertThrowsError(
+            try transcriber.parseTranscript(from: Data(#"{"candidates":[{"finishReason":"SAFETY"}]}"#.utf8), options: options)
+        ) { error in
+            XCTAssertEqual(error as? BatchASRError, .blocked(provider: "Gemini", reason: "SAFETY"))
+        }
+        XCTAssertThrowsError(
+            try transcriber.parseTranscript(
+                from: Data(#"{"promptFeedback":{"blockReason":"PROHIBITED_CONTENT"}}"#.utf8),
+                options: options
+            )
+        ) { error in
+            XCTAssertEqual(error as? BatchASRError, .blocked(provider: "Gemini", reason: "PROHIBITED_CONTENT"))
+        }
+        XCTAssertThrowsError(try transcriber.parseTranscript(from: Data(#"{"candidates":[]}"#.utf8), options: options))
+    }
+
+    func testBatchRequestsUseSharedTimeout() throws {
+        let config = try XCTUnwrap(GrokASRConfig(credentials: ["apiKey": "k", "recognitionMode": "batch"]))
+        let request = try GrokBatchTranscriber().makeRequest(pcmData: pcm, config: config, options: ASRRequestOptions())
+        XCTAssertEqual(request.timeoutInterval, BatchASRHTTP.requestTimeout)
+    }
+
     // MARK: - ElevenLabs
 
     func testElevenLabs_buildsMultipartWithRawPCMAndKeyterms() throws {

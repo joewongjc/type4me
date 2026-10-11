@@ -127,6 +127,7 @@ final class StepFunBatchMigrationTests: XCTestCase {
             return
         }
         try? KeychainService.seedLegacyASRCredentialsForTesting(storageKey: legacyStorageKey, plaintext: [:], secure: [:])
+        KeychainService.deleteSecureValuesForTesting(account: KeychainService.stepFunUnusedStandardKeyAccount)
         try? KeychainService.saveASRCredentials(for: .stepfun, values: originalStepFun ?? [:])
         if let originalSelectedRaw {
             UserDefaults.standard.set(originalSelectedRaw, forKey: "tf_selectedASRProvider")
@@ -191,6 +192,52 @@ final class StepFunBatchMigrationTests: XCTestCase {
         XCTAssertEqual(values["recognitionMode"], "streaming")
         XCTAssertEqual(values["apiKey"], "sk-realtime")
         XCTAssertEqual(values["accessMode"], "standard")
+        XCTAssertEqual(
+            KeychainService.loadSecureValuesForTesting(account: KeychainService.stepFunUnusedStandardKeyAccount)["apiKey"],
+            "sk-other-standard",
+            "The unused batch key must be backed up, not discarded"
+        )
+    }
+
+    func testSelectedStandardBatchKeepsItsOwnKeyWhenKeysDiffer() throws {
+        try KeychainService.saveASRCredentials(for: .stepfun, values: ["apiKey": "sk-realtime"])
+        try KeychainService.seedLegacyASRCredentialsForTesting(
+            storageKey: legacyStorageKey,
+            plaintext: ["accessMode": "standard"],
+            secure: ["apiKey": "sk-batch"]
+        )
+        UserDefaults.standard.set("stepfunBatch", forKey: "tf_selectedASRProvider")
+
+        KeychainService.migrateStoredCredentials()
+
+        let values = try XCTUnwrap(KeychainService.loadASRCredentials(for: .stepfun))
+        XCTAssertEqual(values["recognitionMode"], "batch")
+        XCTAssertEqual(values["apiKey"], "sk-batch", "The active batch setup keeps the key it was using")
+        XCTAssertEqual(
+            KeychainService.loadSecureValuesForTesting(account: KeychainService.stepFunUnusedStandardKeyAccount)["apiKey"],
+            "sk-realtime"
+        )
+        XCTAssertFalse(KeychainService.hasStoredCredentialsForTesting(storageKey: legacyStorageKey))
+
+        // A second launch must not migrate again.
+        KeychainService.migrateStoredCredentials()
+        XCTAssertEqual(KeychainService.loadASRCredentials(for: .stepfun)?["apiKey"], "sk-batch")
+    }
+
+    func testLegacyConfigWithoutRecognitionModeStillCountsAsConfigured() throws {
+        let original = KeychainService.loadASRCredentials(for: .bailian)
+        defer { try? KeychainService.saveASRCredentials(for: .bailian, values: original ?? [:]) }
+
+        // Saved by an older version: no recognitionMode or batchModel.
+        try KeychainService.saveASRCredentials(for: .bailian, values: [
+            "apiKey": "sk-old",
+            "model": "qwen-audio-3.1-asr-flash-streaming",
+        ])
+        try KeychainService.saveASRCredentials(for: .stepfun, values: ["apiKey": "sk-old", "region": "china"])
+
+        XCTAssertTrue(ModelSettingsHelpers.hasConfiguredCredentials(for: ASRProvider.bailian))
+        XCTAssertTrue(ModelSettingsHelpers.hasConfiguredCredentials(for: ASRProvider.stepfun))
+        XCTAssertEqual(ASRProviderRegistry.recognitionMode(for: .bailian), .streaming)
     }
 
     func testStandardKeyFillsEmptyRealtimeKey() throws {

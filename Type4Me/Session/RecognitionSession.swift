@@ -259,9 +259,12 @@ actor RecognitionSession {
         #endif
     }
 
-    /// Prefers the config captured for this session so the label matches the client that ran,
-    /// including the recognition mode chosen at recording start.
+    /// Model label computed when the recording started. `currentConfig` is cleared before
+    /// history is written, so the label is captured up front.
+    private var sessionASRModelLabel: String?
+
     private func currentASRModelLabel(for provider: ASRProvider) -> String? {
+        if let sessionASRModelLabel { return sessionASRModelLabel }
         let config = currentConfig.flatMap { type(of: $0).provider == provider ? $0 : nil }
             ?? KeychainService.loadASRConfig(for: provider)
         return Self.asrModelLabel(for: provider, config: config)
@@ -1041,6 +1044,7 @@ actor RecognitionSession {
         }
         let provider = KeychainService.selectedASRProvider
         activeProvider = provider
+        sessionASRModelLabel = nil
 
         #if HAS_CLOUD_SUBSCRIPTION
         if provider == .cloud && !manualInput {
@@ -1205,6 +1209,7 @@ actor RecognitionSession {
         }
 
         self.currentConfig = config
+        sessionASRModelLabel = Self.asrModelLabel(for: provider, config: config)
 
         guard let client = ASRProviderRegistry.createClient(for: provider, config: config) else {
             NSLog("[Session] No client implementation for provider=%@", provider.rawValue)
@@ -1895,7 +1900,10 @@ actor RecognitionSession {
         var asrTeardownClean = true
         var endAudioSucceeded = false
         if let client = asrClient {
-            let endAudioTimeout: Duration = providerIsStreaming ? .seconds(3) : .seconds(60)
+            // Batch clients upload the whole recording here; their HTTP timeout is 120s.
+            let endAudioTimeout: Duration = providerIsStreaming
+                ? .seconds(3)
+                : .seconds(BatchASRHTTP.requestTimeout + 5)
             let endAudioOK = await withTimeout(endAudioTimeout) {
                 try await client.endAudio()
             }

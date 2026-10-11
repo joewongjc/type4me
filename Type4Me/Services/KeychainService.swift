@@ -415,6 +415,9 @@ enum KeychainService {
     /// credentials into `stepfun` as its batch recognition mode. A Step Plan key moves to
     /// `stepPlanApiKey` so it never overwrites the standard realtime key.
     static let legacyStepFunBatchRawValue = "stepfunBatch"
+    /// Backup for the standard key not chosen when realtime and batch used different keys.
+    /// Nothing reads it automatically; it only prevents silently deleting a credential.
+    static let stepFunUnusedStandardKeyAccount = "tf_asr_stepfun_unusedStandardKey"
 
     @discardableResult
     private static func migrateStepFunBatchProvider(in dict: inout [String: Any]) -> Bool {
@@ -443,16 +446,24 @@ enum KeychainService {
         let accessMode = legacyPlaintext["accessMode"].flatMap(StepFunBatchAccessMode.init(rawValue:)) ?? .stepPlan
         let legacyAPIKey = (legacySecure["apiKey"] ?? legacyPlaintext["apiKey"] ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
+        if (secure["apiKey"] ?? "").isEmpty, let plainKey = plaintext["apiKey"], !plainKey.isEmpty {
+            secure["apiKey"] = plainKey
+        }
+        // Two different standard keys: the setup in use keeps its key; the other one stays
+        // in the legacy Keychain item instead of being discarded.
+        var keepLegacySecureItem = false
         if !legacyAPIKey.isEmpty {
             switch accessMode {
             case .stepPlan:
                 if (secure["stepPlanApiKey"] ?? "").isEmpty { secure["stepPlanApiKey"] = legacyAPIKey }
             case .standard:
-                if existingAPIKey.isEmpty { secure["apiKey"] = legacyAPIKey }
+                if existingAPIKey.isEmpty {
+                    secure["apiKey"] = legacyAPIKey
+                } else if existingAPIKey != legacyAPIKey {
+                    keepLegacySecureItem = true
+                    if wasSelected { secure["apiKey"] = legacyAPIKey }
+                }
             }
-        }
-        if (secure["apiKey"] ?? "").isEmpty, let plainKey = plaintext["apiKey"], !plainKey.isEmpty {
-            secure["apiKey"] = plainKey
         }
         plaintext.removeValue(forKey: "apiKey")
         plaintext["accessMode"] = accessMode.rawValue
@@ -471,6 +482,11 @@ enum KeychainService {
         }
         dict[storageKey] = plaintext
         dict.removeValue(forKey: legacyStorageKey)
+        if keepLegacySecureItem {
+            let unusedKey = wasSelected ? existingAPIKey : legacyAPIKey
+            try? saveSecureValues(["apiKey": unusedKey], account: stepFunUnusedStandardKeyAccount)
+            NSLog("[KeychainService] StepFun standard keys differed; kept the unused one in %@", stepFunUnusedStandardKeyAccount)
+        }
         _ = deleteSecureValue(service: keychainGroupedService, account: legacyStorageKey)
         NSLog("[KeychainService] Merged tf_asr_stepfunBatch into tf_asr_stepfun (batch mode)")
         return true
@@ -498,6 +514,14 @@ enum KeychainService {
         }
         try saveAll(dict)
         cachedCredentials = dict
+    }
+
+    static func loadSecureValuesForTesting(account: String) -> [String: String] {
+        loadSecureValues(account: account)
+    }
+
+    static func deleteSecureValuesForTesting(account: String) {
+        _ = deleteSecureValue(service: keychainGroupedService, account: account)
     }
 
     static func hasStoredCredentialsForTesting(storageKey: String) -> Bool {

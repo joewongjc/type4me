@@ -6,6 +6,7 @@ enum BatchASRError: Error, LocalizedError, Equatable {
     case recordingTooLong(provider: String, maxSeconds: Int)
     case requestFailed(provider: String, code: Int, message: String?)
     case invalidResponse(provider: String)
+    case blocked(provider: String, reason: String)
 
     var errorDescription: String? {
         switch self {
@@ -24,6 +25,8 @@ enum BatchASRError: Error, LocalizedError, Equatable {
             return L("\(provider) 返回 HTTP \(code)", "\(provider) returned HTTP \(code)")
         case .invalidResponse(let provider):
             return L("无法解析 \(provider) 的识别结果", "Failed to parse the \(provider) transcription response")
+        case .blocked(let provider, let reason):
+            return L("\(provider) 未返回识别结果（\(reason)）", "\(provider) returned no transcript (\(reason))")
         }
     }
 }
@@ -45,6 +48,9 @@ extension BatchASRTranscriber {
 
 enum BatchASRHTTP {
     static let bytesPerSecond = 16_000 * 2
+    /// Per-request timeout for batch uploads. The session waits slightly longer for endAudio()
+    /// so the HTTP layer reports its own error first.
+    static let requestTimeout: TimeInterval = 120
 
     static func transcribe(
         pcmData: Data,

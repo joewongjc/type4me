@@ -55,7 +55,7 @@ struct BailianBatchTranscriber: BatchASRTranscriber {
         request.httpMethod = "POST"
         request.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.timeoutInterval = 120
+        request.timeoutInterval = BatchASRHTTP.requestTimeout
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         return request
     }
@@ -107,6 +107,7 @@ struct GeminiBatchTranscriber: BatchASRTranscriber {
     static let baseURL = "https://generativelanguage.googleapis.com/v1beta/"
 
     let providerName = "Gemini"
+    static let normalFinishReasons: Set<String> = ["STOP", "MAX_TOKENS", "FINISH_REASON_UNSPECIFIED"]
     /// Inline requests are capped at 20MB; base64 WAV reaches that at about 7.8 minutes.
     let maxDuration: TimeInterval? = 7 * 60
 
@@ -151,19 +152,28 @@ struct GeminiBatchTranscriber: BatchASRTranscriber {
         request.httpMethod = "POST"
         request.setValue(config.apiKey, forHTTPHeaderField: "x-goog-api-key")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.timeoutInterval = 120
+        request.timeoutInterval = BatchASRHTTP.requestTimeout
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         return request
     }
 
     func parseTranscript(from data: Data, options: ASRRequestOptions) throws -> String {
-        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let candidates = root["candidates"] as? [[String: Any]]
-        else {
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw BatchASRError.invalidResponse(provider: providerName)
         }
-        // No candidate (e.g. silence) is an empty transcript, not an error.
-        guard let content = candidates.first?["content"] as? [String: Any] else { return "" }
+        if let feedback = root["promptFeedback"] as? [String: Any],
+           let blockReason = feedback["blockReason"] as? String {
+            throw BatchASRError.blocked(provider: providerName, reason: blockReason)
+        }
+        guard let candidates = root["candidates"] as? [[String: Any]], let candidate = candidates.first else {
+            throw BatchASRError.invalidResponse(provider: providerName)
+        }
+        // Only a normal stop without content means silence; SAFETY, RECITATION, etc. are failures.
+        let finishReason = candidate["finishReason"] as? String
+        if let finishReason, !Self.normalFinishReasons.contains(finishReason) {
+            throw BatchASRError.blocked(provider: providerName, reason: finishReason)
+        }
+        guard let content = candidate["content"] as? [String: Any] else { return "" }
         let parts = content["parts"] as? [[String: Any]] ?? []
         let text = parts.compactMap { $0["text"] as? String }
             .joined()
@@ -204,7 +214,7 @@ struct ElevenLabsBatchTranscriber: BatchASRTranscriber {
         request.httpMethod = "POST"
         request.setValue(config.apiKey, forHTTPHeaderField: "xi-api-key")
         request.setValue(form.contentType, forHTTPHeaderField: "Content-Type")
-        request.timeoutInterval = 120
+        request.timeoutInterval = BatchASRHTTP.requestTimeout
         request.httpBody = form.finalized()
         return request
     }
@@ -260,7 +270,7 @@ struct GrokBatchTranscriber: BatchASRTranscriber {
         request.httpMethod = "POST"
         request.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue(form.contentType, forHTTPHeaderField: "Content-Type")
-        request.timeoutInterval = 120
+        request.timeoutInterval = BatchASRHTTP.requestTimeout
         request.httpBody = form.finalized()
         return request
     }
