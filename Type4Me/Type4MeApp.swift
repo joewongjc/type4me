@@ -248,6 +248,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         NSLog("[Type4Me] ready event received")
                         DebugFileLogger.log("ready event received, current barPhase=\(String(describing: appState.barPhase))")
                         appState.markRecordingReady()
+                        let volumeToken = SystemVolumeManager.reserveAttenuation()
                         Task { @MainActor in
                             guard appState.barPhase == .recording else {
                                 DebugFileLogger.log("playStart aborted, barPhase=\(String(describing: appState.barPhase))")
@@ -265,7 +266,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                     try? await Task.sleep(for: .milliseconds(delayMs))
                                 }
                                 guard appState.barPhase == .recording else { return }
-                                SystemVolumeManager.lower(to: Float(targetVolumePercent) / 100.0)
+                                SystemVolumeManager.lower(to: Float(targetVolumePercent) / 100.0, token: volumeToken)
                             }
                         }
                     case .transcript(let transcript):
