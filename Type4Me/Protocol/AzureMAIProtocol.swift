@@ -39,6 +39,24 @@ enum AzureMAIProtocolError: Error, LocalizedError, Equatable {
     }
 }
 
+/// Rejected credentials, a missing deployment, quota or a bad session configuration
+/// will fail again on retry, so the session surfaces them instead of recovering.
+extension AzureMAIProtocolError: TerminalASRError {
+    var isTerminalServerError: Bool {
+        switch self {
+        case .handshakeFailed(let statusCode):
+            return [400, 401, 403, 404, 429].contains(statusCode)
+        case .serverError(let code, _):
+            // OpenAI Realtime-style `server_error` is a transient service fault.
+            return code?.lowercased() != "server_error"
+        case .invalidConfig:
+            return true
+        case .validationTimedOut:
+            return false
+        }
+    }
+}
+
 enum AzureMAIRealtimeEvent: Equatable {
     case sessionCreated
     case sessionUpdated

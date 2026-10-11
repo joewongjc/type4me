@@ -156,6 +156,23 @@ final class AzureMAITests: XCTestCase {
         }
     }
 
+    func testAccountAndConfigurationErrorsSkipStreamRecovery() {
+        func isTerminal(_ error: AzureMAIProtocolError) -> Bool {
+            (error as Error as? TerminalASRError)?.isTerminalServerError == true
+        }
+        XCTAssertTrue(isTerminal(.handshakeFailed(statusCode: 401)))
+        XCTAssertTrue(isTerminal(.handshakeFailed(statusCode: 403)))
+        XCTAssertTrue(isTerminal(.handshakeFailed(statusCode: 404)))
+        XCTAssertTrue(isTerminal(.handshakeFailed(statusCode: 429)))
+        XCTAssertTrue(isTerminal(.serverError(code: "invalid_value", message: "Unknown deployment")))
+        XCTAssertTrue(isTerminal(.serverError(code: nil, message: "Quota exceeded")))
+        XCTAssertTrue(isTerminal(.invalidConfig))
+
+        XCTAssertFalse(isTerminal(.handshakeFailed(statusCode: 502)))
+        XCTAssertFalse(isTerminal(.serverError(code: "server_error", message: "Internal error")))
+        XCTAssertFalse(isTerminal(.validationTimedOut))
+    }
+
     // MARK: - Batch
 
     func testBatchRequest() throws {
