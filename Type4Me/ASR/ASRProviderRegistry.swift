@@ -204,12 +204,20 @@ enum ASRProviderRegistry {
                 createClient: { BaiduASRClient() },
                 capabilities: .streaming()
             ),
+            .azure: ProviderEntry(
+                configType: AzureASRConfig.self,
+                createClient: { AzureMAIASRClient() },
+                capabilities: .streaming(),
+                validateCredentials: { config, options in
+                    try await AzureMAIASRClient.validateCredentials(config: config, options: options)
+                },
+                batch: .buffered(AzureMAIBatchTranscriber())
+            ),
             .openai: ProviderEntry(
                 configType: OpenAIASRConfig.self,
                 createClient: { OpenAIASRClient() },
                 capabilities: .batch()
             ),
-            .azure:   ProviderEntry(configType: AzureASRConfig.self,   createClient: nil),
             .google:  ProviderEntry(configType: GoogleASRConfig.self,  createClient: nil),
             .aws:     ProviderEntry(configType: AWSASRConfig.self,     createClient: nil),
             .aliyun:  ProviderEntry(configType: AliyunASRConfig.self,  createClient: nil),

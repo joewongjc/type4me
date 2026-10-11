@@ -40,7 +40,7 @@ enum ASRProvider: String, CaseIterable, Codable, Sendable {
         case .sherpa:   return L("SenseVoice 流式 + Qwen3 ASR 校准", "SenseVoice Streaming + Qwen3 ASR")
         case .apple:    return L("Apple 语音识别", "Apple Speech")
         case .openai:   return "OpenAI"
-        case .azure:    return "Azure Speech"
+        case .azure:    return "Microsoft Azure"
         case .google:   return "Google Cloud STT"
         case .aws:      return "AWS Transcribe"
         case .deepgram: return "Deepgram"

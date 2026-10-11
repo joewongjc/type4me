@@ -199,6 +199,7 @@ enum ModelSettingsHelpers {
         case .bailian:     return "cloud.fill"
         case .baidu:       return "pawprint.fill"
         case .openai:      return "circle.grid.cross.fill"
+        case .azure:       return "square.grid.2x2.fill"
         default:           return "mic.fill"
         }
     }

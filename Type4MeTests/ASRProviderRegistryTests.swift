@@ -107,7 +107,7 @@ final class ASRProviderRegistryTests: XCTestCase {
     }
 
     func testRecognitionModeSelection_isOfferedByProvidersWithBatchVariant() {
-        for provider in [ASRProvider.stepfun, .bailian, .gemini, .elevenlabs, .grok] {
+        for provider in [ASRProvider.stepfun, .bailian, .gemini, .elevenlabs, .grok, .azure] {
             XCTAssertTrue(ASRProviderRegistry.supportsRecognitionModeSelection(for: provider), "\(provider)")
             let fields = ASRProviderRegistry.configType(for: provider)?.credentialFields ?? []
             XCTAssertEqual(fields.first?.key, ASRRecognitionMode.credentialKey, "\(provider)")
@@ -119,7 +119,7 @@ final class ASRProviderRegistryTests: XCTestCase {
     }
 
     func testCapabilities_followRequestedRecognitionMode() {
-        for provider in [ASRProvider.stepfun, .bailian, .gemini, .elevenlabs, .grok] {
+        for provider in [ASRProvider.stepfun, .bailian, .gemini, .elevenlabs, .grok, .azure] {
             let streaming = ASRProviderRegistry.capabilities(for: provider, mode: .streaming)
             XCTAssertTrue(streaming.isStreaming, "\(provider)")
             XCTAssertTrue(streaming.supportsRealtimeRecognition, "\(provider)")

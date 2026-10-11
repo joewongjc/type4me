@@ -294,3 +294,87 @@ struct GrokBatchTranscriber: BatchASRTranscriber {
         )
     }
 }
+
+// MARK: - Microsoft Azure
+
+/// Azure Speech fast transcription with `enhancedMode` set to MAI-Transcribe-2.
+struct AzureMAIBatchTranscriber: BatchASRTranscriber {
+    static let path = "/speechtotext/transcriptions:transcribe"
+    static let apiVersion = "2025-10-15"
+
+    let providerName = "Microsoft Azure"
+    let maxDuration: TimeInterval? = nil
+
+    static func endpoint(for config: AzureASRConfig) -> URL? {
+        guard let host = config.speechHost else { return nil }
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = host
+        components.path = path
+        components.queryItems = [URLQueryItem(name: "api-version", value: apiVersion)]
+        return components.url
+    }
+
+    func makeRequest(pcmData: Data, config: any ASRProviderConfig, options: ASRRequestOptions) throws -> URLRequest {
+        guard let config = config as? AzureASRConfig, let url = Self.endpoint(for: config) else {
+            throw BatchASRError.invalidConfig(provider: providerName)
+        }
+        let definition = try JSONSerialization.data(
+            withJSONObject: Self.definition(config: config, hotwords: options.hotwords),
+            options: [.sortedKeys]
+        )
+
+        var form = MultipartFormBody()
+        form.append(name: "definition", value: String(decoding: definition, as: UTF8.self))
+        form.append(name: "audio", filename: "audio.wav", mimeType: "audio/wav", fileData: WAVEncoder.encode(pcmData: pcmData))
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue(config.apiKey, forHTTPHeaderField: "Ocp-Apim-Subscription-Key")
+        request.setValue(form.contentType, forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = BatchASRHTTP.requestTimeout
+        request.httpBody = form.finalized()
+        return request
+    }
+
+    static func definition(config: AzureASRConfig, hotwords: [String]) -> [String: Any] {
+        var definition: [String: Any] = [
+            "enhancedMode": [
+                "enabled": true,
+                "model": AzureASRConfig.batchModel,
+                "modelOptions": ["transcribeStyle": config.transcribeStyle],
+            ] as [String: Any],
+        ]
+        if !config.language.isEmpty {
+            definition["locales"] = [config.language]
+        }
+        let phrases = Self.phrases(from: hotwords)
+        if !phrases.isEmpty {
+            definition["phraseList"] = ["phrases": phrases]
+        }
+        return definition
+    }
+
+    func parseTranscript(from data: Data, options: ASRRequestOptions) throws -> String {
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let combined = root["combinedPhrases"] as? [[String: Any]]
+        else {
+            throw BatchASRError.invalidResponse(provider: providerName)
+        }
+        return combined
+            .compactMap { $0["text"] as? String }
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Up to 100 distinct phrases, each at most 50 characters.
+    static func phrases(from hotwords: [String]) -> [String] {
+        var seen = Set<String>()
+        return Array(
+            hotwords
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty && $0.count <= 50 && seen.insert($0).inserted }
+                .prefix(100)
+        )
+    }
+}

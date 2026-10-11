@@ -95,6 +95,7 @@ struct BrandIconView: View {
             case .bailian:     return "bailian"
             case .baidu:       return "baidu"
             case .openai:      return "openai"
+            case .azure:       return "microsoft"
             default:           return "custom"
             }
         case .llm(let provider):

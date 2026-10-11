@@ -143,6 +143,15 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
             return [
                 (L("API Key", "API Key"), L("获取", "get"), URL(string: "https://console.soniox.com")!),
             ]
+        case .azure:
+            let docs = draftRecognitionMode == .batch
+                ? "https://learn.microsoft.com/azure/ai-services/speech-service/mai-transcribe"
+                : "https://learn.microsoft.com/azure/ai-services/speech-service/mai-transcribe-2-streaming-realtime"
+            return [
+                (L("接入文档", "Setup guide"), L("查看", "view"), URL(string: docs)!),
+                (L("Foundry 资源", "Foundry resource"), L("创建", "create"), URL(string: "https://portal.azure.com/#create/Microsoft.CognitiveServicesAIFoundry")!),
+                (L("模型部署", "Model deployment"), L("前往", "open"), URL(string: "https://ai.azure.com")!),
+            ]
         case .metaMuse:
             return [
                 (L("模型介绍", "Blog"), L("查看", "view"), URL(string: "https://research.meta.ai/blog/introducing-muse-voice-transcribe")!),
@@ -218,6 +227,17 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
             return L(
                 "实时语音识别，支持中英混输和关键词增强。Muse 的说话人分离与自动端点能力首版不用于控制 Type4Me 录音。",
                 "Realtime transcription with code-switching and keyword biasing. Muse diarization and automatic endpointing do not control Type4Me recording in the first release."
+            )
+        case .azure:
+            if draftRecognitionMode == .batch {
+                return L(
+                    "非实时模式使用 MAI-Transcribe-2，无需单独部署模型，支持热词。Clean 会去除口头语，Verbatim 保留原话。目前为公开预览。",
+                    "Batch mode uses MAI-Transcribe-2, needs no separate deployment, and supports hotwords. Clean removes fillers; Verbatim keeps them. Currently in public preview."
+                )
+            }
+            return L(
+                "需先在 Microsoft Foundry 创建资源（瑞典中部、美国中部、美国东部 2 或东南亚），并部署 MAI-Transcribe-2-Streaming，部署名称需与此处一致。实时模式暂不支持热词，目前为公开预览。",
+                "Create a Microsoft Foundry resource in Sweden Central, Central US, East US 2, or Southeast Asia, then deploy MAI-Transcribe-2-Streaming with the deployment name entered here. Real-time mode does not support hotwords. Currently in public preview."
             )
         case .openai:
             return L(

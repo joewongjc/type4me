@@ -286,6 +286,10 @@ actor RecognitionSession {
         if provider == .grok {
             return "\(providerName) · \(GrokASRConfig.model)"
         }
+        if provider == .azure {
+            let deployment = (config as? AzureASRConfig)?.deployment ?? AzureASRConfig.streamingModel
+            return "\(providerName) · \(isBatch ? AzureASRConfig.batchModel : deployment)"
+        }
 
         guard let credentials = config?.toCredentials() else {
             return providerName
@@ -386,6 +390,10 @@ actor RecognitionSession {
             return "https://generativelanguage.googleapis.com"
         case .metaMuse:
             return "https://api.meta.ai"
+        case .azure:
+            guard let config = KeychainService.loadASRConfig(for: .azure) as? AzureASRConfig else { return "" }
+            let host = config.recognitionMode == .batch ? config.speechHost : config.foundryHost
+            return host.map { "https://\($0)" } ?? ""
         default:
             return ""
         }
