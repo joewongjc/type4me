@@ -45,9 +45,6 @@ final class MenuBarControlCenterTests: XCTestCase {
         let mimoItem = MenuBarASRProviderItem(provider: .mimo)
         XCTAssertEqual(mimoItem.title, "\(mimoItem.provider.displayName) (\(L("非实时", "Batch")))")
 
-        let stepfunItem = MenuBarASRProviderItem(provider: .stepfunBatch)
-        XCTAssertEqual(stepfunItem.title, "\(stepfunItem.provider.displayName) (\(L("非实时", "Batch")))")
-
         let openaiItem = MenuBarASRProviderItem(provider: .openai)
         XCTAssertEqual(openaiItem.title, "OpenAI (\(L("非实时", "Batch")))")
 

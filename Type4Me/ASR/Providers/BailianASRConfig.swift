@@ -1,6 +1,6 @@
 import Foundation
 
-struct BailianASRConfig: ASRProviderConfig, Sendable {
+struct BailianASRConfig: ASRRecognitionModeConfigurable, Sendable {
 
     static let provider = ASRProvider.bailian
     static let displayName = L("阿里云百炼", "Alibaba Cloud Bailian")
@@ -11,6 +11,10 @@ struct BailianASRConfig: ASRProviderConfig, Sendable {
         "fun-asr-realtime",
         "fun-asr-flash-8k-realtime",
     ]
+    static let defaultBatchModel = "qwen-audio-3.1-asr-flash"
+    static let supportedBatchModels = [
+        "qwen-audio-3.1-asr-flash",
+    ]
     static let supportedLanguageHints = [
         "zh", "en", "ja", "ko",
         "fr", "de", "es", "ru", "it",
@@ -18,6 +22,7 @@ struct BailianASRConfig: ASRProviderConfig, Sendable {
     ]
 
     static var credentialFields: [CredentialField] {[
+        ASRRecognitionMode.credentialField,
         CredentialField(
             key: "apiKey",
             label: L("API Key", "API Key"),
@@ -34,7 +39,19 @@ struct BailianASRConfig: ASRProviderConfig, Sendable {
             isOptional: false,
             defaultValue: defaultModel,
             options: supportedModels.map { FieldOption(value: $0, label: $0) },
-            allowCustomInput: true
+            allowCustomInput: true,
+            visibleModes: [.streaming]
+        ),
+        CredentialField(
+            key: "batchModel",
+            label: L("模型", "Model"),
+            placeholder: defaultBatchModel,
+            isSecure: false,
+            isOptional: false,
+            defaultValue: defaultBatchModel,
+            options: supportedBatchModels.map { FieldOption(value: $0, label: $0) },
+            allowCustomInput: true,
+            visibleModes: [.batch]
         ),
         CredentialField(
             key: "languageHint",
@@ -62,8 +79,10 @@ struct BailianASRConfig: ASRProviderConfig, Sendable {
         ),
     ]}
 
+    let recognitionMode: ASRRecognitionMode
     let apiKey: String
     let model: String
+    let batchModel: String
     let languageHint: String
     let vocabularyId: String
     let baseURL: String
@@ -73,8 +92,10 @@ struct BailianASRConfig: ASRProviderConfig, Sendable {
               !apiKey.isEmpty
         else { return nil }
 
+        self.recognitionMode = ASRRecognitionMode(credentials: credentials)
         self.apiKey = apiKey
         self.model = Self.sanitized(credentials["model"]) ?? Self.defaultModel
+        self.batchModel = Self.sanitized(credentials["batchModel"]) ?? Self.defaultBatchModel
 
         let rawLanguageHint = Self.sanitized(credentials["languageHint"])?.lowercased() ?? ""
         self.languageHint = Self.supportedLanguageHints.contains(rawLanguageHint) ? rawLanguageHint : ""
@@ -84,8 +105,10 @@ struct BailianASRConfig: ASRProviderConfig, Sendable {
 
     func toCredentials() -> [String: String] {
         [
+            ASRRecognitionMode.credentialKey: recognitionMode.rawValue,
             "apiKey": apiKey,
             "model": model,
+            "batchModel": batchModel,
             "languageHint": languageHint,
             "vocabularyId": vocabularyId,
             "baseURL": baseURL,
@@ -93,7 +116,7 @@ struct BailianASRConfig: ASRProviderConfig, Sendable {
     }
 
     var isValid: Bool {
-        !apiKey.isEmpty && !model.isEmpty
+        !apiKey.isEmpty && !(recognitionMode == .batch ? batchModel : model).isEmpty
     }
 
     private static func sanitized(_ value: String?) -> String? {

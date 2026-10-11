@@ -12,10 +12,13 @@ struct ModelProviderListView: View {
     var onSelectLLM: ((LLMProvider) -> Void)? = nil
     @State private var hoveredASR: ASRProvider?
     @State private var hoveredLLM: LLMProvider?
+    /// Bumped on credential saves so badges derived from stored settings (e.g. "Batch") refresh.
+    @State private var credentialsRevision = 0
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: true) {
             VStack(alignment: .leading, spacing: 14) {
+                let _ = credentialsRevision
                 switch category {
                 case .asr:
                     asrSection(group: .recommended)
@@ -32,6 +35,9 @@ struct ModelProviderListView: View {
         }
         .scrollBounceBehavior(.basedOnSize)
         .frame(width: 230)
+        .onReceive(NotificationCenter.default.publisher(for: .credentialsDidChange)) { _ in
+            credentialsRevision &+= 1
+        }
     }
 
     // MARK: - ASR Section & Row

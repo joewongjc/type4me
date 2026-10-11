@@ -5,7 +5,7 @@ enum GeminiTranscriptionMode: String, Sendable, CaseIterable {
     case verbatim = "VERBATIM"
 }
 
-struct GeminiASRConfig: ASRProviderConfig, Sendable {
+struct GeminiASRConfig: ASRRecognitionModeConfigurable, Sendable {
 
     static let provider = ASRProvider.gemini
     static let displayName = "Gemini"
@@ -16,6 +16,10 @@ struct GeminiASRConfig: ASRProviderConfig, Sendable {
         ("gemini-3.5-transcribe-live", "Gemini 3.5 Transcribe (Live)"),
     ]
     static let defaultModel = "gemini-3.5-transcribe-live"
+    static let supportedBatchModels: [(id: String, label: String)] = [
+        ("gemini-3.5-transcribe", "Gemini 3.5 Transcribe"),
+    ]
+    static let defaultBatchModel = "gemini-3.5-transcribe"
 
     static let webSocketBaseURL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
 
@@ -23,6 +27,7 @@ struct GeminiASRConfig: ASRProviderConfig, Sendable {
     static let defaultLanguage = "auto"
 
     static var credentialFields: [CredentialField] {[
+        ASRRecognitionMode.credentialField,
         CredentialField(
             key: "apiKey",
             label: L("API Key", "API Key"),
@@ -39,7 +44,19 @@ struct GeminiASRConfig: ASRProviderConfig, Sendable {
             isOptional: true,
             defaultValue: defaultModel,
             options: supportedModels.map { FieldOption(value: $0.id, label: $0.label) },
-            allowCustomInput: true
+            allowCustomInput: true,
+            visibleModes: [.streaming]
+        ),
+        CredentialField(
+            key: "batchModel",
+            label: L("模型", "Model"),
+            placeholder: defaultBatchModel,
+            isSecure: false,
+            isOptional: true,
+            defaultValue: defaultBatchModel,
+            options: supportedBatchModels.map { FieldOption(value: $0.id, label: $0.label) },
+            allowCustomInput: true,
+            visibleModes: [.batch]
         ),
         CredentialField(
             key: "mode",
@@ -72,8 +89,10 @@ struct GeminiASRConfig: ASRProviderConfig, Sendable {
         ),
     ]}
 
+    let recognitionMode: ASRRecognitionMode
     let apiKey: String
     let model: String
+    let batchModel: String
     let mode: GeminiTranscriptionMode
     let languageCode: String
 
@@ -84,6 +103,8 @@ struct GeminiASRConfig: ASRProviderConfig, Sendable {
 
         let rawModel = credentials["model"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let model = rawModel.isEmpty ? Self.defaultModel : rawModel
+        let rawBatchModel = credentials["batchModel"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let batchModel = rawBatchModel.isEmpty ? Self.defaultBatchModel : rawBatchModel
 
         let rawMode = credentials["mode"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let mode = GeminiTranscriptionMode(rawValue: rawMode.uppercased()) ?? Self.defaultMode
@@ -91,16 +112,20 @@ struct GeminiASRConfig: ASRProviderConfig, Sendable {
         let rawLanguage = credentials["languageCode"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let languageCode = rawLanguage.isEmpty ? Self.defaultLanguage : rawLanguage
 
+        self.recognitionMode = ASRRecognitionMode(credentials: credentials)
         self.apiKey = apiKey
         self.model = model
+        self.batchModel = batchModel
         self.mode = mode
         self.languageCode = languageCode
     }
 
     func toCredentials() -> [String: String] {
         [
+            ASRRecognitionMode.credentialKey: recognitionMode.rawValue,
             "apiKey": apiKey,
             "model": model,
+            "batchModel": batchModel,
             "mode": mode.rawValue,
             "languageCode": languageCode,
         ]

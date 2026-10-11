@@ -259,8 +259,17 @@ actor RecognitionSession {
         #endif
     }
 
+    /// Prefers the config captured for this session so the label matches the client that ran,
+    /// including the recognition mode chosen at recording start.
     private func currentASRModelLabel(for provider: ASRProvider) -> String? {
+        let config = currentConfig.flatMap { type(of: $0).provider == provider ? $0 : nil }
+            ?? KeychainService.loadASRConfig(for: provider)
+        return Self.asrModelLabel(for: provider, config: config)
+    }
+
+    static func asrModelLabel(for provider: ASRProvider, config: (any ASRProviderConfig)?) -> String? {
         let providerName = provider.displayName
+        let isBatch = config.map { ASRProviderRegistry.recognitionMode(of: $0) == .batch } ?? false
 
         if provider == .sherpa {
             return "\(providerName) · \(ModelManager.selectedStreamingModel.displayName)"
@@ -269,17 +278,17 @@ actor RecognitionSession {
             return "\(providerName) · \(CartesiaASRConfig.model)"
         }
         if provider == .stepfun {
-            return "\(providerName) · \(StepFunASRConfig.model)"
+            return "\(providerName) · \(isBatch ? StepFunASRConfig.batchModel : StepFunASRConfig.model)"
         }
         if provider == .grok {
             return "\(providerName) · \(GrokASRConfig.model)"
         }
 
-        guard let credentials = KeychainService.loadASRConfig(for: provider)?.toCredentials() else {
+        guard let credentials = config?.toCredentials() else {
             return providerName
         }
 
-        let modelKeys = ["model", "resourceId", "devPid", "lmId"]
+        let modelKeys = (isBatch ? ["batchModel"] : []) + ["model", "resourceId", "devPid", "lmId"]
         let model = modelKeys
             .compactMap { credentials[$0]?.trimmingCharacters(in: .whitespacesAndNewlines) }
             .first { !$0.isEmpty }
@@ -359,10 +368,13 @@ actor RecognitionSession {
         case .volcano:
             return "https://openspeech.bytedance.com"
         case .stepfun:
-            return (KeychainService.loadASRConfig(for: .stepfun) as? StepFunASRConfig)?.region.healthEndpoint
-                ?? StepFunASRConfig.defaultRegion.healthEndpoint
-        case .stepfunBatch:
-            return "https://api.stepfun.com"
+            guard let config = KeychainService.loadASRConfig(for: .stepfun) as? StepFunASRConfig else {
+                return StepFunASRConfig.defaultRegion.healthEndpoint
+            }
+            // Batch endpoints are only served from the China site.
+            return config.recognitionMode == .batch
+                ? StepFunASRRegion.china.healthEndpoint
+                : config.region.healthEndpoint
         case .soniox:
             return "https://stt-rt.soniox.com"
         case .deepgram:
@@ -1194,7 +1206,7 @@ actor RecognitionSession {
 
         self.currentConfig = config
 
-        guard let client = ASRProviderRegistry.createClient(for: provider) else {
+        guard let client = ASRProviderRegistry.createClient(for: provider, config: config) else {
             NSLog("[Session] No client implementation for provider=%@", provider.rawValue)
             SoundFeedback.playError()
             state = .idle
@@ -1785,7 +1797,7 @@ actor RecognitionSession {
         // Phase 1: wait up to 1s for any streaming partial text.
         // Phase 2: if text arrives, endAudio + wait up to 1s for final result.
         let provider = activeProvider
-        let providerIsStreaming = ASRProviderRegistry.capabilities(for: provider).isStreaming
+        let providerIsStreaming = ASRProviderRegistry.capabilities(for: provider, config: currentConfig).isStreaming
         if providerIsStreaming {
             let duration = recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0
             let hasStreamingText = !currentTranscript.composedText
@@ -3076,7 +3088,7 @@ actor RecognitionSession {
         // does NOT hop back to the actor.  This prevents a blocking
         // WebSocket send from starving stopRecording().
         let client = asrClient
-        let audioInput = ASRProviderRegistry.capabilities(for: activeProvider).audioInput
+        let audioInput = ASRProviderRegistry.capabilities(for: activeProvider, config: currentConfig).audioInput
 
         let failureFlag = UploadFailureFlag()
         self.uploadFailureFlag = failureFlag
@@ -3813,7 +3825,7 @@ actor RecognitionSession {
 
         // Other providers: fresh streaming connection with all audio at once
         let resultTask = Task.detached { () -> String? in
-            guard let client = ASRProviderRegistry.createClient(for: provider) else { return nil }
+            guard let client = ASRProviderRegistry.createClient(for: provider, config: config) else { return nil }
             do {
                 let options = ASRRequestOptions(enablePunc: true)
                 try await client.connect(config: config, options: options)

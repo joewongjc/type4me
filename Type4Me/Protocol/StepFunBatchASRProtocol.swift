@@ -11,7 +11,7 @@ enum StepFunBatchASRError: Error, LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .invalidConfig:
-            return "StepFun batch ASR requires StepFunBatchASRConfig"
+            return "StepFun batch ASR requires StepFunASRConfig"
         case .emptyAudio:
             return L("没有录到音频", "No audio data recorded")
         case .invalidEndpoint:
@@ -39,7 +39,7 @@ enum StepFunBatchASRProtocol {
 
     static func buildRequest(
         pcmData: Data,
-        config: StepFunBatchASRConfig,
+        config: StepFunASRConfig,
         options: ASRRequestOptions
     ) throws -> URLRequest {
         guard let url = URL(string: config.accessMode.endpoint) else {
@@ -48,7 +48,7 @@ enum StepFunBatchASRProtocol {
 
         let transcription = Transcription(
             hotwords: options.hotwords.isEmpty ? nil : options.hotwords,
-            model: StepFunBatchASRConfig.defaultModel,
+            model: StepFunASRConfig.batchModel,
             enableITN: true
         )
         let body = RequestBody(
@@ -69,7 +69,7 @@ enum StepFunBatchASRProtocol {
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("Bearer \(config.batchAPIKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         request.timeoutInterval = 120

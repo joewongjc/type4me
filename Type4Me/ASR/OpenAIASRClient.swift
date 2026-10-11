@@ -52,7 +52,7 @@ actor OpenAIASRClient: SpeechRecognizer {
         // Non-streaming: show "录音中" as placeholder during recording
         let placeholder = RecognitionTranscript(
             confirmedSegments: [],
-            partialText: L("录音中…", "Recording…"),
+            partialText: ASRRecognitionMode.batchRecordingPlaceholder,
             authoritativeText: "",
             isFinal: false
         )

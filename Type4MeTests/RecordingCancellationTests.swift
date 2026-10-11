@@ -168,7 +168,7 @@ final class RecordingCancellationTests: XCTestCase {
         // Batch providers are not expected to return text during recording.
         let retryCount = OSAllocatedUnfairLock(initialState: 0)
         let session = try await makeSession(
-            client: FinishingASRStub(), retryCount: retryCount, provider: .stepfunBatch
+            client: FinishingASRStub(), retryCount: retryCount, recognitionMode: .batch
         )
 
         await session.abortInjection()
@@ -181,12 +181,16 @@ final class RecordingCancellationTests: XCTestCase {
         client: FinishingASRStub,
         retryCount: OSAllocatedUnfairLock<Int>,
         provider: ASRProvider = .stepfun,
+        recognitionMode: ASRRecognitionMode = .streaming,
         policy: ClipboardOutputPolicy = .cancelProcessed,
         uploadFailed: Bool = false,
         audioSender: Task<Void, Never>? = nil,
         retryResult: String? = nil
     ) async throws -> RecognitionSession {
-        let config = try XCTUnwrap(StepFunASRConfig(credentials: ["apiKey": "test-not-used"]))
+        let config = try XCTUnwrap(StepFunASRConfig(credentials: [
+            "apiKey": "test-not-used",
+            "recognitionMode": recognitionMode.rawValue,
+        ]))
         let session = RecognitionSession()
         await session.prepareRecordingStopForTesting(
             client: client, config: config, provider: provider, policy: policy,

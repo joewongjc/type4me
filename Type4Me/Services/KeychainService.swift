@@ -166,6 +166,14 @@ enum KeychainService {
         return compatible.isEmpty ? nil : compatible
     }
 
+    /// Reads one non-secure value from the cached credentials file without touching the Keychain.
+    /// Safe to call while rendering lists.
+    static func loadASRPlaintextValue(for provider: ASRProvider, key: String) -> String? {
+        let value = stringDictionary(loadAll()[asrStorageKey(for: provider)])[key]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return value?.isEmpty == false ? value : nil
+    }
+
     static func loadASRConfig(for provider: ASRProvider) -> (any ASRProviderConfig)? {
         guard let configType = ASRProviderRegistry.configType(for: provider) else {
             return nil
@@ -356,6 +364,8 @@ enum KeychainService {
             NSLog("[KeychainService] Migrated Bailian ASR credentials from tf_asr_aliyun → tf_asr_bailian")
         }
 
+        migrated = migrateStepFunBatchProvider(in: &mutableDict) || migrated
+
         // Migrate LLM: tf_llmApiKey/tf_llmModel/tf_llmEndpointId/tf_llmBaseURL → tf_llm_doubao
         let legacyLLMKeys = ["tf_llmApiKey", "tf_llmModel", "tf_llmEndpointId", "tf_llmBaseURL"]
         let legacyLLM = legacyDoubaoLLMCredentials(in: dict)
@@ -400,6 +410,100 @@ enum KeychainService {
             cleanLegacyExternalCredentialSources(legacyExternalKeysToClean)
         }
     }
+
+    /// StepFun used to be two providers (`stepfun` realtime, `stepfunBatch` batch). Fold the batch
+    /// credentials into `stepfun` as its batch recognition mode. A Step Plan key moves to
+    /// `stepPlanApiKey` so it never overwrites the standard realtime key.
+    static let legacyStepFunBatchRawValue = "stepfunBatch"
+
+    @discardableResult
+    private static func migrateStepFunBatchProvider(in dict: inout [String: Any]) -> Bool {
+        let legacyStorageKey = "tf_asr_\(legacyStepFunBatchRawValue)"
+        let defaults = UserDefaults.standard
+        let wasSelected = defaults.string(forKey: selectedProviderKey) == legacyStepFunBatchRawValue
+        let legacyPlaintext = stringDictionary(dict[legacyStorageKey])
+        let legacySecure = loadSecureValues(account: legacyStorageKey)
+
+        // Write UserDefaults directly: posting provider-change notifications while `lock` is held
+        // could re-enter KeychainService.
+        if wasSelected {
+            defaults.set(ASRProvider.stepfun.rawValue, forKey: selectedProviderKey)
+        }
+        if defaults.string(forKey: "tf_lastBYOKProvider") == legacyStepFunBatchRawValue {
+            defaults.set(ASRProvider.stepfun.rawValue, forKey: "tf_lastBYOKProvider")
+        }
+        guard !legacyPlaintext.isEmpty || !legacySecure.isEmpty else { return wasSelected }
+
+        let storageKey = asrStorageKey(for: .stepfun)
+        var plaintext = stringDictionary(dict[storageKey])
+        var secure = loadSecureValues(account: storageKey)
+        let existingAPIKey = secure["apiKey"] ?? plaintext["apiKey"] ?? ""
+
+        // Before the merge, a missing access mode meant Step Plan.
+        let accessMode = legacyPlaintext["accessMode"].flatMap(StepFunBatchAccessMode.init(rawValue:)) ?? .stepPlan
+        let legacyAPIKey = (legacySecure["apiKey"] ?? legacyPlaintext["apiKey"] ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if !legacyAPIKey.isEmpty {
+            switch accessMode {
+            case .stepPlan:
+                if (secure["stepPlanApiKey"] ?? "").isEmpty { secure["stepPlanApiKey"] = legacyAPIKey }
+            case .standard:
+                if existingAPIKey.isEmpty { secure["apiKey"] = legacyAPIKey }
+            }
+        }
+        if (secure["apiKey"] ?? "").isEmpty, let plainKey = plaintext["apiKey"], !plainKey.isEmpty {
+            secure["apiKey"] = plainKey
+        }
+        plaintext.removeValue(forKey: "apiKey")
+        plaintext["accessMode"] = accessMode.rawValue
+        // Keep the batch setup active for users who chose it or had no realtime key.
+        if wasSelected || existingAPIKey.isEmpty {
+            plaintext[ASRRecognitionMode.credentialKey] = ASRRecognitionMode.batch.rawValue
+        }
+
+        do {
+            if !secure.isEmpty {
+                try saveSecureValues(secure, account: storageKey)
+            }
+        } catch {
+            NSLog("[KeychainService] Failed to migrate StepFun batch keys: %@", error.localizedDescription)
+            return wasSelected
+        }
+        dict[storageKey] = plaintext
+        dict.removeValue(forKey: legacyStorageKey)
+        _ = deleteSecureValue(service: keychainGroupedService, account: legacyStorageKey)
+        NSLog("[KeychainService] Merged tf_asr_stepfunBatch into tf_asr_stepfun (batch mode)")
+        return true
+    }
+
+    #if DEBUG
+    /// Test seam: stores credentials under a storage key that no longer maps to an `ASRProvider`.
+    static func seedLegacyASRCredentialsForTesting(
+        storageKey: String,
+        plaintext: [String: String],
+        secure: [String: String]
+    ) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        var dict = _loadAllUnlocked()
+        if plaintext.isEmpty {
+            dict.removeValue(forKey: storageKey)
+        } else {
+            dict[storageKey] = plaintext
+        }
+        if secure.isEmpty {
+            _ = deleteSecureValue(service: keychainGroupedService, account: storageKey)
+        } else {
+            try saveSecureValues(secure, account: storageKey)
+        }
+        try saveAll(dict)
+        cachedCredentials = dict
+    }
+
+    static func hasStoredCredentialsForTesting(storageKey: String) -> Bool {
+        loadAll()[storageKey] != nil || !loadSecureValues(account: storageKey).isEmpty
+    }
+    #endif
 
     private static func removeLegacyFileKeys(_ keys: [String], from dict: inout [String: Any]) -> Bool {
         var changed = false

@@ -7,7 +7,7 @@ actor StepFunBatchASRClient: SpeechRecognizer {
 
     private let logger = Logger(subsystem: "com.type4me.asr", category: "StepFunBatchASRClient")
 
-    private var config: StepFunBatchASRConfig?
+    private var config: StepFunASRConfig?
     private var options = ASRRequestOptions()
     private var session: URLSession?
     private var audioBuffer = Data()
@@ -23,7 +23,7 @@ actor StepFunBatchASRClient: SpeechRecognizer {
     }
 
     func connect(config: any ASRProviderConfig, options: ASRRequestOptions) async throws {
-        guard let stepFunConfig = config as? StepFunBatchASRConfig else {
+        guard let stepFunConfig = config as? StepFunASRConfig else {
             throw StepFunBatchASRError.invalidConfig
         }
 
@@ -39,7 +39,7 @@ actor StepFunBatchASRClient: SpeechRecognizer {
         continuation.yield(.ready)
         continuation.yield(.transcript(RecognitionTranscript(
             confirmedSegments: [],
-            partialText: L("录音中…", "Recording…"),
+            partialText: ASRRecognitionMode.batchRecordingPlaceholder,
             authoritativeText: "",
             isFinal: false
         )))

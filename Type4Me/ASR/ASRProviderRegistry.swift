@@ -48,24 +48,73 @@ struct ASRProviderCapabilities: Sendable, Equatable {
 
 enum ASRProviderRegistry {
 
+    typealias Validator = @Sendable (any ASRProviderConfig, ASRRequestOptions) async throws -> Void
+
+    /// Alternative client used when a provider's recognition mode is `.batch`.
+    struct BatchVariant: Sendable {
+        let createClient: @Sendable () -> any SpeechRecognizer
+        let capabilities: ASRProviderCapabilities
+        let validateCredentials: Validator?
+
+        init(
+            createClient: @escaping @Sendable () -> any SpeechRecognizer,
+            capabilities: ASRProviderCapabilities = .batch(),
+            validateCredentials: Validator? = nil
+        ) {
+            self.createClient = createClient
+            self.capabilities = capabilities
+            self.validateCredentials = validateCredentials
+        }
+
+        /// Variant backed by the shared buffered client; credentials are tested with one second of silence.
+        static func buffered(_ transcriber: any BatchASRTranscriber) -> BatchVariant {
+            BatchVariant(
+                createClient: { BufferedBatchASRClient(transcriber: transcriber) },
+                validateCredentials: { config, options in
+                    try await BatchASRHTTP.validate(with: transcriber, config: config, options: options)
+                }
+            )
+        }
+    }
+
     struct ProviderEntry: Sendable {
         let configType: any ASRProviderConfig.Type
         let createClient: (@Sendable () -> any SpeechRecognizer)?
         let capabilities: ASRProviderCapabilities
-        let validateCredentials: (@Sendable (any ASRProviderConfig, ASRRequestOptions) async throws -> Void)?
+        let validateCredentials: Validator?
+        /// Present when the provider lets users choose between streaming and batch recognition.
+        let batch: BatchVariant?
 
         var isAvailable: Bool { createClient != nil }
+        var supportsRecognitionModeSelection: Bool { batch != nil }
 
         init(
             configType: any ASRProviderConfig.Type,
             createClient: (@Sendable () -> any SpeechRecognizer)?,
             capabilities: ASRProviderCapabilities = .unavailable,
-            validateCredentials: (@Sendable (any ASRProviderConfig, ASRRequestOptions) async throws -> Void)? = nil
+            validateCredentials: Validator? = nil,
+            batch: BatchVariant? = nil
         ) {
             self.configType = configType
             self.createClient = createClient
             self.capabilities = capabilities
             self.validateCredentials = validateCredentials
+            self.batch = batch
+        }
+
+        func createClient(mode: ASRRecognitionMode) -> (any SpeechRecognizer)? {
+            if mode == .batch, let batch { return batch.createClient() }
+            return createClient?()
+        }
+
+        func capabilities(mode: ASRRecognitionMode) -> ASRProviderCapabilities {
+            if mode == .batch, let batch { return batch.capabilities }
+            return capabilities
+        }
+
+        func validator(mode: ASRRecognitionMode) -> Validator? {
+            if mode == .batch, let batch { return batch.validateCredentials }
+            return validateCredentials
         }
     }
 
@@ -87,12 +136,8 @@ enum ASRProviderRegistry {
             .stepfun: ProviderEntry(
                 configType: StepFunASRConfig.self,
                 createClient: { StepFunASRClient() },
-                capabilities: .streaming()
-            ),
-            .stepfunBatch: ProviderEntry(
-                configType: StepFunBatchASRConfig.self,
-                createClient: { StepFunBatchASRClient() },
-                capabilities: .batch()
+                capabilities: .streaming(),
+                batch: BatchVariant(createClient: { StepFunBatchASRClient() })
             ),
             .mimo: ProviderEntry(
                 configType: MiMoASRConfig.self,
@@ -123,17 +168,20 @@ enum ASRProviderRegistry {
             .elevenlabs: ProviderEntry(
                 configType: ElevenLabsASRConfig.self,
                 createClient: { ElevenLabsASRClient() },
-                capabilities: .streaming()
+                capabilities: .streaming(),
+                batch: .buffered(ElevenLabsBatchTranscriber())
             ),
             .gemini: ProviderEntry(
                 configType: GeminiASRConfig.self,
                 createClient: { GeminiASRClient() },
-                capabilities: .streaming()
+                capabilities: .streaming(),
+                batch: .buffered(GeminiBatchTranscriber())
             ),
             .grok: ProviderEntry(
                 configType: GrokASRConfig.self,
                 createClient: { GrokASRClient() },
-                capabilities: .streaming()
+                capabilities: .streaming(),
+                batch: .buffered(GrokBatchTranscriber())
             ),
             .soniox: ProviderEntry(
                 configType: SonioxASRConfig.self,
@@ -148,7 +196,8 @@ enum ASRProviderRegistry {
             .bailian: ProviderEntry(
                 configType: BailianASRConfig.self,
                 createClient: { BailianASRClient() },
-                capabilities: .streaming()
+                capabilities: .streaming(),
+                batch: .buffered(BailianBatchTranscriber())
             ),
             .baidu: ProviderEntry(
                 configType: BaiduASRConfig.self,
@@ -198,12 +247,47 @@ enum ASRProviderRegistry {
         all[provider]?.configType
     }
 
-    static func createClient(for provider: ASRProvider) -> (any SpeechRecognizer)? {
-        all[provider]?.createClient?()
+    static func supportsRecognitionModeSelection(for provider: ASRProvider) -> Bool {
+        all[provider]?.supportsRecognitionModeSelection ?? false
     }
 
+    /// The saved recognition mode. Providers without a choice report `.streaming`.
+    static func recognitionMode(for provider: ASRProvider) -> ASRRecognitionMode {
+        guard supportsRecognitionModeSelection(for: provider) else { return .default }
+        return ASRRecognitionMode(
+            credentialValue: KeychainService.loadASRPlaintextValue(
+                for: provider,
+                key: ASRRecognitionMode.credentialKey
+            )
+        )
+    }
+
+    static func recognitionMode(of config: any ASRProviderConfig) -> ASRRecognitionMode {
+        (config as? any ASRRecognitionModeConfigurable)?.recognitionMode ?? .default
+    }
+
+    /// Client for the saved recognition mode.
+    static func createClient(for provider: ASRProvider) -> (any SpeechRecognizer)? {
+        all[provider]?.createClient(mode: recognitionMode(for: provider))
+    }
+
+    /// Client matching the recognition mode carried by `config`.
+    static func createClient(for provider: ASRProvider, config: any ASRProviderConfig) -> (any SpeechRecognizer)? {
+        all[provider]?.createClient(mode: recognitionMode(of: config))
+    }
+
+    /// Capabilities for the saved recognition mode.
     static func capabilities(for provider: ASRProvider) -> ASRProviderCapabilities {
-        all[provider]?.capabilities ?? .unavailable
+        capabilities(for: provider, mode: recognitionMode(for: provider))
+    }
+
+    static func capabilities(for provider: ASRProvider, mode: ASRRecognitionMode) -> ASRProviderCapabilities {
+        all[provider]?.capabilities(mode: mode) ?? .unavailable
+    }
+
+    static func capabilities(for provider: ASRProvider, config: (any ASRProviderConfig)?) -> ASRProviderCapabilities {
+        guard let config else { return capabilities(for: provider) }
+        return capabilities(for: provider, mode: recognitionMode(of: config))
     }
 
     static func supports(_ mode: ProcessingMode, for provider: ASRProvider) -> Bool {
@@ -226,11 +310,11 @@ enum ASRProviderRegistry {
         config: any ASRProviderConfig,
         options: ASRRequestOptions
     ) async throws {
-        if let validator = all[provider]?.validateCredentials {
+        if let validator = all[provider]?.validator(mode: recognitionMode(of: config)) {
             try await validator(config, options)
             return
         }
-        guard let client = createClient(for: provider) else {
+        guard let client = createClient(for: provider, config: config) else {
             throw MiMoASRError.invalidConfig
         }
         try await client.connect(config: config, options: options)

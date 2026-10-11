@@ -41,7 +41,7 @@ actor MiMoASRClient: SpeechRecognizer {
         eventContinuation?.yield(.ready)
         eventContinuation?.yield(.transcript(RecognitionTranscript(
             confirmedSegments: [],
-            partialText: L("录音中…", "Recording…"),
+            partialText: ASRRecognitionMode.batchRecordingPlaceholder,
             authoritativeText: "",
             isFinal: false
         )))

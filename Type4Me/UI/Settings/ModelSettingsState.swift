@@ -132,7 +132,7 @@ enum ModelSettingsHelpers {
         if provider == .volcano {
             return VolcanoASRConfig(credentials: values) != nil
         }
-        let fields = ASRProviderRegistry.configType(for: provider)?.credentialFields ?? []
+        let fields = ASRProviderRegistry.configType(for: provider)?.displayedCredentialFields(for: values) ?? []
         let required = fields.filter { !$0.isOptional }
         if required.isEmpty { return true }
         return required.allSatisfy { field in
@@ -194,7 +194,7 @@ enum ModelSettingsHelpers {
         case .gemini:      return "sparkles"
         case .grok:        return "brain.head.profile"
         case .metaMuse:    return "waveform.badge.mic"
-        case .stepfun, .stepfunBatch: return "bolt.horizontal.fill"
+        case .stepfun:     return "bolt.horizontal.fill"
         case .mimo:        return "message.and.waveform.fill"
         case .bailian:     return "cloud.fill"
         case .baidu:       return "pawprint.fill"

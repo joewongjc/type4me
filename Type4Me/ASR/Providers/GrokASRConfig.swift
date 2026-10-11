@@ -1,6 +1,6 @@
 import Foundation
 
-struct GrokASRConfig: ASRProviderConfig, Sendable {
+struct GrokASRConfig: ASRRecognitionModeConfigurable, Sendable {
 
     static let provider = ASRProvider.grok
     static let displayName = "Grok"
@@ -14,6 +14,7 @@ struct GrokASRConfig: ASRProviderConfig, Sendable {
     ]
 
     static var credentialFields: [CredentialField] {[
+        ASRRecognitionMode.credentialField,
         CredentialField(
             key: "apiKey",
             label: "API Key",
@@ -35,6 +36,7 @@ struct GrokASRConfig: ASRProviderConfig, Sendable {
         ),
     ]}
 
+    let recognitionMode: ASRRecognitionMode
     let apiKey: String
     let language: String
 
@@ -42,12 +44,17 @@ struct GrokASRConfig: ASRProviderConfig, Sendable {
         guard let apiKey = credentials["apiKey"]?.trimmingCharacters(in: .whitespacesAndNewlines),
               !apiKey.isEmpty
         else { return nil }
+        self.recognitionMode = ASRRecognitionMode(credentials: credentials)
         self.apiKey = apiKey
         self.language = credentials["language"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
 
     func toCredentials() -> [String: String] {
-        ["apiKey": apiKey, "language": language]
+        [
+            ASRRecognitionMode.credentialKey: recognitionMode.rawValue,
+            "apiKey": apiKey,
+            "language": language,
+        ]
     }
 
     var isValid: Bool { !apiKey.isEmpty }

@@ -22,7 +22,6 @@ enum ASRProvider: String, CaseIterable, Codable, Sendable {
     // China
     case volcano
     case stepfun
-    case stepfunBatch
     case mimo
     case aliyun
     case bailian
@@ -54,7 +53,6 @@ enum ASRProvider: String, CaseIterable, Codable, Sendable {
         case .metaMuse: return "Meta Muse"
         case .volcano:  return L("火山引擎 (Doubao)", "Volcano (Doubao)")
         case .stepfun:  return L("阶跃星辰", "StepFun")
-        case .stepfunBatch: return L("阶跃星辰", "StepFun")
         case .mimo:     return L("小米 MiMo", "Xiaomi MiMo")
         case .aliyun:   return L("阿里云", "Alibaba Cloud")
         case .bailian:  return L("阿里云百炼", "Alibaba Cloud Bailian")
@@ -91,13 +89,15 @@ struct CredentialField: Sendable, Identifiable {
     /// When true (and options is non-empty), the picker includes a "Custom" entry
     /// that reveals a text field for free-form input.
     let allowCustomInput: Bool
+    /// Recognition modes in which the field is shown and required. `nil` means every mode.
+    let visibleModes: Set<ASRRecognitionMode>?
 
     /// Sentinel value used in the picker to represent "custom input" mode.
     static let customValue = "_custom"
 
     var id: String { key }
 
-    init(key: String, label: String, placeholder: String, isSecure: Bool, isOptional: Bool, defaultValue: String, options: [FieldOption] = [], allowCustomInput: Bool = false) {
+    init(key: String, label: String, placeholder: String, isSecure: Bool, isOptional: Bool, defaultValue: String, options: [FieldOption] = [], allowCustomInput: Bool = false, visibleModes: Set<ASRRecognitionMode>? = nil) {
         self.key = key
         self.label = label
         self.placeholder = placeholder
@@ -106,6 +106,11 @@ struct CredentialField: Sendable, Identifiable {
         self.defaultValue = defaultValue
         self.options = options
         self.allowCustomInput = allowCustomInput
+        self.visibleModes = visibleModes
+    }
+
+    func isVisible(in mode: ASRRecognitionMode) -> Bool {
+        visibleModes?.contains(mode) ?? true
     }
 }
 
@@ -119,4 +124,14 @@ protocol ASRProviderConfig: Sendable {
     init?(credentials: [String: String])
     func toCredentials() -> [String: String]
     var isValid: Bool { get }
+
+    /// Fields shown (and required when non-optional) for the given draft values.
+    static func displayedCredentialFields(for values: [String: String]) -> [CredentialField]
+}
+
+extension ASRProviderConfig {
+    static func displayedCredentialFields(for values: [String: String]) -> [CredentialField] {
+        let mode = ASRRecognitionMode(credentials: values)
+        return credentialFields.filter { $0.isVisible(in: mode) }
+    }
 }

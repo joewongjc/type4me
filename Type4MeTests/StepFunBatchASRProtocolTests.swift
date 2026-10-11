@@ -4,8 +4,11 @@ import XCTest
 final class StepFunBatchASRProtocolTests: XCTestCase {
 
     func testBuildRequest_usesStepPlanEndpointAndPCMBody() throws {
-        let config = try XCTUnwrap(StepFunBatchASRConfig(credentials: [
-            "apiKey": "sk-stepfun-test",
+        let config = try XCTUnwrap(StepFunASRConfig(credentials: [
+            "recognitionMode": "batch",
+            "accessMode": "stepPlan",
+            "apiKey": "sk-standard-test",
+            "stepPlanApiKey": "sk-stepfun-test",
         ]))
         let pcm = Data([0x01, 0x02, 0x03, 0x04])
         let request = try StepFunBatchASRProtocol.buildRequest(
@@ -14,7 +17,7 @@ final class StepFunBatchASRProtocolTests: XCTestCase {
             options: ASRRequestOptions(hotwords: ["Type4Me", "阶跃星辰"])
         )
 
-        XCTAssertEqual(request.url?.absoluteString, StepFunBatchASRConfig.stepPlanEndpoint)
+        XCTAssertEqual(request.url?.absoluteString, StepFunBatchAccessMode.stepPlanEndpoint)
         XCTAssertEqual(request.httpMethod, "POST")
         XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer sk-stepfun-test")
         XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
@@ -42,7 +45,8 @@ final class StepFunBatchASRProtocolTests: XCTestCase {
     }
 
     func testBuildRequest_usesStandardEndpointWhenSelected() throws {
-        let config = try XCTUnwrap(StepFunBatchASRConfig(credentials: [
+        let config = try XCTUnwrap(StepFunASRConfig(credentials: [
+            "recognitionMode": "batch",
             "apiKey": "sk-stepfun-test",
             "accessMode": "standard",
         ]))
@@ -52,11 +56,13 @@ final class StepFunBatchASRProtocolTests: XCTestCase {
             options: ASRRequestOptions()
         )
 
-        XCTAssertEqual(request.url?.absoluteString, StepFunBatchASRConfig.standardEndpoint)
+        XCTAssertEqual(request.url?.absoluteString, StepFunBatchAccessMode.standardEndpoint)
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer sk-stepfun-test")
     }
 
     func testBuildRequest_omitsEmptyHotwordList() throws {
-        let config = try XCTUnwrap(StepFunBatchASRConfig(credentials: [
+        let config = try XCTUnwrap(StepFunASRConfig(credentials: [
+            "recognitionMode": "batch",
             "apiKey": "sk-stepfun-test",
         ]))
         let request = try StepFunBatchASRProtocol.buildRequest(

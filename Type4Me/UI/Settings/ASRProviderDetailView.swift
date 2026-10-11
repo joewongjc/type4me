@@ -32,8 +32,30 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
         ASRProviderRegistry.configType(for: provider)?.credentialFields ?? []
     }
 
+    private var supportsRecognitionModeSelection: Bool {
+        ASRProviderRegistry.supportsRecognitionModeSelection(for: provider)
+    }
+
+    /// Mode chosen in the draft; drives which fields are shown and tested.
+    private var draftRecognitionMode: ASRRecognitionMode {
+        ASRRecognitionMode(credentials: effectiveASRValues)
+    }
+
+    /// Mode currently in effect for recording (the saved value), shown in the header badge.
+    private var savedRecognitionMode: ASRRecognitionMode {
+        guard supportsRecognitionModeSelection else { return .default }
+        return ASRRecognitionMode(credentials: savedASRValues)
+    }
+
+    /// Fields required and shown for the draft values, excluding the recognition mode picker.
+    private var requiredScopeFields: [CredentialField] {
+        guard let configType = ASRProviderRegistry.configType(for: provider) else { return [] }
+        return configType.displayedCredentialFields(for: effectiveASRValues)
+            .filter { $0.key != ASRRecognitionMode.credentialKey }
+    }
+
     private var displayedASRFields: [CredentialField] {
-        guard provider == .volcano else { return currentASRFields }
+        guard provider == .volcano else { return requiredScopeFields }
         let authMode = VolcanoASRConfig.inferredAuthMode(in: effectiveASRValues)
         return currentASRFields.filter { field in
             switch field.key {
@@ -67,7 +89,7 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
         if provider == .volcano {
             return VolcanoASRConfig(credentials: effective) != nil
         }
-        let required = currentASRFields.filter { !$0.isOptional }
+        let required = requiredScopeFields.filter { !$0.isOptional }
         return required.allSatisfy { field in
             !(effective[field.key]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "").isEmpty
         }
@@ -132,14 +154,15 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
                 (L("API Key", "API Key"), L("获取", "get"), URL(string: "https://help.aliyun.com/zh/model-studio/get-api-key")!),
             ]
         case .stepfun:
+            if draftRecognitionMode == .batch {
+                return [
+                    (L("接入文档", "Setup guide"), L("查看", "view"), URL(string: "https://platform.stepfun.com/docs/zh/api-reference/audio/asr-sse")!),
+                    ("API Key", L("获取", "get"), URL(string: "https://platform.stepfun.com/interface-key")!),
+                ]
+            }
             return [
                 (L("接入文档", "Setup guide"), L("查看", "view"), stepFunRealtimeDocsURL),
                 ("API Key", L("获取", "get"), stepFunPlatformURL.appendingPathComponent("interface-key")),
-            ]
-        case .stepfunBatch:
-            return [
-                (L("接入文档", "Setup guide"), L("查看", "view"), URL(string: "https://platform.stepfun.com/docs/zh/api-reference/audio/asr-sse")!),
-                ("API Key", L("获取", "get"), URL(string: "https://platform.stepfun.com/interface-key")!),
             ]
         case .mimo:
             return [
@@ -176,9 +199,20 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
         case .deepgram:
             return L("受接口限制，热词仅取前 30 个", "Due to API limits, only the first 30 hotwords are used")
         case .gemini:
+            if draftRecognitionMode == .batch {
+                return L(
+                    "Smart 模式会自动清理口语停顿、重复和自我纠正；如需逐字记录可切换为 Verbatim。非实时模式单次录音最长约 7 分钟。",
+                    "Smart mode cleans up disfluencies, repetitions, and self-corrections; switch to Verbatim for literal transcripts. Batch mode accepts recordings up to about 7 minutes."
+                )
+            }
             return L(
-                "实时流式识别。Smart 模式会自动清理口语停顿、重复和自我纠正；如需逐字记录可切换为 Verbatim。",
-                "Real-time streaming transcription. Smart mode cleans up disfluencies, repetitions, and self-corrections; switch to Verbatim for literal transcripts."
+                "Smart 模式会自动清理口语停顿、重复和自我纠正；如需逐字记录可切换为 Verbatim。",
+                "Smart mode cleans up disfluencies, repetitions, and self-corrections; switch to Verbatim for literal transcripts."
+            )
+        case .bailian where draftRecognitionMode == .batch:
+            return L(
+                "非实时模式单次录音最长约 3.5 分钟，更长的录音请使用实时流式。",
+                "Batch mode accepts recordings up to about 3.5 minutes. Use real-time mode for longer recordings."
             )
         case .metaMuse:
             return L(
@@ -187,23 +221,24 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
             )
         case .openai:
             return L(
-                "松开快捷键后提交完整录音进行转写。",
-                "The complete recording is submitted after you release the hotkey."
+                "结束录音后提交完整录音进行转写。",
+                "The complete recording is submitted when you stop recording."
             )
         case .stepfun:
+            if draftRecognitionMode == .batch {
+                return L(
+                    "非实时模式使用 stepaudio-2.5-asr，目前仅支持中国站；Step Plan 需要单独的 Step Plan API Key。",
+                    "Batch mode uses stepaudio-2.5-asr and is available on the China site only. Step Plan requires its own Step Plan API key."
+                )
+            }
             return L(
                 "实时流式识别使用开放平台按量付费 API Key；可选择中国站或全球站，当前固定使用 stepaudio-2.5-asr-stream。",
                 "Real-time streaming recognition uses a standard pay-as-you-go API key. Choose the China or Global site; the current model is fixed to stepaudio-2.5-asr-stream."
             )
-        case .stepfunBatch:
-            return L(
-                "松开快捷键后提交完整录音；Step Plan 与标准按量付费需显式选择",
-                "The complete recording is submitted after you release the hotkey; explicitly choose Step Plan or standard pay-as-you-go"
-            )
         case .mimo:
             return L(
-                "松开快捷键后提交完整录音；MiMo 的流式模式仅流式返回识别文本，不支持录音期间实时上传。",
-                "The complete recording is submitted after you release the hotkey. MiMo streams transcript text only; it does not accept live audio chunks while recording."
+                "结束录音后提交完整录音；MiMo 的流式模式仅流式返回识别文本，不支持录音期间实时上传。",
+                "The complete recording is submitted when you stop recording. MiMo streams transcript text only; it does not accept live audio chunks while recording."
             )
         default:
             return nil
@@ -262,7 +297,8 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(TF.settingsText)
 
-                    let isBatch = !ASRProviderRegistry.capabilities(for: provider).supportsRealtimeRecognition
+                    let isBatch = !ASRProviderRegistry.capabilities(for: provider, mode: savedRecognitionMode)
+                        .supportsRealtimeRecognition
                     if isBatch {
                         Text(L("非实时", "Batch"))
                             .font(.system(size: 10, weight: .medium))
@@ -367,6 +403,11 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
     private var cloudModelSection: some View {
         VStack(alignment: .leading, spacing: 14) {
             settingsGroupCard(L("参数配置", "Parameters"), icon: "slider.horizontal.3") {
+                if supportsRecognitionModeSelection {
+                    recognitionModeRow
+                    SettingsDivider()
+                }
+
                 if let note = currentProviderNote {
                     Text(note)
                         .font(.system(size: 10))
@@ -425,6 +466,30 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
                 }
             }
             .padding(.top, 4)
+        }
+    }
+
+    // MARK: - Recognition Mode
+
+    private var recognitionModeRow: some View {
+        settingsOptionRow(
+            L("识别方式", "Recognition"),
+            subtitle: draftRecognitionMode.summary,
+            controlWidth: SettingsControlWidth.inlineSegmented
+        ) {
+            settingsInlineSegmentedPicker(
+                selection: Binding(
+                    get: { draftRecognitionMode.rawValue },
+                    set: { rawValue in
+                        guard rawValue != draftRecognitionMode.rawValue else { return }
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                            asrCredentialValues[ASRRecognitionMode.credentialKey] = rawValue
+                            asrTestStatus = .idle
+                        }
+                    }
+                ),
+                options: ASRRecognitionMode.allCases.map { ($0.rawValue, $0.displayName) }
+            )
         }
     }
 
