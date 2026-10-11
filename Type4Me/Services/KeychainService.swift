@@ -61,7 +61,18 @@ enum KeychainService {
         return _loadAllUnlocked()
     }
 
+    #if DEBUG
+    /// Test seam: makes the next credentials-file write fail.
+    nonisolated(unsafe) static var failNextCredentialsFileSaveForTesting = false
+    #endif
+
     private static func saveAll(_ dict: [String: Any]) throws {
+        #if DEBUG
+        if failNextCredentialsFileSaveForTesting {
+            failNextCredentialsFileSaveForTesting = false
+            throw CocoaError(.fileWriteUnknown)
+        }
+        #endif
         let data = try JSONSerialization.data(withJSONObject: dict, options: [.sortedKeys])
         try data.write(to: credentialsFileURL, options: .atomic)
         try FileManager.default.setAttributes(
@@ -364,7 +375,8 @@ enum KeychainService {
             NSLog("[KeychainService] Migrated Bailian ASR credentials from tf_asr_aliyun → tf_asr_bailian")
         }
 
-        migrated = migrateStepFunBatchProvider(in: &mutableDict) || migrated
+        let finishStepFunMigration = migrateStepFunBatchProvider(in: &mutableDict)
+        migrated = finishStepFunMigration != nil || migrated
 
         // Migrate LLM: tf_llmApiKey/tf_llmModel/tf_llmEndpointId/tf_llmBaseURL → tf_llm_doubao
         let legacyLLMKeys = ["tf_llmApiKey", "tf_llmModel", "tf_llmEndpointId", "tf_llmBaseURL"]
@@ -403,6 +415,7 @@ enum KeychainService {
                 try saveAll(mutableDict)
                 cachedCredentials = mutableDict
                 cleanLegacyExternalCredentialSources(legacyExternalKeysToClean)
+                finishStepFunMigration?()
             } catch {
                 NSLog("[KeychainService] Failed to persist credential migration: %@", error.localizedDescription)
             }
@@ -419,23 +432,27 @@ enum KeychainService {
     /// Nothing reads it automatically; it only prevents silently deleting a credential.
     static let stepFunUnusedStandardKeyAccount = "tf_asr_stepfun_unusedStandardKey"
 
-    @discardableResult
-    private static func migrateStepFunBatchProvider(in dict: inout [String: Any]) -> Bool {
+    /// Prepares the merge in `dict` and returns the irreversible steps (switching the selected
+    /// provider, deleting the legacy Keychain item) to run only after `dict` has been saved.
+    /// Returns nil when there is nothing to migrate or a Keychain write failed, so the next
+    /// launch retries with the legacy data intact.
+    private static func migrateStepFunBatchProvider(in dict: inout [String: Any]) -> (() -> Void)? {
         let legacyStorageKey = "tf_asr_\(legacyStepFunBatchRawValue)"
         let defaults = UserDefaults.standard
         let wasSelected = defaults.string(forKey: selectedProviderKey) == legacyStepFunBatchRawValue
+        let wasLastBYOK = defaults.string(forKey: "tf_lastBYOKProvider") == legacyStepFunBatchRawValue
         let legacyPlaintext = stringDictionary(dict[legacyStorageKey])
         let legacySecure = loadSecureValues(account: legacyStorageKey)
 
         // Write UserDefaults directly: posting provider-change notifications while `lock` is held
         // could re-enter KeychainService.
-        if wasSelected {
-            defaults.set(ASRProvider.stepfun.rawValue, forKey: selectedProviderKey)
+        let switchSelection = {
+            if wasSelected { defaults.set(ASRProvider.stepfun.rawValue, forKey: selectedProviderKey) }
+            if wasLastBYOK { defaults.set(ASRProvider.stepfun.rawValue, forKey: "tf_lastBYOKProvider") }
         }
-        if defaults.string(forKey: "tf_lastBYOKProvider") == legacyStepFunBatchRawValue {
-            defaults.set(ASRProvider.stepfun.rawValue, forKey: "tf_lastBYOKProvider")
+        guard !legacyPlaintext.isEmpty || !legacySecure.isEmpty else {
+            return wasSelected || wasLastBYOK ? switchSelection : nil
         }
-        guard !legacyPlaintext.isEmpty || !legacySecure.isEmpty else { return wasSelected }
 
         let storageKey = asrStorageKey(for: .stepfun)
         var plaintext = stringDictionary(dict[storageKey])
@@ -449,9 +466,8 @@ enum KeychainService {
         if (secure["apiKey"] ?? "").isEmpty, let plainKey = plaintext["apiKey"], !plainKey.isEmpty {
             secure["apiKey"] = plainKey
         }
-        // Two different standard keys: the setup in use keeps its key; the other one stays
-        // in the legacy Keychain item instead of being discarded.
-        var keepLegacySecureItem = false
+        // Two different standard keys: the setup in use keeps its key; the other one is backed up.
+        var unusedStandardKey: String?
         if !legacyAPIKey.isEmpty {
             switch accessMode {
             case .stepPlan:
@@ -460,7 +476,7 @@ enum KeychainService {
                 if existingAPIKey.isEmpty {
                     secure["apiKey"] = legacyAPIKey
                 } else if existingAPIKey != legacyAPIKey {
-                    keepLegacySecureItem = true
+                    unusedStandardKey = wasSelected ? existingAPIKey : legacyAPIKey
                     if wasSelected { secure["apiKey"] = legacyAPIKey }
                 }
             }
@@ -473,23 +489,28 @@ enum KeychainService {
         }
 
         do {
+            // Back up first: if this fails nothing has been changed yet.
+            if let unusedStandardKey {
+                try saveSecureValues(["apiKey": unusedStandardKey], account: stepFunUnusedStandardKeyAccount)
+            }
             if !secure.isEmpty {
                 try saveSecureValues(secure, account: storageKey)
             }
         } catch {
-            NSLog("[KeychainService] Failed to migrate StepFun batch keys: %@", error.localizedDescription)
-            return wasSelected
+            NSLog("[KeychainService] StepFun batch migration deferred; Keychain write failed: %@", error.localizedDescription)
+            return nil
         }
         dict[storageKey] = plaintext
         dict.removeValue(forKey: legacyStorageKey)
-        if keepLegacySecureItem {
-            let unusedKey = wasSelected ? existingAPIKey : legacyAPIKey
-            try? saveSecureValues(["apiKey": unusedKey], account: stepFunUnusedStandardKeyAccount)
-            NSLog("[KeychainService] StepFun standard keys differed; kept the unused one in %@", stepFunUnusedStandardKeyAccount)
+
+        return {
+            switchSelection()
+            _ = deleteSecureValue(service: keychainGroupedService, account: legacyStorageKey)
+            if unusedStandardKey != nil {
+                NSLog("[KeychainService] StepFun standard keys differed; backed up the unused one in %@", stepFunUnusedStandardKeyAccount)
+            }
+            NSLog("[KeychainService] Merged tf_asr_stepfunBatch into tf_asr_stepfun")
         }
-        _ = deleteSecureValue(service: keychainGroupedService, account: legacyStorageKey)
-        NSLog("[KeychainService] Merged tf_asr_stepfunBatch into tf_asr_stepfun (batch mode)")
-        return true
     }
 
     #if DEBUG

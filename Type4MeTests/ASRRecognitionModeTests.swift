@@ -224,6 +224,35 @@ final class StepFunBatchMigrationTests: XCTestCase {
         XCTAssertEqual(KeychainService.loadASRCredentials(for: .stepfun)?["apiKey"], "sk-batch")
     }
 
+    func testFailedFileSaveKeepsLegacyDataAndSelectionForRetry() throws {
+        try KeychainService.saveASRCredentials(for: .stepfun, values: ["apiKey": "sk-realtime"])
+        try KeychainService.seedLegacyASRCredentialsForTesting(
+            storageKey: legacyStorageKey,
+            plaintext: ["accessMode": "standard"],
+            secure: ["apiKey": "sk-batch"]
+        )
+        UserDefaults.standard.set("stepfunBatch", forKey: "tf_selectedASRProvider")
+
+        KeychainService.failNextCredentialsFileSaveForTesting = true
+        KeychainService.migrateStoredCredentials()
+
+        XCTAssertEqual(UserDefaults.standard.string(forKey: "tf_selectedASRProvider"), "stepfunBatch")
+        XCTAssertEqual(KeychainService.loadSecureValuesForTesting(account: legacyStorageKey)["apiKey"], "sk-batch")
+
+        // The retry on the next launch completes the merge with the original selection intact.
+        KeychainService.migrateStoredCredentials()
+
+        XCTAssertEqual(KeychainService.selectedASRProvider, .stepfun)
+        let values = try XCTUnwrap(KeychainService.loadASRCredentials(for: .stepfun))
+        XCTAssertEqual(values["recognitionMode"], "batch")
+        XCTAssertEqual(values["apiKey"], "sk-batch")
+        XCTAssertEqual(
+            KeychainService.loadSecureValuesForTesting(account: KeychainService.stepFunUnusedStandardKeyAccount)["apiKey"],
+            "sk-realtime"
+        )
+        XCTAssertFalse(KeychainService.hasStoredCredentialsForTesting(storageKey: legacyStorageKey))
+    }
+
     func testLegacyConfigWithoutRecognitionModeStillCountsAsConfigured() throws {
         let original = KeychainService.loadASRCredentials(for: .bailian)
         defer { try? KeychainService.saveASRCredentials(for: .bailian, values: original ?? [:]) }
