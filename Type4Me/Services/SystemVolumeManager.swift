@@ -142,26 +142,26 @@ enum SystemVolumeManager {
     }
 }
 
-/// Implementations are used only on the volume queue. nil mute means unsupported;
-/// failure to read a supported property must throw.
+/// Implementations are used only on the volume queue.
+/// Failure to read or write a property must throw; a property that is missing or
+/// not settable must throw `VolumeAudioError.unsupportedProperty`.
 protocol VolumeAudioAdapter {
     func defaultOutput() throws -> AudioDeviceID
     func uid(of device: AudioDeviceID) throws -> String
     func device(for uid: String) throws -> AudioDeviceID
     func volume(_ device: AudioDeviceID) throws -> Float
-    func mute(_ device: AudioDeviceID) throws -> Bool?
     func setVolume(_ value: Float, on device: AudioDeviceID) throws
-    func setMute(_ value: Bool, on device: AudioDeviceID) throws
 }
 
 final class VolumeRestorationTransaction {
     static let recoveryKey = "tf_savedSystemVolumeTransaction"
     static let legacyKey = "tf_savedSystemVolume"
 
-    private struct Snapshot: Codable {
+    /// nil uid marks a legacy record, which restores to the current output.
+    private struct Snapshot {
         let uid: String?
         let volume: Float
-        let mute: Bool?
+        var key: String { uid ?? "" }
     }
 
     private let generation = OSAllocatedUnfairLock<UInt64>(initialState: 0)
@@ -171,8 +171,7 @@ final class VolumeRestorationTransaction {
     private let schedule: (TimeInterval, @escaping () -> Void) -> Void
     private let log: (String) -> Void
     // Everything below is owned by the queue, including retry callbacks.
-    private var snapshot: Snapshot?
-    private var restoring = false
+    private var restoring: Set<String> = []
     private let intervals: [TimeInterval] = [0.1, 0.25, 0.5]
 
     init(defaults: UserDefaults, audio: VolumeAudioAdapter,
@@ -193,24 +192,31 @@ final class VolumeRestorationTransaction {
     func lower(to fraction: Float, token: UInt64) {
         enqueue { [self] in
             guard generation.withLock({ $0 == token }), fraction.isFinite,
-                  snapshot == nil, !restoring,
-                  defaults.object(forKey: Self.recoveryKey) == nil,
-                  defaults.object(forKey: Self.legacyKey) == nil else { return }
+                  loadLegacy() == nil else { return }
             do {
+                var pending = loadPending()
                 let device = try audio.defaultOutput()
                 let uid = try audio.uid(of: device)
+                // Pending recovery for another output does not block this one.
+                guard pending[uid] == nil, !restoring.contains(uid) else { return }
                 let volume = try audio.volume(device)
-                let mute = try audio.mute(device)
                 guard !uid.isEmpty, volume.isFinite, (0...1).contains(volume) else {
                     throw VolumeAudioError.invalidValue
                 }
-                let captured = Snapshot(uid: uid, volume: volume, mute: mute)
-                let data = try JSONEncoder().encode(captured)
+                // Don't lower if already very quiet.
+                guard volume > 0.05 else { return }
                 // Reads can stall. Recheck cancellation immediately before persisting/writing.
                 guard generation.withLock({ $0 == token }) else { return }
-                snapshot = captured
-                defaults.set(data, forKey: Self.recoveryKey)
-                try audio.setVolume(volume * max(0, min(1, fraction)), on: device)
+                pending[uid] = volume
+                try savePending(pending)
+                do {
+                    try audio.setVolume(volume * max(0, min(1, fraction)), on: device)
+                } catch {
+                    // Nothing was lowered, so there is nothing to recover.
+                    pending[uid] = nil
+                    try? savePending(pending)
+                    throw error
+                }
                 log("Volume lowered; recovery snapshot retained")
             } catch {
                 log("Volume attenuation failed: \(error)")
@@ -222,36 +228,59 @@ final class VolumeRestorationTransaction {
         // Invalidate delayed and already queued lowers before returning to the caller.
         _ = reserveAttenuation()
         enqueue { [self] in
-            guard !restoring else { return }
-            do {
-                if snapshot == nil { snapshot = try loadSnapshot() }
-                guard let snapshot else { return }
-                restoring = true
+            var snapshots = loadPending().map { Snapshot(uid: $0.key, volume: $0.value) }
+            if let legacy = loadLegacy() { snapshots.append(legacy) }
+            for snapshot in snapshots.sorted(by: { $0.key < $1.key })
+            where !restoring.contains(snapshot.key) {
+                restoring.insert(snapshot.key)
                 attempt(snapshot, index: 0)
-            } catch {
-                log("Volume recovery record invalid; retained without writing: \(error)")
             }
         }
     }
 
-    private func loadSnapshot() throws -> Snapshot? {
-        if let stored = defaults.object(forKey: Self.recoveryKey) {
-            guard let data = stored as? Data else { throw VolumeAudioError.invalidValue }
-            let saved = try JSONDecoder().decode(Snapshot.self, from: data)
-            guard let uid = saved.uid, !uid.isEmpty, saved.volume.isFinite,
-                  (0...1).contains(saved.volume) else { throw VolumeAudioError.invalidValue }
-            return saved
+    /// Undecodable records are permanent failures: clear them instead of blocking forever.
+    private func loadPending() -> [String: Float] {
+        guard let stored = defaults.object(forKey: Self.recoveryKey) else { return [:] }
+        if let data = stored as? Data,
+           let pending = try? JSONDecoder().decode([String: Float].self, from: data),
+           pending.allSatisfy({ !$0.key.isEmpty && $0.value.isFinite && (0...1).contains($0.value) }) {
+            return pending
         }
-        if let stored = defaults.object(forKey: Self.legacyKey) {
-            guard let number = stored as? NSNumber,
-                  CFGetTypeID(number) != CFBooleanGetTypeID(),
-                  number.floatValue.isFinite, (0...1).contains(number.floatValue) else {
-                throw VolumeAudioError.invalidValue
-            }
-            log("Legacy volume recovery has no device identity or mute state; using current output")
-            return Snapshot(uid: nil, volume: number.floatValue, mute: nil)
+        log("Volume recovery record invalid; discarded")
+        defaults.removeObject(forKey: Self.recoveryKey)
+        return [:]
+    }
+
+    private func savePending(_ pending: [String: Float]) throws {
+        if pending.isEmpty {
+            defaults.removeObject(forKey: Self.recoveryKey)
+        } else {
+            defaults.set(try JSONEncoder().encode(pending), forKey: Self.recoveryKey)
         }
-        return nil
+    }
+
+    private func loadLegacy() -> Snapshot? {
+        guard let stored = defaults.object(forKey: Self.legacyKey) else { return nil }
+        guard let number = stored as? NSNumber,
+              CFGetTypeID(number) != CFBooleanGetTypeID(),
+              number.floatValue.isFinite, (0...1).contains(number.floatValue) else {
+            log("Legacy volume recovery record invalid; discarded")
+            defaults.removeObject(forKey: Self.legacyKey)
+            return nil
+        }
+        return Snapshot(uid: nil, volume: number.floatValue)
+    }
+
+    private func finish(_ saved: Snapshot, _ message: String) {
+        if let uid = saved.uid {
+            var pending = loadPending()
+            pending[uid] = nil
+            try? savePending(pending)
+        } else {
+            defaults.removeObject(forKey: Self.legacyKey)
+        }
+        restoring.remove(saved.key)
+        log(message)
     }
 
     private func attempt(_ saved: Snapshot, index: Int) {
@@ -259,8 +288,11 @@ final class VolumeRestorationTransaction {
         do {
             let device = try saved.uid.map { try audio.device(for: $0) } ?? audio.defaultOutput()
             try audio.setVolume(saved.volume, on: device)
-            if let mute = saved.mute { try audio.setMute(mute, on: device) }
             writtenDevice = device
+        } catch VolumeAudioError.unsupportedProperty {
+            // Retrying can never succeed on a device whose volume is not settable.
+            finish(saved, "Volume not settable on recovered device; recovery record discarded")
+            return
         } catch {
             log("Volume restoration attempt \(index + 1) failed: \(error)")
         }
@@ -274,14 +306,7 @@ final class VolumeRestorationTransaction {
                 guard volume.isFinite, abs(volume - saved.volume) <= 0.001 else {
                     throw VolumeAudioError.verificationFailed
                 }
-                if let mute = saved.mute, try audio.mute(device) != mute {
-                    throw VolumeAudioError.verificationFailed
-                }
-                defaults.removeObject(forKey: Self.recoveryKey)
-                defaults.removeObject(forKey: Self.legacyKey)
-                snapshot = nil
-                restoring = false
-                log("Volume restored and verified")
+                finish(saved, "Volume restored and verified")
                 return
             } catch {
                 log("Volume restoration verification \(index + 1) failed: \(error)")
@@ -289,14 +314,14 @@ final class VolumeRestorationTransaction {
             if index + 1 < intervals.count {
                 attempt(saved, index: index + 1)
             } else {
-                restoring = false
+                restoring.remove(saved.key)
                 log("Volume restoration unresolved after bounded retries; recovery retained")
             }
         }
     }
 }
 
-private enum VolumeAudioError: Error {
+enum VolumeAudioError: Error {
     case status(OSStatus), unsupportedProperty(UInt32), deviceUnavailable
     case invalidValue, writeFailed, verificationFailed
 }
@@ -370,17 +395,7 @@ private struct CoreAudioVolumeAdapter: VolumeAudioAdapter {
         try read(device, kAudioHardwareServiceDeviceProperty_VirtualMainVolume, initial: Float(0), output: true)
     }
 
-    func mute(_ device: AudioDeviceID) throws -> Bool? {
-        var property = address(kAudioDevicePropertyMute, output: true)
-        guard AudioObjectHasProperty(device, &property) else { return nil }
-        return try read(device, kAudioDevicePropertyMute, initial: UInt32(0), output: true) != 0
-    }
-
     func setVolume(_ value: Float, on device: AudioDeviceID) throws {
         try write(value, device: device, selector: kAudioHardwareServiceDeviceProperty_VirtualMainVolume)
-    }
-
-    func setMute(_ value: Bool, on device: AudioDeviceID) throws {
-        try write(UInt32(value ? 1 : 0), device: device, selector: kAudioDevicePropertyMute)
     }
 }
