@@ -28,7 +28,7 @@ final class GrokASRConfigTests: XCTestCase {
 
     func testCredentialFieldsExposeAPIKeyAndLanguage() throws {
         let keys = GrokASRConfig.credentialFields.map(\.key)
-        XCTAssertEqual(keys, ["apiKey", "language"])
+        XCTAssertEqual(keys, ["recognitionMode", "apiKey", "language"])
     }
 
     func testAPIKeyPlaceholderMatchesProviderFormat() {

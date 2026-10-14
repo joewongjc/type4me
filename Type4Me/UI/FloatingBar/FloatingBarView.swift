@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 /// Cached font for text measurement (module-level to avoid generic-type static restriction).
@@ -7,6 +8,7 @@ private enum FloatingBarTopOverlay: Equatable {
     case transcript
     case action(RecordingControlAction)
     case mode
+    case handle
 }
 
 // MARK: - Thinking States Text Swap Transition
@@ -174,20 +176,47 @@ extension FloatingBarPresentation: Codable {
 /// - Recording: static dot + live text + completion/cancellation controls
 /// - Processing: selected background effect + centered status text
 /// - Done: immediate feedback message
+private final class ChromeObserver: ObservableObject {
+    private var cancellable: AnyCancellable?
+
+    init(_ model: FloatingBarChromeModel?) {
+        if let model {
+            cancellable = model.objectWillChange.sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+        }
+    }
+}
+
 struct FloatingBarView<S: FloatingBarState>: View {
 
     let state: S
     let presentationOverride: FloatingBarPresentation?
+    let chrome: FloatingBarChromeModel?
+    let onDragBegan: ((CGPoint) -> Void)?
+    let onDragMoved: ((CGPoint) -> Void)?
+    let onDragEnded: ((CGPoint) -> Void)?
     let onPanelLayoutChange: ((FloatingBarPanelLayout) -> Void)?
+
+    @ObservedObject private var chromeObserver: ChromeObserver
 
     init(
         state: S,
         presentationOverride: FloatingBarPresentation? = nil,
+        chrome: FloatingBarChromeModel? = nil,
+        onDragBegan: ((CGPoint) -> Void)? = nil,
+        onDragMoved: ((CGPoint) -> Void)? = nil,
+        onDragEnded: ((CGPoint) -> Void)? = nil,
         onPanelLayoutChange: ((FloatingBarPanelLayout) -> Void)? = nil
     ) {
         self.state = state
         self.presentationOverride = presentationOverride
+        self.chrome = chrome
+        self.onDragBegan = onDragBegan
+        self.onDragMoved = onDragMoved
+        self.onDragEnded = onDragEnded
         self.onPanelLayoutChange = onPanelLayoutChange
+        _chromeObserver = ObservedObject(wrappedValue: ChromeObserver(chrome))
     }
 
     /// High-water mark: only grows during recording, never shrinks (prevents ASR correction jitter)
@@ -204,6 +233,9 @@ struct FloatingBarView<S: FloatingBarState>: View {
     @State private var showsModeHint = false
     @State private var modeHintTask: Task<Void, Never>?
     @State private var recordingActionLocked = false
+    @State private var hoveredHandle = false
+    @State private var hintedHandle = false
+    @State private var handleHintTask: Task<Void, Never>?
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(RecordingTheme.storageKey) private var theme = RecordingTheme.defaultValue
@@ -340,8 +372,24 @@ struct FloatingBarView<S: FloatingBarState>: View {
         )
     }
 
+    private var anchor: FloatingBarVerticalAnchor {
+        chrome?.verticalAnchor ?? .bottom
+    }
+
+    private var isRetainedForDrag: Bool {
+        chrome?.isRetainedForDrag == true
+    }
+
     private var shouldRenderCapsule: Bool {
-        state.barPhase != .hidden
+        state.barPhase != .hidden || isRetainedForDrag
+    }
+
+    private var showsHandle: Bool {
+        chrome?.isHandleVisible == true && shouldRenderCapsule
+    }
+
+    private var handleReserve: CGFloat {
+        chrome != nil ? TF.barPlacementHandleReserve : 0
     }
 
     private var showTranscriptPopup: Bool {
@@ -363,9 +411,16 @@ struct FloatingBarView<S: FloatingBarState>: View {
     }
 
     private var activeTopOverlay: FloatingBarTopOverlay? {
+        guard chrome?.isDragging != true else { return nil }
+
         if showTranscriptPopup { return .transcript }
 
         guard effectiveShowsTooltips else { return nil }
+
+        if hintedHandle {
+            return .handle
+        }
+
 
         if let hintedAction, state.barPhase == .recording || state.barPhase == .preparing {
             return .action(hintedAction)
@@ -380,6 +435,9 @@ struct FloatingBarView<S: FloatingBarState>: View {
     }
 
     private var capsuleHeight: CGFloat {
+        if state.barPhase == .hidden && isRetainedForDrag {
+            return effectiveIndicatorStyle == .compact ? TF.compactIndicatorHeight : TF.barHeight
+        }
         guard usesCompactPresentation else { return TF.barHeight }
         return usesCompactExpandedRecordingLayout
             ? TF.compactTranscriptExpandedHeight
@@ -438,7 +496,10 @@ struct FloatingBarView<S: FloatingBarState>: View {
     }
 
     private var capsuleWidth: CGFloat {
-        if usesCompactPresentation {
+        if usesCompactPresentation || (state.barPhase == .hidden && isRetainedForDrag && effectiveIndicatorStyle == .compact) {
+            if state.barPhase == .hidden && isRetainedForDrag {
+                return TF.compactIndicatorWidth
+            }
             return compactCapsuleWidth
         }
         switch state.barPhase {
@@ -464,7 +525,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
         case .error:
             return feedbackWidth(for: state.feedbackMessage)
         case .hidden:
-            return TF.barHeight
+            return isRetainedForDrag ? baseRecordingWidth : TF.barHeight
         }
     }
 
@@ -472,10 +533,12 @@ struct FloatingBarView<S: FloatingBarState>: View {
         guard shouldRenderCapsule else { return .hidden }
 
         let capsuleSize = NSSize(width: capsuleWidth, height: capsuleHeight)
+        let reserve = handleReserve
         guard let overlay = activeTopOverlay else {
             return FloatingBarPanelLayout(
-                contentSize: capsuleSize,
-                capsuleSize: capsuleSize
+                contentSize: NSSize(width: capsuleSize.width, height: capsuleSize.height + reserve),
+                capsuleSize: capsuleSize,
+                anchorSideReserve: reserve
             )
         }
 
@@ -496,15 +559,18 @@ struct FloatingBarView<S: FloatingBarState>: View {
                 action: action,
                 bubbleWidth: overlaySize.width
             )
+        case .handle:
+            contentWidth = capsuleSize.width
+            horizontalOverflow = 0
         }
-
         return FloatingBarPanelLayout(
             contentSize: NSSize(
                 width: contentWidth,
-                height: capsuleSize.height + topOverlayGap + overlaySize.height
+                height: capsuleSize.height + topOverlayGap + overlaySize.height + reserve
             ),
             horizontalOverflow: horizontalOverflow,
-            capsuleSize: capsuleSize
+            capsuleSize: capsuleSize,
+            anchorSideReserve: reserve
         )
     }
 
@@ -527,18 +593,20 @@ struct FloatingBarView<S: FloatingBarState>: View {
 
     var body: some View {
         VStack(spacing: topOverlayGap) {
-            if let overlay = activeTopOverlay {
-                topOverlay(overlay)
-            }
-
-            if shouldRenderCapsule {
-                capsuleBar
-                    .id("floating_capsule_bar")
+            if anchor == .top {
+                capsuleAndHandle
+                if let overlay = activeTopOverlay {
+                    topOverlay(overlay)
+                }
+            } else {
+                if let overlay = activeTopOverlay {
+                    topOverlay(overlay)
+                }
+                capsuleAndHandle
             }
         }
         .padding(TF.floatingPanelShadowInset)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-        // Scoped to this view tree only. `preferredColorScheme` would escape to
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: anchor == .top ? .top : .bottom)
         // the enclosing window and repaint the whole Settings window when the
         // appearance preview embeds this bar.
         .environment(\.colorScheme, effectiveTheme == .light ? .light : .dark)
@@ -577,6 +645,73 @@ struct FloatingBarView<S: FloatingBarState>: View {
             modeHintTask?.cancel()
             transcriptHoverExitTask?.cancel()
             actionHintTask?.cancel()
+            handleHintTask?.cancel()
+        }
+    }
+
+    private var capsuleAndHandle: some View {
+        VStack(spacing: TF.barPlacementHandleGap) {
+            if anchor == .top {
+                if chrome != nil {
+                    handleControl
+                        .id("floating_bar_drag_handle")
+                        .opacity(showsHandle ? 1 : 0)
+                        .animation(.easeInOut(duration: 0.16), value: showsHandle)
+                }
+                if shouldRenderCapsule {
+                    capsuleBar
+                        .id("floating_capsule_bar")
+                }
+            } else {
+                if shouldRenderCapsule {
+                    capsuleBar
+                        .id("floating_capsule_bar")
+                }
+                if chrome != nil {
+                    handleControl
+                        .id("floating_bar_drag_handle")
+                        .opacity(showsHandle ? 1 : 0)
+                        .animation(.easeInOut(duration: 0.16), value: showsHandle)
+                }
+            }
+        }
+        .background {
+            FloatingBarHoverTracker { hovering in
+                chrome?.setHovering(hovering)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var handleControl: some View {
+        FloatingBarDragHandleControl(
+            theme: effectiveTheme,
+            anchor: anchor,
+            isVisible: showsHandle,
+            isDragging: chrome?.isDragging == true,
+            onDragBegan: onDragBegan,
+            onDragMoved: onDragMoved,
+            onDragEnded: onDragEnded,
+            onHoverChanged: updateHandleHover
+        )
+    }
+
+    private func updateHandleHover(_ hovering: Bool) {
+        if hovering {
+            guard !hoveredHandle else { return }
+            handleHintTask?.cancel()
+            hoveredHandle = true
+            hintedHandle = false
+            handleHintTask = Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(150))
+                guard !Task.isCancelled, hoveredHandle else { return }
+                hintedHandle = true
+            }
+        } else {
+            guard hoveredHandle || hintedHandle else { return }
+            handleHintTask?.cancel()
+            hoveredHandle = false
+            hintedHandle = false
         }
     }
 
@@ -636,7 +771,9 @@ struct FloatingBarView<S: FloatingBarState>: View {
 
     @ViewBuilder
     private var barContent: some View {
-        if usesCompactPresentation {
+        if state.barPhase == .hidden && isRetainedForDrag {
+            Color.clear
+        } else if usesCompactPresentation {
             compactPhaseContent
         } else {
             regularPhaseContent
@@ -1199,6 +1336,9 @@ struct FloatingBarView<S: FloatingBarState>: View {
             actionHintTask?.cancel()
             pressedAction = nil
             cancelDragOffset = .zero
+            handleHintTask?.cancel()
+            hoveredHandle = false
+            hintedHandle = false
         }
         switch phase {
         case .preparing:
@@ -1269,6 +1409,13 @@ struct FloatingBarView<S: FloatingBarState>: View {
             )
         case .action(let action):
             return actionHintSize(action)
+        case .handle:
+            let font = NSFont.systemFont(ofSize: 14, weight: .semibold)
+            let text = L("拖动以移动指示器", "Drag to move the indicator")
+            return NSSize(
+                width: measureText(text, font: font) + 24,
+                height: ceil(font.boundingRectForFont.height) + 18
+            )
         }
     }
 
@@ -1315,7 +1462,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
 
     private var topOverlayGap: CGFloat {
         switch activeTopOverlay {
-        case .action, .mode:
+        case .action, .mode, .handle:
             return TF.recordingTooltipGap
         case .transcript, nil:
             return TF.transcriptPopupGap
@@ -1339,6 +1486,9 @@ struct FloatingBarView<S: FloatingBarState>: View {
             alignedActionHint(.finish)
         case .action(.cancel):
             alignedActionHint(.cancel)
+        case .handle:
+            hintBubble(text: L("拖动以移动指示器", "Drag to move the indicator"))
+                .transaction { $0.animation = nil }
         }
     }
 

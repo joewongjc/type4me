@@ -49,15 +49,29 @@ private final class CorrectionLearningPanel: NSPanel {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 
-    func positionAboveFloatingBar() {
+    func positionBesideFloatingBar() {
         let mouseLocation = NSEvent.mouseLocation
         let screen = NSScreen.screens.first(where: { $0.frame.contains(mouseLocation) })
             ?? NSScreen.main
             ?? NSScreen.screens.first
         guard let screen else { return }
         let visible = screen.visibleFrame
-        let x = visible.midX - frame.width / 2
-        let y = visible.origin.y + TF.barBottomOffset + TF.barHeight + 18
+        let placement = FloatingBarPlacementStore.load()
+        let style = RecordingIndicatorStyle.current()
+        let baseHeight = FloatingBarPlacementGeometry.baseCapsuleHeight(for: style)
+        let center = FloatingBarPlacementGeometry.resolveCenter(placement, visibleFrame: visible, baseHeight: baseHeight)
+        let anchor = FloatingBarPlacementGeometry.verticalAnchor(center: center, visibleFrame: visible)
+        let capsuleRect = FloatingBarPlacementGeometry.baseCapsuleRect(center: center, style: style)
+
+        var x = capsuleRect.midX - frame.width / 2
+        x = max(visible.minX, min(x, visible.maxX - frame.width))
+        let y: CGFloat
+        switch anchor {
+        case .bottom:
+            y = capsuleRect.maxY + TF.correctionPanelGap
+        case .top:
+            y = capsuleRect.minY - TF.correctionPanelGap - frame.height
+        }
         setFrameOrigin(NSPoint(x: x, y: y))
     }
 }
@@ -93,7 +107,7 @@ final class CorrectionLearningPanelController {
         state.onLearn = onLearn
         state.onIgnore = onIgnore
         panel.updateAppearance()
-        panel.positionAboveFloatingBar()
+        panel.positionBesideFloatingBar()
         panel.alphaValue = 0
         panel.orderFrontRegardless()
         NSAnimationContext.runAnimationGroup { context in

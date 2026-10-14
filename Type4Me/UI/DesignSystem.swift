@@ -218,4 +218,31 @@ enum TF {
     static let springBouncy = Animation.spring(response: 0.4, dampingFraction: 0.65)
     static let easeQuick = Animation.easeOut(duration: 0.2)
     static let glassTint = Animation.easeInOut(duration: 0.5)
+
+    // MARK: - Floating Bar Placement
+
+    static let barPlacementHandleWidth: CGFloat = 24
+    static let barPlacementHandleThickness: CGFloat = 10
+    static let barPlacementHandleHitHeight: CGFloat = 10
+    static let barPlacementHandleGap: CGFloat = 0
+    static var barPlacementHandleReserve: CGFloat { barPlacementHandleGap + barPlacementHandleHitHeight }
+    static let barPlacementHandleHideDelay: Duration = .milliseconds(300)
+    static let barPlacementDragThreshold: CGFloat = 3
+    static let barPlacementSnapEnter: CGFloat = 8
+    static let barPlacementSnapExit: CGFloat = 14
+    static let barPlacementGuideDash: [CGFloat] = [6, 4]
+    static let correctionPanelGap: CGFloat = 18
+
+    static let barPlacementHandle = Color.white.opacity(0.35)
+    static let barPlacementHandleLight = Color(red: 28 / 255, green: 28 / 255, blue: 30 / 255).opacity(0.35)
+
+    static let barPlacementGuide = Color.white.opacity(0.25)
+    static let barPlacementGuideActive = Color.white.opacity(0.85)
+    static let barPlacementGuideLight = Color.black.opacity(0.20)
+    static let barPlacementGuideActiveLight = Color.black.opacity(0.70)
+
+    static let barPlacementGuideOpaque = Color(white: 0.35)
+    static let barPlacementGuideActiveOpaque = Color(white: 0.85)
+    static let barPlacementGuideOpaqueLight = Color(white: 0.70)
+    static let barPlacementGuideActiveOpaqueLight = Color(white: 0.20)
 }

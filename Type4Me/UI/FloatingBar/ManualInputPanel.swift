@@ -30,15 +30,33 @@ final class ManualInputController {
     private var initialFocusPending = false
     private let width: CGFloat
     private let maximumEditorHeight: CGFloat
+    private let anchor: FloatingBarVerticalAnchor
     var hasMarkedText: Bool { editor?.hasMarkedText() == true }
 
     init(modes: [ProcessingMode], onSubmit: @escaping (ProcessingMode) -> Void, onCancel: @escaping () -> Void) {
         draft = ManualInputDraft(modes: modes)
         let screen = FloatingBarPanel.screenUnderMouse()
+        let visibleFrame = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 800, height: 600)
+        let placement = FloatingBarPlacementStore.load()
+        let style = RecordingIndicatorStyle.current()
+        let baseHeight = FloatingBarPlacementGeometry.baseCapsuleHeight(for: style)
+        let center = FloatingBarPlacementGeometry.resolveCenter(placement, visibleFrame: visibleFrame, baseHeight: baseHeight)
+        let resolvedAnchor = FloatingBarPlacementGeometry.verticalAnchor(center: center, visibleFrame: visibleFrame)
+        self.anchor = resolvedAnchor
+
         width = min(ManualInputLayout.preferredSurfaceWidth + ManualInputLayout.shadowInset * 2,
-                    (screen?.visibleFrame.width ?? 800) - 40)
-        let verticalOverhead: CGFloat = 44 + 10 + 28 + ManualInputLayout.shadowInset + TF.barBottomOffset + 16
-        maximumEditorHeight = min(240, max(24, (screen?.visibleFrame.height ?? 600) - verticalOverhead))
+                    visibleFrame.width - 40)
+        let overhead: CGFloat = 44 + 10 + 28 + ManualInputLayout.shadowInset + 16
+        let availableHeight: CGFloat
+        switch resolvedAnchor {
+        case .bottom:
+            let capsuleBottom = center.y - baseHeight / 2
+            availableHeight = (visibleFrame.maxY - capsuleBottom) - overhead
+        case .top:
+            let capsuleTop = center.y + baseHeight / 2
+            availableHeight = (capsuleTop - visibleFrame.minY) - overhead
+        }
+        maximumEditorHeight = min(240, max(24, availableHeight))
         let size = NSSize(width: width, height: 44 + 10 + 24 + 28 + ManualInputLayout.shadowInset * 2)
         panel = ManualInputPanel(contentRect: .init(origin: .zero, size: size),
                                  styleMask: [.nonactivatingPanel, .borderless, .fullSizeContentView],
@@ -58,10 +76,15 @@ final class ManualInputController {
             onEditorReady: { [weak self] in self?.connectEditor($0) },
             onHeightChange: { [weak self] in self?.resizeEditor(to: $0) }))
         if let screen {
-            var frame = FloatingBarPanel.bottomCenteredFrame(size: size, visibleFrame: screen.visibleFrame)
-            // Keep the visible surface anchored at the same screen position;
-            // only the invisible shadow canvas grows around it.
-            frame.origin.y -= ManualInputLayout.shadowInset - TF.floatingPanelShadowInset
+            let frame = FloatingBarPlacementGeometry.anchoredFrame(
+                size: size,
+                center: center,
+                baseHeight: baseHeight,
+                anchor: resolvedAnchor,
+                reserve: 0,
+                shadowInset: ManualInputLayout.shadowInset,
+                visibleFrame: screen.visibleFrame
+            )
             panel.setFrame(frame, display: false)
         }
     }
@@ -107,12 +130,15 @@ final class ManualInputController {
         let height = min(maximumEditorHeight, max(24, ceil(measuredHeight)))
         guard abs(height - draft.editorHeight) > 0.5 else { return }
         draft.editorHeight = height
-        // Anchor the bottom edge so typing never pushes the panel offscreen.
         var frame = panel.frame
-        frame.size.height = 44 + 10 + height + 28 + ManualInputLayout.shadowInset * 2
+        let newHeight = 44 + 10 + height + 28 + ManualInputLayout.shadowInset * 2
+        let heightDelta = newHeight - frame.size.height
+        frame.size.height = newHeight
+        if anchor == .top {
+            frame.origin.y -= heightDelta
+        }
         panel.setFrame(frame, display: true)
     }
-
     func close() {
         initialFocusPending = false
         panel.orderOut(nil)

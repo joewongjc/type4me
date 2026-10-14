@@ -72,6 +72,12 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
         appState.availableModes.first { $0.id == selectedProfileModeID }
     }
 
+    @AppStorage(FloatingBarPlacementStore.storageKey) private var placementRaw = ""
+
+    private var isPlacementDefault: Bool {
+        FloatingBarPlacementStore.decode(placementRaw).isDefault
+    }
+
     // Compact square-proportioned icon segments following Apple segmented button standards.
     private let themeSegmentWidth: CGFloat = 40
     private var themeControlWidth: CGFloat { themeSegmentWidth * 3 + 8 }
@@ -245,6 +251,9 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
                 }
                 .disabled(followsGlobal)
                 .opacity(followsGlobal ? 0.45 : 1)
+
+                SettingsDivider()
+                indicatorPositionRow
             }
             .animation(TF.springGentle, value: isCompact)
             .animation(TF.springGentle, value: value(\.showsTooltips))
@@ -468,6 +477,39 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
             isEnabled: value(\.showsTooltips),
             isIndented: true
         )
+    }
+
+    private var indicatorPositionRow: some View {
+        settingsOptionRow(
+            L("指示器位置", "Indicator Position"),
+            subtitle: L(
+                "将鼠标悬停在录音指示器上，拖动旁边的手柄即可移动。",
+                "Hover over the recording indicator and drag its handle to move it."
+            )
+        ) {
+            HStack(spacing: 8) {
+                Text(isPlacementDefault ? L("默认", "Default") : L("自定义", "Custom"))
+                    .font(.system(size: 12))
+                    .foregroundStyle(TF.settingsTextSecondary)
+                Button(L("恢复默认", "Reset to Default")) {
+                    FloatingBarPlacementStore.reset()
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 12, weight: .medium))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(
+                    RoundedRectangle(cornerRadius: TF.cornerSM)
+                        .fill(isPlacementDefault ? TF.settingsControl.opacity(0.5) : TF.settingsControl)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: TF.cornerSM)
+                        .strokeBorder(TF.settingsBorder, lineWidth: 1)
+                )
+                .foregroundStyle(isPlacementDefault ? TF.settingsTextTertiary : TF.settingsText)
+                .disabled(isPlacementDefault)
+            }
+        }
     }
 
     private var stripPunctuationRow: some View {

@@ -7,6 +7,7 @@ struct FloatingBarPanelLayout: Equatable {
     let contentSize: NSSize
     var horizontalOverflow: CGFloat = 0
     var capsuleSize: NSSize? = nil
+    var anchorSideReserve: CGFloat = 0
 
     var hasVisibleContent: Bool {
         contentSize.width > 0 && contentSize.height > 0
@@ -133,7 +134,27 @@ final class FloatingBarController {
     private var panelShrinkTask: Task<Void, Never>?
     private var isSuppressedForManualInput = false
 
+    let chrome = FloatingBarChromeModel()
+    private var placement = FloatingBarPlacementStore.load()
+    private var drag: DragSession?
+    private var dragLifecycle = FloatingBarDragLifecycle()
+    private var isSelfOriginatedPlacementChange = false
+    private var guideWindow: FloatingBarPlacementGuideWindow?
+
+    private struct DragSession {
+        var grabOffset: CGVector
+        var anchor: FloatingBarVerticalAnchor
+        var snapper: FloatingBarSnapper
+        var center: CGPoint
+        var displayID: CGDirectDisplayID?
+    }
+
     func setManualInputEditing(_ editing: Bool) {
+        if drag != nil {
+            commitCurrentDrag()
+        }
+        _ = dragLifecycle.manualInputStarted()
+        chrome.isRetainedForDrag = dragLifecycle.isRetainedForDrag
         isSuppressedForManualInput = editing
         if editing {
             panelGeneration &+= 1
@@ -153,6 +174,10 @@ final class FloatingBarController {
 
         let barView = FloatingBarView<AppState>(
             state: state,
+            chrome: chrome,
+            onDragBegan: { [weak self] p in self?.handleDragBegan(at: p) },
+            onDragMoved: { [weak self] p in self?.handleDragMoved(to: p) },
+            onDragEnded: { [weak self] p in self?.handleDragEnded(at: p) },
             onPanelLayoutChange: { [weak self] layout in
                 self?.updatePanelLayout(layout)
             }
@@ -168,6 +193,19 @@ final class FloatingBarController {
 
         state.onShowPanel = { [weak self] in self?.show() }
         state.onHidePanel = { [weak self] in self?.hide() }
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handlePlacementDidChange(_:)),
+            name: .floatingBarPlacementDidChange,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleScreenParametersDidChange(_:)),
+            name: NSApplication.didChangeScreenParametersNotification,
+            object: nil
+        )
     }
 
     func updatePanelLayout(_ layout: FloatingBarPanelLayout) {
@@ -175,17 +213,19 @@ final class FloatingBarController {
         currentLayout = layout
         guard !isSuppressedForManualInput else { return }
 
-        panel.ignoresMouseEvents = !layout.hasVisibleContent || state.barPhase == .hidden
+        if drag == nil {
+            panel.ignoresMouseEvents = !layout.hasVisibleContent || (state.barPhase == .hidden && !chrome.isRetainedForDrag)
+        }
 
         // Let the existing fade-out finish at its current size. Mouse events are
         // already disabled above, so the disappearing panel cannot block clicks.
-        guard state.barPhase != .hidden || !panel.isVisible else {
+        guard drag != nil || state.barPhase != .hidden || !panel.isVisible else {
             cancelPendingPanelShrink()
             return
         }
 
         let shouldShow = layout.hasVisibleContent
-            && state.barPhase != .hidden
+            && (state.barPhase != .hidden || chrome.isRetainedForDrag)
             && !panel.isVisible
             && panelGeneration > 0
         resizePanel(from: previousLayout, to: layout, display: panel.isVisible)
@@ -197,10 +237,12 @@ final class FloatingBarController {
 
     func show() {
         guard !isSuppressedForManualInput else { return }
+        _ = dragLifecycle.showRequested()
+        chrome.isRetainedForDrag = dragLifecycle.isRetainedForDrag
         panelGeneration &+= 1
         panel.updateAppearance(theme: currentDisplayOverride()?.theme)
 
-        if anchorDisplayID == nil || state.barPhase == .preparing {
+        if drag == nil && (anchorDisplayID == nil || state.barPhase == .preparing) {
             anchorDisplayID = FloatingBarPanel.screenUnderMouse()
                 .flatMap(FloatingBarPanel.displayID)
         }
@@ -226,6 +268,11 @@ final class FloatingBarController {
     }
 
     func hide() {
+        let action = dragLifecycle.hideRequested()
+        chrome.isRetainedForDrag = dragLifecycle.isRetainedForDrag
+        if action == .retainForDrag {
+            return
+        }
         guard panel.isVisible else { return }
         cancelPendingPanelShrink()
         panel.ignoresMouseEvents = true
@@ -268,10 +315,14 @@ final class FloatingBarController {
         display: Bool
     ) {
         cancelPendingPanelShrink()
+        if drag != nil {
+            applyPanelFrame(layout: layout, display: display)
+            return
+        }
+
 
         let targetSize = layout.panelSize
         let currentSize = panel.frame.size
-        guard !approximatelyEqual(currentSize, targetSize) else { return }
 
         let capsuleWidthShrinks = previousLayout.capsuleSize.map { previous in
             layout.capsuleSize.map { $0.width < previous.width - 0.5 } ?? false
@@ -286,26 +337,31 @@ final class FloatingBarController {
             && targetSize.height < currentSize.height - 0.5
             && capsuleHeightShrinks
 
-        // Overlay-only axes resize immediately. Only axes whose visible capsule
-        // is still springing retain their old bounds until that spring ends.
-        let transitionSize = NSSize(
-            width: delaysWidth ? max(currentSize.width, targetSize.width) : targetSize.width,
-            height: delaysHeight ? max(currentSize.height, targetSize.height) : targetSize.height
-        )
-        if !approximatelyEqual(currentSize, transitionSize) {
-            applyPanelSize(transitionSize, display: display)
+        var transitionLayout = layout
+        if delaysWidth || delaysHeight {
+            let transitionContentSize = NSSize(
+                width: delaysWidth ? max(previousLayout.contentSize.width, layout.contentSize.width) : layout.contentSize.width,
+                height: delaysHeight ? max(previousLayout.contentSize.height, layout.contentSize.height) : layout.contentSize.height
+            )
+            transitionLayout = FloatingBarPanelLayout(
+                contentSize: transitionContentSize,
+                horizontalOverflow: layout.horizontalOverflow,
+                capsuleSize: layout.capsuleSize,
+                anchorSideReserve: layout.anchorSideReserve
+            )
         }
+        applyPanelFrame(layout: transitionLayout, display: display)
 
         guard delaysWidth || delaysHeight else { return }
 
         panelShrinkTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: Self.capsuleShrinkDelay)
             guard !Task.isCancelled, let self else { return }
-            guard self.state.barPhase != .hidden,
+            guard (self.state.barPhase != .hidden || self.chrome.isRetainedForDrag),
                   self.approximatelyEqual(self.currentLayout.panelSize, targetSize)
             else { return }
 
-            self.applyPanelSize(targetSize, display: self.panel.isVisible)
+            self.applyPanelFrame(layout: layout, display: self.panel.isVisible)
             self.panelShrinkTask = nil
         }
     }
@@ -315,13 +371,282 @@ final class FloatingBarController {
         panelShrinkTask = nil
     }
 
-    private func applyPanelSize(_ size: NSSize, display: Bool) {
-        guard let screen = resolvedAnchorScreen() else { return }
-        let frame = FloatingBarPanel.bottomCenteredFrame(
-            size: size,
+    private func applyPanelFrame(layout: FloatingBarPanelLayout, display: Bool) {
+        guard let screen = currentPlacementScreen() else { return }
+        let visibleFrame = screen.visibleFrame
+        let style = RecordingIndicatorStyle.current()
+        let base = FloatingBarPlacementGeometry.baseCapsuleHeight(for: style)
+        let actualCapsuleHeight = layout.capsuleSize?.height ?? base
+        let targetCenter: CGPoint
+        let anchor: FloatingBarVerticalAnchor
+        if var session = drag {
+            let adjusted = FloatingBarPlacementGeometry.adjustDragSessionOnLayoutChange(
+                center: session.center,
+                grabOffset: session.grabOffset,
+                layout: layout,
+                baseHeight: base,
+                anchor: session.anchor,
+                style: style,
+                visibleFrame: visibleFrame
+            )
+            session.center = adjusted.center
+            session.grabOffset = adjusted.grabOffset
+            self.drag = session
+
+            anchor = session.anchor
+            targetCenter = session.center
+        } else {
+            let resolved = FloatingBarPlacementGeometry.resolveCenter(placement, visibleFrame: visibleFrame, baseHeight: base)
+            anchor = FloatingBarPlacementGeometry.verticalAnchor(center: resolved, visibleFrame: visibleFrame)
+            targetCenter = resolved
+        }
+
+        let minCapsuleWidth = style == .compact ? TF.compactIndicatorWidth : TF.barWidthCompact
+
+        let clampedCenter = FloatingBarPlacementGeometry.clampCenter(
+            targetCenter,
+            baseHeight: base,
+            actualCapsuleHeight: actualCapsuleHeight,
+            anchor: anchor,
+            handleReserve: layout.anchorSideReserve,
+            minCapsuleWidth: minCapsuleWidth,
+            visibleFrame: visibleFrame
+        )
+
+        chrome.verticalAnchor = anchor
+        let frame = FloatingBarPlacementGeometry.panelFrame(
+            layout: layout,
+            center: clampedCenter,
+            baseHeight: base,
+            anchor: anchor,
+            visibleFrame: visibleFrame
+        )
+
+        if !approximatelyEqual(panel.frame, frame) {
+            panel.setFrame(frame, display: display)
+        }
+    }
+
+    private func currentClampedCenter(for layout: FloatingBarPanelLayout) -> CGPoint {
+        if let drag { return drag.center }
+        guard let screen = currentPlacementScreen() else { return .zero }
+        let visibleFrame = screen.visibleFrame
+        let style = RecordingIndicatorStyle.current()
+        let base = FloatingBarPlacementGeometry.baseCapsuleHeight(for: style)
+        let actualCapsuleHeight = layout.capsuleSize?.height ?? base
+        let minCapsuleWidth = style == .compact ? TF.compactIndicatorWidth : TF.barWidthCompact
+        let resolved = FloatingBarPlacementGeometry.resolveCenter(placement, visibleFrame: visibleFrame, baseHeight: base)
+        let anchor = FloatingBarPlacementGeometry.verticalAnchor(center: resolved, visibleFrame: visibleFrame)
+        return FloatingBarPlacementGeometry.clampCenter(
+            resolved,
+            baseHeight: base,
+            actualCapsuleHeight: actualCapsuleHeight,
+            anchor: anchor,
+            handleReserve: layout.anchorSideReserve,
+            minCapsuleWidth: minCapsuleWidth,
+            visibleFrame: visibleFrame
+        )
+    }
+
+    private func currentPlacementScreen() -> NSScreen? {
+        if let drag, let displayID = drag.displayID,
+           let screen = NSScreen.screens.first(where: { FloatingBarPanel.displayID(for: $0) == displayID }) {
+            return screen
+        }
+        return resolvedAnchorScreen()
+    }
+
+    private func handleDragBegan(at screenPoint: CGPoint) {
+        cancelPendingPanelShrink()
+        applyPanelFrame(layout: currentLayout, display: false)
+
+        guard let screen = currentPlacementScreen() else { return }
+        let currentCenter = currentClampedCenter(for: currentLayout)
+        let horizontalShift = FloatingBarPlacementGeometry.horizontalShiftKeepingContentVisible(
+            centerX: currentCenter.x,
+            layout: currentLayout,
             visibleFrame: screen.visibleFrame
         )
-        panel.setFrame(frame, display: display)
+        let visualCenter = CGPoint(x: currentCenter.x + horizontalShift, y: currentCenter.y)
+        let grabOffset = CGVector(dx: screenPoint.x - visualCenter.x, dy: screenPoint.y - visualCenter.y)
+
+        let style = RecordingIndicatorStyle.current()
+        let base = FloatingBarPlacementGeometry.baseCapsuleHeight(for: style)
+        let target = FloatingBarPlacementGeometry.defaultCenter(visibleFrame: screen.visibleFrame, baseHeight: base)
+
+        var initialSnapped: FloatingBarSnapAxes = []
+        if abs(visualCenter.x - target.x) <= TF.barPlacementSnapEnter {
+            initialSnapped.insert(.x)
+        }
+        if abs(visualCenter.y - target.y) <= TF.barPlacementSnapEnter {
+            initialSnapped.insert(.y)
+        }
+        let snapper = FloatingBarSnapper(snapped: initialSnapped)
+
+        drag = DragSession(
+            grabOffset: grabOffset,
+            anchor: chrome.verticalAnchor,
+            snapper: snapper,
+            center: visualCenter,
+            displayID: FloatingBarPanel.displayID(for: screen)
+        )
+
+        dragLifecycle.dragBegan()
+        chrome.isDragging = true
+        chrome.snappedAxes = initialSnapped
+
+        let guide = FloatingBarPlacementGuideWindow()
+        guide.update(
+            visibleFrame: screen.visibleFrame,
+            defaultCenter: target,
+            snapped: initialSnapped,
+            theme: currentRecordingTheme()
+        )
+        guide.show(relativeTo: panel.windowNumber)
+        self.guideWindow = guide
+    }
+
+    private func handleDragMoved(to screenPoint: CGPoint) {
+        guard var session = drag else { return }
+        let raw = CGPoint(
+            x: screenPoint.x - session.grabOffset.dx,
+            y: screenPoint.y - session.grabOffset.dy
+        )
+
+        let screen = NSScreen.screens.first(where: { $0.frame.contains(raw) })
+            ?? currentPlacementScreen()
+            ?? NSScreen.main
+            ?? NSScreen.screens.first
+        guard let screen else { return }
+
+        let style = RecordingIndicatorStyle.current()
+        let base = FloatingBarPlacementGeometry.baseCapsuleHeight(for: style)
+        let target = FloatingBarPlacementGeometry.defaultCenter(visibleFrame: screen.visibleFrame, baseHeight: base)
+
+        if let displayID = FloatingBarPanel.displayID(for: screen), displayID != session.displayID {
+            session.displayID = displayID
+        }
+
+        let (c, newlySnapped) = session.snapper.update(raw: raw, target: target)
+        let actualHeight = currentLayout.capsuleSize?.height ?? base
+        let actualContentWidth = currentLayout.contentSize.width + 2 * currentLayout.horizontalOverflow
+        let minWidth = max(style == .compact ? TF.compactIndicatorWidth : TF.barWidthCompact, actualContentWidth)
+        let clamped = FloatingBarPlacementGeometry.clampCenter(
+            c,
+            baseHeight: base,
+            actualCapsuleHeight: actualHeight,
+            anchor: session.anchor,
+            handleReserve: currentLayout.anchorSideReserve,
+            minCapsuleWidth: minWidth,
+            visibleFrame: screen.visibleFrame
+        )
+
+        session.center = clamped
+        drag = session
+
+        let origin = FloatingBarPlacementGeometry.panelFrame(
+            layout: currentLayout,
+            center: clamped,
+            baseHeight: base,
+            anchor: session.anchor,
+            visibleFrame: screen.visibleFrame
+        ).origin
+        panel.setFrameOrigin(origin)
+
+        guideWindow?.update(
+            visibleFrame: screen.visibleFrame,
+            defaultCenter: target,
+            snapped: session.snapper.snapped,
+            theme: currentRecordingTheme()
+        )
+
+        if !newlySnapped.isEmpty {
+            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+        }
+        chrome.snappedAxes = session.snapper.snapped
+    }
+
+    private func handleDragEnded(at screenPoint: CGPoint) {
+        commitCurrentDrag(at: screenPoint)
+    }
+
+    private func commitCurrentDrag(at screenPoint: CGPoint? = nil) {
+        if let screenPoint {
+            handleDragMoved(to: screenPoint)
+        }
+        guard let session = drag, let screen = currentPlacementScreen() else {
+            drag = nil
+            chrome.isDragging = false
+            chrome.snappedAxes = []
+            guideWindow?.dismiss()
+            guideWindow = nil
+            return
+        }
+
+        let newPlacement = FloatingBarPlacementGeometry.placement(
+            droppedCenter: session.center,
+            snapped: session.snapper.snapped,
+            visibleFrame: screen.visibleFrame
+        )
+
+        placement = newPlacement
+        isSelfOriginatedPlacementChange = true
+        FloatingBarPlacementStore.save(newPlacement)
+        isSelfOriginatedPlacementChange = false
+
+        anchorDisplayID = session.displayID
+        drag = nil
+        chrome.isDragging = false
+        chrome.snappedAxes = []
+
+        guideWindow?.dismiss()
+        guideWindow = nil
+
+        let action = dragLifecycle.dragEnded()
+        chrome.isRetainedForDrag = dragLifecycle.isRetainedForDrag
+        applyPanelFrame(layout: currentLayout, display: true)
+
+        if action == .releaseRetainedAndHide {
+            hide()
+        }
+    }
+
+    private func currentRecordingTheme() -> RecordingTheme {
+        let themeRaw = UserDefaults.standard.string(forKey: RecordingTheme.storageKey)
+            ?? RecordingTheme.defaultValue.rawValue
+        return RecordingTheme(rawValue: themeRaw) ?? .dark
+    }
+
+    @objc private func handlePlacementDidChange(_ notification: Notification) {
+        guard !isSelfOriginatedPlacementChange else { return }
+        placement = FloatingBarPlacementStore.load()
+        guard panel.isVisible, drag == nil else { return }
+
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            applyPanelFrame(layout: currentLayout, display: true)
+        } else {
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.25
+                ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                applyPanelFrame(layout: currentLayout, display: true)
+            }
+        }
+    }
+
+    @objc private func handleScreenParametersDidChange(_ notification: Notification) {
+        if drag != nil {
+            commitCurrentDrag()
+        }
+        if panel.isVisible {
+            applyPanelFrame(layout: currentLayout, display: true)
+        }
+    }
+
+    private func approximatelyEqual(_ lhs: NSRect, _ rhs: NSRect) -> Bool {
+        abs(lhs.origin.x - rhs.origin.x) < 0.5 &&
+        abs(lhs.origin.y - rhs.origin.y) < 0.5 &&
+        abs(lhs.size.width - rhs.size.width) < 0.5 &&
+        abs(lhs.size.height - rhs.size.height) < 0.5
     }
 
     private func resolvedAnchorScreen() -> NSScreen? {
