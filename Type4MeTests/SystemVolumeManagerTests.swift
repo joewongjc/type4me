@@ -51,6 +51,7 @@ final class SystemVolumeManagerTests: XCTestCase {
         var levels: [AudioDeviceID: Float] = [:]
         var failRead = false
         var failWrite = false
+        var failAfterApply = false
         var readOnly = false
         var writes: [AudioDeviceID] = []
         enum Failure: Error { case unavailable }
@@ -75,7 +76,8 @@ final class SystemVolumeManagerTests: XCTestCase {
         func setVolume(_ value: Float, on device: AudioDeviceID) throws {
             writes.append(device)
             if readOnly { throw VolumeAudioError.unsupportedProperty(0) }
-            if failWrite { throw Failure.unavailable }
+            if failAfterApply { levels[device] = value }
+            if failWrite || failAfterApply { throw Failure.unavailable }
             levels[device] = value
         }
     }
@@ -171,26 +173,26 @@ final class SystemVolumeManagerTests: XCTestCase {
         XCTAssertNil(record)
     }
 
-    // Review point 1: a non-settable property is a permanent failure and must not keep the record.
-    func testNonSettableVolumeOnRestoreDiscardsRecord() {
+    // A non-settable volume on restore is transient: retry, then restore once it is settable.
+    func testTemporarilyNonSettableVolumeRestoresOriginal() {
         let audio = Audio()
         let manager = transaction(audio)
         manager.lower(to: 0.2, token: manager.reserveAttenuation())
         drain()
+        XCTAssertEqual(audio.level, 0.11, accuracy: 0.0001)
         XCTAssertNotNil(record)
         audio.readOnly = true
         manager.restore()
-        drainAll()
-        XCTAssertNil(record)
-        XCTAssertEqual(audio.writes.count, 2)
-        audio.readOnly = false
-        audio.level = 0.5
-        manager.lower(to: 0.5, token: manager.reserveAttenuation())
         drain()
-        XCTAssertEqual(audio.level, 0.25, accuracy: 0.0001)
+        XCTAssertNotNil(record)
+        XCTAssertEqual(audio.level, 0.11, accuracy: 0.0001)
+        audio.readOnly = false
+        drainAll()
+        XCTAssertEqual(audio.level, 0.55, accuracy: 0.0001)
+        XCTAssertNil(record)
     }
 
-    // Review point 2: a failed first write must roll the snapshot back.
+    // A failed first write rolls the snapshot back when the device volume is unchanged.
     func testFailedInitialWriteRollsBackRecord() {
         for readOnly in [false, true] {
             let audio = Audio()
@@ -211,6 +213,22 @@ final class SystemVolumeManagerTests: XCTestCase {
             XCTAssertEqual(audio.level, 0.55, accuracy: 0.0001)
             XCTAssertNil(record)
         }
+    }
+
+    // A write error that changes the volume keeps the record so the original can be restored.
+    func testWriteErrorThatChangesVolumeRetainsRecord() {
+        let audio = Audio()
+        let manager = transaction(audio)
+        audio.failAfterApply = true
+        manager.lower(to: 0.2, token: manager.reserveAttenuation())
+        drain()
+        XCTAssertEqual(audio.level, 0.11, accuracy: 0.0001)
+        XCTAssertNotNil(record)
+        audio.failAfterApply = false
+        manager.restore()
+        drainAll()
+        XCTAssertEqual(audio.level, 0.55, accuracy: 0.0001)
+        XCTAssertNil(record)
     }
 
     // Review point 3: disconnect -> switch output -> reconnect.

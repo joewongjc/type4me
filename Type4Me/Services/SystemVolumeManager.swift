@@ -212,9 +212,18 @@ final class VolumeRestorationTransaction {
                 do {
                     try audio.setVolume(volume * max(0, min(1, fraction)), on: device)
                 } catch {
-                    // Nothing was lowered, so there is nothing to recover.
-                    pending[uid] = nil
-                    try? savePending(pending)
+                    // unsupportedProperty is thrown before the device is touched. Any other
+                    // error may have applied, so keep the record unless readback still matches.
+                    var changed = true
+                    if case VolumeAudioError.unsupportedProperty = error {
+                        changed = false
+                    } else if let current = try? audio.volume(device) {
+                        changed = current != volume
+                    }
+                    if !changed {
+                        pending[uid] = nil
+                        try? savePending(pending)
+                    }
                     throw error
                 }
                 log("Volume lowered; recovery snapshot retained")
@@ -289,10 +298,6 @@ final class VolumeRestorationTransaction {
             let device = try saved.uid.map { try audio.device(for: $0) } ?? audio.defaultOutput()
             try audio.setVolume(saved.volume, on: device)
             writtenDevice = device
-        } catch VolumeAudioError.unsupportedProperty {
-            // Retrying can never succeed on a device whose volume is not settable.
-            finish(saved, "Volume not settable on recovered device; recovery record discarded")
-            return
         } catch {
             log("Volume restoration attempt \(index + 1) failed: \(error)")
         }
