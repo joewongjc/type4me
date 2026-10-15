@@ -57,7 +57,10 @@ enum TF {
     /// Do not move this above the glass or into `Glass.tint`: a scrim on top
     /// makes the un-sampled first frames flash harder, and a tint inside the
     /// glass style cannot hold the theme either.
-    static let glassDarkContrastFloor: Double = 0.30
+    ///
+    /// Keep it near the near-opaque `floatingBackground` used by the mode and
+    /// tooltip bubbles; at 0.30 the bar read as grey beside them.
+    static let glassDarkContrastFloor: Double = 0.52
     /// Contrast floor beneath light Liquid Glass, mirroring
     /// `glassDarkContrastFloor`. Native glass samples whatever sits behind the
     /// panel, so over a dark host page (a dark-mode web app, a full-screen

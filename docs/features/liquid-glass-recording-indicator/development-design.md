@@ -25,7 +25,7 @@
 |---|---|
 | `RecordingVisualStyle` | 11 个 Orb/文字前景样式继续使用既有 Metal/SwiftUI Shader 路径，不因背景主题变化而改变。 |
 | 胶囊背景 | `RecordingGlassSurface` 统一承载 Regular 胶囊和悬停气泡背景。macOS 26+ 使用原生 `.glassEffect(.regular, in:)`；macOS 14/15 使用 `VisualEffectBlur` fallback；Reduce Transparency 使用实色。 |
-| Dark / Light | `RecordingTheme` 为确定性二选一。原生玻璃下方分别使用 `TF.glassDarkContrastFloor = 0.30`（黑）与 `TF.glassLightContrastFloor = 0.45`（白）作为可读性底垫。 |
+| Dark / Light | `RecordingTheme` 为确定性二选一。原生玻璃下方分别使用 `TF.glassDarkContrastFloor = 0.52`（黑）与 `TF.glassLightContrastFloor = 0.45`（白）作为可读性底垫。 |
 | Border | native glass 在 preparing/recording/processing/recovering 阶段不叠加人工 rim，背景也不再额外 `clipShape` 或手动 `shadow`，以保留系统的边缘折射与高光；旧系统与 Reduce Transparency fallback 保留既有边界。Done/Error 仍保留反馈边框。 |
 | Theme scope | `FloatingBarView` 使用 `.environment(\.colorScheme, ...)` 将主题限定在自身 view tree，避免 Settings Preview 改写整个窗口外观。 |
 | Preview | `AppearancePreviewStage` 继续复用真实 `FloatingBarView`，并以 `.id(presentation.theme)` 在主题切换时重建预览实例；`RecordingGlassSurface` 自身也按 theme identity 重建 native glass 表面。 |
@@ -292,7 +292,7 @@ PR #279 不恢复任何全宽背景动画，而是将静态承载表面统一为
 | `Type4Me/UI/Settings/AppearancePreviewStage.swift` | 保留录音/处理预览阶段切换，并对 `FloatingBarView` 绑定 theme identity，稳定 Dark / Light 原生玻璃切换。 |
 | `Type4Me/UI/Setup/DemoState.swift` | 增加确定性录音/处理 demo 数据与完整 teardown。 |
 | `Type4Me/Resources/ThirdPartyNotices/Orb-LICENSE` | 加入上游 MIT 文本并确保 package/app 资源包含。 |
-| `Type4Me/UI/DesignSystem.swift` | 定义 `glassDarkContrastFloor = 0.30` / `glassLightContrastFloor = 0.45`，并明确旧 rim 只用于 fallback。 |
+| `Type4Me/UI/DesignSystem.swift` | 定义 `glassDarkContrastFloor = 0.52` / `glassLightContrastFloor = 0.45`，并明确旧 rim 只用于 fallback。 |
 | `Type4Me/UI/FloatingBar/FloatingBarPanel.swift` | panel width 偶数化、window origin 取整，稳定 overlay resize 时的中心位置。 |
 | `Type4MeTests/AppStateTests.swift` | 覆盖旧样式迁移/fallback，并新增 overlay resize 时胶囊中心不漂移的回归测试。 |
 | `Type4MeTests/AppearancePreviewTests.swift` | 覆盖 presentation、预览阶段和中英文行为。 |
