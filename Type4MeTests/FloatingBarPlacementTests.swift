@@ -706,21 +706,21 @@ final class FloatingBarPlacementTests: XCTestCase {
 
         // Chinese
         UserDefaults.standard.set(AppLanguage.zh.rawValue, forKey: "tf_language")
-        XCTAssertEqual(L("指示器位置", "Indicator Position"), "指示器位置")
+        XCTAssertEqual(L("录音条位置", "Recording Bar Position"), "录音条位置")
         XCTAssertEqual(L("默认", "Default"), "默认")
         XCTAssertEqual(L("自定义", "Custom"), "自定义")
         XCTAssertEqual(L("恢复默认", "Reset to Default"), "恢复默认")
-        XCTAssertEqual(L("拖动以移动指示器", "Drag to move the indicator"), "拖动以移动指示器")
-        XCTAssertEqual(L("移动录音指示器", "Move recording indicator"), "移动录音指示器")
+        XCTAssertEqual(L("拖动以移动录音条", "Drag to move the recording bar"), "拖动以移动录音条")
+        XCTAssertEqual(L("移动录音条", "Move recording bar"), "移动录音条")
 
         // English
         UserDefaults.standard.set(AppLanguage.en.rawValue, forKey: "tf_language")
-        XCTAssertEqual(L("指示器位置", "Indicator Position"), "Indicator Position")
+        XCTAssertEqual(L("录音条位置", "Recording Bar Position"), "Recording Bar Position")
         XCTAssertEqual(L("默认", "Default"), "Default")
         XCTAssertEqual(L("自定义", "Custom"), "Custom")
         XCTAssertEqual(L("恢复默认", "Reset to Default"), "Reset to Default")
-        XCTAssertEqual(L("拖动以移动指示器", "Drag to move the indicator"), "Drag to move the indicator")
-        XCTAssertEqual(L("移动录音指示器", "Move recording indicator"), "Move recording indicator")
+        XCTAssertEqual(L("拖动以移动录音条", "Drag to move the recording bar"), "Drag to move the recording bar")
+        XCTAssertEqual(L("移动录音条", "Move recording bar"), "Move recording bar")
     }
 
     // MARK: - 11. 边界与拖拽修复回归测试 (Review Findings Regression Tests)

@@ -566,9 +566,14 @@ private var isPlacementDefault: Bool { FloatingBarPlacementStore.decode(placemen
 `Type4Me/UI/DesignSystem.swift` 新增：
 
 ```swift
-static let barPlacementHandleWidth: CGFloat = 24
-static let barPlacementHandleThickness: CGFloat = 10
-static let barPlacementHandleHitHeight: CGFloat = 10
+// 手柄为脱离胶囊的细长抓手条（visionOS 窗口条样式），无玻璃、无点阵；
+// 胶囊同色实心芯 + 反差描边（类似系统指针），保证白底与黑底上都可见
+static let barPlacementHandleWidth: CGFloat = 32        // 静止宽度
+static let barPlacementHandleActiveWidth: CGFloat = 40  // 悬停/拖动宽度
+static let barPlacementHandleThickness: CGFloat = 6
+static let barPlacementHandleInset: CGFloat = 6         // 与胶囊边缘的距离
+static let barPlacementHandleHitWidth: CGFloat = 56
+static let barPlacementHandleHitHeight: CGFloat = 16
 static let barPlacementHandleGap: CGFloat = 0
 static var barPlacementHandleReserve: CGFloat { barPlacementHandleGap + barPlacementHandleHitHeight }
 static let barPlacementHandleHideDelay: Duration = .milliseconds(300)
@@ -577,19 +582,19 @@ static let barPlacementSnapEnter: CGFloat = 8
 static let barPlacementSnapExit: CGFloat = 14
 static let barPlacementGuideDash: [CGFloat] = [6, 4]
 static let correctionPanelGap: CGFloat = 18
-// colors: barPlacementHandle(Light), barPlacementGuide(Light), barPlacementGuideActive(Light)
+// colors: barPlacementHandleFill/Rim/RimActive(Light), barPlacementGuide(Light), barPlacementGuideActive(Light)
 ```
 
 ## 13. 本地化
 
 | Key 场景 | 中文 | English |
 |---|---|---|
-| 设置标题 | 指示器位置 | Indicator Position |
-| 设置说明 | 将鼠标悬停在录音指示器上，拖动旁边的手柄即可移动。 | Hover over the recording indicator and drag its handle to move it. |
+| 设置标题 | 录音条位置 | Recording Bar Position |
+| 设置说明 | 将鼠标悬停在录音条上，拖动旁边的手柄即可移动。 | Hover over the recording bar and drag its handle to move it. |
 | 状态 | 默认 / 自定义 | Default / Custom |
 | 按钮 | 恢复默认 | Reset to Default |
-| 手柄 Tooltip | 拖动以移动指示器 | Drag to move the indicator |
-| 手柄 AX 标签 | 移动录音指示器 | Move recording indicator |
+| 手柄 Tooltip | 拖动以移动录音条 | Drag to move the recording bar |
+| 手柄 AX 标签 | 移动录音条 | Move recording bar |
 | 手柄 AX 提示 | 拖动以改变位置，可在外观设置中恢复默认位置 | Drag to change its position. You can reset it in Appearance settings. |
 
 `FloatingBarView` 已经通过 `@AppStorage("tf_language")` 观察语言；手柄 NSView 的无障碍文案在 `updateNSView` 中刷新，满足“切换语言即时更新常驻浮窗”的要求。

@@ -1418,7 +1418,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
             return actionHintSize(action)
         case .handle:
             let font = NSFont.systemFont(ofSize: 14, weight: .semibold)
-            let text = L("拖动以移动指示器", "Drag to move the indicator")
+            let text = L("拖动以移动录音条", "Drag to move the recording bar")
             return NSSize(
                 width: measureText(text, font: font) + 24,
                 height: ceil(font.boundingRectForFont.height) + 18
@@ -1494,7 +1494,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
         case .action(.cancel):
             alignedActionHint(.cancel)
         case .handle:
-            hintBubble(text: L("拖动以移动指示器", "Drag to move the indicator"))
+            hintBubble(text: L("拖动以移动录音条", "Drag to move the recording bar"))
                 .transaction { $0.animation = nil }
         }
     }

@@ -481,10 +481,10 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
 
     private var indicatorPositionRow: some View {
         settingsOptionRow(
-            L("指示器位置", "Indicator Position"),
+            L("录音条位置", "Recording Bar Position"),
             subtitle: L(
-                "将鼠标悬停在录音指示器上，拖动旁边的手柄即可移动。",
-                "Hover over the recording indicator and drag its handle to move it."
+                "将鼠标悬停在录音条上，拖动旁边的手柄即可移动。",
+                "Hover over the recording bar and drag its handle to move it."
             )
         ) {
             HStack(spacing: 8) {

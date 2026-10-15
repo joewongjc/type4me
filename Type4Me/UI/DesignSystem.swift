@@ -221,9 +221,14 @@ enum TF {
 
     // MARK: - Floating Bar Placement
 
-    static let barPlacementHandleWidth: CGFloat = 24
-    static let barPlacementHandleThickness: CGFloat = 10
-    static let barPlacementHandleHitHeight: CGFloat = 10
+    // The handle is a detached grabber pill (visionOS window-bar style) that
+    // floats beside the capsule; its hit area is larger than what is drawn.
+    static let barPlacementHandleWidth: CGFloat = 32
+    static let barPlacementHandleActiveWidth: CGFloat = 40
+    static let barPlacementHandleThickness: CGFloat = 6
+    static let barPlacementHandleInset: CGFloat = 6
+    static let barPlacementHandleHitWidth: CGFloat = 56
+    static let barPlacementHandleHitHeight: CGFloat = 16
     static let barPlacementHandleGap: CGFloat = 0
     static var barPlacementHandleReserve: CGFloat { barPlacementHandleGap + barPlacementHandleHitHeight }
     static let barPlacementHandleHideDelay: Duration = .milliseconds(300)
@@ -233,8 +238,15 @@ enum TF {
     static let barPlacementGuideDash: [CGFloat] = [6, 4]
     static let correctionPanelGap: CGFloat = 18
 
-    static let barPlacementHandle = Color.white.opacity(0.35)
-    static let barPlacementHandleLight = Color(red: 28 / 255, green: 28 / 255, blue: 30 / 255).opacity(0.35)
+    // The handle sits over arbitrary host content, so it pairs a capsule-toned
+    // core with an opposite-toned rim (like the system pointer) to stay visible
+    // on both white and black backgrounds.
+    static let barPlacementHandleFill = floatingBackground.opacity(0.88)
+    static let barPlacementHandleRim = Color.white.opacity(0.32)
+    static let barPlacementHandleRimActive = Color.white.opacity(0.75)
+    static let barPlacementHandleFillLight = floatingBackgroundLight.opacity(0.95)
+    static let barPlacementHandleRimLight = Color.black.opacity(0.22)
+    static let barPlacementHandleRimActiveLight = Color.black.opacity(0.50)
 
     static let barPlacementGuide = Color.white.opacity(0.25)
     static let barPlacementGuideActive = Color.white.opacity(0.85)
