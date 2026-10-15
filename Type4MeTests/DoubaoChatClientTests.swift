@@ -305,4 +305,96 @@ final class DoubaoChatClientTests: XCTestCase {
         XCTAssertEqual(thinking["type"], "disabled")
         XCTAssertNil(json["reasoning_split"])
     }
+
+    // MARK: - Custom Provider Reasoning Effort
+
+    private func sentRequestBody(
+        provider: LLMProvider,
+        config: LLMConfig,
+        streaming: Bool
+    ) async throws -> [String: Any] {
+        let captured = NSMutableDictionary()
+        MockStreamProtocol.setHandler { request in
+            if let stream = request.httpBodyStream {
+                stream.open()
+                var data = Data()
+                var buffer = [UInt8](repeating: 0, count: 4096)
+                while stream.hasBytesAvailable {
+                    let read = stream.read(&buffer, maxLength: buffer.count)
+                    if read <= 0 { break }
+                    data.append(buffer, count: read)
+                }
+                stream.close()
+                captured["body"] = data
+            } else {
+                captured["body"] = request.httpBody ?? Data()
+            }
+            let sse = """
+            data: {"choices":[{"delta":{"content":"ok"}}]}
+            data: [DONE]
+
+            """
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil,
+                                           headerFields: ["Content-Type": "text/event-stream"])!
+            return (response, Data(sse.utf8))
+        }
+        defer { MockStreamProtocol.clearHandler() }
+
+        let client = DoubaoChatClient(provider: provider, customSession: makeMockSession())
+        if streaming {
+            _ = try await client.processStreaming(
+                text: "hi", prompt: "{text}", config: config, inputBoundary: .inline
+            ) { _ in }
+        } else {
+            _ = try await client.process(text: "hi", prompt: "{text}", config: config, inputBoundary: .inline)
+        }
+        let body = try XCTUnwrap(captured["body"] as? Data)
+        return try XCTUnwrap(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+    }
+
+    private func customConfig(reasoningEffort: String?) throws -> LLMConfig {
+        var credentials = [
+            "apiKey": "test",
+            "model": "deepseek-v4.1-flash",
+            "baseURL": "https://gateway.example.com/v1",
+        ]
+        credentials["reasoningEffort"] = reasoningEffort
+        let config = try XCTUnwrap(OpenAICompatibleLLMConfig<CustomLLMTag>(credentials: credentials))
+        return config.toLLMConfig()
+    }
+
+    func testCustomProviderSendsSelectedReasoningEffortOnBothRequestPaths() async throws {
+        let polish = try await sentRequestBody(
+            provider: .custom, config: try customConfig(reasoningEffort: "none"), streaming: false
+        )
+        XCTAssertEqual(polish["reasoning_effort"] as? String, "none")
+        XCTAssertNil(polish["thinking"])
+
+        let streamed = try await sentRequestBody(
+            provider: .custom, config: try customConfig(reasoningEffort: "high"), streaming: true
+        )
+        XCTAssertEqual(streamed["reasoning_effort"] as? String, "high")
+    }
+
+    func testCustomProviderOmitsReasoningEffortWhenNotSet() async throws {
+        let body = try await sentRequestBody(
+            provider: .custom, config: try customConfig(reasoningEffort: nil), streaming: false
+        )
+        XCTAssertNil(body["reasoning_effort"])
+    }
+
+    func testReasoningEffortSettingIsOnlyOfferedForCustomProvider() throws {
+        XCTAssertTrue(OpenAICompatibleLLMConfig<CustomLLMTag>.credentialFields.contains { $0.key == "reasoningEffort" })
+        XCTAssertFalse(OpenAICompatibleLLMConfig<OpenAILLMTag>.credentialFields.contains { $0.key == "reasoningEffort" })
+
+        let saved = try XCTUnwrap(OpenAICompatibleLLMConfig<CustomLLMTag>(credentials: [
+            "apiKey": "test", "model": "m", "baseURL": "https://gateway.example.com/v1", "reasoningEffort": "low",
+        ]))
+        XCTAssertEqual(saved.toCredentials()["reasoningEffort"], "low")
+
+        let builtIn = try XCTUnwrap(OpenAICompatibleLLMConfig<OpenAILLMTag>(credentials: [
+            "apiKey": "test", "model": "gpt-5.4", "reasoningEffort": "low",
+        ]))
+        XCTAssertNil(builtIn.toLLMConfig().reasoningEffort)
+    }
 }

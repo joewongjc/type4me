@@ -39,7 +39,7 @@ struct OpenAICompatibleLLMConfig<Tag: OpenAICompatibleLLMTag>: LLMProviderConfig
             }
             return p.defaultBaseURL
         }()
-        return [
+        var fields = [
             CredentialField(
                 key: "apiKey", label: L("API Key", "API Key"),
                 placeholder: p.requiresAPIKey ? "sk-..." : L("可选", "Optional"),
@@ -58,11 +58,30 @@ struct OpenAICompatibleLLMConfig<Tag: OpenAICompatibleLLMTag>: LLMProviderConfig
                 isSecure: false, isOptional: true, defaultValue: p.defaultBaseURL
             ),
         ]
+        if p == .custom {
+            fields.append(CredentialField(
+                key: "reasoningEffort", label: L("推理强度", "Reasoning Effort"),
+                placeholder: "", isSecure: false, isOptional: true, defaultValue: "",
+                options: reasoningEffortOptions
+            ))
+        }
+        return fields
     }
+
+    /// Values sent as OpenAI-style `reasoning_effort`; the empty value leaves the field out of the request.
+    static var reasoningEffortOptions: [FieldOption] {[
+        FieldOption(value: "", label: L("不指定（服务默认）", "Not set (service default)")),
+        FieldOption(value: "none", label: L("关闭（none）", "Off (none)")),
+        FieldOption(value: "minimal", label: L("最低（minimal）", "Minimal")),
+        FieldOption(value: "low", label: L("低（low）", "Low")),
+        FieldOption(value: "medium", label: L("中（medium）", "Medium")),
+        FieldOption(value: "high", label: L("高（high）", "High")),
+    ]}
 
     let apiKey: String
     let model: String
     let baseURL: String
+    let reasoningEffort: String?
 
     init?(credentials: [String: String]) {
         let key = credentials["apiKey"] ?? ""
@@ -79,13 +98,17 @@ struct OpenAICompatibleLLMConfig<Tag: OpenAICompatibleLLMTag>: LLMProviderConfig
             ? credentials["baseURL"]!
             : Tag.provider.defaultBaseURL
         self.baseURL = url
+        let effort = credentials["reasoningEffort"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        self.reasoningEffort = Tag.provider == .custom && !effort.isEmpty ? effort : nil
     }
 
     func toCredentials() -> [String: String] {
-        ["apiKey": apiKey, "model": model, "baseURL": baseURL]
+        var result = ["apiKey": apiKey, "model": model, "baseURL": baseURL]
+        if let reasoningEffort { result["reasoningEffort"] = reasoningEffort }
+        return result
     }
 
     func toLLMConfig() -> LLMConfig {
-        LLMConfig(apiKey: apiKey, model: model, baseURL: baseURL)
+        LLMConfig(apiKey: apiKey, model: model, baseURL: baseURL, reasoningEffort: reasoningEffort)
     }
 }

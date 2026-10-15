@@ -143,11 +143,14 @@ struct LLMConfig: Sendable {
     let apiKey: String
     let model: String
     let baseURL: String
+    /// User-selected `reasoning_effort` for the custom OpenAI-compatible provider; nil sends nothing.
+    let reasoningEffort: String?
 
-    init(apiKey: String, model: String, baseURL: String = "") {
+    init(apiKey: String, model: String, baseURL: String = "", reasoningEffort: String? = nil) {
         self.apiKey = apiKey
         self.model = model
         self.baseURL = baseURL
+        self.reasoningEffort = reasoningEffort
     }
 }
 

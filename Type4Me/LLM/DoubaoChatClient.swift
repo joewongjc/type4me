@@ -89,7 +89,7 @@ actor DoubaoChatClient: LLMClient {
 
         let disableThinking = LLMThinkingPreference.isDisabled(for: provider)
         let disableField = disableThinking ? provider.thinkingDisableField(for: config.model) : nil
-        var reasoningEffort: String? = disableField == .reasoningEffort ? "none" : nil
+        var reasoningEffort: String? = disableField == .reasoningEffort ? "none" : config.reasoningEffort
         if disableField == .lowestReasoningEffort, let base = URL(string: config.baseURL) {
             reasoningEffort = await MagpieModelCatalog.shared.lowestReasoningEffort(model: config.model, baseURL: base)
         }
@@ -163,7 +163,7 @@ actor DoubaoChatClient: LLMClient {
 
         let disableThinking = LLMThinkingPreference.isDisabled(for: provider)
         let disableField = disableThinking ? provider.thinkingDisableField(for: config.model) : nil
-        var reasoningEffort: String? = disableField == .reasoningEffort ? "none" : nil
+        var reasoningEffort: String? = disableField == .reasoningEffort ? "none" : config.reasoningEffort
         if disableField == .lowestReasoningEffort, let base = URL(string: config.baseURL) {
             reasoningEffort = await MagpieModelCatalog.shared.lowestReasoningEffort(model: config.model, baseURL: base)
         }
