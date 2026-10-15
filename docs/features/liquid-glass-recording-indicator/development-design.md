@@ -25,8 +25,8 @@
 |---|---|
 | `RecordingVisualStyle` | 11 个 Orb/文字前景样式继续使用既有 Metal/SwiftUI Shader 路径，不因背景主题变化而改变。 |
 | 胶囊背景 | `RecordingGlassSurface` 统一承载 Regular 胶囊和悬停气泡背景。macOS 26+ 使用原生 `.glassEffect(.regular, in:)`；macOS 14/15 使用 `VisualEffectBlur` fallback；Reduce Transparency 使用实色。 |
-| Dark / Light | `RecordingTheme` 为确定性二选一。Dark 原生玻璃下方使用 `TF.glassDarkContrastFloor = 0.52`；Light 不加该黑色底垫。 |
-| Border | native glass 在 preparing/recording/processing/recovering 阶段不叠加人工 rim；旧系统与 Reduce Transparency fallback 保留既有边界。Done/Error 仍保留反馈边框。 |
+| Dark / Light | `RecordingTheme` 为确定性二选一。原生玻璃下方分别使用 `TF.glassDarkContrastFloor = 0.30`（黑）与 `TF.glassLightContrastFloor = 0.45`（白）作为可读性底垫。 |
+| Border | native glass 在 preparing/recording/processing/recovering 阶段不叠加人工 rim，背景也不再额外 `clipShape` 或手动 `shadow`，以保留系统的边缘折射与高光；旧系统与 Reduce Transparency fallback 保留既有边界。Done/Error 仍保留反馈边框。 |
 | Theme scope | `FloatingBarView` 使用 `.environment(\.colorScheme, ...)` 将主题限定在自身 view tree，避免 Settings Preview 改写整个窗口外观。 |
 | Preview | `AppearancePreviewStage` 继续复用真实 `FloatingBarView`，并以 `.id(presentation.theme)` 在主题切换时重建预览实例；`RecordingGlassSurface` 自身也按 theme identity 重建 native glass 表面。 |
 | Panel geometry | `FloatingBarPanelLayout.panelSize` 将宽度向上取整为偶数，`bottomCenteredFrame` 对 origin 做点级取整，避免 overlay resize 时中心胶囊出现半点横向漂移。 |
@@ -292,7 +292,7 @@ PR #279 不恢复任何全宽背景动画，而是将静态承载表面统一为
 | `Type4Me/UI/Settings/AppearancePreviewStage.swift` | 保留录音/处理预览阶段切换，并对 `FloatingBarView` 绑定 theme identity，稳定 Dark / Light 原生玻璃切换。 |
 | `Type4Me/UI/Setup/DemoState.swift` | 增加确定性录音/处理 demo 数据与完整 teardown。 |
 | `Type4Me/Resources/ThirdPartyNotices/Orb-LICENSE` | 加入上游 MIT 文本并确保 package/app 资源包含。 |
-| `Type4Me/UI/DesignSystem.swift` | 定义 `glassDarkContrastFloor = 0.52`，并明确旧 rim 只用于 fallback。 |
+| `Type4Me/UI/DesignSystem.swift` | 定义 `glassDarkContrastFloor = 0.30` / `glassLightContrastFloor = 0.45`，并明确旧 rim 只用于 fallback。 |
 | `Type4Me/UI/FloatingBar/FloatingBarPanel.swift` | panel width 偶数化、window origin 取整，稳定 overlay resize 时的中心位置。 |
 | `Type4MeTests/AppStateTests.swift` | 覆盖旧样式迁移/fallback，并新增 overlay resize 时胶囊中心不漂移的回归测试。 |
 | `Type4MeTests/AppearancePreviewTests.swift` | 覆盖 presentation、预览阶段和中英文行为。 |
@@ -375,7 +375,7 @@ swift build -c release
 | Compact 被错误接入 Orb | 以 `usesCompactPresentation` 在内容路由最前分流，并回归其所有 phase。 |
 | Preview 与生产渲染漂移 | Preview 只替换 state，不复制 `FloatingBarView` 或 liquid-glass 组件。 |
 | native glass 在反复主题切换时复用错误 layer | `FloatingBarView` Preview 与 `RecordingGlassSurface` 均按 theme 建立明确 identity。 |
-| Dark 原生玻璃覆盖亮背景时对比度不足 | 在 glass 下方固定使用 `TF.glassDarkContrastFloor = 0.52`，不把 scrim 放到 glass 上方。 |
+| 原生玻璃覆盖高对比背景时可读性不足 | 在 glass 下方固定使用主题对应的 contrast floor（Dark 0.30 / Light 0.45），不把 scrim 放到 glass 上方。 |
 | overlay resize 导致半点横向漂移 | panel width 统一向上取偶数，最终 window origin 做取整，并以 fractional overflow 回归测试锁定。 |
 | 上游许可证或参数漂移 | 固定 commit、保留 MIT、明确更新流程需人工审查和新快照。 |
 
@@ -400,8 +400,8 @@ Reduce Transparency 开启
     → 对应主题实色背景
 否则 macOS 26+
     → SwiftUI .glassEffect(.regular, in: shape)
-       Dark: glass 下方叠 0.52 black contrast floor
-       Light: clear floor
+       Dark: glass 下方叠 0.30 black contrast floor
+       Light: glass 下方叠 0.45 white contrast floor
 否则 macOS 14/15
     → VisualEffectBlur + 主题 tint
 ```

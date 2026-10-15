@@ -57,7 +57,7 @@ enum TF {
     /// Do not move this above the glass or into `Glass.tint`: a scrim on top
     /// makes the un-sampled first frames flash harder, and a tint inside the
     /// glass style cannot hold the theme either.
-    static let glassDarkContrastFloor: Double = 0.52
+    static let glassDarkContrastFloor: Double = 0.30
     /// Contrast floor beneath light Liquid Glass, mirroring
     /// `glassDarkContrastFloor`. Native glass samples whatever sits behind the
     /// panel, so over a dark host page (a dark-mode web app, a full-screen
@@ -67,7 +67,7 @@ enum TF {
     ///
     /// The same placement rule as the dark floor applies: keep it beneath the
     /// glass rather than above it or inside `Glass.tint`.
-    static let glassLightContrastFloor: Double = 0.68
+    static let glassLightContrastFloor: Double = 0.45
     /// A translucent highlight that takes on the material beneath it instead of reading as a flat white rule.
     /// Only used by the macOS 14/15 fallback; native Liquid Glass draws its own rim.
     static let recordingGlassRim = LinearGradient(

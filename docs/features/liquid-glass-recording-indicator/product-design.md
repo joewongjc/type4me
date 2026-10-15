@@ -192,8 +192,8 @@ Appearance Preview Stage 继续复用真实 FloatingBarView，不启动麦克风
 PR #279 将胶囊与悬停气泡的背景从单一磨砂实现升级为分层平台策略，同时保持 Orb/Metal 只负责前景球体和文字光效：
 
 1. **macOS 26+**：使用 SwiftUI 原生 `.glassEffect(.regular, in:)`。原生玻璃自行绘制边界折射与高光，因此录音/处理阶段不再额外叠加人工 rim。
-2. **Dark（默认）**：在原生玻璃下方加入 `0.52` 黑色 contrast floor，保证覆盖纯白网页或高亮壁纸时仍有稳定可读性；该底垫属于背景可读性保障，不是录音动效。
-3. **Light**：使用高透光原生玻璃与深色文字/控件，不增加 Dark 的黑色 contrast floor。
+2. **Dark（默认）**：在原生玻璃下方加入 `0.30` 黑色 contrast floor，保证覆盖纯白网页或高亮壁纸时仍有稳定可读性；该底垫属于背景可读性保障，不是录音动效。
+3. **Light**：使用原生玻璃与深色文字/控件，下方加入 `0.45` 白色 contrast floor，避免覆盖深色网页时前景消失。
 4. **macOS 14/15**：继续使用 `NSVisualEffectView`/磨砂背景与现有浅/深 tint，并保留人工 rim 作为边界层次。
 5. **减少透明度**：无论系统版本，直接回落为对应主题的实色背景，不使用原生玻璃或磨砂透明效果。
 6. **主题作用域**：主题色彩语义只注入 `FloatingBarView` 子树，不使用会向外影响整个 Settings window 的全局 preferred color scheme。

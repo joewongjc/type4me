@@ -733,14 +733,20 @@ struct FloatingBarView<S: FloatingBarState>: View {
             .frame(width: capsuleWidth, height: capsuleHeight)
             .clipShape(barShape)
             .background {
-                capsuleBackground
-                    .clipShape(barShape)
-                    .shadow(
-                        color: .black.opacity(effectiveTheme == .light ? 0.14 : 0.20),
-                        radius: 3,
-                        x: 0,
-                        y: 1
-                    )
+                if usesNativeLiquidGlass(reduceTransparency: reduceTransparency) {
+                    // Native glass is already shaped and lit; an extra clip trims
+                    // its edge refraction and a manual shadow flattens it.
+                    capsuleBackground
+                } else {
+                    capsuleBackground
+                        .clipShape(barShape)
+                        .shadow(
+                            color: .black.opacity(effectiveTheme == .light ? 0.14 : 0.20),
+                            radius: 3,
+                            x: 0,
+                            y: 1
+                        )
+                }
             }
             .overlay {
                 // The feedback border only exists in `.done`/`.error`; fade it in
@@ -1281,6 +1287,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
                     startPoint: .leading,
                     endPoint: UnitPoint(x: 0.45, y: 0.5)
                 )
+                .clipShape(barShape)
             }
         }
     }
