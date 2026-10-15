@@ -114,6 +114,7 @@ struct BrandIconView: View {
             case .claude:      return "claude"
             case .codexCLI:    return "codex"
             case .ollama:      return "ollama"
+            case .magpie:      return "magpie"
             case .custom:      return "custom"
             }
         }

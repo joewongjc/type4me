@@ -168,7 +168,7 @@ Multi-provider ASR support via `ASRProvider` enum + `ASRProviderConfig` protocol
 ### LLM Provider Inclusion Policy
 
 - Built-in first-class LLM providers are reserved for primary foundation model vendors (e.g., OpenAI, Anthropic, Google Gemini, DeepSeek, Moonshot, Baidu, Xiaomi MiMo, Ollama, etc.) and established baseline routers (OpenRouter).
-- Commercial third-party aggregation routers/gateways (such as Requesty, API Route, and similar services) should connect via the built-in **Custom OpenAI Compatible** provider (`.custom`) using their respective base URL and API key, rather than being added as dedicated first-class entries. This prevents the provider menu from turning into an uncurated directory of third-party proxy gateways.
+- Commercial third-party aggregation routers/gateways (such as Requesty, API Route, and similar services) should connect via the built-in **Custom OpenAI Compatible** provider (`.custom`) using their respective base URL and API key, rather than being added as dedicated first-class entries. This prevents the provider menu from turning into an uncurated directory of third-party proxy gateways. Locally running, user-owned model gateways (such as Ollama and Magpie) may be included as first-class providers.
 ## Local ASR Architecture (SenseVoice + Qwen3-ASR)
 
 ### Dual-Engine Design
@@ -269,7 +269,8 @@ API keys and other secure values are stored in Keychain, not in this file.
 | `Type4Me/Database/HistoryStore.swift` | Persistent transcription and processing history |
 | `Type4MeIntelliSenseCore/` | Intelli Sense context, guard, and preference-learning core |
 | `Type4MeReviseCore/` | Voice Revise tracking, slot targeting, and replacement core |
-| `Type4Me/LLM/LLMProvider.swift` | 15 LLM providers, including Xiaomi MiMo, Codex CLI, and local Ollama |
+| `Type4Me/LLM/Magpie/` | Magpie local gateway discovery, agent file parsing, model catalog, and reconciliation |
+| `Type4Me/LLM/LLMProvider.swift` | 16 LLM providers, including Xiaomi MiMo, Codex CLI, local Ollama, and Magpie |
 | `Type4Me/LLM/LLMProviderRegistry.swift` | LLM provider → config + client factory |
 | `Type4Me/Session/SoundFeedback.swift` | Start/stop/error sounds, multiple sound styles |
 | `qwen3-asr-server/server.py` | Qwen3-ASR calibration engine (MLX/Metal, Apple Silicon) |

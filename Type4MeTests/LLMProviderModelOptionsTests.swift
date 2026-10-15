@@ -48,6 +48,13 @@ final class LLMProviderModelOptionsTests: XCTestCase {
         XCTAssertTrue(LLMProvider.mimo.optionValues.contains("mimo-v2.6-pro"))
         XCTAssertEqual(LLMProvider.mimo.defaultBaseURL, "https://api.xiaomimimo.com/v1")
         XCTAssertEqual(LLMProvider.mimo.thinkingDisableField(for: "mimo-v2.6-pro"), .thinking)
+
+        XCTAssertTrue(LLMProvider.magpie.optionValues.isEmpty)
+        XCTAssertEqual(LLMProvider.magpie.defaultBaseURL, "http://127.0.0.1:3425/v1")
+        XCTAssertEqual(LLMProvider.magpie.thinkingDisableField(for: "any"), .lowestReasoningEffort)
+        XCTAssertFalse(LLMProvider.magpie.requiresAPIKey)
+        XCTAssertTrue(LLMProvider.magpie.isOpenAICompatible)
+        XCTAssertFalse(LLMProvider.magpie.isLocal)
     }
 
     func testProviderModelOptionsHaveNoDuplicates() {

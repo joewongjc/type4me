@@ -250,6 +250,23 @@ enum KeychainService {
         do {
             var dict = _loadAllUnlocked()
             let storageKey = llmStorageKey(for: provider)
+            if provider == .magpie {
+                _ = deleteSecureValue(service: keychainGroupedService, account: storageKey)
+                var plaintext: [String: String] = [:]
+                if let model = values["model"]?.trimmingCharacters(in: .whitespacesAndNewlines), !model.isEmpty {
+                    plaintext["model"] = model
+                }
+                if plaintext.isEmpty {
+                    dict.removeValue(forKey: storageKey)
+                } else {
+                    dict[storageKey] = plaintext
+                }
+                try saveAll(dict)
+                cachedCredentials = dict
+                lock.unlock()
+                NotificationCenter.default.post(name: .credentialsDidChange, object: nil)
+                return
+            }
             let split = splitCredentials(values, using: LLMProviderRegistry.configType(for: provider)?.credentialFields ?? [])
             if split.secure.isEmpty {
                 _ = deleteSecureValue(service: keychainGroupedService, account: storageKey)
@@ -272,6 +289,12 @@ enum KeychainService {
     }
 
     static func loadLLMCredentials(for provider: LLMProvider) -> [String: String]? {
+        if provider == .magpie {
+            let dict = loadAll()
+            let storageKey = llmStorageKey(for: provider)
+            let stored = stringDictionary(dict[storageKey])
+            return MagpieConnectionResolver.credentials(storedPlaintext: stored)
+        }
         let dict = loadAll()
         let storageKey = llmStorageKey(for: provider)
         let plaintext = stringDictionary(dict[storageKey])

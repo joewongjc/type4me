@@ -17,6 +17,7 @@ enum LLMProvider: String, CaseIterable, Codable, Sendable {
     case claude
     case codexCLI
     case ollama
+    case magpie
     case custom
 
     var displayName: String {
@@ -35,6 +36,7 @@ enum LLMProvider: String, CaseIterable, Codable, Sendable {
         case .claude:      return "Claude (Anthropic)"
         case .codexCLI:    return L("Codex CLI（本地账号）", "Codex CLI (Local Account)")
         case .ollama:      return L("Ollama (本地模型)", "Ollama (Local)")
+        case .magpie:      return L("Magpie（本机模型网关）", "Magpie (Local Gateway)")
         case .custom:      return L("自定义 (OpenAI 兼容)", "Custom (OpenAI Compatible)")
         }
     }
@@ -55,6 +57,7 @@ enum LLMProvider: String, CaseIterable, Codable, Sendable {
         case .claude:      return "https://api.anthropic.com/v1"
         case .codexCLI:    return ""
         case .ollama:      return "http://localhost:11434/v1"
+        case .magpie:      return "http://127.0.0.1:3425/v1"
         case .custom:      return ""
         }
     }
@@ -158,7 +161,7 @@ enum LLMProvider: String, CaseIterable, Codable, Sendable {
                 FieldOption(value: "gpt-5.6-luna", label: L("GPT-5.6 Luna（推荐）", "GPT-5.6 Luna (Recommended)")),
                 FieldOption(value: "gpt-5.3-codex-spark", label: L("GPT-5.3 Codex Spark（极速实验）", "GPT-5.3 Codex Spark (Fast, Experimental)")),
             ]
-        case .openrouter, .ollama, .custom:
+        case .openrouter, .ollama, .magpie, .custom:
             return []
         }
     }
@@ -174,7 +177,7 @@ enum LLMProvider: String, CaseIterable, Codable, Sendable {
 
     /// Whether this provider requires an API key for authentication.
     var requiresAPIKey: Bool {
-        self != .ollama && self != .codexCLI
+        self != .ollama && self != .codexCLI && self != .magpie
     }
 
 
@@ -209,6 +212,9 @@ enum LLMProvider: String, CaseIterable, Codable, Sendable {
         case .ollama:
             // think: false
             return .think
+        case .magpie:
+            // reasoning_effort: <lowest level supported by model>
+            return .lowestReasoningEffort
         default:
             // OpenAI: defaults to none already for GPT-5.2+, risky for o3
             // Gemini: OpenAI-compat layer doesn't reliably support it
@@ -238,6 +244,8 @@ enum ThinkingDisableField: Equatable {
     case reasoning
     /// `think: false` — Ollama
     case think
+    /// `reasoning_effort: <lowest supported level>` — Magpie
+    case lowestReasoningEffort
 }
 
 // MARK: - Thinking Preference

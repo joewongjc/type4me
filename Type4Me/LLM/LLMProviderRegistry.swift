@@ -17,6 +17,7 @@ enum LLMProviderRegistry {
         .claude:      ClaudeLLMConfig.self,
         .codexCLI:    CodexCLILLMConfig.self,
         .ollama:      OpenAICompatibleLLMConfig<OllamaLLMTag>.self,
+        .magpie:      MagpieLLMConfig.self,
         .custom:      OpenAICompatibleLLMConfig<CustomLLMTag>.self,
     ]
 

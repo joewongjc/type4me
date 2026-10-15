@@ -15,7 +15,7 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
     @State private var disableThinking = false
     @State private var fetchedModelOptions: [FieldOption] = []
     @State private var isFetchingModels = false
-
+    @StateObject private var magpieStatusModel = MagpieProviderStatusModel()
     private var isDirty: Bool {
         llmCredentialValues != savedLLMValues
     }
@@ -38,6 +38,14 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
 
     private var effectiveLLMValues: [String: String] {
         var result = llmCredentialValues
+        if provider == .magpie {
+            result["baseURL"] = magpieStatusModel.connection.baseURL.absoluteString
+            result["apiKey"] = magpieStatusModel.connection.apiKey
+            if (result["model"] == nil || result["model"]?.isEmpty == true) && !magpieStatusModel.connection.model.isEmpty {
+                result["model"] = magpieStatusModel.connection.model
+            }
+            return result
+        }
         let fields = currentLLMFields
         for field in fields where result[field.key] == nil && !field.defaultValue.isEmpty {
             result[field.key] = field.defaultValue
@@ -50,6 +58,10 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
             return true
         }
         if provider == .ollama {
+            let model = (llmCredentialValues["model"] ?? savedLLMValues["model"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            return !model.isEmpty
+        }
+        if provider == .magpie {
             let model = (llmCredentialValues["model"] ?? savedLLMValues["model"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             return !model.isEmpty
         }
@@ -89,9 +101,15 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
         .onAppear {
             loadCredentials()
             registerDraftParticipant()
+            if provider == .magpie {
+                magpieStatusModel.start()
+            }
         }
         .onDisappear {
             draftCoordinator?.unregister(.llmCredentials)
+            if provider == .magpie {
+                magpieStatusModel.stop()
+            }
         }
         .onChange(of: provider) { _, newProvider in
             testTask?.cancel()
@@ -99,9 +117,31 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
             fetchedModelOptions = []
             loadCredentials()
             registerDraftParticipant()
+            if newProvider == .magpie {
+                magpieStatusModel.start()
+            } else {
+                magpieStatusModel.stop()
+            }
+        }
+        .onChange(of: magpieStatusModel.connection) { prev, newConn in
+            guard provider == .magpie else { return }
+            if prev.mode != newConn.mode {
+                savedLLMValues["model"] = newConn.model
+                llmCredentialValues["model"] = newConn.model
+                llmTestStatus = .idle
+            }
+        }
+        .onChange(of: magpieStatusModel.externalModelChangedNotice) { _, newModel in
+            guard provider == .magpie, let newModel else { return }
+            if isDirty {
+                savedLLMValues["model"] = newModel
+                llmTestStatus = .failed(String(format: L("Magpie 中的模型已变为 %@", "Magpie switched the model to %@"), newModel))
+            } else {
+                savedLLMValues["model"] = newModel
+                llmCredentialValues["model"] = newModel
+            }
         }
     }
-
     private func registerDraftParticipant() {
         draftCoordinator?.register(
             .llmCredentials,
@@ -136,6 +176,13 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
                             .padding(.horizontal, 6)
                             .padding(.vertical, 1.5)
                             .background(Capsule().fill(TF.settingsAccentBlue.opacity(0.1)))
+                    } else if provider == .magpie {
+                        Text(L("本机网关", "Local Gateway"))
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(TF.settingsAccentBlue)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 1.5)
+                            .background(Capsule().fill(TF.settingsAccentBlue.opacity(0.12)))
                     } else {
                         Text(L("云端大模型", "Cloud LLM"))
                             .font(.system(size: 10, weight: .medium))
@@ -201,12 +248,21 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
     private var configurationSection: some View {
         VStack(alignment: .leading, spacing: 14) {
             settingsGroupCard(L("参数配置", "Parameters"), icon: "slider.horizontal.3") {
-                if provider == .codexCLI {
-                    codexRuntimeNotice
-                    SettingsDivider()
+                if provider == .magpie {
+                    MagpieProviderSection(
+                        statusModel: magpieStatusModel,
+                        draftModel: Binding(
+                            get: { llmCredentialValues["model"] ?? "" },
+                            set: { llmCredentialValues["model"] = $0 }
+                        )
+                    )
+                } else {
+                    if provider == .codexCLI {
+                        codexRuntimeNotice
+                        SettingsDivider()
+                    }
+                    dynamicCredentialFields
                 }
-
-                dynamicCredentialFields
             }
 
             // Integrated Action Bar
@@ -216,32 +272,93 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
 
                 Spacer(minLength: 8)
 
-                // Right: Action buttons with unified design language
-                if isDirty {
-                    revertButton {
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
-                            revertCredentials()
+                if provider == .magpie {
+                    switch magpieStatusModel.state {
+                    case .notInstalled:
+                        secondaryButton(L("下载 Magpie", "Download Magpie")) {
+                            if let url = URL(string: "https://usemagpie.ai") {
+                                NSWorkspace.shared.open(url)
+                            }
+                        }
+                    case .installedNotRunning, .managedOffline:
+                        secondaryButton(L("打开 Magpie", "Open Magpie")) {
+                            MagpieInstallation.openApp()
+                        }
+                    case .managedOnline:
+                        secondaryButton(L("打开 Magpie", "Open Magpie")) {
+                            MagpieInstallation.openApp()
+                        }
+                        if isDirty {
+                            revertButton {
+                                withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                                    revertCredentials()
+                                }
+                            }
+                            .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                        }
+                        testButton(
+                            L("测试连接", "Test"),
+                            status: llmTestStatus,
+                            isEnabled: !(effectiveLLMValues["model"]?.isEmpty ?? true)
+                        ) { testLLMConnection() }
+                        if isDirty {
+                            primaryButton(L("保存", "Save"), isEnabled: true) {
+                                withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                                    _ = saveCredentials()
+                                }
+                            }
+                            .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                        }
+                    case .directOnline:
+                        if isDirty {
+                            revertButton {
+                                withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                                    revertCredentials()
+                                }
+                            }
+                            .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                        }
+                        testButton(
+                            L("测试连接", "Test"),
+                            status: llmTestStatus,
+                            isEnabled: !(effectiveLLMValues["model"]?.isEmpty ?? true)
+                        ) { testLLMConnection() }
+                        if isDirty {
+                            primaryButton(L("保存", "Save"), isEnabled: true) {
+                                withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                                    _ = saveCredentials()
+                                }
+                            }
+                            .transition(.opacity.combined(with: .scale(scale: 0.95)))
                         }
                     }
-                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
-                }
-
-                testButton(
-                    L("测试连接", "Test"),
-                    status: llmTestStatus,
-                    isEnabled: hasLLMCredentials
-                ) { testLLMConnection() }
-
-                if isDirty {
-                    primaryButton(L("保存", "Save"), isEnabled: true) {
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
-                            _ = saveCredentials()
+                } else {
+                    // Right: Action buttons with unified design language
+                    if isDirty {
+                        revertButton {
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                                revertCredentials()
+                            }
                         }
+                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
                     }
-                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
+
+                    testButton(
+                        L("测试连接", "Test"),
+                        status: llmTestStatus,
+                        isEnabled: hasLLMCredentials
+                    ) { testLLMConnection() }
+
+                    if isDirty {
+                        primaryButton(L("保存", "Save"), isEnabled: true) {
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                                _ = saveCredentials()
+                            }
+                        }
+                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                    }
                 }
             }
-            .padding(.top, 4)
         }
     }
 
@@ -509,6 +626,26 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
     @discardableResult
     private func saveCredentials() -> Bool {
         let values = effectiveLLMValues
+        if provider == .magpie && magpieStatusModel.connection.mode == .managed {
+            let targetModel = effectiveLLMValues["model"] ?? ""
+            do {
+                try MagpieAgentModelWriter.writeModel(targetModel)
+                savedLLMValues = llmCredentialValues
+                hasStoredCredentials = true
+                llmTestStatus = .saved
+                return true
+            } catch {
+                NSLog("[LLMProviderDetailView] Magpie save failed: %@", String(describing: error))
+                let msg: String
+                if case .busy = (error as? MagpieAgentModelWriter.Failure) {
+                    msg = L("Magpie 正在同步上一次修改，请稍后再保存", "Magpie is still syncing your last change. Try saving again in a moment.")
+                } else {
+                    msg = String(format: L("无法同步到 Magpie：%@ ", "Couldn't sync to Magpie: %@"), error.localizedDescription)
+                }
+                llmTestStatus = .failed(msg)
+                return false
+            }
+        }
         do {
             try KeychainService.saveLLMCredentials(for: provider, values: values)
             savedLLMValues = llmCredentialValues

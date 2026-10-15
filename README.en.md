@@ -53,7 +53,7 @@ Examples and use cases for each mode: [Modes & Features](docs/usage/modes.en.md)
 ## Extended features
 
 - **Local and cloud recognition**: the Local edition runs SenseVoice + Qwen3-ASR on your Mac, completely free; in the cloud, choose from 15 services including Volcano Engine (Doubao), Soniox and OpenAI.
-- **Any LLM**: Doubao, DeepSeek, Kimi, Zhipu, MiniMax, Xiaomi MiMo, OpenAI, Claude, Gemini, OpenRouter, or Ollama and any OpenAI-compatible endpoint.
+- **Any LLM**: Doubao, DeepSeek, Kimi, Zhipu, MiniMax, Xiaomi MiMo, OpenAI, Claude, Gemini, OpenRouter, or Ollama, Magpie and any OpenAI-compatible endpoint.
 - **Voice Revise**: Spotted a mistake? Press `Fn` + `R` and say "make it 2 PM" — only that part changes, and you can undo by button or voice.
 - **Vocabulary**: hotwords improve recognition of names and jargon; snippets expand phrases like "my email" into the real address. With [type4me-vocab-skill](https://github.com/joewongjc/type4me-vocab-skill) installed, tell your AI agent "don't transcribe Qwen3.5 as Queen 3.5" and it maintains your vocabulary for you.
 - **Menu bar control center**: see recording status and switch mode, microphone, speech engine, LLM and translation target from the menu bar.

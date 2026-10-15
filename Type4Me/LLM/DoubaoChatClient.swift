@@ -81,10 +81,18 @@ actor DoubaoChatClient: LLMClient {
         request.httpMethod = "POST"
         request.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if provider == .magpie {
+            let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+            request.setValue("Type4Me/\(version)", forHTTPHeaderField: "User-Agent")
+        }
         request.timeoutInterval = 30
 
         let disableThinking = LLMThinkingPreference.isDisabled(for: provider)
         let disableField = disableThinking ? provider.thinkingDisableField(for: config.model) : nil
+        var reasoningEffort: String? = disableField == .reasoningEffort ? "none" : nil
+        if disableField == .lowestReasoningEffort, let base = URL(string: config.baseURL) {
+            reasoningEffort = await MagpieModelCatalog.shared.lowestReasoningEffort(model: config.model, baseURL: base)
+        }
         let body = ChatRequest(
             model: config.model,
             messages: chatMessages(for: preparedPrompt),
@@ -93,7 +101,7 @@ actor DoubaoChatClient: LLMClient {
             thinking: disableField == .thinking ? ThinkingConfig(type: "disabled") : nil,
             enable_thinking: disableField == .enableThinking ? false : nil,
             reasoning: disableField == .reasoning ? ReasoningConfig(effort: "none") : nil,
-            reasoning_effort: disableField == .reasoningEffort ? "none" : nil,
+            reasoning_effort: reasoningEffort,
             think: disableField == .think ? false : nil,
             reasoning_split: provider.needsReasoningSplit ? true : nil
         )
@@ -147,10 +155,18 @@ actor DoubaoChatClient: LLMClient {
         request.httpMethod = "POST"
         request.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if provider == .magpie {
+            let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+            request.setValue("Type4Me/\(version)", forHTTPHeaderField: "User-Agent")
+        }
         request.timeoutInterval = 30
 
         let disableThinking = LLMThinkingPreference.isDisabled(for: provider)
-        let disableField = disableThinking ? provider.thinkingDisableField : nil
+        let disableField = disableThinking ? provider.thinkingDisableField(for: config.model) : nil
+        var reasoningEffort: String? = disableField == .reasoningEffort ? "none" : nil
+        if disableField == .lowestReasoningEffort, let base = URL(string: config.baseURL) {
+            reasoningEffort = await MagpieModelCatalog.shared.lowestReasoningEffort(model: config.model, baseURL: base)
+        }
         let body = ChatRequest(
             model: config.model,
             messages: chatMessages(for: preparedPrompt),
@@ -159,7 +175,7 @@ actor DoubaoChatClient: LLMClient {
             thinking: disableField == .thinking ? ThinkingConfig(type: "disabled") : nil,
             enable_thinking: disableField == .enableThinking ? false : nil,
             reasoning: disableField == .reasoning ? ReasoningConfig(effort: "none") : nil,
-            reasoning_effort: disableField == .reasoningEffort ? "none" : nil,
+            reasoning_effort: reasoningEffort,
             think: disableField == .think ? false : nil,
             reasoning_split: provider.needsReasoningSplit ? true : nil
         )
@@ -214,6 +230,14 @@ actor DoubaoChatClient: LLMClient {
             (bytes, response) = try await session.bytes(for: request)
         } catch {
             recordOutcome(status: "error", completionText: "", metrics: nil)
+            if provider == .magpie, let urlError = error as? URLError {
+                switch urlError.code {
+                case .cannotConnectToHost, .networkConnectionLost, .timedOut:
+                    throw LLMError.magpieUnavailable
+                default:
+                    break
+                }
+            }
             throw error
         }
 
@@ -225,6 +249,22 @@ actor DoubaoChatClient: LLMClient {
             recordOutcome(status: "error", completionText: "", metrics: nil)
             logger.error("LLM HTTP \(http.statusCode)")
             DebugFileLogger.log("LLM[\(model)]: HTTP \(http.statusCode)")
+            if provider == .magpie {
+                if http.statusCode == 401 || http.statusCode == 403 {
+                    throw LLMError.magpieRejected(http.statusCode)
+                }
+                var errBody = ""
+                for try await line in bytes.lines {
+                    errBody += line
+                    if errBody.count > 1024 { break }
+                }
+                if let data = errBody.data(using: .utf8),
+                   let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
+                   let errObj = json["error"] as? [String: Any],
+                   let msg = errObj["message"] as? String, !msg.isEmpty {
+                    throw LLMError.requestFailedWithDetail(http.statusCode, msg)
+                }
+            }
             throw LLMError.requestFailed(http.statusCode)
         }
 
@@ -421,8 +461,12 @@ struct ChunkDelta: Decodable, Sendable {
 enum LLMError: Error, LocalizedError {
     case invalidURL
     case requestFailed(Int)
+    case requestFailedWithDetail(Int, String)
     case emptyResponse(String?)
     case streamIncomplete(String?)
+    case magpieUnavailable
+    case magpieRejected(Int)
+    case magpieModelMissing
     var errorDescription: String? {
         switch self {
         case .invalidURL:
@@ -434,6 +478,14 @@ enum LLMError: Error, LocalizedError {
             case 500, 502, 503: return L("LLM 服务异常 (\(code))", "LLM service error (\(code))")
             default:  return L("LLM 请求失败 (\(code))", "LLM request failed (\(code))")
             }
+        case .requestFailedWithDetail(let code, let detail):
+            return L("LLM 请求失败 (\(code)): \(detail)", "LLM request failed (\(code)): \(detail)")
+        case .magpieUnavailable:
+            return L("Magpie 未运行，请打开 Magpie", "Magpie isn't running. Open Magpie and try again.")
+        case .magpieRejected:
+            return L("Magpie 拒绝了请求，请在 Magpie 中检查 Type4Me 的接入", "Magpie refused the request. Check Type4Me's connection in Magpie.")
+        case .magpieModelMissing:
+            return L("请先在 Type4Me 中为 Magpie 选择模型", "Pick a Magpie model in Type4Me first")
         case .emptyResponse(let raw):
             if let raw {
                 return L("LLM 未返回内容: \(raw)", "LLM returned no content: \(raw)")

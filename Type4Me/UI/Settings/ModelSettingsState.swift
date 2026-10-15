@@ -143,7 +143,7 @@ enum ModelSettingsHelpers {
     // MARK: - LLM Groups & Checks
 
     static let recommendedLLMProviders: [LLMProvider] = [.doubao, .deepseek, .kimi, .openai, .gemini]
-    static let localLLMProviders: [LLMProvider] = [.codexCLI, .ollama]
+    static let localLLMProviders: [LLMProvider] = [.codexCLI, .ollama, .magpie]
 
     static func llmProviders(in group: ModelProviderGroup) -> [LLMProvider] {
         switch group {
@@ -170,6 +170,9 @@ enum ModelSettingsHelpers {
         }
         if provider == .ollama {
             return !(values["model"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "").isEmpty
+        }
+        if provider == .magpie {
+            return MagpieLLMConfig(credentials: values) != nil
         }
         let fields = LLMProviderRegistry.configType(for: provider)?.credentialFields ?? []
         let required = fields.filter { !$0.isOptional }
@@ -219,6 +222,7 @@ enum ModelSettingsHelpers {
         case .claude:      return "brain.head.profile"
         case .codexCLI:    return "terminal.fill"
         case .ollama:      return "server.rack"
+        case .magpie:      return "terminal.fill"
         case .custom:      return "gearshape.fill"
         }
     }
