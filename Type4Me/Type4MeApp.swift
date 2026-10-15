@@ -6,15 +6,14 @@ struct Type4MeApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     var body: some Scene {
-        MenuBarExtra(
-            "Type4Me",
-            systemImage: appDelegate.appState.barPhase == .hidden ? "mic" : "mic.fill"
-        ) {
+        MenuBarExtra {
             MenuBarContent()
                 .environment(appDelegate.appState)
                 .environment(appDelegate.appUpdater)
                 .environment(appDelegate.menuBarControlCenterModel)
                 .environment(appDelegate.menuBarActionCoordinator)
+        } label: {
+            MenuBarIcon.label(isRecording: appDelegate.appState.barPhase == .recording)
         }
 
         Window(L("Type4Me 设置", "Type4Me Settings"), id: "settings") {
