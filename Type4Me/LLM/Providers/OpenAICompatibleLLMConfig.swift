@@ -63,7 +63,7 @@ struct OpenAICompatibleLLMConfig<Tag: OpenAICompatibleLLMTag>: LLMProviderConfig
                 key: "reasoningEffort", label: L("推理强度", "Reasoning Effort"),
                 placeholder: "", isSecure: false, isOptional: true, defaultValue: "",
                 options: reasoningEffortOptions,
-                subtitle: L(
+                hint: L(
                     "支持的强度取决于模型和服务商，不支持时请求可能失败",
                     "Supported levels depend on the model and provider; unsupported values may fail the request"
                 )

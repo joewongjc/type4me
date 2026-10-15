@@ -527,7 +527,15 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
 
     @ViewBuilder
     private func credentialFieldRow(_ field: CredentialField) -> some View {
-        if !field.options.isEmpty && field.allowCustomInput {
+        if field.isMultiline {
+            let binding = Binding<String>(
+                get: { asrCredentialValues[field.key] ?? field.defaultValue },
+                set: {
+                    asrCredentialValues[field.key] = $0
+                }
+            )
+            settingsMultilineField(field.label, subtitle: field.hint, text: binding, prompt: field.placeholder)
+        } else if !field.options.isEmpty && field.allowCustomInput {
             let allOptions = field.options + [
                 FieldOption(
                     value: CredentialField.customValue,
@@ -619,7 +627,7 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
                     asrCredentialValues[field.key] = $0
                 }
             )
-            settingsField(field.label, text: binding, prompt: field.placeholder)
+            settingsField(field.label, subtitle: field.hint, text: binding, prompt: field.placeholder)
         }
     }
 

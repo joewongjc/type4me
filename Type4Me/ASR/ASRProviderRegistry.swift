@@ -223,7 +223,14 @@ enum ASRProviderRegistry {
             .aliyun:  ProviderEntry(configType: AliyunASRConfig.self,  createClient: nil),
             .tencent: ProviderEntry(configType: TencentASRConfig.self, createClient: nil),
             .iflytek: ProviderEntry(configType: IflytekASRConfig.self, createClient: nil),
-            .custom:  ProviderEntry(configType: CustomASRConfig.self,  createClient: nil),
+            .custom: ProviderEntry(
+                configType: CustomASRConfig.self,
+                createClient: { BufferedBatchASRClient(transcriber: CustomHTTPBatchTranscriber()) },
+                capabilities: .batch(),
+                validateCredentials: { config, options in
+                    try await BatchASRHTTP.validate(with: CustomHTTPBatchTranscriber(), config: config, options: options)
+                }
+            ),
         ]
         #if HAS_SHERPA_ONNX
         dict[.sherpa] = ProviderEntry(

@@ -155,8 +155,9 @@ Multi-provider ASR support via `ASRProvider` enum + `ASRProviderConfig` protocol
 - Each provider has its own Config type (e.g., `SherpaASRConfig`, `VolcanoASRConfig`, `MetaMuseASRConfig`) defining `credentialFields` for dynamic UI rendering
 - `ASRProviderRegistry`: maps provider to config type + client factory; `capabilities` indicates availability and streaming support
 - **Recognition mode**: a provider entry with a `batch` variant exposes a `recognitionMode` credential (`streaming` / `batch`, default `streaming`). Its config adopts `ASRRecognitionModeConfigurable`; use `createClient(for:config:)` and `capabilities(for:config:)` inside a session so the mode captured at start is used. Fields can be scoped with `CredentialField.visibleModes`. Synchronous batch uploads share `BufferedBatchASRClient` + a `BatchASRTranscriber` (`Type4Me/Protocol/BatchASRTranscribers.swift`).
-- **Fully implemented**: Apple Speech (streaming); Volcano, StepFun, Deepgram, Cartesia, AssemblyAI, ElevenLabs, Gemini, Grok, Soniox, Bailian, Baidu, Meta Muse, and Microsoft Azure MAI-Transcribe-2-Streaming (streaming); StepFun, Bailian, Gemini, ElevenLabs, Grok, and Microsoft Azure MAI-Transcribe-2 (selectable batch mode); MiMo and OpenAI (batch only); and Sherpa/SenseVoice when `HAS_SHERPA_ONNX` is enabled.
-- **Config only (no client)**: google, aws, aliyun, tencent, iflytek, custom
+- **Fully implemented**: Apple Speech (streaming); Volcano, StepFun, Deepgram, Cartesia, AssemblyAI, ElevenLabs, Gemini, Grok, Soniox, Bailian, Baidu, Meta Muse, and Microsoft Azure MAI-Transcribe-2-Streaming (streaming); StepFun, Bailian, Gemini, ElevenLabs, Grok, and Microsoft Azure MAI-Transcribe-2 (selectable batch mode); MiMo, OpenAI, and Custom (batch only); and Sherpa/SenseVoice when `HAS_SHERPA_ONNX` is enabled.
+- **Config only (no client)**: google, aws, aliyun, tencent, iflytek
+- **Custom**: user-described HTTP batch endpoint (`CustomASRConfig` + `CustomHTTPBatchTranscriber` in `Type4Me/Protocol/CustomHTTPASRProtocol.swift`). Headers and a JSON object template use `{{api_key}}`, `{{audio_base64}}` (JSON upload) or `{{audio_file}}` (multipart file part); `resultPath` locates the transcript, e.g. `results[0].transcript`.
 
 ### Adding a New Provider
 

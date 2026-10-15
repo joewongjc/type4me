@@ -516,7 +516,7 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
                     llmCredentialValues[field.key] = $0
                 }
             )
-            settingsPickerField(field.label, subtitle: field.subtitle, selection: pickerBinding, options: field.options)
+            settingsPickerField(field.label, subtitle: field.hint, selection: pickerBinding, options: field.options)
         } else if field.isSecure {
             let binding = Binding<String>(
                 get: { llmCredentialValues[field.key] ?? "" },

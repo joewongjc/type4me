@@ -539,6 +539,26 @@ extension SettingsCardHelpers {
         }
     }
 
+    func settingsMultilineField(_ label: String, subtitle: String? = nil, text: Binding<String>, prompt: String) -> some View {
+        settingsOptionRow(label, subtitle: subtitle, controlWidth: SettingsControlWidth.input) {
+            ZStack(alignment: .topLeading) {
+                if text.wrappedValue.isEmpty {
+                    Text(prompt)
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundStyle(TF.settingsTextTertiary)
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 8)
+                        .allowsHitTesting(false)
+                }
+                SettingsCodeTextEditor(text: text)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+            }
+            .frame(height: 88)
+            .background(RoundedRectangle(cornerRadius: 8).fill(TF.settingsCardAlt))
+        }
+    }
+
     func settingsPickerField(_ label: String, subtitle: String? = nil, selection: Binding<String>, options: [FieldOption]) -> some View {
         settingsOptionRow(label, subtitle: subtitle, controlWidth: SettingsControlWidth.input) {
             settingsDropdown(
@@ -875,6 +895,53 @@ struct SettingsSecureInputField: View {
         .padding(.trailing, 8)
         .frame(height: 36)
         .background(RoundedRectangle(cornerRadius: 8).fill(TF.settingsCardAlt))
+    }
+}
+
+/// Plain-text editor for headers and JSON templates: monospaced, without smart quotes, dashes or autocorrect.
+struct SettingsCodeTextEditor: NSViewRepresentable {
+    @Binding var text: String
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSTextView.scrollableTextView()
+        scrollView.drawsBackground = false
+        scrollView.borderType = .noBorder
+        scrollView.hasVerticalScroller = true
+        scrollView.autohidesScrollers = true
+        guard let textView = scrollView.documentView as? NSTextView else { return scrollView }
+        textView.isRichText = false
+        textView.allowsUndo = true
+        textView.drawsBackground = false
+        textView.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
+        textView.textColor = NSColor(TF.settingsText)
+        textView.textContainerInset = NSSize(width: 0, height: 6)
+        textView.isAutomaticQuoteSubstitutionEnabled = false
+        textView.isAutomaticDashSubstitutionEnabled = false
+        textView.isAutomaticTextReplacementEnabled = false
+        textView.isAutomaticSpellingCorrectionEnabled = false
+        textView.isContinuousSpellCheckingEnabled = false
+        textView.string = text
+        textView.delegate = context.coordinator
+        return scrollView
+    }
+
+    func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        context.coordinator.text = $text
+        guard let textView = scrollView.documentView as? NSTextView, textView.string != text else { return }
+        textView.string = text
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(text: $text) }
+
+    final class Coordinator: NSObject, NSTextViewDelegate {
+        var text: Binding<String>
+
+        init(text: Binding<String>) { self.text = text }
+
+        func textDidChange(_ notification: Notification) {
+            guard let textView = notification.object as? NSTextView else { return }
+            text.wrappedValue = textView.string
+        }
     }
 }
 

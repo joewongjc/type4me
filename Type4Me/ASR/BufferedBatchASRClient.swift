@@ -38,11 +38,17 @@ protocol BatchASRTranscriber: Sendable {
     var maxDuration: TimeInterval? { get }
     func makeRequest(pcmData: Data, config: any ASRProviderConfig, options: ASRRequestOptions) throws -> URLRequest
     func parseTranscript(from data: Data, options: ASRRequestOptions) throws -> String
+    /// Config-aware parsing for transcribers whose response shape is user-configured.
+    func parseTranscript(from data: Data, config: any ASRProviderConfig, options: ASRRequestOptions) throws -> String
     /// True when a non-200 response only means "no speech found" and should yield an empty transcript.
     func isNoSpeechResponse(statusCode: Int, data: Data) -> Bool
 }
 
 extension BatchASRTranscriber {
+    func parseTranscript(from data: Data, config: any ASRProviderConfig, options: ASRRequestOptions) throws -> String {
+        try parseTranscript(from: data, options: options)
+    }
+
     func isNoSpeechResponse(statusCode: Int, data: Data) -> Bool { false }
 }
 
@@ -82,7 +88,7 @@ enum BatchASRHTTP {
                 message: errorMessage(from: data)
             )
         }
-        return try transcriber.parseTranscript(from: data, options: options)
+        return try transcriber.parseTranscript(from: data, config: config, options: options)
     }
 
     /// Credential test: transcribe one second of silence through the real endpoint.
