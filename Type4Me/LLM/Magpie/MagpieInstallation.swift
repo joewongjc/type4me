@@ -3,7 +3,7 @@ import AppKit
 
 enum MagpieInstallation {
     static let bundleID = "com.yetone.magpie"
-    static let agentPluginInstallCommand = "magpie plugin add github:kchen0x/magpie-agent-type4me"
+    static let agentPluginInstallCommand = "magpie plugin add @magpie-community/agent-type4me"
     static let cliCandidates = [
         "~/.local/bin/magpie",
         "/opt/homebrew/bin/magpie",

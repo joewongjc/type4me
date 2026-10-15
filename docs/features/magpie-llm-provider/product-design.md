@@ -174,12 +174,12 @@ Magpie 作为独立 LLM Provider 出现在模型设置里，而不是让用户�
                                    [测试连接]  [保存]
 ```
 
-展开“想在 Magpie 菜单栏切换 Type4Me 的模型？”（npm 发布前显示 `github:kchen0x/magpie-agent-type4me` 安装命令，发布后改为包名，见 Q6）：
+展开“想在 Magpie 菜单栏切换 Type4Me 的模型？”（显示社区包名的安装命令，见 Q6）：
 
 ```text
 │ ▾ 想在 Magpie 菜单栏切换 Type4Me 的模型？                 │
 │   ① 安装 Type4Me 插件                                    │
-│      magpie plugin add github:kchen0x/magpie-agent-type4me [复制] │
+│      magpie plugin add @magpie-community/agent-type4me [复制] │
 │   ② 在 Magpie 的 Agent 页为 Type4Me 选择模型   [打开 Magpie] │
 │   完成后此页面会自动切换为“已与 Magpie 同步”。             │
 ```
@@ -312,6 +312,6 @@ Magpie 作为独立 LLM Provider 出现在模型设置里，而不是让用户�
 | Q2 | Magpie 放在“本地”分组还是“推荐”分组 | 本地。推荐分组面向无门槛的首选项，Magpie 需要先安装 |
 | Q3 | Magpie 离线时是否自动回退到其他 Provider | 不回退。回退会让用户不清楚文本发往何处 |
 | Q4 | 直连模式下 Prod 和 Dev 是否用不同的身份（`magpie-type4me` / `magpie-type4me-dev`）以便在 Magpie 用量里区分 | 区分。成本为零，便于对比 Dev 改动前后的用量；托管模式下两者共用插件 key，无法区分 |
-| Q5 | 插件仓库归属 | **已决定**：独立公开仓库 https://github.com/kchen0x/magpie-agent-type4me （本机 `~/Projects/magpie-agent-type4me`），之后向 `magpie-community/plugins` 提 PR；首个 npm 版本需要社区维护者发布 |
-| Q6 | 插件发布到 npm 之前，设置页是否显示插件引导 | **已决定**：显示 `magpie plugin add github:kchen0x/magpie-agent-type4me`，npm 发布后改为包名 |
+| Q5 | 插件仓库归属 | **已决定**：独立公开仓库 https://github.com/kchen0x/magpie-agent-type4me （本机 `~/Projects/magpie-agent-type4me`），已并入 `magpie-community/plugins`（#136，2026-10-15 合并），插件目录登记见 #139；首个 npm 版本需要社区维护者发布 |
+| Q6 | 插件发布到 npm 之前，设置页是否显示插件引导 | **已决定**：显示 `magpie plugin add @magpie-community/agent-type4me`。插件已并入社区仓库（#136），Magpie 0.1.1243 及以后在 npm 发布前从社区 `dist` 分支安装；更早的 Magpie 可改用 `github:kchen0x/magpie-agent-type4me` |
 | Q7 | 托管模式下 Type4Me 修改模型的方式 | **已决定**：先同步改写 `model` 一项作为保存结果，再在后台调用 `magpie type4me magpie/<model>` 让 Magpie 记录一致。两步共用一把写锁，保证后台命令不会覆盖更新的保存（技术设计 §6.4）。保留后台命令是为了 Magpie Profile：只改文件时，应用 Profile 会让 Type4Me 掉回直连模式。依据见 §5.3.1 |

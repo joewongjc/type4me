@@ -527,7 +527,8 @@ enum MagpieInstallation {
 | 仓库名 | `magpie-agent-type4me` |
 | 本机路径 | `~/Projects/magpie-agent-type4me` |
 | 远端 | https://github.com/kchen0x/magpie-agent-type4me （公开，`main`；`a4cd0bc` 首个提交，`1f6ab28` 按社区规范调整布局） |
-| 社区 PR | https://github.com/magpie-community/plugins/pull/136 （`kchen0x:feat/agent-type4me` → `main`，2026-10-15 提交，待审） |
+| 社区 PR | https://github.com/magpie-community/plugins/pull/136 （`kchen0x:feat/agent-type4me` → `main`，2026-10-15 由维护者合并，合并提交 `c4f7bea`） |
+| 插件目录 PR | https://github.com/magpie-community/plugins/pull/139 （在 `registry.json` 的 Agents 下登记 Type4Me，待审） |
 | npm 包名 | `@magpie-community/agent-type4me` |
 | 许可 | MIT，版权方与 Type4Me 一致（Type4Me Contributors） |
 
@@ -583,9 +584,10 @@ export function connect({ gateway }) {
 
 1. ~~在 GitHub 创建远端仓库~~：已于 2026-10-15 创建 `kchen0x/magpie-agent-type4me`（公开）；
 2. ~~向 `magpie-community/plugins` 提 PR~~：已提交 #136，新增 `packages/type4me/`，README 的 Agents 表登记一行；
-3. 待维护者审阅合并；首个 npm 版本由维护者手动发布（`scripts/publish.sh <otp>`，`publish.yml` 设为 Trusted Publisher），之后再提交 `registry.json` 的 `"kind": "agent"` 条目；
-4. 发布前过渡：用户用 `magpie plugin add github:kchen0x/magpie-agent-type4me` 安装。设置页的插件引导由常量 `MagpieInstallation.agentPluginInstallCommand` 控制：当前为该 `github:` 命令，npm 发布后改为 `magpie plugin add @magpie-community/agent-type4me`。托管模式的检测与显示不受该常量影响；
-5. 之后修改插件：先在独立仓库提交，再向社区仓库同步提交，版本号同步递增。
+3. ~~维护者审阅合并~~：#136 已于 2026-10-15 合并。社区的 `publish.yml` 已把 0.1.0 打包到 `dist` 分支（`tgz/magpie-community-agent-type4me-0.1.0.tgz`，`index.json` 带 sha512）。首个 npm 版本仍需社区 npm 组织的所有者手动发布（`scripts/publish.sh <otp>`，再把 `publish.yml` 设为 Trusted Publisher 并加 `--allow-publish`）；在此之前，Magpie 0.1.1243 及以后的版本在 npm 找不到包时会从 `dist` 安装，安装前校验 sha512；
+4. ~~登记插件目录~~：已提交 #139，在 `registry.json` 的 Agents 下增加 `@magpie-community/agent-type4me`（中英文简介），做法与同样尚未上 npm 的 Open Design 一致；
+5. 设置页的插件引导由常量 `MagpieInstallation.agentPluginInstallCommand` 控制，已改为 `magpie plugin add @magpie-community/agent-type4me`。低于 0.1.1243 的 Magpie 在 npm 发布前装不上这个包名，可改用 `magpie plugin add github:kchen0x/magpie-agent-type4me`（独立仓库 README 中保留）。托管模式的检测与显示不受该常量影响；
+6. 之后修改插件：先在独立仓库提交，再向社区仓库同步提交，版本号同步递增。
 
 ## 13. 图标
 
