@@ -72,9 +72,18 @@ struct TFButtonStyle: ButtonStyle {
     var size: TFButtonSize = .regular
     /// Stretch the button to fill the available width.
     var fillsWidth = false
+    /// The action is in progress: pair with `.disabled(true)` to block every
+    /// input path (mouse, keyboard, accessibility) while staying fully legible.
+    var isLoading = false
 
     func makeBody(configuration: Configuration) -> some View {
-        TFButtonBody(configuration: configuration, role: role, size: size, fillsWidth: fillsWidth)
+        TFButtonBody(
+            configuration: configuration,
+            role: role,
+            size: size,
+            fillsWidth: fillsWidth,
+            isLoading: isLoading
+        )
     }
 }
 
@@ -82,9 +91,10 @@ extension ButtonStyle where Self == TFButtonStyle {
     static func tf(
         _ role: TFButtonRole = .secondary,
         size: TFButtonSize = .regular,
-        fillsWidth: Bool = false
+        fillsWidth: Bool = false,
+        isLoading: Bool = false
     ) -> TFButtonStyle {
-        TFButtonStyle(role: role, size: size, fillsWidth: fillsWidth)
+        TFButtonStyle(role: role, size: size, fillsWidth: fillsWidth, isLoading: isLoading)
     }
 }
 
@@ -93,6 +103,7 @@ private struct TFButtonBody: View {
     let role: TFButtonRole
     let size: TFButtonSize
     let fillsWidth: Bool
+    let isLoading: Bool
 
     @Environment(\.isEnabled) private var isEnabled
     @State private var isHovered = false
@@ -110,7 +121,7 @@ private struct TFButtonBody: View {
             .background(shape.fill(background))
             .overlay(shape.strokeBorder(border, lineWidth: 0.5))
             .contentShape(shape)
-            .opacity(isEnabled ? 1 : 0.4)
+            .opacity(isEnabled || isLoading ? 1 : 0.4)
             .scaleEffect(configuration.isPressed && isEnabled ? 0.98 : 1)
             .animation(.spring(response: 0.16, dampingFraction: 0.75), value: configuration.isPressed)
             .animation(TF.easeQuick, value: isHovered)
@@ -232,18 +243,44 @@ private struct TFIconButtonBody: View {
     }
 }
 
-/// The standard dismiss control for sheets and popovers.
+/// The standard dismiss control for sheets and popovers: a compact glyph
+/// inside a 30pt hit target with hover and press feedback.
 struct TFCloseButton: View {
+    static let hitSize: CGFloat = 30
+
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             Image(systemName: "xmark.circle.fill")
-                .font(.system(size: 17))
-                .foregroundStyle(TF.settingsTextTertiary)
-                .contentShape(Circle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(TFCloseButtonStyle())
         .accessibilityLabel(L("关闭", "Close"))
+    }
+}
+
+private struct TFCloseButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        TFCloseButtonBody(configuration: configuration)
+    }
+}
+
+private struct TFCloseButtonBody: View {
+    let configuration: ButtonStyleConfiguration
+
+    @Environment(\.isEnabled) private var isEnabled
+    @State private var isHovered = false
+
+    var body: some View {
+        let isActive = isHovered || configuration.isPressed
+        configuration.label
+            .font(.system(size: 17))
+            .foregroundStyle(isActive ? TF.settingsTextSecondary : TF.settingsTextTertiary)
+            .frame(width: TFCloseButton.hitSize, height: TFCloseButton.hitSize)
+            .background(Circle().fill(isActive ? TF.settingsControl : .clear))
+            .contentShape(Circle())
+            .opacity(isEnabled ? (configuration.isPressed ? 0.75 : 1) : 0.4)
+            .animation(TF.easeQuick, value: isHovered)
+            .onHover { isHovered = $0 && isEnabled }
     }
 }

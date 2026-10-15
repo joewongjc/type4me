@@ -758,10 +758,10 @@ extension SettingsCardHelpers {
                 Label(L("重试", "Retry"), systemImage: "arrow.clockwise")
             }
         }
-        .buttonStyle(.tf(status.buttonRole(isProminent: isProminent)))
-        .disabled(!isEnabled)
-        // Stay legible while testing; just ignore extra clicks.
-        .allowsHitTesting(status != .testing)
+        .buttonStyle(.tf(status.buttonRole(isProminent: isProminent), isLoading: status == .testing))
+        // Disabled while testing so no input path can restart the test;
+        // `isLoading` keeps it legible instead of dimmed.
+        .disabled(status == .testing || !isEnabled)
     }
 
     @ViewBuilder
