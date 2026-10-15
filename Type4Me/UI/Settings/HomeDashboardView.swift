@@ -597,12 +597,8 @@ struct HomeDashboardView: View {
 
                 Button { addBinding(mode) } label: {
                     Image(systemName: "plus")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(TF.settingsTextTertiary)
-                        .frame(width: 22, height: 22)
-                        .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tfIcon())
             }
 
             if hasBindings {

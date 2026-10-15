@@ -149,12 +149,8 @@ struct IntelliSenseModeDetail: View, SettingsCardHelpers {
             trailing: AnyView(
                 Button(action: chooseApplication) {
                     Image(systemName: "plus")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(TF.settingsText)
-                        .frame(width: 28, height: 28)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(TF.settingsCardAlt))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tfIcon(.control))
                 .settingsTooltip(L("添加 App", "Add App"))
             )
         ) {
@@ -186,10 +182,8 @@ struct IntelliSenseModeDetail: View, SettingsCardHelpers {
                             scheduleSave()
                         } label: {
                             Image(systemName: "trash")
-                                .font(.system(size: 11))
-                                .foregroundStyle(TF.settingsAccentRed)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.tfIcon(tint: TF.settingsAccentRed))
                     }
                     .padding(.vertical, 7)
                     if index < settings.blacklistedApps.count - 1 {
@@ -211,8 +205,7 @@ struct IntelliSenseModeDetail: View, SettingsCardHelpers {
                 controlWidth: 120
             ) {
                 Button(L("清除", "Clear"), action: clearExpressionData)
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
+                    .buttonStyle(.tf(.destructive, size: .small))
             }
         }
     }

@@ -36,14 +36,7 @@ struct IssueReportSheet: View {
 
                 Spacer()
 
-                Button {
-                    dismiss()
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 17))
-                        .foregroundStyle(TF.settingsTextTertiary)
-                }
-                .buttonStyle(.plain)
+                TFCloseButton { dismiss() }
             }
 
             VStack(alignment: .leading, spacing: 7) {
@@ -109,6 +102,7 @@ struct IssueReportSheet: View {
                     Button(L("复制并打开授权页", "Copy & Open Authorization")) {
                         openAuthorizationPage(authorization)
                     }
+                    .buttonStyle(.tf(.secondary, size: .small))
                 }
                 .padding(10)
                 .background(TF.settingsCardAlt)
@@ -119,6 +113,7 @@ struct IssueReportSheet: View {
                 Button(L("取消", "Cancel")) {
                     dismiss()
                 }
+                .buttonStyle(.tf(.secondary))
 
                 Spacer()
 
@@ -127,6 +122,7 @@ struct IssueReportSheet: View {
                 } label: {
                     Label(L("复制完整报告", "Copy Full Report"), systemImage: "doc.on.doc")
                 }
+                .buttonStyle(.tf(.secondary))
                 .disabled(!canCreateReport)
 
                 Button {
@@ -134,6 +130,7 @@ struct IssueReportSheet: View {
                 } label: {
                     Label(L("浏览器提交", "Submit in Browser"), systemImage: "arrow.up.right.square")
                 }
+                .buttonStyle(.tf(.secondary))
                 .disabled(!canCreateReport || isSubmitting)
 
                 Button {
@@ -151,7 +148,7 @@ struct IssueReportSheet: View {
                         )
                     }
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.tf(.primary))
                 .disabled(!canCreateReport || isSubmitting)
             }
         }

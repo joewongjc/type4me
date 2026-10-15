@@ -392,22 +392,9 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
                 Button {
                     handleSetAsDefault()
                 } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "star")
-                            .font(.system(size: 10, weight: .medium))
-                        Text(L("设为默认", "Set as Default"))
-                            .font(.system(size: 11, weight: .medium))
-                    }
-                    .foregroundStyle(hasASRCredentials ? TF.settingsText : TF.settingsTextTertiary)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(Capsule().fill(TF.settingsCardAlt))
-                    .overlay(
-                        Capsule()
-                            .strokeBorder(TF.settingsInk.opacity(0.06), lineWidth: 0.5)
-                    )
+                    Label(L("设为默认", "Set as Default"), systemImage: "star")
                 }
-                .buttonStyle(SettingsListRowButtonStyle())
+                .buttonStyle(.tf(.secondary, size: .small))
                 .disabled(!hasASRCredentials)
                 .settingsTooltip(
                     L("请先完善凭据", "Configure credentials first"),
@@ -473,7 +460,8 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
                 testButton(
                     L("测试连接", "Test"),
                     status: asrTestStatus,
-                    isEnabled: (hasASRCredentials || isZeroCredentialProvider) && isASRProviderAvailable
+                    isEnabled: (hasASRCredentials || isZeroCredentialProvider) && isASRProviderAvailable,
+                    isProminent: !isDirty
                 ) { testASRConnection() }
 
                 if isDirty {
@@ -706,7 +694,7 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
 
                 #if arch(arm64)
                 if hasQwen3ASR {
-                    testButton(L("测试连接", "Test"), status: asrTestStatus) { testLocalModel() }
+                    testButton(L("测试连接", "Test"), status: asrTestStatus, isProminent: isDefault) { testLocalModel() }
                 }
                 #endif
 

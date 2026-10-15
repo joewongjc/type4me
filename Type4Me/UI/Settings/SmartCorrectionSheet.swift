@@ -99,12 +99,7 @@ struct SmartCorrectionSheet: View {
             // Close
             HStack {
                 Spacer()
-                Button { dismiss() } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 18))
-                        .foregroundStyle(TF.settingsTextTertiary)
-                }
-                .buttonStyle(.plain)
+                TFCloseButton { dismiss() }
             }
             .padding(.bottom, TF.spacingSM)
 
@@ -238,24 +233,13 @@ struct SmartCorrectionSheet: View {
                         selectedChars = []
                     }
                 } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 11, weight: .semibold))
-                        Text(L("返回", "Back"))
-                            .font(.system(size: 12, weight: .medium))
-                    }
-                    .foregroundStyle(TF.settingsAccentBlue)
+                    Label(L("返回", "Back"), systemImage: "chevron.left")
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tf(.ghost))
 
                 Spacer()
 
-                Button { dismiss() } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 18))
-                        .foregroundStyle(TF.settingsTextTertiary)
-                }
-                .buttonStyle(.plain)
+                TFCloseButton { dismiss() }
             }
             .padding(.bottom, TF.spacingLG)
 
@@ -353,12 +337,7 @@ struct SmartCorrectionSheet: View {
     private var previewPhaseView: some View {
         HStack {
             Spacer()
-            Button { dismiss() } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 18))
-                    .foregroundStyle(TF.settingsTextTertiary)
-            }
-            .buttonStyle(.plain)
+            TFCloseButton { dismiss() }
         }
         .padding(.bottom, TF.spacingSM)
 
@@ -380,10 +359,8 @@ struct SmartCorrectionSheet: View {
 
                     Button { selectAllSnippets() } label: {
                         Text(L("全选", "Select All"))
-                            .font(.system(size: 11))
-                            .foregroundStyle(TF.settingsAccentBlue)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.tf(.ghost, size: .small))
                 }
 
                 if snippetSuggestions.isEmpty {
@@ -509,34 +486,16 @@ struct SmartCorrectionSheet: View {
 
                 Button { dismiss() } label: {
                     Text(L("取消", "Cancel"))
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(TF.settingsTextSecondary)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 7)
-                        .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tf(.secondary))
                 .keyboardShortcut(.cancelAction)
 
                 Button {
                     startGeneration()
                 } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "wand.and.stars")
-                            .font(.system(size: 11))
-                        Text(L("生成变体", "Generate Variants"))
-                    }
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(TF.settingsOnStrong)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 7)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(canGenerate ? TF.settingsText : TF.settingsTextTertiary.opacity(0.3))
-                    )
-                    .contentShape(Rectangle())
+                    Label(L("生成变体", "Generate Variants"), systemImage: "wand.and.stars")
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tf(.primary))
                 .disabled(!canGenerate)
                 .keyboardShortcut(.defaultAction)
 
@@ -549,55 +508,31 @@ struct SmartCorrectionSheet: View {
                     errorMessage = nil
                 } label: {
                     Text(L("取消", "Cancel"))
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(TF.settingsTextSecondary)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 7)
-                        .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tf(.secondary))
 
             case .preview:
                 Button {
                     withAnimation(TF.easeQuick) { phase = .input }
                 } label: {
                     Text(L("返回修改", "Back to Edit"))
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(TF.settingsAccentBlue)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 7)
-                        .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tf(.secondary))
 
                 Spacer()
 
                 Button { dismiss() } label: {
                     Text(L("取消", "Cancel"))
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(TF.settingsTextSecondary)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 7)
-                        .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tf(.secondary))
                 .keyboardShortcut(.cancelAction)
 
                 Button {
                     saveAndDismiss()
                 } label: {
                     Text(L("添加选中项 (\(selectedCount))", "Add Selected (\(selectedCount))"))
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(TF.settingsOnStrong)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 7)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(selectedCount > 0 ? TF.settingsAccentGreen : TF.settingsTextTertiary.opacity(0.3))
-                        )
-                        .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tf(.primary))
                 .disabled(selectedCount == 0)
             }
         }

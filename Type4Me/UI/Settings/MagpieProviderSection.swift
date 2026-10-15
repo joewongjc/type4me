@@ -68,8 +68,7 @@ struct MagpieProviderSection: View, SettingsCardHelpers {
                         Button(L("在 Finder 中显示", "Show in Finder")) {
                             NSWorkspace.shared.activateFileViewerSelecting([MagpieAgentFile.defaultURL])
                         }
-                        .buttonStyle(SettingsListRowButtonStyle())
-                        .font(.system(size: 11))
+                        .buttonStyle(.tf(.secondary, size: .small))
 
                     case .nonLoopback:
                         Text(L(
@@ -149,9 +148,8 @@ struct MagpieProviderSection: View, SettingsCardHelpers {
                     }
                 } label: {
                     Text(copiedInstallShellCmd ? L("已复制", "Copied") : L("复制", "Copy"))
-                        .font(.system(size: 11, weight: .medium))
                 }
-                .buttonStyle(SettingsListRowButtonStyle())
+                .buttonStyle(.tf(.secondary, size: .small))
             }
         }
         .padding(.vertical, 8)
@@ -383,9 +381,8 @@ struct MagpieProviderSection: View, SettingsCardHelpers {
                                 }
                             } label: {
                                 Text(copiedInstallCmd ? L("已复制", "Copied") : L("复制", "Copy"))
-                                    .font(.system(size: 10, weight: .medium))
                             }
-                            .buttonStyle(SettingsListRowButtonStyle())
+                            .buttonStyle(.tf(.secondary, size: .small))
                         }
                     }
 
@@ -400,8 +397,7 @@ struct MagpieProviderSection: View, SettingsCardHelpers {
                             Button(L("打开 Magpie", "Open Magpie")) {
                                 MagpieInstallation.openApp()
                             }
-                            .buttonStyle(SettingsListRowButtonStyle())
-                            .font(.system(size: 10))
+                            .buttonStyle(.tf(.secondary, size: .small))
                         }
                     }
 

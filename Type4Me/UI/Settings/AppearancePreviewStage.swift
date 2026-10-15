@@ -68,29 +68,16 @@ struct AppearancePreviewStage: View {
                 Spacer()
 
                 // Phase Switcher
-                HStack(spacing: 2) {
-                    ForEach(PreviewPhase.allCases, id: \.self) { phase in
-                        Button(action: {
+                SettingsInlineSegmentedPicker(
+                    selection: Binding(
+                        get: { previewPhase.rawValue },
+                        set: { rawValue in
+                            guard let phase = PreviewPhase(rawValue: rawValue), phase != previewPhase else { return }
                             previewPhase = phase
                             updateDemoState()
-                        }) {
-                            Text(phase.displayName)
-                                .font(.system(size: 11, weight: previewPhase == phase ? .semibold : .regular))
-                                .foregroundStyle(previewPhase == phase ? TF.settingsText : TF.settingsTextTertiary)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                        .fill(previewPhase == phase ? TF.settingsCardAlt : Color.clear)
-                                )
                         }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(2)
-                .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(TF.settingsCard)
+                    ),
+                    options: PreviewPhase.allCases.map { ($0.rawValue, $0.displayName) }
                 )
             }
             .padding(.horizontal, 2)

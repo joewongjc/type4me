@@ -103,7 +103,7 @@ struct SetupWizardView: View {
                 HStack {
                     Spacer()
                     Button(L("开始设置", "Get started")) { step = 1 }
-                        .buttonStyle(GuideButtonStyle(primary: true))
+                        .buttonStyle(.tf(.primary, size: .large))
                 }.padding(.vertical, 20)
             }.padding(.horizontal, 32)
         }

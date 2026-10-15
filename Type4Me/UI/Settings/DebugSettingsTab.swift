@@ -172,18 +172,9 @@ struct DebugSettingsTab: View, SettingsCardHelpers {
 
     private func compactButton(_ title: String, icon: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack(spacing: 5) {
-                Image(systemName: icon)
-                    .font(.system(size: 10, weight: .semibold))
-                Text(title)
-                    .font(.system(size: 11, weight: .medium))
-            }
-            .foregroundStyle(TF.settingsText)
-            .padding(.horizontal, 10)
-            .frame(height: 28)
-            .background(RoundedRectangle(cornerRadius: 7).fill(TF.settingsCardAlt))
+            Label(title, systemImage: icon)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.tf(.secondary, size: .small))
     }
 
     private func refreshLog() {

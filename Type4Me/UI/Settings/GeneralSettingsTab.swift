@@ -138,17 +138,13 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
                         Button(L("设置引导", "Setup guide")) {
                             AppDelegate.presentSetupWizard()
                         }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(TF.settingsTextSecondary)
+                        .buttonStyle(.tf(.ghost, size: .small))
                         Button {
                             checkPermissions()
                         } label: {
                             Image(systemName: "arrow.clockwise")
-                                .font(.system(size: 11))
-                                .foregroundStyle(TF.settingsTextTertiary)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.tfIcon())
                         .settingsTooltip(L("刷新权限状态", "Refresh permission status"))
                     }
                 )
@@ -209,9 +205,7 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
                     Button(L("在 Finder 中显示", "Show in Finder")) {
                         DataBackupManager.revealInFinder()
                     }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(TF.settingsAccentBlue)
+                    .buttonStyle(.tf(.secondary, size: .small))
                 }
             }
 
@@ -317,10 +311,8 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
                     refreshMicrophones()
                 } label: {
                     Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 10))
-                        .foregroundStyle(TF.settingsTextTertiary)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tfIcon())
                 .settingsTooltip(L("刷新麦克风列表", "Refresh microphone list"))
                 microphonePreferenceDropdown
             }
@@ -451,10 +443,8 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
                     refreshSpeakers()
                 } label: {
                     Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 10))
-                        .foregroundStyle(TF.settingsTextTertiary)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tfIcon())
                 .settingsTooltip(L("刷新输出设备列表", "Refresh output device list"))
                 settingsDropdown(
                     selection: $selectedSpeakerUID,
@@ -676,13 +666,8 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
             } else {
                 Button { action() } label: {
                     Text(L("授权", "Grant"))
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(TF.settingsOnStrong)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 5)
-                        .background(RoundedRectangle(cornerRadius: 6).fill(TF.settingsAccentAmber))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tf(.primary, size: .small))
             }
         }
     }
@@ -797,27 +782,14 @@ private struct MicrophonePrioritySheet: View {
                     .lineLimit(1)
                 Spacer()
                 Button(L("取消", "Cancel"), action: onCancel)
-                    .buttonStyle(.plain)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(TF.settingsText)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 7)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(TF.settingsCardAlt))
+                    .buttonStyle(.tf(.secondary))
 
                 Button {
                     onSave(orderedEntries)
                 } label: {
                     Text(L("保存", "Save"))
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(TF.settingsOnStrong)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 7)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(orderedEntries.isEmpty ? TF.settingsTextTertiary : TF.settingsAccentAmber)
-                        )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tf(.primary))
                 .disabled(orderedEntries.isEmpty)
             }
         }

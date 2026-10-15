@@ -637,34 +637,17 @@ struct HistoryTab: View {
                         ? L("取消全选", "Deselect All")
                         : L("全选当前列表", "Select All in List")
                 )
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(TF.settingsTextSecondary)
-                .padding(.horizontal, 12)
-                .frame(height: 30)
-                .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(TF.settingsControl)
-                )
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.tf(.secondary))
             .disabled(sections.isEmpty)
 
             Button {
                 showBatchDeleteConfirm = true
             } label: {
                 Text(L("删除", "Delete"))
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(TF.settingsAccentRed)
-                    .padding(.horizontal, 12)
-                    .frame(height: 30)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(TF.settingsAccentRed.opacity(0.08))
-                    )
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.tf(.destructive))
             .disabled(selectedIds.isEmpty)
-            .opacity(selectedIds.isEmpty ? 0.4 : 1)
         }
         .padding(.horizontal, 12)
         .frame(height: 44)
@@ -765,32 +748,16 @@ struct HistoryTab: View {
                     showCustomRange = false
                 } label: {
                     Text(L("取消", "Cancel"))
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(TF.settingsTextSecondary)
-                        .padding(.horizontal, 12)
-                        .frame(height: 30)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .fill(TF.settingsControl)
-                        )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tf(.secondary))
 
                 Button {
                     dateFilter = .custom(from: customRangeStart, to: customRangeEnd)
                     showCustomRange = false
                 } label: {
                     Text(L("应用", "Apply"))
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(TF.settingsOnStrong)
-                        .padding(.horizontal, 12)
-                        .frame(height: 30)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .fill(TF.settingsText)
-                        )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tf(.primary))
             }
         }
         .padding(16)
@@ -877,31 +844,14 @@ struct HistoryTab: View {
                     showExportPopover = false
                 } label: {
                     Text(L("取消", "Cancel"))
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(TF.settingsTextSecondary)
-                        .padding(.horizontal, 12)
-                        .frame(height: 30)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .fill(TF.settingsControl)
-                        )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tf(.secondary))
 
                 Button(action: exportCSV) {
                     Text(L("导出 CSV", "Export CSV"))
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(TF.settingsOnStrong)
-                        .padding(.horizontal, 12)
-                        .frame(height: 30)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .fill(TF.settingsText)
-                        )
                 }
-                .buttonStyle(.plain)
-                    .disabled(exportRecordCount == 0)
-                    .opacity(exportRecordCount == 0 ? 0.4 : 1)
+                .buttonStyle(.tf(.primary))
+                .disabled(exportRecordCount == 0)
             }
         }
         .padding(16)
@@ -1446,15 +1396,8 @@ struct HistoryTab: View {
             action()
         } label: {
             Image(systemName: icon)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(color)
-                .frame(width: 26, height: 26)
-                .background(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(TF.settingsControl)
-                )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.tfIcon(.control, tint: color))
         .settingsTooltip(tooltip)
     }
 

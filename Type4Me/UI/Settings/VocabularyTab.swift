@@ -452,12 +452,8 @@ struct VocabularyTab: View {
                     isSearchFocused = false
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(TF.settingsTextTertiary)
-                        .frame(width: 18, height: 18)
-                        .contentShape(Circle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tfIcon(.chipRemove))
             }
         }
         .padding(.horizontal, isSearchExpanded ? 10 : 0)
@@ -692,11 +688,8 @@ struct VocabularyTab: View {
                 newSnippetTriggers.removeAll { $0 == trigger }
             } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 7, weight: .bold))
-                    .foregroundStyle(TF.settingsTextTertiary)
-                    .frame(width: 13, height: 13)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.tfIcon(.chipRemove))
         }
         .padding(.leading, 9)
         .padding(.trailing, 6)
@@ -1288,19 +1281,7 @@ struct VocabularyTab: View {
                     .font(.system(size: 18, weight: .bold))
                     .foregroundStyle(TF.settingsText)
                 Spacer()
-                Button {
-                    showBulkHotwordsSheet = false
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(TF.settingsTextSecondary)
-                        .frame(width: 30, height: 30)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .fill(TF.settingsControl)
-                        )
-                }
-                .buttonStyle(.plain)
+                TFCloseButton { showBulkHotwordsSheet = false }
             }
 
             Text(L("每行一个热词，保存后将覆盖所有自定义热词。", "One hotword per line. Saving will replace all custom hotwords."))
@@ -1335,35 +1316,16 @@ struct VocabularyTab: View {
                     showBulkHotwordsSheet = false
                 } label: {
                     Text(L("取消", "Cancel"))
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(TF.settingsTextSecondary)
-                        .frame(minWidth: 76, minHeight: 34)
-                        .background(
-                            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                .fill(TF.settingsControl)
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                .stroke(TF.settingsBorder, lineWidth: 1)
-                        )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tf(.secondary))
 
                 Button {
                     saveBulkHotwords()
                 } label: {
                     Text(L("保存", "Save"))
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(TF.settingsOnStrong)
-                        .frame(minWidth: 76, minHeight: 34)
-                        .background(
-                            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                .fill(TF.settingsText)
-                        )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tf(.primary))
                 .disabled(bulkHotwordsLines.isEmpty && hotwords.isEmpty)
-                .opacity(bulkHotwordsLines.isEmpty && hotwords.isEmpty ? 0.38 : 1)
             }
         }
         .padding(24)
@@ -1440,19 +1402,7 @@ struct VocabularyTab: View {
                     .font(.system(size: 18, weight: .bold))
                     .foregroundStyle(TF.settingsText)
                 Spacer()
-                Button {
-                    showBulkSnippetsSheet = false
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(TF.settingsTextSecondary)
-                        .frame(width: 30, height: 30)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .fill(TF.settingsControl)
-                        )
-                }
-                .buttonStyle(.plain)
+                TFCloseButton { showBulkSnippetsSheet = false }
             }
 
             Text(L("每行一组: 替换词, 触发词1, 触发词2, ...", "One group per line: replacement, trigger1, trigger2, ..."))
@@ -1487,19 +1437,8 @@ struct VocabularyTab: View {
                     showBulkSnippetsSheet = false
                 } label: {
                     Text(L("取消", "Cancel"))
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(TF.settingsTextSecondary)
-                        .frame(minWidth: 76, minHeight: 34)
-                        .background(
-                            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                .fill(TF.settingsControl)
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                .stroke(TF.settingsBorder, lineWidth: 1)
-                        )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tf(.secondary))
 
                 Button {
                     let parsed = bulkTextToSnippets(bulkSnippetsText)
@@ -1508,15 +1447,8 @@ struct VocabularyTab: View {
                     showBulkSnippetsSheet = false
                 } label: {
                     Text(L("保存", "Save"))
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(TF.settingsOnStrong)
-                        .frame(minWidth: 76, minHeight: 34)
-                        .background(
-                            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                .fill(TF.settingsText)
-                        )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tf(.primary))
             }
         }
         .padding(24)
@@ -1788,13 +1720,8 @@ private struct SnippetGroupRow: View, Equatable {
     ) -> some View {
         Button(action: action) {
             Image(systemName: icon)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(color)
-                .frame(width: 24, height: 24)
-                .background(Circle().fill(TF.settingsCardAlt))
-                .contentShape(Circle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.tfIcon(.control, tint: color))
         .settingsTooltip(tooltip)
     }
 
@@ -1809,12 +1736,8 @@ private struct SnippetGroupRow: View, Equatable {
                     onRemoveTrigger(trigger)
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 7, weight: .bold))
-                        .foregroundStyle(TF.settingsTextTertiary)
-                        .frame(width: 14, height: 14)
-                        .contentShape(Circle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tfIcon(.chipRemove))
                 .settingsTooltip(L("删除触发词", "Remove trigger"))
             }
         }

@@ -82,19 +82,9 @@ struct AboutTab: View {
                         }
                     } label: {
                         Text(L("检查更新", "Check for Updates"))
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(TF.settingsText)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 5)
-                            .background(
-                                RoundedRectangle(cornerRadius: 6).fill(TF.settingsBg)
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 6)
-                                    .stroke(TF.settingsTextTertiary.opacity(0.2), lineWidth: 1)
-                            )
                     }
-                    .buttonStyle(.plain)
+                    // Yield the ink role to the download/install action once an update exists.
+                    .buttonStyle(.tf(appState.availableUpdates.isEmpty ? .primary : .secondary, size: .small))
                 }
             }
 
@@ -126,10 +116,8 @@ struct AboutTab: View {
                     }
                 } label: {
                     Label(L("在 GitHub 上查看", "View on GitHub"), systemImage: "arrow.up.right")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(TF.settingsTextTertiary)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tf(.ghost, size: .small))
             }
         }
     }
@@ -150,13 +138,8 @@ struct AboutTab: View {
                     appUpdater.downloadUpdate(release: latest)
                 } label: {
                     Label(buttonTitle, systemImage: "arrow.down.circle")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 6)
-                    .background(RoundedRectangle(cornerRadius: 6).fill(.blue))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tf(.primary))
             }
 
         case .downloading(let progress):
@@ -175,10 +158,8 @@ struct AboutTab: View {
                     appUpdater.cancelDownload()
                 } label: {
                     Text(L("取消", "Cancel"))
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(TF.settingsTextSecondary)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tf(.ghost, size: .small))
             }
 
         case .verifying:
@@ -198,13 +179,8 @@ struct AboutTab: View {
                         L("安装并重启", "Install and Restart"),
                         systemImage: "arrow.triangle.2.circlepath"
                     )
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 6)
-                    .background(RoundedRectangle(cornerRadius: 6).fill(.green))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tf(.primary))
 
                 Text(L("Type4Me 将关闭并自动重启", "Type4Me will close and restart automatically"))
                     .font(.system(size: 10))
@@ -235,19 +211,8 @@ struct AboutTab: View {
                     appUpdater.retryDownload()
                 } label: {
                     Text(L("重试", "Retry"))
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(TF.settingsText)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 5)
-                        .background(
-                            RoundedRectangle(cornerRadius: 6).fill(TF.settingsBg)
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 6)
-                                .stroke(TF.settingsTextTertiary.opacity(0.2), lineWidth: 1)
-                        )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tf(.primary, size: .small))
             }
         }
     }
@@ -283,18 +248,7 @@ struct AboutTab: View {
     private func linkButton(_ text: String, icon: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Label(text, systemImage: icon)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(TF.settingsText)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(
-                    RoundedRectangle(cornerRadius: 6).fill(TF.settingsBg)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(TF.settingsTextTertiary.opacity(0.2), lineWidth: 1)
-                )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.tf(.secondary))
     }
 }

@@ -135,7 +135,7 @@ struct PermissionGuideView: View {
                     .fixedSize().padding(.vertical, 10)
             } else {
                 Button(L("允许", "Allow"), action: action)
-                    .buttonStyle(GuideButtonStyle())
+                    .buttonStyle(.tf(.secondary, size: .large))
                     .accessibilityLabel(L("允许\(title)", "Allow \(title)"))
             }
         }
@@ -146,15 +146,15 @@ struct PermissionGuideView: View {
         HStack(spacing: 16) {
             if let onBack {
                 Button(L("上一步", "Back"), action: onBack)
-                    .buttonStyle(GuideButtonStyle())
+                    .buttonStyle(.tf(.secondary, size: .large))
             }
             Spacer()
             if model.needsRestart {
                 Button(L("重启 Type4Me", "Relaunch Type4Me"), action: handleRelaunch)
-                    .buttonStyle(GuideButtonStyle(primary: true))
+                    .buttonStyle(.tf(.primary, size: .large))
             } else {
                 Button(embedded ? L("进入应用", "Open Type4Me") : L("完成", "Done"), action: handlePrimaryAction)
-                    .buttonStyle(GuideButtonStyle(primary: true))
+                    .buttonStyle(.tf(.primary, size: .large))
                     .disabled(!model.requiredPermissionsGranted)
             }
         }
@@ -190,19 +190,3 @@ struct PermissionGuideView: View {
     }
 }
 
-/// Shared neutral navigation and permission controls.
-struct GuideButtonStyle: ButtonStyle {
-    var primary = false
-    @Environment(\.isEnabled) private var isEnabled
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 13, weight: .semibold))
-            .foregroundStyle(primary ? TF.settingsOnStrong : TF.settingsText)
-            .padding(.horizontal, 16).padding(.vertical, 11)
-            .background(primary ? TF.settingsNavActive : TF.settingsControl,
-                        in: RoundedRectangle(cornerRadius: TF.cornerMD))
-            .opacity(isEnabled ? (configuration.isPressed ? 0.75 : 1) : 0.4)
-            .contentShape(RoundedRectangle(cornerRadius: TF.cornerMD))
-    }
-}

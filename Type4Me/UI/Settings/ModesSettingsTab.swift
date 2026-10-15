@@ -66,21 +66,9 @@ struct ModesSettingsTab: View, SettingsCardHelpers {
 
                         HStack(spacing: 6) {
                             Button(action: addMode) {
-                                HStack(spacing: 5) {
-                                    Image(systemName: "plus")
-                                        .font(.system(size: 11, weight: .semibold))
-                                    Text(L("添加模式", "Add mode"))
-                                        .font(.system(size: 12, weight: .medium))
-                                }
-                                .foregroundStyle(TF.settingsAccentBlue)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                        .fill(TF.settingsAccentBlue.opacity(0.08))
-                                )
+                                Label(L("添加模式", "Add mode"), systemImage: "plus")
                             }
-                            .buttonStyle(SettingsListRowButtonStyle())
+                            .buttonStyle(.tf(.primary))
                             Spacer()
                         }
                         .padding(.top, 8)
@@ -307,12 +295,8 @@ struct ModesSettingsTab: View, SettingsCardHelpers {
             if !mode.isBuiltin && isHovered {
                 Button { deletingModeId = mode.id } label: {
                     Image(systemName: "trash")
-                        .font(.system(size: 10))
-                        .foregroundStyle(TF.settingsAccentRed)
-                        .frame(width: 22, height: 22)
-                        .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tfIcon(tint: TF.settingsAccentRed))
                 .settingsTooltip(L("删除模式", "Delete mode"))
             }
         }
@@ -686,9 +670,7 @@ struct ModesSettingsTab: View, SettingsCardHelpers {
                 Button(L("清空…", "Clear…"), role: .destructive) {
                     showClearAskAnythingConfirmation = true
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .tint(TF.settingsAccentRed)
+                .buttonStyle(.tf(.destructive, size: .small))
                 .disabled(askAnythingCoordinator.activeBinding != nil || askAnythingCoordinator.isRecordingFollowUp)
             }
         }
@@ -1280,9 +1262,7 @@ struct HotkeyRecordingSheet: View {
                         isListening = true
                         startListening()
                     }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(TF.settingsTextSecondary)
+                    .buttonStyle(.tf(.ghost))
                 }
 
                 Spacer()
@@ -1291,23 +1271,15 @@ struct HotkeyRecordingSheet: View {
                     cleanup()
                     onCancel()
                 }
-                .buttonStyle(.plain)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(TF.settingsTextSecondary)
+                .buttonStyle(.tf(.secondary))
 
                 Button(prefixConflict == nil ? L("确认", "Confirm") : L("仍要设置", "Set Anyway")) {
                     guard let code = capturedKeyCode, !isDuplicateInMode, reservedConflict == nil else { return }
                     cleanup()
                     onConfirm(code, capturedModifiers, hotkeyStyle)
                 }
-                .buttonStyle(.plain)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(TF.settingsOnStrong)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 5)
-                .background(RoundedRectangle(cornerRadius: 6).fill(TF.settingsNavActive))
+                .buttonStyle(.tf(.primary))
                 .disabled(capturedKeyCode == nil || isDuplicateInMode || reservedConflict != nil)
-                .opacity((capturedKeyCode == nil || isDuplicateInMode || reservedConflict != nil) ? 0.5 : 1)
             }
         }
         .padding(28)
@@ -1693,21 +1665,9 @@ private struct ModeDetailInner: View, SettingsCardHelpers {
             withAnimation { saveStatus = .saved }
             onDraftChange(updated, false)
         } label: {
-            HStack(spacing: 4) {
-                Image(systemName: "square.and.arrow.down")
-                    .font(.system(size: 11))
-                Text(L("保存", "Save"))
-                    .font(.system(size: 12, weight: .medium))
-            }
-            .foregroundStyle(isDirty ? TF.settingsOnStrong : TF.settingsTextTertiary)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 5)
-            .background(
-                Capsule()
-                    .fill(isDirty ? TF.settingsAccentBlue : TF.settingsCardAlt)
-            )
+            Label(L("保存", "Save"), systemImage: "square.and.arrow.down")
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.tf(.primary, size: .small))
         .disabled(!isDirty)
     }
 
@@ -1897,15 +1857,9 @@ private struct FormalWritingDetailInner: View, SettingsCardHelpers {
                     promptBeforeUpdate = prompt
                     prompt = ProcessingMode.formalWritingPromptTemplate
                 } label: {
-                    HStack(spacing: 3) {
-                        Image(systemName: "arrow.triangle.2.circlepath")
-                            .font(.system(size: 10))
-                        Text(L("还原为官方版", "Restore to official"))
-                            .font(.system(size: 11))
-                    }
-                    .foregroundStyle(TF.settingsAccentBlue)
+                    Label(L("还原为官方版", "Restore to official"), systemImage: "arrow.triangle.2.circlepath")
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tf(.ghost, size: .small))
             }
 
             if promptBeforeUpdate != nil {
@@ -1913,15 +1867,9 @@ private struct FormalWritingDetailInner: View, SettingsCardHelpers {
                     prompt = promptBeforeUpdate!
                     promptBeforeUpdate = nil
                 } label: {
-                    HStack(spacing: 3) {
-                        Image(systemName: "arrow.uturn.backward")
-                            .font(.system(size: 10))
-                        Text(L("撤销", "Undo"))
-                            .font(.system(size: 11))
-                    }
-                    .foregroundStyle(TF.settingsTextSecondary)
+                    Label(L("撤销", "Undo"), systemImage: "arrow.uturn.backward")
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tf(.ghost, size: .small))
             }
 
             if saveStatus == .saved {
@@ -1955,21 +1903,9 @@ private struct FormalWritingDetailInner: View, SettingsCardHelpers {
             withAnimation { saveStatus = .saved }
             onDraftChange(updated, false)
         } label: {
-            HStack(spacing: 4) {
-                Image(systemName: "square.and.arrow.down")
-                    .font(.system(size: 11))
-                Text(L("保存", "Save"))
-                    .font(.system(size: 12, weight: .medium))
-            }
-            .foregroundStyle(isDirty ? TF.settingsOnStrong : TF.settingsTextTertiary)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 5)
-            .background(
-                Capsule()
-                    .fill(isDirty ? TF.settingsAccentBlue : TF.settingsCardAlt)
-            )
+            Label(L("保存", "Save"), systemImage: "square.and.arrow.down")
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.tf(.primary, size: .small))
         .disabled(!isDirty)
     }
 

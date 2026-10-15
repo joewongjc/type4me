@@ -168,10 +168,9 @@ struct AskAnythingPage: View {
                         Button {
                             searchText = ""
                         } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundStyle(TF.settingsTextTertiary)
+                            Image(systemName: "xmark")
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.tfIcon(.chipRemove))
                     }
                 }
                 .padding(.horizontal, 12)
@@ -186,12 +185,8 @@ struct AskAnythingPage: View {
                     coordinator.createEmptyDraftForMainWindow()
                 } label: {
                     Label(L("新建会话", "New conversation"), systemImage: "square.and.pencil")
-                        .font(.system(size: 13, weight: .semibold))
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 36)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(TF.settingsNavActive)
+                .buttonStyle(.tf(.primary, size: .large, fillsWidth: true))
             }
             .padding(14)
 
@@ -555,14 +550,12 @@ struct AskAnythingPage: View {
                 Button(L("取消追问", "Cancel")) {
                     _ = coordinator.cancelActiveFollowUp()
                 }
-                .buttonStyle(.bordered)
-                .tint(TF.settingsAccentRed)
+                .buttonStyle(.tf(.secondary))
 
                 Button(L("结束追问", "Finish follow-up")) {
                     _ = coordinator.finishActiveFollowUp()
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(TF.settingsAccentGreen)
+                .buttonStyle(.tf(.primary))
             } else {
                 Button {
                     if hasConversation {
@@ -576,8 +569,7 @@ struct AskAnythingPage: View {
                         systemImage: "mic.fill"
                     )
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(TF.settingsNavActive)
+                .buttonStyle(.tf(.primary))
             }
         }
         .padding(.horizontal, hasConversation ? 20 : 0)
@@ -590,10 +582,8 @@ struct AskAnythingPage: View {
             NSPasteboard.general.setString(text, forType: .string)
         } label: {
             Image(systemName: "doc.on.doc")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(TF.settingsTextSecondary)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.tfIcon())
         .settingsTooltip(L("复制", "Copy"))
     }
 

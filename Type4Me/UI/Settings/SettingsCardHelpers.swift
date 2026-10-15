@@ -310,19 +310,11 @@ extension View {
 enum SettingsTestStatus: Equatable {
     case idle, testing, saved, success, failed(String)
 
-    var buttonForeground: Color {
+    func buttonRole(isProminent: Bool) -> TFButtonRole {
         switch self {
-        case .idle, .testing:  return TF.settingsText
-        case .saved, .success: return TF.settingsAccentGreen
-        case .failed:          return TF.settingsAccentRed
-        }
-    }
-
-    var buttonBackground: Color {
-        switch self {
-        case .idle, .testing:  return TF.settingsCardAlt
-        case .saved, .success: return TF.settingsAccentGreen.opacity(0.12)
-        case .failed:          return TF.settingsAccentRed.opacity(0.12)
+        case .idle, .testing:  return isProminent ? .primary : .secondary
+        case .saved, .success: return .tinted(TF.settingsAccentGreen)
+        case .failed:          return .tinted(TF.settingsAccentRed)
         }
     }
 }
@@ -706,26 +698,10 @@ extension SettingsCardHelpers {
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            HStack(spacing: 5) {
-                if let icon {
-                    Image(systemName: icon)
-                        .font(.system(size: 11, weight: .semibold))
-                }
-                Text(title)
-                    .font(.system(size: 12, weight: .semibold))
-            }
-            .foregroundStyle(TF.settingsOnStrong)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 7)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(isEnabled ? TF.settingsAccentBlue : TF.settingsCardAlt)
-            )
-            .contentShape(Rectangle())
+            settingsButtonLabel(title, icon: icon)
         }
-        .buttonStyle(SettingsListRowButtonStyle())
+        .buttonStyle(.tf(.primary))
         .disabled(!isEnabled)
-        .opacity(isEnabled ? 1.0 : 0.55)
     }
 
     func secondaryButton(
@@ -735,50 +711,17 @@ extension SettingsCardHelpers {
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            HStack(spacing: 5) {
-                if let icon {
-                    Image(systemName: icon)
-                        .font(.system(size: 11, weight: .medium))
-                }
-                Text(title)
-                    .font(.system(size: 12, weight: .medium))
-            }
-            .foregroundStyle(TF.settingsText)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 7)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(TF.settingsCardAlt)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(TF.settingsInk.opacity(0.06), lineWidth: 0.5)
-            )
-            .contentShape(Rectangle())
+            settingsButtonLabel(title, icon: icon)
         }
-        .buttonStyle(SettingsListRowButtonStyle())
+        .buttonStyle(.tf(.secondary))
         .disabled(!isEnabled)
-        .opacity(isEnabled ? 1.0 : 0.55)
     }
 
     func revertButton(action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack(spacing: 4) {
-                Image(systemName: "arrow.uturn.backward")
-                    .font(.system(size: 10, weight: .medium))
-                Text(L("还原", "Revert"))
-                    .font(.system(size: 12, weight: .medium))
-            }
-            .foregroundStyle(TF.settingsTextSecondary)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color.clear)
-            )
-            .contentShape(Rectangle())
+            Label(L("还原", "Revert"), systemImage: "arrow.uturn.backward")
         }
-        .buttonStyle(SettingsListRowButtonStyle())
+        .buttonStyle(.tf(.ghost))
     }
 
     func saveButton(action: @escaping () -> Void) -> some View {
@@ -786,55 +729,48 @@ extension SettingsCardHelpers {
     }
 
     /// A "test connection" button that shows its own status inline with Apple design language.
+    /// `isProminent` makes the idle state the surface's primary action; pass `false` while a
+    /// Save button is visible so only one ink button shows at a time.
     func testButton(
         _ title: String,
         status: SettingsTestStatus,
         isEnabled: Bool = true,
+        isProminent: Bool = true,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            HStack(spacing: 6) {
-                switch status {
-                case .idle:
-                    Image(systemName: "bolt.fill")
-                        .font(.system(size: 10))
+            switch status {
+            case .idle:
+                Label(title, systemImage: "bolt.fill")
+            case .testing:
+                Label {
                     Text(title)
-                case .testing:
+                } icon: {
                     ProgressView()
                         .scaleEffect(0.5)
                         .frame(width: 12, height: 12)
-                    Text(title)
-                case .saved:
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 11))
-                    Text(L("已保存", "Saved"))
-                case .success:
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 11))
-                    Text(L("连接成功", "Connected"))
-                case .failed:
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 10))
-                    Text(L("重试", "Retry"))
                 }
+            case .saved:
+                Label(L("已保存", "Saved"), systemImage: "checkmark.circle.fill")
+            case .success:
+                Label(L("连接成功", "Connected"), systemImage: "checkmark.circle.fill")
+            case .failed:
+                Label(L("重试", "Retry"), systemImage: "arrow.clockwise")
             }
-            .font(.system(size: 12, weight: .medium))
-            .foregroundStyle(status.buttonForeground)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 7)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(status.buttonBackground)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(TF.settingsInk.opacity(0.06), lineWidth: 0.5)
-            )
-            .contentShape(Rectangle())
         }
-        .buttonStyle(SettingsListRowButtonStyle())
-        .disabled(status == .testing || !isEnabled)
-        .opacity(status == .testing || isEnabled ? 1 : 0.55)
+        .buttonStyle(.tf(status.buttonRole(isProminent: isProminent)))
+        .disabled(!isEnabled)
+        // Stay legible while testing; just ignore extra clicks.
+        .allowsHitTesting(status != .testing)
+    }
+
+    @ViewBuilder
+    private func settingsButtonLabel(_ title: String, icon: String?) -> some View {
+        if let icon {
+            Label(title, systemImage: icon)
+        } else {
+            Text(title)
+        }
     }
 
     @ViewBuilder

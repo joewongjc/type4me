@@ -95,9 +95,7 @@ struct QuickCorrectionSheet: View {
                             .foregroundStyle(TF.settingsTextTertiary)
                         if ruleStillExists(rule) {
                             Button(L("查看规则", "Open rule")) { openRule(rule) }
-                                .buttonStyle(.plain)
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundStyle(TF.settingsAccentBlue)
+                                .buttonStyle(.tf(.ghost, size: .small))
                         } else {
                             Text(L("规则已修改或删除", "Rule since changed or removed"))
                                 .font(.system(size: 10))
@@ -124,12 +122,7 @@ struct QuickCorrectionSheet: View {
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(TF.settingsText)
                 Spacer()
-                Button { dismiss() } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 18))
-                        .foregroundStyle(TF.settingsTextTertiary)
-                }
-                .buttonStyle(.plain)
+                TFCloseButton { dismiss() }
             }
             .padding(.bottom, TF.spacingLG)
 
@@ -209,28 +202,14 @@ struct QuickCorrectionSheet: View {
 
                     Button { dismiss() } label: {
                         Text(L("取消", "Cancel"))
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(TF.settingsTextSecondary)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 7)
-                            .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.tf(.secondary))
                     .keyboardShortcut(.cancelAction)
 
                     Button { addSnippet() } label: {
                         Text(L("添加", "Add"))
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(TF.settingsOnStrong)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 7)
-                            .background(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .fill(canAdd ? TF.settingsText : TF.settingsTextTertiary.opacity(0.3))
-                            )
-                            .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.tf(.primary))
                     .disabled(!canAdd)
                     .keyboardShortcut(.defaultAction)
                 }

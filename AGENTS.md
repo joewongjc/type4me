@@ -263,6 +263,7 @@ API keys and other secure values are stored in Keychain, not in this file.
 | `Type4Me/Services/ModeStorage.swift` | Persistent processing-mode configuration and migration |
 | `Type4Me/Services/RecordingDisplayProfileStore.swift` | Per-mode recording-display overrides: Follow Global uses live Global Configuration values and disables controls; off copies globals, on removes the override. Preview labels show the selected mode. |
 | `Type4Me/UI/FloatingBar/FloatingBarView.swift` | Mode/action/transcript bubbles use active frosted blur with a fixed theme tint for contrast across focus changes; the main recording capsule retains native Liquid Glass. |
+| `Type4Me/UI/TFButtonStyles.swift` | Settings/setup button system: `.tf(role, size:)` text buttons, `.tfIcon(kind)` icon buttons, `TFCloseButton` |
 | `Type4Me/Services/TextOutputFormatter.swift` | Shared final-output formatting, including punctuation policies |
 | `Type4Me/Services/ModelManager.swift` | SenseVoice model download, validation, selection |
 | `Type4Me/Services/KeychainService.swift` | Credential read/write (provider groups + migration) |
@@ -304,6 +305,7 @@ API keys and other secure values are stored in Keychain, not in this file.
 - Also check `NSUnderlyingErrorKey` for nested resume data
 
 ### UI Patterns
+- Settings, setup, and permission buttons use `.buttonStyle(.tf(.primary | .secondary | .ghost | .destructive, size: .small | .regular | .large))` from `TFButtonStyles.swift`; primary is ink (`settingsNavActive`) and marks each surface's main action (e.g. Test Connection, Add Mode, Check for Updates); keep exactly one visible at a time by demoting the other when a Save/Download action appears. Do not hand-roll padding, fills, corner radii, or disabled opacity on a `.plain` button; the style handles hover, press, and `.disabled`. Icon-only actions use `.tfIcon(...)`, sheet dismissal uses `TFCloseButton`. List rows, segmented pickers, chips, and the floating bar keep their dedicated styles.
 - Dangerous actions (delete) should require two-step confirmation (show button → confirm)
 - Undownloaded items shouldn't show selection UI (radio buttons) — show download button instead
 - Test/action buttons should be spatially separated from destructive actions

@@ -217,22 +217,9 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
                 Button {
                     handleSetAsDefault()
                 } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "star")
-                            .font(.system(size: 10, weight: .medium))
-                        Text(L("设为默认", "Set as Default"))
-                            .font(.system(size: 11, weight: .medium))
-                    }
-                    .foregroundStyle(hasLLMCredentials ? TF.settingsText : TF.settingsTextTertiary)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(Capsule().fill(TF.settingsCardAlt))
-                    .overlay(
-                        Capsule()
-                            .strokeBorder(TF.settingsInk.opacity(0.06), lineWidth: 0.5)
-                    )
+                    Label(L("设为默认", "Set as Default"), systemImage: "star")
                 }
-                .buttonStyle(SettingsListRowButtonStyle())
+                .buttonStyle(.tf(.secondary, size: .small))
                 .disabled(!hasLLMCredentials)
                 .settingsTooltip(
                     L("请先完善凭据", "Configure credentials first"),
@@ -275,13 +262,13 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
                 if provider == .magpie {
                     switch magpieStatusModel.state {
                     case .notInstalled:
-                        secondaryButton(L("下载 Magpie", "Download Magpie")) {
+                        primaryButton(L("下载 Magpie", "Download Magpie")) {
                             if let url = URL(string: "https://usemagpie.ai") {
                                 NSWorkspace.shared.open(url)
                             }
                         }
                     case .installedNotRunning, .managedOffline:
-                        secondaryButton(L("打开 Magpie", "Open Magpie")) {
+                        primaryButton(L("打开 Magpie", "Open Magpie")) {
                             MagpieInstallation.openApp()
                         }
                     case .managedOnline:
@@ -299,7 +286,8 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
                         testButton(
                             L("测试连接", "Test"),
                             status: llmTestStatus,
-                            isEnabled: !(effectiveLLMValues["model"]?.isEmpty ?? true)
+                            isEnabled: !(effectiveLLMValues["model"]?.isEmpty ?? true),
+                            isProminent: !isDirty
                         ) { testLLMConnection() }
                         if isDirty {
                             primaryButton(L("保存", "Save"), isEnabled: true) {
@@ -321,7 +309,8 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
                         testButton(
                             L("测试连接", "Test"),
                             status: llmTestStatus,
-                            isEnabled: !(effectiveLLMValues["model"]?.isEmpty ?? true)
+                            isEnabled: !(effectiveLLMValues["model"]?.isEmpty ?? true),
+                            isProminent: !isDirty
                         ) { testLLMConnection() }
                         if isDirty {
                             primaryButton(L("保存", "Save"), isEnabled: true) {
@@ -346,7 +335,8 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
                     testButton(
                         L("测试连接", "Test"),
                         status: llmTestStatus,
-                        isEnabled: hasLLMCredentials
+                        isEnabled: hasLLMCredentials,
+                        isProminent: !isDirty
                     ) { testLLMConnection() }
 
                     if isDirty {
@@ -430,10 +420,8 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
                                 fetchModels()
                             } label: {
                                 Image(systemName: "arrow.triangle.2.circlepath")
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(TF.settingsTextSecondary)
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.tfIcon())
                             .settingsTooltip(L("从服务商拉取最新模型列表", "Fetch latest models from provider"))
                             .disabled(isFetchingModels || !hasLLMCredentials)
                         }
@@ -485,10 +473,8 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
                                     fetchModels()
                                 } label: {
                                     Image(systemName: "arrow.triangle.2.circlepath")
-                                        .font(.system(size: 11))
-                                        .foregroundStyle(TF.settingsTextSecondary)
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(.tfIcon())
                                 .settingsTooltip(L("从服务商拉取最新模型列表", "Fetch latest models from provider"))
                                 .disabled(isFetchingModels || !hasLLMCredentials)
                             }

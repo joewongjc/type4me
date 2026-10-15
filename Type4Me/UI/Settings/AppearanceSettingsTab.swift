@@ -494,19 +494,7 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
                 Button(L("恢复默认", "Reset to Default")) {
                     FloatingBarPlacementStore.reset()
                 }
-                .buttonStyle(.plain)
-                .font(.system(size: 12, weight: .medium))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 4)
-                .background(
-                    RoundedRectangle(cornerRadius: TF.cornerSM)
-                        .fill(isPlacementDefault ? TF.settingsControl.opacity(0.5) : TF.settingsControl)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: TF.cornerSM)
-                        .strokeBorder(TF.settingsBorder, lineWidth: 1)
-                )
-                .foregroundStyle(isPlacementDefault ? TF.settingsTextTertiary : TF.settingsText)
+                .buttonStyle(.tf(.secondary, size: .small))
                 .disabled(isPlacementDefault)
             }
         }

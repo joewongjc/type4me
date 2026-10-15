@@ -156,10 +156,8 @@ public struct LLMUsageAnalyticsView: View {
                     Task { await pricingSync.syncNow() }
                 } label: {
                     Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 11))
-                        .foregroundStyle(TF.settingsTextSecondary)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tfIcon())
                 .settingsTooltip(L("同步最新模型价格", "Sync latest model prices"))
             }
         }
@@ -650,13 +648,8 @@ public struct LLMUsageAnalyticsView: View {
                         Task { await loadRecentRecords() }
                     } label: {
                         Image(systemName: "chevron.left")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(recentCurrentPage > 1 ? TF.settingsText : TF.settingsTextTertiary.opacity(0.3))
-                            .frame(width: 24, height: 24)
-                            .background(RoundedRectangle(cornerRadius: 6).fill(TF.settingsCard))
-                            .overlay(RoundedRectangle(cornerRadius: 6).stroke(TF.settingsBorder, lineWidth: 1))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.tfIcon(.control))
                     .disabled(recentCurrentPage <= 1)
 
                     Button {
@@ -665,13 +658,8 @@ public struct LLMUsageAnalyticsView: View {
                         Task { await loadRecentRecords() }
                     } label: {
                         Image(systemName: "chevron.right")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(recentHasMore ? TF.settingsText : TF.settingsTextTertiary.opacity(0.3))
-                            .frame(width: 24, height: 24)
-                            .background(RoundedRectangle(cornerRadius: 6).fill(TF.settingsCard))
-                            .overlay(RoundedRectangle(cornerRadius: 6).stroke(TF.settingsBorder, lineWidth: 1))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.tfIcon(.control))
                     .disabled(!recentHasMore)
                 }
             }
