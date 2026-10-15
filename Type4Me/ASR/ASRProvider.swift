@@ -91,13 +91,15 @@ struct CredentialField: Sendable, Identifiable {
     let allowCustomInput: Bool
     /// Recognition modes in which the field is shown and required. `nil` means every mode.
     let visibleModes: Set<ASRRecognitionMode>?
+    /// Optional explanatory text shown under the field label.
+    let subtitle: String?
 
     /// Sentinel value used in the picker to represent "custom input" mode.
     static let customValue = "_custom"
 
     var id: String { key }
 
-    init(key: String, label: String, placeholder: String, isSecure: Bool, isOptional: Bool, defaultValue: String, options: [FieldOption] = [], allowCustomInput: Bool = false, visibleModes: Set<ASRRecognitionMode>? = nil) {
+    init(key: String, label: String, placeholder: String, isSecure: Bool, isOptional: Bool, defaultValue: String, options: [FieldOption] = [], allowCustomInput: Bool = false, visibleModes: Set<ASRRecognitionMode>? = nil, subtitle: String? = nil) {
         self.key = key
         self.label = label
         self.placeholder = placeholder
@@ -107,6 +109,7 @@ struct CredentialField: Sendable, Identifiable {
         self.options = options
         self.allowCustomInput = allowCustomInput
         self.visibleModes = visibleModes
+        self.subtitle = subtitle
     }
 
     func isVisible(in mode: ASRRecognitionMode) -> Bool {

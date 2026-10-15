@@ -539,8 +539,8 @@ extension SettingsCardHelpers {
         }
     }
 
-    func settingsPickerField(_ label: String, selection: Binding<String>, options: [FieldOption]) -> some View {
-        settingsOptionRow(label, controlWidth: SettingsControlWidth.input) {
+    func settingsPickerField(_ label: String, subtitle: String? = nil, selection: Binding<String>, options: [FieldOption]) -> some View {
+        settingsOptionRow(label, subtitle: subtitle, controlWidth: SettingsControlWidth.input) {
             settingsDropdown(
                 selection: selection,
                 options: options.map { ($0.value, $0.label) }

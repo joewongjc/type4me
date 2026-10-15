@@ -397,4 +397,61 @@ final class DoubaoChatClientTests: XCTestCase {
         ]))
         XCTAssertNil(builtIn.toLLMConfig().reasoningEffort)
     }
+
+    // MARK: - Server Error Detail
+
+    func testCustomProviderSurfacesGatewayErrorMessage() async throws {
+        MockStreamProtocol.setHandler { request in
+            let response = HTTPURLResponse(url: request.url!, statusCode: 400, httpVersion: nil,
+                                           headerFields: ["Content-Type": "application/json"])!
+            return (response, Data(#"{"error":{"message":"Unsupported parameter: reasoning_effort"}}"#.utf8))
+        }
+        defer { MockStreamProtocol.clearHandler() }
+
+        let client = DoubaoChatClient(provider: .custom, customSession: makeMockSession())
+        do {
+            _ = try await client.process(
+                text: "hi", prompt: "{text}", config: try customConfig(reasoningEffort: "none"), inputBoundary: .inline
+            )
+            XCTFail("Should have thrown")
+        } catch let LLMError.requestFailedWithDetail(code, detail) {
+            XCTAssertEqual(code, 400)
+            XCTAssertEqual(detail, "Unsupported parameter: reasoning_effort")
+        } catch {
+            XCTFail("Expected .requestFailedWithDetail, got: \(error)")
+        }
+    }
+
+    func testCustomProviderKeepsAPIKeyHintOn401() async throws {
+        MockStreamProtocol.setHandler { request in
+            let response = HTTPURLResponse(url: request.url!, statusCode: 401, httpVersion: nil, headerFields: nil)!
+            return (response, Data(#"{"error":{"message":"Invalid token"}}"#.utf8))
+        }
+        defer { MockStreamProtocol.clearHandler() }
+
+        let client = DoubaoChatClient(provider: .custom, customSession: makeMockSession())
+        do {
+            _ = try await client.process(
+                text: "hi", prompt: "{text}", config: try customConfig(reasoningEffort: nil), inputBoundary: .inline
+            )
+            XCTFail("Should have thrown")
+        } catch LLMError.requestFailed(let code) {
+            XCTAssertEqual(code, 401)
+        } catch {
+            XCTFail("Expected .requestFailed(401), got: \(error)")
+        }
+    }
+
+    func testServerErrorDetailParsesCommonShapesAndTruncates() {
+        XCTAssertEqual(DoubaoChatClient.serverErrorDetail(from: #"{"error":{"message":"bad"}}"#), "bad")
+        XCTAssertEqual(DoubaoChatClient.serverErrorDetail(from: #"{"error":"bad"}"#), "bad")
+        XCTAssertEqual(DoubaoChatClient.serverErrorDetail(from: #"{"message":"line1\nline2"}"#), "line1 line2")
+        XCTAssertNil(DoubaoChatClient.serverErrorDetail(from: "<html>Bad Gateway</html>"))
+        XCTAssertNil(DoubaoChatClient.serverErrorDetail(from: #"{"error":{"message":"  "}}"#))
+
+        let long = String(repeating: "x", count: 500)
+        let detail = DoubaoChatClient.serverErrorDetail(from: #"{"error":{"message":"\#(long)"}}"#)
+        XCTAssertEqual(detail?.count, 201)
+        XCTAssertEqual(detail?.hasSuffix("…"), true)
+    }
 }

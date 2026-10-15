@@ -249,20 +249,20 @@ actor DoubaoChatClient: LLMClient {
             recordOutcome(status: "error", completionText: "", metrics: nil)
             logger.error("LLM HTTP \(http.statusCode)")
             DebugFileLogger.log("LLM[\(model)]: HTTP \(http.statusCode)")
-            if provider == .magpie {
-                if http.statusCode == 401 || http.statusCode == 403 {
-                    throw LLMError.magpieRejected(http.statusCode)
-                }
+            if provider == .magpie, http.statusCode == 401 || http.statusCode == 403 {
+                throw LLMError.magpieRejected(http.statusCode)
+            }
+            // Gateways often reject unsupported fields (e.g. reasoning_effort) with a body naming
+            // the culprit; surface it. Custom 401 keeps the generic API Key hint.
+            if provider == .magpie || (provider == .custom && http.statusCode != 401) {
                 var errBody = ""
                 for try await line in bytes.lines {
                     errBody += line
                     if errBody.count > 1024 { break }
                 }
-                if let data = errBody.data(using: .utf8),
-                   let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
-                   let errObj = json["error"] as? [String: Any],
-                   let msg = errObj["message"] as? String, !msg.isEmpty {
-                    throw LLMError.requestFailedWithDetail(http.statusCode, msg)
+                if let detail = Self.serverErrorDetail(from: errBody) {
+                    DebugFileLogger.log("LLM[\(model)]: server error: \(detail)")
+                    throw LLMError.requestFailedWithDetail(http.statusCode, detail)
                 }
             }
             throw LLMError.requestFailed(http.statusCode)
@@ -345,6 +345,22 @@ actor DoubaoChatClient: LLMClient {
         recordOutcome(status: "success", completionText: result, metrics: metrics)
 
         return result
+    }
+
+    /// Extracts a short single-line message from an OpenAI-style error body
+    /// (`{"error":{"message":…}}`, `{"error":"…"}`, or `{"message":…}`).
+    static func serverErrorDetail(from body: String, maxLength: Int = 200) -> String? {
+        guard let data = body.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let raw = ((json["error"] as? [String: Any])?["message"] as? String)
+                ?? (json["error"] as? String)
+                ?? (json["message"] as? String)
+        else { return nil }
+        let message = raw.split(whereSeparator: \.isNewline)
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespaces)
+        guard !message.isEmpty else { return nil }
+        return message.count > maxLength ? String(message.prefix(maxLength)) + "…" : message
     }
 
     // MARK: - Non-streaming (single JSON response)

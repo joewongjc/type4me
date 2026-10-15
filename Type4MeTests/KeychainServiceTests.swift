@@ -277,6 +277,36 @@ final class KeychainServiceTests: XCTestCase {
         XCTAssertEqual(KeychainService.loadASRCredentials(for: .volcano)?["apiKey"], "myApiKey")
     }
 
+    func testCustomLLMReasoningEffortRoundTripsAndClears() throws {
+        let original = KeychainService.loadLLMCredentials(for: .custom)
+        defer { try? KeychainService.saveLLMCredentials(for: .custom, values: original ?? [:]) }
+
+        let base = ["apiKey": "test", "model": "m", "baseURL": "https://gateway.example.com/v1"]
+        try KeychainService.saveLLMCredentials(for: .custom, values: base.merging(["reasoningEffort": "none"]) { $1 })
+        let saved = try XCTUnwrap(KeychainService.loadLLMProviderConfig(for: .custom))
+        XCTAssertEqual(saved.toLLMConfig().reasoningEffort, "none")
+
+        // The picker's "Not set" option saves an empty value.
+        try KeychainService.saveLLMCredentials(for: .custom, values: base.merging(["reasoningEffort": ""]) { $1 })
+        let fileData = try Data(contentsOf: credentialsURL)
+        let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: fileData) as? [String: Any])
+        let stored = try XCTUnwrap(json["tf_llm_custom"] as? [String: String])
+        XCTAssertNil(stored["reasoningEffort"])
+        let cleared = try XCTUnwrap(KeychainService.loadLLMProviderConfig(for: .custom))
+        XCTAssertNil(cleared.toLLMConfig().reasoningEffort)
+    }
+
+    func testBuiltInLLMIgnoresStoredReasoningEffort() throws {
+        let original = KeychainService.loadLLMCredentials(for: .openai)
+        defer { try? KeychainService.saveLLMCredentials(for: .openai, values: original ?? [:]) }
+
+        try KeychainService.saveLLMCredentials(for: .openai, values: [
+            "apiKey": "test", "model": "gpt-5.4", "reasoningEffort": "none",
+        ])
+        let config = try XCTUnwrap(KeychainService.loadLLMProviderConfig(for: .openai))
+        XCTAssertNil(config.toLLMConfig().reasoningEffort)
+    }
+
     func testSelectedASRProviderPostsNotificationOnChange() {
         let targetProvider: ASRProvider = originalProvider == .bailian ? .volcano : .bailian
         let expectation = expectation(description: "provider change notification")
