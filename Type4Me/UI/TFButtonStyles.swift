@@ -172,6 +172,51 @@ private struct TFButtonLabelStyle: LabelStyle {
     }
 }
 
+// MARK: - Spinner
+
+/// Activity spinner drawn in the current foreground style, so it stays legible on every
+/// button role (the system `ProgressView` ignores the label color on the ink fill).
+/// A faint track carries a rotating arc whose tail fades out toward a rounded head.
+struct TFSpinner: View {
+    var isAnimating = true
+    var size: CGFloat = 11
+    var lineWidth: CGFloat = 1.6
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        TimelineView(.animation(paused: !isAnimating || reduceMotion)) { context in
+            let period = 0.9
+            let phase = context.date.timeIntervalSinceReferenceDate
+                .truncatingRemainder(dividingBy: period) / period
+            ZStack {
+                Circle()
+                    .stroke(lineWidth: lineWidth)
+                    .opacity(0.22)
+                Rectangle()
+                    .fill(.foreground)
+                    .mask {
+                        Circle()
+                            .trim(from: 0, to: 0.72)
+                            .stroke(
+                                AngularGradient(
+                                    colors: [.clear, .black],
+                                    center: .center,
+                                    startAngle: .zero,
+                                    endAngle: .degrees(360 * 0.72)
+                                ),
+                                style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
+                            )
+                    }
+                    .rotationEffect(.degrees(reduceMotion ? 0 : phase * 360))
+            }
+            .padding(lineWidth / 2)
+        }
+        .frame(width: size, height: size)
+        .accessibilityHidden(true)
+    }
+}
+
 // MARK: - Icon Buttons
 
 enum TFIconButtonKind {

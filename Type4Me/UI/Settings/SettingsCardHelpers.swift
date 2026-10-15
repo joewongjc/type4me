@@ -308,14 +308,52 @@ extension View {
 // MARK: - Shared Types
 
 enum SettingsTestStatus: Equatable {
-    case idle, testing, saved, success, failed(String)
+    case idle, testing, saved
+    /// Carries the round-trip time of the successful test.
+    case success(Duration)
+    case failed(String)
+}
 
-    func buttonRole(isProminent: Bool) -> TFButtonRole {
-        switch self {
-        case .idle, .testing:  return isProminent ? .primary : .secondary
-        case .saved, .success: return .tinted(TF.settingsAccentGreen)
-        case .failed:          return .tinted(TF.settingsAccentRed)
+/// One successful connection test, shown briefly as a latency toast.
+struct SettingsLatencyToast: Equatable, Identifiable {
+    let id = UUID()
+    let latency: Duration
+
+    /// "842 ms" below one second, "1.24 s" above.
+    var formattedLatency: String {
+        let ms = Double(latency.components.seconds) * 1000
+            + Double(latency.components.attoseconds) / 1e15
+        if ms < 1000 {
+            return "\(Int(ms.rounded())) ms"
         }
+        return String(format: "%.2f s", ms / 1000)
+    }
+
+    var message: String {
+        String(format: L("连接成功 · 时延 %@", "Connected · %@ latency"), formattedLatency)
+    }
+}
+
+struct SettingsLatencyToastView: View {
+    let toast: SettingsLatencyToast
+
+    var body: some View {
+        let message = toast.message
+        HStack(spacing: 6) {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(TF.settingsAccentGreen)
+            Text(message)
+                .foregroundStyle(TF.settingsText)
+                .monospacedDigit()
+        }
+        .font(.system(size: 12, weight: .medium))
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(Capsule().fill(TF.settingsCard))
+        .overlay(Capsule().strokeBorder(TF.settingsTextTertiary.opacity(0.2)))
+        .shadow(color: .black.opacity(0.12), radius: 10, y: 4)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(message)
     }
 }
 
@@ -728,9 +766,10 @@ extension SettingsCardHelpers {
         primaryButton(L("保存", "Save"), action: action)
     }
 
-    /// A "test connection" button that shows its own status inline with Apple design language.
-    /// `isProminent` makes the idle state the surface's primary action; pass `false` while a
-    /// Save button is visible so only one ink button shows at a time.
+    /// A "test connection" button. It only reflects the in-flight test; the outcome is shown
+    /// beside it by `testResultIndicator`, so the button always returns to its idle label.
+    /// `isProminent` makes it the surface's primary action; pass `false` while a Save button
+    /// is visible so only one ink button shows at a time.
     func testButton(
         _ title: String,
         status: SettingsTestStatus,
@@ -738,30 +777,66 @@ extension SettingsCardHelpers {
         isProminent: Bool = true,
         action: @escaping () -> Void
     ) -> some View {
-        Button(action: action) {
-            switch status {
-            case .idle:
+        let isTesting = status == .testing
+        return Button(action: action) {
+            // Both labels share one frame so the button keeps its width while testing.
+            ZStack {
                 Label(title, systemImage: "bolt.fill")
-            case .testing:
+                    .opacity(isTesting ? 0 : 1)
+                    .scaleEffect(isTesting ? 0.92 : 1)
                 Label {
-                    Text(title)
+                    Text(L("测试中…", "Testing…"))
                 } icon: {
-                    ProgressView()
-                        .scaleEffect(0.5)
-                        .frame(width: 12, height: 12)
+                    TFSpinner(isAnimating: isTesting)
                 }
-            case .saved:
-                Label(L("已保存", "Saved"), systemImage: "checkmark.circle.fill")
-            case .success:
-                Label(L("连接成功", "Connected"), systemImage: "checkmark.circle.fill")
-            case .failed:
-                Label(L("重试", "Retry"), systemImage: "arrow.clockwise")
+                .opacity(isTesting ? 1 : 0)
+                .scaleEffect(isTesting ? 1 : 0.92)
             }
+            .animation(.easeOut(duration: 0.18), value: isTesting)
         }
-        .buttonStyle(.tf(status.buttonRole(isProminent: isProminent), isLoading: status == .testing))
+        .buttonStyle(.tf(isProminent ? .primary : .secondary, isLoading: isTesting))
         // Disabled while testing so no input path can restart the test;
         // `isLoading` keeps it legible instead of dimmed.
-        .disabled(status == .testing || !isEnabled)
+        .disabled(isTesting || !isEnabled)
+    }
+
+    /// Outcome of the last test or save, placed just left of the action buttons.
+    /// Failures show only a mark; the full error text stays in `testStatusMessage`.
+    @ViewBuilder
+    func testResultIndicator(status: SettingsTestStatus) -> some View {
+        switch status {
+        case .success(let latency):
+            let formatted = SettingsLatencyToast(latency: latency).formattedLatency
+            HStack(spacing: 4) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(TF.settingsAccentGreen)
+                Text(formatted)
+                    .foregroundStyle(TF.settingsTextSecondary)
+                    .monospacedDigit()
+            }
+            .font(.system(size: 11, weight: .medium))
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(String(format: L("连接成功，时延 %@", "Connected, %@ latency"), formatted))
+            .transition(.opacity.combined(with: .scale(scale: 0.9)))
+        case .saved:
+            HStack(spacing: 4) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(TF.settingsAccentGreen)
+                Text(L("已保存", "Saved"))
+                    .foregroundStyle(TF.settingsTextSecondary)
+            }
+            .font(.system(size: 11, weight: .medium))
+            .accessibilityElement(children: .combine)
+            .transition(.opacity.combined(with: .scale(scale: 0.9)))
+        case .failed:
+            Image(systemName: "xmark.circle.fill")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(TF.settingsAccentRed)
+                .accessibilityLabel(L("测试失败", "Test failed"))
+                .transition(.opacity.combined(with: .scale(scale: 0.9)))
+        case .idle, .testing:
+            EmptyView()
+        }
     }
 
     @ViewBuilder

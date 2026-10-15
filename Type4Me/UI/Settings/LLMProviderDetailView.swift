@@ -5,6 +5,8 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
     let isDefault: Bool
     var draftCoordinator: SettingsDraftCoordinator? = nil
     let onSetAsDefault: (LLMProvider) -> Void
+    /// Called with the round-trip time of a successful connection test.
+    var onTestSucceeded: ((Duration) -> Void)? = nil
 
     @State private var llmCredentialValues: [String: String] = [:]
     @State private var savedLLMValues: [String: String] = [:]
@@ -259,6 +261,8 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
 
                 Spacer(minLength: 8)
 
+                testResultIndicator(status: llmTestStatus)
+
                 if provider == .magpie {
                     switch magpieStatusModel.state {
                     case .notInstalled:
@@ -349,6 +353,7 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
                     }
                 }
             }
+            .animation(.spring(response: 0.28, dampingFraction: 0.86), value: llmTestStatus)
         }
     }
 
@@ -677,6 +682,7 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
                 }
                 let llmConfig = config.toLLMConfig()
                 let client = LLMClientFactory.make(for: currentProvider)
+                let start = ContinuousClock.now
                 let reply = try await client.process(
                     text: "hi",
                     prompt: "{text}",
@@ -684,9 +690,11 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
                     inputBoundary: .inline,
                     invocationContext: LLMInvocationContext(featureSource: .other, modeName: L("连接测试", "Connection Test"))
                 )
+                let latency = ContinuousClock.now - start
                 guard !Task.isCancelled else { return }
-                llmTestStatus = .success
-                NSLog("[LLMProviderDetailView] LLM test OK (%@): %d chars", currentProvider.rawValue, reply.count)
+                llmTestStatus = .success(latency)
+                onTestSucceeded?(latency)
+                NSLog("[LLMProviderDetailView] LLM test OK (%@): %d chars in %@", currentProvider.rawValue, reply.count, String(describing: latency))
             } catch {
                 guard !Task.isCancelled else { return }
                 NSLog("[LLMProviderDetailView] LLM test failed (%@): %@", currentProvider.rawValue, String(describing: error))

@@ -5,6 +5,8 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
     let isDefault: Bool
     var draftCoordinator: SettingsDraftCoordinator? = nil
     let onSetAsDefault: (ASRProvider) -> Void
+    /// Called with the round-trip time of a successful connection test.
+    var onTestSucceeded: ((Duration) -> Void)? = nil
 
     @State private var asrCredentialValues: [String: String] = [:]
     @State private var savedASRValues: [String: String] = [:]
@@ -447,6 +449,8 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
 
                 Spacer(minLength: 8)
 
+                testResultIndicator(status: asrTestStatus)
+
                 // Right: Action buttons with unified design language
                 if isDirty {
                     revertButton {
@@ -474,6 +478,7 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
                 }
             }
             .padding(.top, 4)
+            .animation(.spring(response: 0.28, dampingFraction: 0.86), value: asrTestStatus)
         }
     }
 
@@ -692,6 +697,8 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
 
                 Spacer(minLength: 8)
 
+                testResultIndicator(status: asrTestStatus)
+
                 #if arch(arm64)
                 if hasQwen3ASR {
                     testButton(L("测试连接", "Test"), status: asrTestStatus, isProminent: isDefault) { testLocalModel() }
@@ -705,6 +712,7 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
                 }
             }
             .padding(.top, 4)
+            .animation(.spring(response: 0.28, dampingFraction: 0.86), value: asrTestStatus)
         }
     }
 
@@ -822,10 +830,13 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
         testTask = Task {
             let mgr = SenseVoiceServerManager.shared
             guard !Task.isCancelled else { return }
+            let start = ContinuousClock.now
             let qwen3Healthy = await mgr.isHealthy()
+            let latency = ContinuousClock.now - start
             guard !Task.isCancelled else { return }
             if qwen3Healthy {
-                asrTestStatus = .success
+                asrTestStatus = .success(latency)
+                onTestSucceeded?(latency)
             } else {
                 let q3Port = SenseVoiceServerManager.currentQwen3Port
                 if q3Port == nil {
@@ -923,13 +934,16 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
                     asrTestStatus = .failed(L("不支持", "Unsupported"))
                     return
                 }
+                let start = ContinuousClock.now
                 try await ASRProviderRegistry.validateCredentials(
                     for: currentProvider,
                     config: config,
                     options: currentASRRequestOptions(enablePunc: false)
                 )
+                let latency = ContinuousClock.now - start
                 guard !Task.isCancelled else { return }
-                asrTestStatus = .success
+                asrTestStatus = .success(latency)
+                onTestSucceeded?(latency)
             } catch {
                 guard !Task.isCancelled else { return }
                 asrTestStatus = .failed(Self.describeConnectionError(error))
@@ -942,21 +956,23 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
         let seedId = VolcanoASRConfig.resourceIdSeedASR
         let bigId = VolcanoASRConfig.resourceIdBigASR
 
-        let seedOK = await testVolcResource(baseValues: baseValues, resourceId: seedId, options: options)
+        let seedLatency = await testVolcResource(baseValues: baseValues, resourceId: seedId, options: options)
         guard !Task.isCancelled else { return }
 
-        if seedOK {
+        if let seedLatency {
             asrCredentialValues["resolvedResourceId"] = seedId
-            asrTestStatus = .success
+            asrTestStatus = .success(seedLatency)
+            onTestSucceeded?(seedLatency)
             return
         }
 
-        let bigOK = await testVolcResource(baseValues: baseValues, resourceId: bigId, options: options)
+        let bigLatency = await testVolcResource(baseValues: baseValues, resourceId: bigId, options: options)
         guard !Task.isCancelled else { return }
 
-        if bigOK {
+        if let bigLatency {
             asrCredentialValues["resolvedResourceId"] = bigId
-            asrTestStatus = .success
+            asrTestStatus = .success(bigLatency)
+            onTestSucceeded?(bigLatency)
             volcResourceHint = L(
                 "当前使用大模型版本，开通「模型 2.0」可节省约 80% 费用，识别效果相同",
                 "Using bigmodel tier. Enable \"Model 2.0\" for ~80% cost savings with identical quality"
@@ -967,17 +983,20 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
         asrTestStatus = .failed(L("连接失败，请检查鉴权凭证", "Connection failed, check credentials"))
     }
 
-    private func testVolcResource(baseValues: [String: String], resourceId: String, options: ASRRequestOptions) async -> Bool {
+    /// Returns the connection latency when the resource accepts the credentials, `nil` otherwise.
+    private func testVolcResource(baseValues: [String: String], resourceId: String, options: ASRRequestOptions) async -> Duration? {
         var values = baseValues
         values["resourceId"] = resourceId
-        guard let config = VolcanoASRConfig(credentials: values) else { return false }
+        guard let config = VolcanoASRConfig(credentials: values) else { return nil }
         let client = VolcASRClient()
         do {
+            let start = ContinuousClock.now
             try await client.connect(config: config, options: options)
+            let latency = ContinuousClock.now - start
             await client.disconnect()
-            return true
+            return latency
         } catch {
-            return false
+            return nil
         }
     }
 

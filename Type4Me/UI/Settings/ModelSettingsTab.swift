@@ -13,6 +13,8 @@ struct ModelSettingsTab: View, SettingsCardHelpers {
     @State private var defaultLLMProvider: LLMProvider = KeychainService.selectedLLMProvider
     @AppStorage("tf_sensevoiceEnabled") private var sensevoiceEnabled = true
     @AppStorage("tf_qwen3FinalEnabled") private var qwen3FinalEnabled = true
+    @State private var latencyToast: SettingsLatencyToast?
+    @State private var latencyToastDismissTask: Task<Void, Never>?
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if showsHeader {
@@ -56,7 +58,8 @@ struct ModelSettingsTab: View, SettingsCardHelpers {
                                 provider: selectedASRProvider,
                                 isDefault: selectedASRProvider == defaultASRProvider,
                                 draftCoordinator: draftCoordinator,
-                                onSetAsDefault: handleSetDefaultASR
+                                onSetAsDefault: handleSetDefaultASR,
+                                onTestSucceeded: showLatencyToast
                             )
                             .id(selectedASRProvider)
                         case .llm:
@@ -64,7 +67,8 @@ struct ModelSettingsTab: View, SettingsCardHelpers {
                                 provider: selectedLLMProvider,
                                 isDefault: selectedLLMProvider == defaultLLMProvider,
                                 draftCoordinator: draftCoordinator,
-                                onSetAsDefault: handleSetDefaultLLM
+                                onSetAsDefault: handleSetDefaultLLM,
+                                onTestSucceeded: showLatencyToast
                             )
                             .id(selectedLLMProvider)
                         }
@@ -75,8 +79,25 @@ struct ModelSettingsTab: View, SettingsCardHelpers {
                 }
                 .scrollBounceBehavior(.basedOnSize)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .overlay(alignment: .bottom) {
+                    if let latencyToast {
+                        SettingsLatencyToastView(toast: latencyToast)
+                            .id(latencyToast.id)
+                            .padding(.bottom, 16)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                            .allowsHitTesting(false)
+                    }
+                }
+                .animation(.spring(duration: 0.3, bounce: 0.15), value: latencyToast)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .onDisappear {
+            latencyToastDismissTask?.cancel()
+            latencyToast = nil
+        }
+        .onChange(of: selectedCategory) { _, _ in
+            latencyToast = nil
         }
         .onAppear {
             if let pendingCategory = navigationModel.pendingModelCategory {
@@ -103,6 +124,18 @@ struct ModelSettingsTab: View, SettingsCardHelpers {
         }
         .onReceive(NotificationCenter.default.publisher(for: .credentialsDidChange)) { _ in
             defaultLLMProvider = KeychainService.selectedLLMProvider
+        }
+    }
+
+    // MARK: - Latency Toast
+
+    private func showLatencyToast(_ latency: Duration) {
+        latencyToastDismissTask?.cancel()
+        latencyToast = SettingsLatencyToast(latency: latency)
+        latencyToastDismissTask = Task {
+            try? await Task.sleep(for: .seconds(2.5))
+            guard !Task.isCancelled else { return }
+            latencyToast = nil
         }
     }
 
