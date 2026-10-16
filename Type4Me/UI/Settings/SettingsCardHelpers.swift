@@ -312,6 +312,8 @@ enum SettingsTestStatus: Equatable {
     /// Carries the round-trip time of the successful test.
     case success(Duration)
     case failed(String)
+    /// Informational message unrelated to a test outcome; shown without a failure mark.
+    case notice(String)
 }
 
 /// One successful connection test, shown briefly as a latency toast.
@@ -834,7 +836,7 @@ extension SettingsCardHelpers {
                 .foregroundStyle(TF.settingsAccentRed)
                 .accessibilityLabel(L("测试失败", "Test failed"))
                 .transition(.opacity.combined(with: .scale(scale: 0.9)))
-        case .idle, .testing:
+        case .idle, .testing, .notice:
             EmptyView()
         }
     }
@@ -850,18 +852,27 @@ extension SettingsCardHelpers {
 
     @ViewBuilder
     func testStatusMessage(status: SettingsTestStatus) -> some View {
-        if case .failed(let msg) = status {
-            HStack(spacing: 4) {
-                Image(systemName: "exclamationmark.circle.fill")
-                    .font(.system(size: 10))
-                Text(msg)
-                    .font(.system(size: 11))
-                    .lineLimit(2)
-            }
-            .foregroundStyle(TF.settingsAccentRed)
-            .multilineTextAlignment(.leading)
-            .fixedSize(horizontal: false, vertical: true)
+        switch status {
+        case .failed(let msg):
+            statusMessageLabel(msg, systemImage: "exclamationmark.circle.fill", color: TF.settingsAccentRed)
+        case .notice(let msg):
+            statusMessageLabel(msg, systemImage: "info.circle.fill", color: TF.settingsAccentAmber)
+        case .idle, .testing, .saved, .success:
+            EmptyView()
         }
+    }
+
+    private func statusMessageLabel(_ message: String, systemImage: String, color: Color) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: systemImage)
+                .font(.system(size: 10))
+            Text(message)
+                .font(.system(size: 11))
+                .lineLimit(2)
+        }
+        .foregroundStyle(color)
+        .multilineTextAlignment(.leading)
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     func maskedSecret(_ value: String) -> String {

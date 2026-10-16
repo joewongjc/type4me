@@ -137,7 +137,7 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
             guard provider == .magpie, let newModel else { return }
             if isDirty {
                 savedLLMValues["model"] = newModel
-                llmTestStatus = .failed(String(format: L("Magpie 中的模型已变为 %@", "Magpie switched the model to %@"), newModel))
+                llmTestStatus = .notice(String(format: L("Magpie 中的模型已变为 %@", "Magpie switched the model to %@"), newModel))
             } else {
                 savedLLMValues["model"] = newModel
                 llmCredentialValues["model"] = newModel
