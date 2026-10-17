@@ -160,9 +160,11 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
                 (L("开发者文档", "Docs"), L("查看", "view"), URL(string: "https://dev.meta.ai/docs/speech-to-text")!),
             ]
         case .bailian:
+            let isIntl = effectiveASRValues["region"] == BailianASRRegion.international.rawValue
+            let region = isIntl ? BailianASRRegion.international : BailianASRRegion.china
             return [
-                (L("可用模型", "Models"), L("查看", "view"), URL(string: "https://help.aliyun.com/zh/model-studio/asr-model")!),
-                (L("API Key", "API Key"), L("获取", "get"), URL(string: "https://help.aliyun.com/zh/model-studio/get-api-key")!),
+                (L("可用模型", "Models"), L("查看", "view"), region.modelsURL),
+                (L("API Key", "API Key"), L("获取", "get"), region.apiKeyURL),
             ]
         case .stepfun:
             if draftRecognitionMode == .batch {

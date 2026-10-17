@@ -16,7 +16,7 @@ struct BailianBatchTranscriber: BatchASRTranscriber {
 
     /// Reuses the host of a custom WebSocket base URL (e.g. the international region).
     static func endpoint(for config: BailianASRConfig) -> URL {
-        let host = URL(string: config.baseURL)?.host ?? defaultHost
+        let host = URL(string: config.baseURL)?.host ?? config.region.batchHost
         return URL(string: "https://\(host)\(path)")!
     }
 

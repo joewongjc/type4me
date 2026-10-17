@@ -77,6 +77,81 @@ final class BailianASRConfigTests: XCTestCase {
         ]))
         XCTAssertEqual(config.languageHint, "")
     }
+    func testInit_regionDefaultsToChinaAndSelectsChinaKey() throws {
+        let config = try XCTUnwrap(BailianASRConfig(credentials: [
+            "apiKey": "sk-china-key",
+            "intlApiKey": "sk-intl-key",
+        ]))
+
+        XCTAssertEqual(config.region, .china)
+        XCTAssertEqual(config.apiKey, "sk-china-key")
+        XCTAssertEqual(config.chinaApiKey, "sk-china-key")
+        XCTAssertEqual(config.intlApiKey, "sk-intl-key")
+    }
+
+    func testInit_internationalRegionSelectsIntlKey() throws {
+        let config = try XCTUnwrap(BailianASRConfig(credentials: [
+            "region": "international",
+            "apiKey": "sk-china-key",
+            "intlApiKey": "sk-intl-key",
+        ]))
+
+        XCTAssertEqual(config.region, .international)
+        XCTAssertEqual(config.apiKey, "sk-intl-key")
+        XCTAssertEqual(config.chinaApiKey, "sk-china-key")
+        XCTAssertEqual(config.intlApiKey, "sk-intl-key")
+    }
+
+    func testInit_rejectsMissingActiveKeyForRegion() {
+        // China region missing China key
+        XCTAssertNil(BailianASRConfig(credentials: [
+            "region": "china",
+            "intlApiKey": "sk-intl-key",
+        ]))
+
+        // International region missing Intl key
+        XCTAssertNil(BailianASRConfig(credentials: [
+            "region": "international",
+            "apiKey": "sk-china-key",
+        ]))
+    }
+
+    func testDisplayedCredentialFields_scopesKeyByRegion() {
+        let chinaFields = BailianASRConfig.displayedCredentialFields(for: ["region": "china"])
+        XCTAssertTrue(chinaFields.contains { $0.key == "apiKey" })
+        XCTAssertFalse(chinaFields.contains { $0.key == "intlApiKey" })
+
+        let intlFields = BailianASRConfig.displayedCredentialFields(for: ["region": "international"])
+        XCTAssertFalse(intlFields.contains { $0.key == "apiKey" })
+        XCTAssertTrue(intlFields.contains { $0.key == "intlApiKey" })
+    }
+
+    func testToCredentials_preservesBothTokensAcrossRegions() throws {
+        let config = try XCTUnwrap(BailianASRConfig(credentials: [
+            "region": "international",
+            "apiKey": "sk-china-key",
+            "intlApiKey": "sk-intl-key",
+        ]))
+
+        let saved = config.toCredentials()
+        XCTAssertEqual(saved["region"], "international")
+        XCTAssertEqual(saved["apiKey"], "sk-china-key")
+        XCTAssertEqual(saved["intlApiKey"], "sk-intl-key")
+    }
+
+    func testEndpoints_resolveByRegionByDefault() throws {
+        let chinaConfig = try XCTUnwrap(BailianASRConfig(credentials: ["apiKey": "sk-china"]))
+        XCTAssertEqual(BailianProtocol.endpoint(for: chinaConfig).absoluteString, "wss://dashscope.aliyuncs.com/api-ws/v1/inference")
+        XCTAssertEqual(BailianBatchTranscriber.endpoint(for: chinaConfig).absoluteString, "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation")
+
+        let intlConfig = try XCTUnwrap(BailianASRConfig(credentials: [
+            "region": "international",
+            "intlApiKey": "sk-intl",
+        ]))
+        XCTAssertEqual(BailianProtocol.endpoint(for: intlConfig).absoluteString, "wss://dashscope-intl.aliyuncs.com/api-ws/v1/inference")
+        XCTAssertEqual(BailianBatchTranscriber.endpoint(for: intlConfig).absoluteString, "https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation")
+    }
+
     func testRegistry_exposesAliyunProvider() {
         let entry = ASRProviderRegistry.entry(for: .bailian)
 

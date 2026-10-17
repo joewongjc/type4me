@@ -36,7 +36,7 @@ enum BailianProtocol {
         if !config.baseURL.isEmpty, let url = URL(string: config.baseURL) {
             return url
         }
-        return defaultEndpoint
+        return config.region.webSocketEndpoint
     }
 
     static func buildRunTaskMessage(
