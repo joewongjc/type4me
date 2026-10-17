@@ -96,18 +96,19 @@ final class StepFunASRConfigTests: XCTestCase {
             ["recognitionMode", "accessMode", "stepPlanApiKey", "batchModel"]
         )
     }
-    func testModels_defaultToStepAudio3AndAllowSelection() throws {
-        let streamingConfig = try XCTUnwrap(StepFunASRConfig(credentials: [
+    func testModels_defaultsAndCustomSelection() throws {
+        let defaultConfig = try XCTUnwrap(StepFunASRConfig(credentials: [
+            "apiKey": "sk-test",
+        ]))
+        XCTAssertEqual(defaultConfig.model, "stepaudio-2.5-asr-stream")
+        XCTAssertEqual(defaultConfig.batchModel, "stepaudio-3-asr-max")
+
+        // Unsupported StepAudio 3 in streaming mode auto-heals to supported default
+        let healedConfig = try XCTUnwrap(StepFunASRConfig(credentials: [
             "apiKey": "sk-test",
             "model": "stepaudio-3-realtime",
         ]))
-        XCTAssertEqual(streamingConfig.model, "stepaudio-3-realtime")
-
-        let customStreamingConfig = try XCTUnwrap(StepFunASRConfig(credentials: [
-            "apiKey": "sk-test",
-            "model": "stepaudio-2.5-asr-stream",
-        ]))
-        XCTAssertEqual(customStreamingConfig.model, "stepaudio-2.5-asr-stream")
+        XCTAssertEqual(healedConfig.model, "stepaudio-2.5-asr-stream")
 
         let batchConfig = try XCTUnwrap(StepFunASRConfig(credentials: [
             "recognitionMode": "batch",

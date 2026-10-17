@@ -256,8 +256,8 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
                 )
             }
             return L(
-                "实时流式识别使用开放平台按量付费 API Key；可选择中国站或全球站，支持 StepAudio 3 Realtime 与 2.5 流式模型。",
-                "Real-time streaming recognition uses a standard pay-as-you-go API key. Choose the China or Global site; supports StepAudio 3 Realtime and 2.5 streaming models."
+                "实时流式识别使用开放平台按量付费 API Key；可选择中国站或全球站，使用 StepAudio 2.5 流式模型。",
+                "Real-time streaming recognition uses a standard pay-as-you-go API key. Choose the China or Global site; uses StepAudio 2.5 streaming model."
             )
         case .mimo:
             return L(
@@ -585,17 +585,6 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
                         selection: pickerBinding,
                         options: allOptions.map { ($0.value, $0.label) }
                     )
-                    if field.key == "model", provider == .stepfun,
-                       pickerBinding.wrappedValue.contains("stepaudio-3") {
-                        Label(
-                            L("阶跃流式 ASR 接口目前仅支持 2.5；StepAudio 3 当前仅支持「非实时」批处理模式。",
-                              "StepFun streaming ASR currently only supports 2.5; StepAudio 3 is available in Batch mode."),
-                            systemImage: "exclamationmark.triangle.fill"
-                        )
-                        .font(.system(size: 10))
-                        .foregroundStyle(TF.settingsAccentAmber)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
                     if customASRModeFields.contains(field.key) {
                         FixedWidthTextField(text: customBinding, placeholder: field.placeholder)
                             .padding(.horizontal, 12)

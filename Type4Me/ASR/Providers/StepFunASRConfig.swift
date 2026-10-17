@@ -76,8 +76,6 @@ struct StepFunASRConfig: ASRRecognitionModeConfigurable, Sendable {
     static let defaultModel = "stepaudio-2.5-asr-stream"
     static let supportedModels: [FieldOption] = [
         FieldOption(value: "stepaudio-2.5-asr-stream", label: "StepAudio 2.5 ASR Stream"),
-        FieldOption(value: "stepaudio-3-realtime", label: "StepAudio 3 Realtime"),
-        FieldOption(value: "stepaudio-3-realtime-preview", label: "StepAudio 3 Realtime Preview"),
     ]
 
     /// 默认批处理识别模型 (SOTA)
@@ -204,7 +202,12 @@ struct StepFunASRConfig: ASRRecognitionModeConfigurable, Sendable {
         self.stepPlanApiKey = stepPlanApiKey
         self.region = StepFunASRRegion(rawValue: credentials["region"] ?? "") ?? Self.defaultRegion
         self.accessMode = accessMode
-        self.model = Self.sanitized(credentials["model"]) ?? Self.defaultModel
+        let rawModel = Self.sanitized(credentials["model"])
+        if rawModel == "stepaudio-3-realtime" || rawModel == "stepaudio-3-realtime-preview" {
+            self.model = Self.defaultModel
+        } else {
+            self.model = rawModel ?? Self.defaultModel
+        }
         self.batchModel = Self.sanitized(credentials["batchModel"]) ?? Self.defaultBatchModel
     }
 
