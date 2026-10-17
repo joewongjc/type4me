@@ -77,7 +77,7 @@ actor StepFunASRClient: SpeechRecognizer {
         await transport.start()
         startReceiveLoop()
 
-        try await transport.send(StepFunASRProtocol.buildSessionUpdateMessage(options: options))
+        try await transport.send(StepFunASRProtocol.buildSessionUpdateMessage(options: options, model: config.model))
         try await gate.waitUntilReady(timeout: .seconds(5))
         logger.info("StepFun streaming ASR session ready")
     }

@@ -251,13 +251,13 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
         case .stepfun:
             if draftRecognitionMode == .batch {
                 return L(
-                    "非实时模式使用 stepaudio-2.5-asr，目前仅支持中国站；Step Plan 需要单独的 Step Plan API Key。",
-                    "Batch mode uses stepaudio-2.5-asr and is available on the China site only. Step Plan requires its own Step Plan API key."
+                    "非实时模式推荐使用 StepAudio 3 ASR (Max)，目前仅支持中国站；Step Plan 需要单独的 Step Plan API Key。",
+                    "Batch mode recommends StepAudio 3 ASR (Max) and is available on the China site only. Step Plan requires its own Step Plan API key."
                 )
             }
             return L(
-                "实时流式识别使用开放平台按量付费 API Key；可选择中国站或全球站，当前固定使用 stepaudio-2.5-asr-stream。",
-                "Real-time streaming recognition uses a standard pay-as-you-go API key. Choose the China or Global site; the current model is fixed to stepaudio-2.5-asr-stream."
+                "实时流式识别使用开放平台按量付费 API Key；可选择中国站或全球站，支持 StepAudio 3 Realtime 与 2.5 流式模型。",
+                "Real-time streaming recognition uses a standard pay-as-you-go API key. Choose the China or Global site; supports StepAudio 3 Realtime and 2.5 streaming models."
             )
         case .mimo:
             return L(

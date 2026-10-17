@@ -281,7 +281,11 @@ actor RecognitionSession {
             return "\(providerName) · \(CartesiaASRConfig.model)"
         }
         if provider == .stepfun {
-            return "\(providerName) · \(isBatch ? StepFunASRConfig.batchModel : StepFunASRConfig.model)"
+            if let stepConfig = config as? StepFunASRConfig {
+                let m = isBatch ? stepConfig.batchModel : stepConfig.model
+                return "\(providerName) · \(m)"
+            }
+            return "\(providerName) · \(isBatch ? StepFunASRConfig.defaultBatchModel : StepFunASRConfig.defaultModel)"
         }
         if provider == .grok {
             return "\(providerName) · \(GrokASRConfig.model)"

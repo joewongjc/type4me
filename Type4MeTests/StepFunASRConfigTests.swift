@@ -14,6 +14,8 @@ final class StepFunASRConfigTests: XCTestCase {
             "apiKey": "sk-test",
             "region": "china",
             "accessMode": "standard",
+            "model": "stepaudio-3-realtime",
+            "batchModel": "stepaudio-3-asr-max",
         ])
         XCTAssertTrue(config.isValid)
     }
@@ -84,14 +86,34 @@ final class StepFunASRConfigTests: XCTestCase {
         func keys(_ values: [String: String]) -> [String] {
             StepFunASRConfig.displayedCredentialFields(for: values).map(\.key)
         }
-        XCTAssertEqual(keys(["recognitionMode": "streaming"]), ["recognitionMode", "apiKey", "region"])
+        XCTAssertEqual(keys(["recognitionMode": "streaming"]), ["recognitionMode", "apiKey", "region", "model"])
         XCTAssertEqual(
             keys(["recognitionMode": "batch", "accessMode": "standard"]),
-            ["recognitionMode", "accessMode", "apiKey"]
+            ["recognitionMode", "accessMode", "apiKey", "batchModel"]
         )
         XCTAssertEqual(
             keys(["recognitionMode": "batch", "accessMode": "stepPlan"]),
-            ["recognitionMode", "accessMode", "stepPlanApiKey"]
+            ["recognitionMode", "accessMode", "stepPlanApiKey", "batchModel"]
         )
+    }
+    func testModels_defaultToStepAudio3AndAllowSelection() throws {
+        let streamingConfig = try XCTUnwrap(StepFunASRConfig(credentials: [
+            "apiKey": "sk-test",
+            "model": "stepaudio-3-realtime",
+        ]))
+        XCTAssertEqual(streamingConfig.model, "stepaudio-3-realtime")
+
+        let customStreamingConfig = try XCTUnwrap(StepFunASRConfig(credentials: [
+            "apiKey": "sk-test",
+            "model": "stepaudio-2.5-asr-stream",
+        ]))
+        XCTAssertEqual(customStreamingConfig.model, "stepaudio-2.5-asr-stream")
+
+        let batchConfig = try XCTUnwrap(StepFunASRConfig(credentials: [
+            "recognitionMode": "batch",
+            "apiKey": "sk-test",
+            "batchModel": "stepaudio-3-asr-max",
+        ]))
+        XCTAssertEqual(batchConfig.batchModel, "stepaudio-3-asr-max")
     }
 }

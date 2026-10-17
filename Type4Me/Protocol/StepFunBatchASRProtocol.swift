@@ -48,7 +48,7 @@ enum StepFunBatchASRProtocol {
 
         let transcription = Transcription(
             hotwords: options.hotwords.isEmpty ? nil : options.hotwords,
-            model: StepFunASRConfig.batchModel,
+            model: config.batchModel,
             enableITN: true
         )
         let body = RequestBody(

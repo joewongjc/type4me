@@ -83,11 +83,11 @@ final class ASRRecognitionModeTests: XCTestCase {
         )
         XCTAssertEqual(
             label(.stepfun, StepFunASRConfig.self, ["apiKey": "k", "recognitionMode": "batch"]),
-            "\(ASRProvider.stepfun.displayName) · stepaudio-2.5-asr"
+            "\(ASRProvider.stepfun.displayName) · stepaudio-3-asr-max"
         )
         XCTAssertEqual(
             label(.stepfun, StepFunASRConfig.self, ["apiKey": "k"]),
-            "\(ASRProvider.stepfun.displayName) · stepaudio-2.5-asr-stream"
+            "\(ASRProvider.stepfun.displayName) · stepaudio-3-realtime"
         )
     }
 

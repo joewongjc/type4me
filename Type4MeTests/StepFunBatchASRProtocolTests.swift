@@ -31,7 +31,7 @@ final class StepFunBatchASRProtocolTests: XCTestCase {
 
         let input = try XCTUnwrap(audio["input"] as? [String: Any])
         let transcription = try XCTUnwrap(input["transcription"] as? [String: Any])
-        XCTAssertEqual(transcription["model"] as? String, "stepaudio-2.5-asr")
+        XCTAssertEqual(transcription["model"] as? String, "stepaudio-3-asr-max")
         XCTAssertEqual(transcription["enable_itn"] as? Bool, true)
         XCTAssertEqual(transcription["hotwords"] as? [String], ["Type4Me", "阶跃星辰"])
         XCTAssertNil(transcription["language"])

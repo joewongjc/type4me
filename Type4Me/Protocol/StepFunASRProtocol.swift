@@ -48,9 +48,9 @@ enum StepFunASRProtocol {
     private static let maxHotwordCount = 100
     private static let maxHotwordPromptCharacters = 2_000
 
-    static func buildSessionUpdateMessage(options: ASRRequestOptions) -> String {
+    static func buildSessionUpdateMessage(options: ASRRequestOptions, model: String = StepFunASRConfig.defaultModel) -> String {
         var transcription: [String: Any] = [
-            "model": StepFunASRConfig.model,
+            "model": model,
             "language": "zh",
             "full_rerun_on_commit": true,
             "enable_itn": true,
