@@ -3,7 +3,7 @@ import Foundation
 struct BaiduASRConfig: ASRProviderConfig, Sendable {
 
     static let provider = ASRProvider.baidu
-    static let displayName = L("百度智能云", "Baidu AI Cloud")
+    static let displayName = L("百度智能云 (弃用)", "Baidu AI Cloud (Deprecated)")
     static let defaultDevPID = "15372"
     static let devPIDOptions = [
         FieldOption(value: "15372", label: L("15372 中文增强标点", "15372 Chinese enhanced punctuation")),

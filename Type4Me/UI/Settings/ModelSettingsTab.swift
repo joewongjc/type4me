@@ -206,6 +206,7 @@ struct ModelSettingsTab: View, SettingsCardHelpers {
     // MARK: - Set Default Actions
 
     private func handleSetDefaultASR(_ provider: ASRProvider) {
+        guard !provider.isDeprecated else { return }
         guard ModelSettingsHelpers.hasConfiguredCredentials(for: provider) else { return }
         let oldProvider = defaultASRProvider
         KeychainService.selectedASRProvider = provider

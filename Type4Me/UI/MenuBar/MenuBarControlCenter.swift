@@ -203,6 +203,7 @@ final class MenuBarControlCenterModel {
 enum MenuBarASRProviderAvailability {
     static func configuredItems() -> [MenuBarASRProviderItem] {
         ASRProvider.allCases.compactMap { provider in
+            guard !provider.isDeprecated else { return nil }
             guard ASRProviderRegistry.capabilities(for: provider).isAvailable else {
                 return nil
             }

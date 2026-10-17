@@ -114,7 +114,12 @@ enum ModelSettingsHelpers {
             let locSet = Set(localASRProviders)
             return all
                 .filter { !recSet.contains($0) && !locSet.contains($0) }
-                .sorted { $0.displayName.localizedAlphabeticalCompare($1.displayName) == .orderedAscending }
+                .sorted { a, b in
+                    if a.isDeprecated != b.isDeprecated {
+                        return !a.isDeprecated
+                    }
+                    return a.displayName.localizedAlphabeticalCompare(b.displayName) == .orderedAscending
+                }
         }
     }
 

@@ -392,6 +392,22 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
                     Capsule()
                         .strokeBorder(TF.settingsAccentBlue.opacity(0.25), lineWidth: 0.5)
                 )
+            } else if provider.isDeprecated {
+                HStack(spacing: 4) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(TF.settingsAccentAmber)
+                    Text(L("已弃用", "Deprecated"))
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(TF.settingsAccentAmber)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Capsule().fill(TF.settingsAccentAmber.opacity(0.12)))
+                .overlay(
+                    Capsule()
+                        .strokeBorder(TF.settingsAccentAmber.opacity(0.25), lineWidth: 0.5)
+                )
             } else {
                 Button {
                     handleSetAsDefault()
@@ -906,6 +922,7 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
     }
 
     private func handleSetAsDefault() {
+        guard !provider.isDeprecated else { return }
         guard hasASRCredentials else { return }
         if isDirty || (!isZeroCredentialProvider && !provider.isLocal && !hasStoredCredentials) {
             guard saveCredentials() else { return }

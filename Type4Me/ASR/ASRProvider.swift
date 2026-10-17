@@ -26,7 +26,6 @@ enum ASRProvider: String, CaseIterable, Codable, Sendable {
     case aliyun
     case bailian
     case tencent
-    case baidu
     case iflytek
     #if HAS_CLOUD_SUBSCRIPTION
     // Cloud proxy (Type4Me Cloud subscription)
@@ -34,6 +33,8 @@ enum ASRProvider: String, CaseIterable, Codable, Sendable {
     #endif
     // Fallback
     case custom
+    // Deprecated
+    case baidu
 
     var displayName: String {
         switch self {
@@ -57,7 +58,7 @@ enum ASRProvider: String, CaseIterable, Codable, Sendable {
         case .aliyun:   return L("阿里云", "Alibaba Cloud")
         case .bailian:  return L("阿里云百炼", "Alibaba Cloud Bailian")
         case .tencent:  return L("腾讯云", "Tencent Cloud")
-        case .baidu:    return L("百度智能云", "Baidu AI Cloud")
+        case .baidu:    return L("百度智能云 (弃用)", "Baidu AI Cloud (Deprecated)")
         case .iflytek:  return L("讯飞", "iFLYTEK")
         #if HAS_CLOUD_SUBSCRIPTION
         case .cloud:    return L("Type4Me Cloud", "Type4Me Cloud")
@@ -68,6 +69,9 @@ enum ASRProvider: String, CaseIterable, Codable, Sendable {
 
     /// Whether this provider runs entirely on-device (no network required).
     var isLocal: Bool { self == .sherpa }
+
+    /// Whether this provider is deprecated and cannot be selected as default.
+    var isDeprecated: Bool { self == .baidu }
 }
 
 // MARK: - Credential Field Descriptor

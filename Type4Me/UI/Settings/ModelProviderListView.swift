@@ -85,7 +85,7 @@ struct ModelProviderListView: View {
                     HStack(spacing: 4) {
                         Text(provider.displayName)
                             .font(.system(size: 12, weight: isSelected ? .semibold : .medium))
-                            .foregroundStyle(TF.settingsText)
+                            .foregroundStyle(provider.isDeprecated ? TF.settingsTextTertiary : TF.settingsText)
                             .lineLimit(1)
 
                         if isBatch {

@@ -612,7 +612,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func selectASRProviderFromMenu(_ provider: ASRProvider) {
-        guard menuBarRuntimeSettingsAreEditable,
+        guard !provider.isDeprecated,
+              menuBarRuntimeSettingsAreEditable,
               ASRProviderRegistry.capabilities(for: provider).isAvailable
         else { return }
 
