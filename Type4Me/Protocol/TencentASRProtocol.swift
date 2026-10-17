@@ -141,6 +141,12 @@ enum TencentASRError: Error, LocalizedError, Equatable {
     static func mapServerCode(code: Int, rawMessage: String) -> String {
         switch code {
         case 4002:
+            if rawMessage.contains("AppID") || rawMessage.contains("appid") {
+                return L(
+                    "腾讯云鉴权失败，请检查输入的 AppID（应为 125/130 开头的 10 位数字，不要填成 9 位账号 ID）(\(code))",
+                    "Tencent Cloud auth failed. Check your AppID (usually 10 digits starting with 125/130, not your 9-digit Account ID) (\(code))"
+                )
+            }
             return L("腾讯云 SecretId 或 SecretKey 无效 (\(code))", "Invalid Tencent Cloud SecretId or SecretKey (\(code))")
         case 4003:
             return L("该 AppID 未开通语音识别服务，请在控制台开通 (\(code))", "ASR is not enabled for this AppID. Enable it in the console. (\(code))")
@@ -150,6 +156,8 @@ enum TencentASRError: Error, LocalizedError, Equatable {
             return L("腾讯云账号已欠费，请充值后重试 (\(code))", "The Tencent Cloud account is in arrears. Top up and retry. (\(code))")
         case 4006:
             return L("腾讯云并发路数已达上限，请稍后再试 (\(code))", "Concurrency limit reached. Try again later. (\(code))")
+        case 4008:
+            return L("客户端超过 15 秒未发送音频数据 (\(code))", "No audio data sent for over 15 seconds (\(code))")
         case 6001:
             return L("当前网络被识别为海外，请关闭海外代理，或在代理设置中为 ASR 绕过代理 (\(code))", "Detected as an overseas call. Disable overseas proxies or bypass the proxy for ASR. (\(code))")
         case 5000...5002:

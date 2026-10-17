@@ -214,26 +214,34 @@ actor TencentASRClient: SpeechRecognizer {
     static func validateCredentials(config: any ASRProviderConfig, options: ASRRequestOptions) async throws {
         let client = TencentASRClient()
         try await client.connect(config: config, options: options)
+        let events = await client.events
 
-        // Send 0.5s of silence and check for server errors within 1.5s
+        // Send 0.5s of silence, then endAudio so the server concludes the session
         let silence = Data(count: 16_000)
         try await client.sendAudio(silence)
+        try await client.endAudio()
 
-        // Monitor stream for any error for up to 1.5 seconds
-        let events = await client.events
-        let timeoutTask = Task {
-            try? await Task.sleep(for: .milliseconds(1500))
-        }
-
-        for await event in events {
-            if timeoutTask.isCancelled { break }
-            if case .error(let error) = event {
-                await client.disconnect()
-                throw error
+        // Wait for first error or clean completion within 2 seconds
+        let serverError = await withTaskGroup(of: Error?.self) { group in
+            group.addTask {
+                for await event in events {
+                    if case .error(let error) = event { return error }
+                    if case .completed = event { return nil }
+                }
+                return nil
             }
+            group.addTask {
+                try? await Task.sleep(for: .seconds(2))
+                return nil
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
         }
-        timeoutTask.cancel()
 
         await client.disconnect()
+        if let serverError {
+            throw serverError
+        }
     }
 }

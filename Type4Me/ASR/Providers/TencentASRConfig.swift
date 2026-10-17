@@ -35,7 +35,8 @@ struct TencentASRConfig: ASRRecognitionModeConfigurable, Sendable {
             isSecure: false,
             isOptional: false,
             defaultValue: "",
-            hint: L("在“账号信息”页面查看，为纯数字", "Shown on the Account Info page; digits only.")
+            hint: L("在“账号信息”页面查看，通常为 125 或 130 开头的 10 位数字（注意不要填成账号 ID / UIN）",
+                    "Shown on the Account Info page; usually 10 digits starting with 125 or 130 (do not use Account ID / UIN).")
         ),
     ]}
 
