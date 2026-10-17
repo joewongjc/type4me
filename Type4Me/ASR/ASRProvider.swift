@@ -17,6 +17,8 @@ enum ASRProvider: String, CaseIterable, Codable, Sendable {
     case elevenlabs
     case gemini
     case grok
+    case groq
+    case mistral
     case soniox
     case metaMuse
     // China
@@ -50,6 +52,8 @@ enum ASRProvider: String, CaseIterable, Codable, Sendable {
         case .elevenlabs: return "ElevenLabs"
         case .gemini:   return "Gemini"
         case .grok:     return "Grok"
+        case .groq:     return "Groq"
+        case .mistral:  return "Mistral AI"
         case .soniox:   return "Soniox"
         case .metaMuse: return "Meta Muse"
         case .volcano:  return L("火山引擎 (Doubao)", "Volcano (Doubao)")

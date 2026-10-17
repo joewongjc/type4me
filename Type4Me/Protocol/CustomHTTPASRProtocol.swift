@@ -38,6 +38,7 @@ struct CustomHTTPBatchTranscriber: BatchASRTranscriber {
 
     let providerName = L("自定义识别", "Custom ASR")
     let maxDuration: TimeInterval? = nil
+    let suggestsRealtimeFallback = false
 
     func makeRequest(pcmData: Data, config: any ASRProviderConfig, options: ASRRequestOptions) throws -> URLRequest {
         guard let config = config as? CustomASRConfig else {

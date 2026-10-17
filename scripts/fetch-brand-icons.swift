@@ -230,6 +230,32 @@ let sources: [ProviderIconSource] = [
           <circle cx="58" cy="84" r="7" fill="#38BDF8"/>
         </svg>
         """
+    ),
+    ProviderIconSource(
+        filename: "groq.png",
+        urls: [
+            "https://unpkg.com/@lobehub/icons-static-svg@latest/icons/groq.svg",
+            "https://raw.githubusercontent.com/simple-icons/simple-icons/develop/icons/groq.svg"
+        ],
+        fallbackSVG: nil
+    ),
+    ProviderIconSource(
+        filename: "mistral.png",
+        urls: [
+            "https://unpkg.com/@lobehub/icons-static-svg@latest/icons/mistral-color.svg",
+            "https://unpkg.com/@lobehub/icons-static-svg@latest/icons/mistral.svg",
+            "https://raw.githubusercontent.com/simple-icons/simple-icons/develop/icons/mistral.svg"
+        ],
+        fallbackSVG: nil
+    ),
+    ProviderIconSource(
+        filename: "tencent.png",
+        urls: [
+            "https://unpkg.com/@lobehub/icons-static-svg@latest/icons/tencentcloud-color.svg",
+            "https://unpkg.com/@lobehub/icons-static-svg@latest/icons/tencent-color.svg",
+            "https://raw.githubusercontent.com/simple-icons/simple-icons/develop/icons/tencentcloud.svg"
+        ],
+        fallbackSVG: nil
     )
 ]
 

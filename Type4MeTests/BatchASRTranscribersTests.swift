@@ -250,6 +250,30 @@ final class BatchASRTranscribersTests: XCTestCase {
         XCTAssertEqual(fields.last?.name, "file", "xAI requires the file part after every option")
     }
 
+    func testGroq_buildsMultipartWithFileLast() throws {
+        let config = try XCTUnwrap(GroqASRConfig(credentials: [
+            "apiKey": "gsk-key",
+            "language": "en",
+        ]))
+        let request = try GroqBatchTranscriber().makeRequest(
+            pcmData: pcm,
+            config: config,
+            options: ASRRequestOptions(hotwords: ["Type4Me", "Whisper"])
+        )
+
+        XCTAssertEqual(request.url?.absoluteString, "https://api.groq.com/openai/v1/audio/transcriptions")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer gsk-key")
+
+        let fields = try multipartFields(request)
+        let values = Dictionary(fields.map { ($0.name, $0.value) }, uniquingKeysWith: { first, _ in first })
+        XCTAssertEqual(values["model"], "whisper-large-v3-turbo")
+        XCTAssertEqual(values["response_format"], "verbose_json")
+        XCTAssertEqual(values["temperature"], "0")
+        XCTAssertEqual(values["language"], "en")
+        XCTAssertEqual(values["prompt"], "Type4Me、Whisper")
+        XCTAssertEqual(fields.last?.name, "file")
+    }
+
     // MARK: - Shared HTTP handling
 
     func testTranscribe_rejectsRecordingsAboveProviderLimitWithoutNetwork() async throws {
@@ -265,7 +289,7 @@ final class BatchASRTranscribersTests: XCTestCase {
             )
             XCTFail("Expected recordingTooLong")
         } catch let error as BatchASRError {
-            guard case .recordingTooLong(_, let maxSeconds) = error else {
+            guard case .recordingTooLong(_, let maxSeconds, _, _) = error else {
                 return XCTFail("Unexpected error \(error)")
             }
             XCTAssertEqual(maxSeconds, 210)

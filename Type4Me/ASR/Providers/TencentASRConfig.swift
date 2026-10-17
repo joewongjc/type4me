@@ -1,33 +1,76 @@
 import Foundation
 
-struct TencentASRConfig: ASRProviderConfig, Sendable {
+struct TencentASRConfig: ASRRecognitionModeConfigurable, Sendable {
 
     static let provider = ASRProvider.tencent
     static var displayName: String { L("腾讯云", "Tencent Cloud") }
 
+    /// Chinese-English large model 2.0; the only engine offered in the first release.
+    static let engineModelType = "16k_zh_en_2.0"
+
     static var credentialFields: [CredentialField] {[
-        CredentialField(key: "secretId", label: L("Secret ID", "Secret ID"), placeholder: L("密钥 ID", "Key ID"), isSecure: false, isOptional: false, defaultValue: ""),
-        CredentialField(key: "secretKey", label: L("Secret Key", "Secret Key"), placeholder: L("密钥", "Secret"), isSecure: true, isOptional: false, defaultValue: ""),
-        CredentialField(key: "appId", label: L("App ID", "App ID"), placeholder: L("应用 ID", "App ID"), isSecure: false, isOptional: false, defaultValue: ""),
+        ASRRecognitionMode.credentialField,
+        CredentialField(
+            key: "secretId",
+            label: "SecretId",
+            placeholder: "AKID...",
+            isSecure: false,
+            isOptional: false,
+            defaultValue: "",
+            hint: L("在“访问管理 → API 密钥管理”中创建，建议使用仅授权语音识别的子账号密钥",
+                    "Create one under CAM → API Keys. A sub-account key limited to ASR is recommended.")
+        ),
+        CredentialField(
+            key: "secretKey",
+            label: "SecretKey",
+            placeholder: L("密钥", "Secret"),
+            isSecure: true,
+            isOptional: false,
+            defaultValue: ""
+        ),
+        CredentialField(
+            key: "appId",
+            label: "AppID",
+            placeholder: "1250000000",
+            isSecure: false,
+            isOptional: false,
+            defaultValue: "",
+            hint: L("在“账号信息”页面查看，为纯数字", "Shown on the Account Info page; digits only.")
+        ),
     ]}
 
+    let recognitionMode: ASRRecognitionMode
     let secretId: String
     let secretKey: String
     let appId: String
 
     init?(credentials: [String: String]) {
-        guard let sid = credentials["secretId"], !sid.isEmpty,
-              let key = credentials["secretKey"], !key.isEmpty,
-              let appId = credentials["appId"], !appId.isEmpty
-        else { return nil }
+        let mode = ASRRecognitionMode(credentials: credentials)
+        let sid = credentials["secretId"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let key = credentials["secretKey"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let app = credentials["appId"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+        guard !sid.isEmpty, !key.isEmpty, !app.isEmpty else { return nil }
+        guard CharacterSet.decimalDigits.isSuperset(of: CharacterSet(charactersIn: app)) else {
+            return nil
+        }
+
+        self.recognitionMode = mode
         self.secretId = sid
         self.secretKey = key
-        self.appId = appId
+        self.appId = app
     }
 
     func toCredentials() -> [String: String] {
-        ["secretId": secretId, "secretKey": secretKey, "appId": appId]
+        [
+            ASRRecognitionMode.credentialKey: recognitionMode.rawValue,
+            "secretId": secretId,
+            "secretKey": secretKey,
+            "appId": appId,
+        ]
     }
 
-    var isValid: Bool { !secretId.isEmpty && !secretKey.isEmpty && !appId.isEmpty }
+    var isValid: Bool {
+        !secretId.isEmpty && !secretKey.isEmpty && !appId.isEmpty
+    }
 }

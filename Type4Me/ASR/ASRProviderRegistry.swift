@@ -191,6 +191,22 @@ enum ASRProviderRegistry {
                 capabilities: .streaming(),
                 batch: .buffered(GrokBatchTranscriber())
             ),
+            .groq: ProviderEntry(
+                configType: GroqASRConfig.self,
+                createClient: { BufferedBatchASRClient(transcriber: GroqBatchTranscriber()) },
+                capabilities: .batch(),
+                validateCredentials: { config, options in
+                    try await BatchASRHTTP.validate(with: GroqBatchTranscriber(), config: config, options: options)
+                }
+            ),
+            .mistral: ProviderEntry(
+                configType: MistralASRConfig.self,
+                createClient: { BufferedBatchASRClient(transcriber: MistralBatchTranscriber()) },
+                capabilities: .batch(),
+                validateCredentials: { config, options in
+                    try await BatchASRHTTP.validate(with: MistralBatchTranscriber(), config: config, options: options)
+                }
+            ),
             .soniox: ProviderEntry(
                 configType: SonioxASRConfig.self,
                 createClient: { SonioxASRClient() },
@@ -229,7 +245,15 @@ enum ASRProviderRegistry {
             .google:  ProviderEntry(configType: GoogleASRConfig.self,  createClient: nil),
             .aws:     ProviderEntry(configType: AWSASRConfig.self,     createClient: nil),
             .aliyun:  ProviderEntry(configType: AliyunASRConfig.self,  createClient: nil),
-            .tencent: ProviderEntry(configType: TencentASRConfig.self, createClient: nil),
+            .tencent: ProviderEntry(
+                configType: TencentASRConfig.self,
+                createClient: { TencentASRClient() },
+                capabilities: .streaming(),
+                validateCredentials: { config, options in
+                    try await TencentASRClient.validateCredentials(config: config, options: options)
+                },
+                batch: .buffered(TencentRecTaskTranscriber())
+            ),
             .iflytek: ProviderEntry(configType: IflytekASRConfig.self, createClient: nil),
             .custom: ProviderEntry(
                 configType: CustomASRConfig.self,

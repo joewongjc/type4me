@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### 新功能
+
+- **Groq Whisper 语音识别**：新增 Groq 非实时语音识别服务商，提供 Whisper Large v3 Turbo 与 Large v3 模型，支持热词、静音能量过滤、已知幻觉过滤与中文自动繁简转换
+- **Mistral AI Voxtral 语音识别**：新增 Mistral AI 非实时语音识别服务商，支持专有转写模型 Voxtral Mini Transcribe 2（原生 context_bias 热词）与指令模型 Voxtral Small（严格转写与防偏离约束）
+- **腾讯云 ASR 中英大模型 2.0**：腾讯云由占位变为正式可用，采用中英大模型 2.0（16k_zh_en_2.0）引擎，支持实时流式（WebSocket 双协议兼容）与非实时（CreateRecTask 异步任务轮询）自由切换
+
 ## v2.10.0 — 多模型接入与语音输入体验升级 (2026-09-23)
 
 v2.10.0 增加文本处理与实时语音识别的服务选择，并改善菜单栏操作、语音改口和应用内更新说明。

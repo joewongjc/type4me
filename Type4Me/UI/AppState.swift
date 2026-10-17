@@ -1927,6 +1927,9 @@ private struct RecordingDisplayMetadata {
         if provider == .grok {
             return Self(modelName: GrokASRConfig.model)
         }
+        if provider == .tencent {
+            return Self(modelName: TencentASRConfig.engineModelType)
+        }
         if provider == .azure {
             guard let config = KeychainService.loadASRConfig(for: .azure) as? AzureASRConfig else {
                 return Self(modelName: AzureASRConfig.streamingModel)

@@ -89,6 +89,9 @@ struct BrandIconView: View {
             case .elevenlabs:  return "elevenlabs"
             case .gemini:      return "gemini"
             case .grok:        return "grok"
+            case .groq:        return "groq"
+            case .mistral:     return "mistral"
+            case .tencent:     return "tencent"
             case .metaMuse:    return "meta"
             case .stepfun:     return "stepfun"
             case .mimo:        return "mimo"
@@ -123,7 +126,7 @@ struct BrandIconView: View {
     /// Monochromatic dark icons that need color inversion in dark mode (aligned with OpenRouter's dark:invert).
     private var shouldInvertInDarkMode: Bool {
         switch iconName {
-        case "openai", "deepgram", "elevenlabs", "apple", "grok", "ollama":
+        case "openai", "deepgram", "elevenlabs", "apple", "grok", "ollama", "groq":
             return true
         default:
             return false

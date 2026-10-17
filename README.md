@@ -52,7 +52,7 @@ Type4Me 是一款免费开源的 macOS 语音输入法。按下快捷键说话�
 
 ## 功能扩展
 
-- **本地、云端语音识别**：下载本地版，可用 SenseVoice + Qwen3-ASR进行识别，完全免费；云端支持火山引擎（豆包）、Soniox、OpenAI 等 15 家服务。
+- **本地、云端语音识别**：下载本地版，可用 SenseVoice + Qwen3-ASR进行识别，完全免费；云端支持火山引擎（豆包）、Soniox、OpenAI、Groq、Mistral AI、腾讯云等 18 家服务。
 - **大模型随意换**：豆包、DeepSeek、Kimi、智谱、MiniMax、小米 MiMo、OpenAI、Claude、Gemini、OpenRouter，也可以接 Ollama、Magpie 或任意 OpenAI 兼容接口。
 - **语音改口**：刚输入的文字有错，按 `Fn` + `R` 说「改成下午 2 点」，只改那一处，可以一键或用语音撤销。
 - **词汇管理**：热词提高专有名词的识别率，片段替换可以把「我的邮箱」换成真实地址。装上 [type4me-vocab-skill](https://github.com/joewongjc/type4me-vocab-skill) 后，对 AI Agent 说一句「Qwen3.5 不要识别成 Queen 3.5」，它会帮你把词库维护好。

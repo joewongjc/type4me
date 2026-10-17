@@ -141,6 +141,28 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
                 ("API Key", L("获取", "get"), URL(string: "https://console.x.ai/team/default/api-keys")!),
                 (L("文档", "Docs"), L("查看", "view"), URL(string: "https://docs.x.ai/developers/model-capabilities/audio/speech-to-text")!),
             ]
+        case .groq:
+            return [
+                ("API Key", L("获取", "get"), URL(string: "https://console.groq.com/keys")!),
+                (L("文档", "Docs"), L("查看", "view"), URL(string: "https://console.groq.com/docs/speech-to-text")!),
+                (L("定价与限制", "Pricing & Limits"), L("查看", "view"), URL(string: "https://groq.com/pricing")!),
+            ]
+        case .mistral:
+            return [
+                ("API Key", L("获取", "get"), URL(string: "https://console.mistral.ai/api-keys")!),
+                (L("文档", "Docs"), L("查看", "view"), URL(string: "https://docs.mistral.ai/studio/audio/speech_to_text/offline_transcription")!),
+                (L("定价", "Pricing"), L("查看", "view"), URL(string: "https://docs.mistral.ai/inference/pricing")!),
+            ]
+        case .tencent:
+            let docsUrl = draftRecognitionMode == .batch
+                ? "https://cloud.tencent.com/document/product/1093/37823"
+                : "https://cloud.tencent.com/document/product/1093/131127"
+            return [
+                (L("API 密钥", "API Keys"), L("获取", "get"), URL(string: "https://console.cloud.tencent.com/cam/capi")!),
+                (L("语音识别控制台", "Console"), L("开通", "open"), URL(string: "https://console.cloud.tencent.com/asr")!),
+                (L("接入文档", "Docs"), L("查看", "view"), URL(string: docsUrl)!),
+                (L("定价", "Pricing"), L("查看", "view"), URL(string: "https://cloud.tencent.com/document/product/1093/35686")!),
+            ]
         case .soniox:
             return [
                 (L("API Key", "API Key"), L("获取", "get"), URL(string: "https://console.soniox.com")!),
@@ -263,6 +285,27 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
             return L(
                 "结束录音后提交完整录音；MiMo 的流式模式仅流式返回识别文本，不支持录音期间实时上传。",
                 "The complete recording is submitted when you stop recording. MiMo streams transcript text only; it does not accept live audio chunks while recording."
+            )
+        case .groq:
+            return L(
+                "Groq 推理平台托管的 OpenAI Whisper 模型，结束录音后提交完整录音，不支持边说边出字。Turbo 速度最快、价格最低；Large v3 准确率更高。指定语言可提升准确率与速度。",
+                "OpenAI Whisper models hosted on the Groq inference platform. The complete recording is submitted when you stop recording; live transcription is not supported. Turbo is the fastest and cheapest; Large v3 is more accurate. Choosing a language improves accuracy and speed."
+            )
+        case .mistral:
+            return L(
+                "结束录音后提交完整录音，不支持边说边出字。Voxtral Mini Transcribe 2 是专用转写模型，价格低、结果稳定，热词原生生效；Voxtral Small 是多模态理解模型，适合口音重或术语多的内容，极少数情况下可能改写措辞。热词中的空格会被拆分成单独的词。",
+                "The complete recording is submitted when you stop recording; live transcription is not supported. Voxtral Mini Transcribe 2 is a dedicated transcription model: low cost, consistent output, with native hotword support. Voxtral Small is a multimodal understanding model suited to heavy accents or dense terminology, and may occasionally rephrase. Hotwords containing spaces are split into separate words."
+            )
+        case .tencent:
+            if draftRecognitionMode == .batch {
+                return L(
+                    "使用中英大模型 2.0 引擎（16k_zh_en_2.0）。结束录音后提交识别任务，需多等几秒，单次录音最长约 2.5 分钟。后付费 ¥0.8/小时，每月免费 10 小时；后付费需在腾讯云控制台手动开启。含空格的热词不会发送给腾讯云。",
+                    "Uses the Chinese-English large model 2.0 engine (16k_zh_en_2.0). The recording is submitted as a recognition task when you stop, which takes a few extra seconds; recordings up to about 2.5 minutes. Pay-as-you-go ¥0.8/hour with 10 free hours per month; pay-as-you-go must be enabled in the Tencent Cloud console. Hotwords with spaces will not be sent to Tencent Cloud."
+                )
+            }
+            return L(
+                "使用中英大模型 2.0 引擎（16k_zh_en_2.0），支持普通话、英语及多种方言，边说边出字。后付费 ¥1.0/小时，每月免费 5 小时；后付费需在腾讯云控制台手动开启。含空格的热词不会发送给腾讯云。",
+                "Uses the Chinese-English large model 2.0 engine (16k_zh_en_2.0), covering Mandarin, English, and many dialects, with live transcription. Pay-as-you-go ¥1.0/hour with 5 free hours per month; pay-as-you-go must be enabled in the Tencent Cloud console. Hotwords with spaces will not be sent to Tencent Cloud."
             )
         default:
             return nil
