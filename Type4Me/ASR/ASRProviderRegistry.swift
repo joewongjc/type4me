@@ -137,7 +137,15 @@ enum ASRProviderRegistry {
                 configType: StepFunASRConfig.self,
                 createClient: { StepFunASRClient() },
                 capabilities: .streaming(),
-                batch: BatchVariant(createClient: { StepFunBatchASRClient() })
+                batch: BatchVariant(
+                    createClient: { StepFunBatchASRClient() },
+                    validateCredentials: { config, options in
+                        guard let stepConfig = config as? StepFunASRConfig else {
+                            throw StepFunBatchASRError.invalidConfig
+                        }
+                        try await StepFunBatchASRProtocol.validate(config: stepConfig, options: options)
+                    }
+                )
             ),
             .mimo: ProviderEntry(
                 configType: MiMoASRConfig.self,

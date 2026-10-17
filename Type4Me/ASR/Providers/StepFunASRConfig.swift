@@ -72,12 +72,12 @@ struct StepFunASRConfig: ASRRecognitionModeConfigurable, Sendable {
 
     static let provider = ASRProvider.stepfun
     static let displayName = L("阶跃星辰", "StepFun")
-    /// 默认实时流式识别模型 (SOTA)
-    static let defaultModel = "stepaudio-3-realtime"
+    /// 默认实时流式识别模型（流式 ASR 接口官方目前唯一支持模型为 2.5）
+    static let defaultModel = "stepaudio-2.5-asr-stream"
     static let supportedModels: [FieldOption] = [
-        FieldOption(value: "stepaudio-3-realtime", label: "StepAudio 3 Realtime"),
-        FieldOption(value: "stepaudio-3-realtime-preview", label: "StepAudio 3 Realtime (Preview)"),
         FieldOption(value: "stepaudio-2.5-asr-stream", label: "StepAudio 2.5 ASR Stream"),
+        FieldOption(value: "stepaudio-3-realtime", label: "StepAudio 3 Realtime"),
+        FieldOption(value: "stepaudio-3-realtime-preview", label: "StepAudio 3 Realtime Preview"),
     ]
 
     /// 默认批处理识别模型 (SOTA)

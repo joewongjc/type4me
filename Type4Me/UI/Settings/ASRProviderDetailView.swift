@@ -585,6 +585,17 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
                         selection: pickerBinding,
                         options: allOptions.map { ($0.value, $0.label) }
                     )
+                    if field.key == "model", provider == .stepfun,
+                       pickerBinding.wrappedValue.contains("stepaudio-3") {
+                        Label(
+                            L("阶跃流式 ASR 接口目前仅支持 2.5；StepAudio 3 当前仅支持「非实时」批处理模式。",
+                              "StepFun streaming ASR currently only supports 2.5; StepAudio 3 is available in Batch mode."),
+                            systemImage: "exclamationmark.triangle.fill"
+                        )
+                        .font(.system(size: 10))
+                        .foregroundStyle(TF.settingsAccentAmber)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                     if customASRModeFields.contains(field.key) {
                         FixedWidthTextField(text: customBinding, placeholder: field.placeholder)
                             .padding(.horizontal, 12)

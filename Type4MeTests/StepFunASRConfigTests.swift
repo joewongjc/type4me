@@ -14,7 +14,7 @@ final class StepFunASRConfigTests: XCTestCase {
             "apiKey": "sk-test",
             "region": "china",
             "accessMode": "standard",
-            "model": "stepaudio-3-realtime",
+            "model": "stepaudio-2.5-asr-stream",
             "batchModel": "stepaudio-3-asr-max",
         ])
         XCTAssertTrue(config.isValid)
