@@ -594,12 +594,12 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
                         if field.key == "model", provider == .deepgram,
                            DeepgramASRConfig.isFluxModel(customBinding.wrappedValue) {
                             Label(
-                                L("Flux 模型暂不支持；当前客户端使用 Deepgram V1 API。",
-                                  "Flux models are not supported yet because this client uses the Deepgram V1 API."),
-                                systemImage: "exclamationmark.triangle"
+                                L("已启用 Deepgram Flux 对话流式识别（自动路由至 V2 API）。",
+                                  "Deepgram Flux conversational streaming enabled (routes to V2 API)."),
+                                systemImage: "waveform.badge.mic"
                             )
                             .font(.system(size: 10))
-                            .foregroundStyle(TF.settingsAccentAmber)
+                            .foregroundStyle(TF.settingsAccentBlue)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }

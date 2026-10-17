@@ -15,11 +15,12 @@ final class DeepgramASRConfigTests: XCTestCase {
         XCTAssertTrue(config.isValid)
     }
 
-    func testSupportedModelsExposeCurrentNova3Options() {
+    func testSupportedModelsExposeNova3AndFluxOptions() {
         XCTAssertEqual(DeepgramASRConfig.supportedModels.first, "nova-3")
         XCTAssertTrue(DeepgramASRConfig.supportedModels.contains("nova-3-general"))
+        XCTAssertTrue(DeepgramASRConfig.supportedModels.contains("flux-general-multi"))
+        XCTAssertTrue(DeepgramASRConfig.supportedModels.contains("flux-general-en"))
         XCTAssertTrue(DeepgramASRConfig.supportedModels.contains("nova-3-medical"))
-        XCTAssertFalse(DeepgramASRConfig.supportedModels.contains("flux-general-multi"))
     }
 
     func testModelFieldAllowsCustomInput() {

@@ -43,37 +43,55 @@ enum DeepgramProtocol {
               components.host != nil else {
             throw DeepgramProtocolError.invalidEndpoint
         }
+        let isFlux = DeepgramASRConfig.isFluxModel(config.model)
+        if isFlux {
+            if components.path == "/v1/listen" || components.path.isEmpty {
+                components.path = "/v2/listen"
+            }
+        }
 
         var queryItems = [
             URLQueryItem(name: "model", value: config.model),
-            URLQueryItem(name: "language", value: config.language),
             URLQueryItem(name: "encoding", value: "linear16"),
             URLQueryItem(name: "sample_rate", value: "16000"),
-            URLQueryItem(name: "channels", value: "1"),
-            URLQueryItem(name: "interim_results", value: "true"),
-            URLQueryItem(name: "punctuate", value: options.enablePunc ? "true" : "false"),
-            URLQueryItem(name: "smart_format", value: "true"),
         ]
 
-        if config.numerals {
-            queryItems.append(URLQueryItem(name: "numerals", value: "true"))
-        }
-
-        let hotwords = options.hotwords
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-            .prefix(maxURLKeyterms)
-
-        if config.model.lowercased().hasPrefix("nova-3") {
-            queryItems.append(contentsOf: hotwords.map {
-                URLQueryItem(name: "keyterm", value: $0)
-            })
+        if isFlux {
+            queryItems.append(URLQueryItem(name: "eot_threshold", value: "0.7"))
+            if config.model.localizedCaseInsensitiveContains("multi") {
+                let lang = config.language.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !lang.isEmpty && lang.lowercased() != "multi" {
+                    queryItems.append(URLQueryItem(name: "language_hint", value: lang))
+                }
+            }
         } else {
-            queryItems.append(contentsOf: hotwords.map {
-                URLQueryItem(name: "keywords", value: "\($0):\(keywordIntensity)")
-            })
-        }
+            queryItems.append(contentsOf: [
+                URLQueryItem(name: "language", value: config.language),
+                URLQueryItem(name: "channels", value: "1"),
+                URLQueryItem(name: "interim_results", value: "true"),
+                URLQueryItem(name: "punctuate", value: options.enablePunc ? "true" : "false"),
+                URLQueryItem(name: "smart_format", value: "true"),
+            ])
 
+            if config.numerals {
+                queryItems.append(URLQueryItem(name: "numerals", value: "true"))
+            }
+
+            let hotwords = options.hotwords
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .prefix(maxURLKeyterms)
+
+            if config.model.lowercased().hasPrefix("nova-3") {
+                queryItems.append(contentsOf: hotwords.map {
+                    URLQueryItem(name: "keyterm", value: $0)
+                })
+            } else {
+                queryItems.append(contentsOf: hotwords.map {
+                    URLQueryItem(name: "keywords", value: "\($0):\(keywordIntensity)")
+                })
+            }
+        }
         components.queryItems = (components.queryItems ?? []) + queryItems
 
         guard let url = components.url else {
@@ -93,15 +111,22 @@ enum DeepgramProtocol {
         let decoder = JSONDecoder()
         let envelope = try decoder.decode(Envelope.self, from: data)
 
-        guard envelope.type == "Results" else {
+        let trimmedText: String
+        let isFinal: Bool
+
+        if envelope.type == "Results" {
+            let message = try decoder.decode(ResultsMessage.self, from: data)
+            let transcriptText = message.channel?.alternatives.first?.transcript ?? ""
+            trimmedText = transcriptText.trimmingCharacters(in: .whitespacesAndNewlines)
+            isFinal = message.isFinal || message.speechFinal || message.fromFinalize
+        } else if envelope.type == "TurnInfo" {
+            let message = try decoder.decode(TurnInfoMessage.self, from: data)
+            let transcriptText = message.transcript ?? ""
+            trimmedText = transcriptText.trimmingCharacters(in: .whitespacesAndNewlines)
+            isFinal = message.event == "EndOfTurn"
+        } else {
             return nil
         }
-
-        let message = try decoder.decode(ResultsMessage.self, from: data)
-        let transcriptText = message.channel?.alternatives.first?.transcript ?? ""
-        let trimmedText = transcriptText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let isFinal = message.isFinal || message.speechFinal || message.fromFinalize
-
         var nextConfirmed = confirmedSegments
         var partialText = ""
 
@@ -175,6 +200,20 @@ enum DeepgramProtocol {
             isFinal = try container.decodeIfPresent(Bool.self, forKey: .isFinal) ?? false
             speechFinal = try container.decodeIfPresent(Bool.self, forKey: .speechFinal) ?? false
             fromFinalize = try container.decodeIfPresent(Bool.self, forKey: .fromFinalize) ?? false
+        }
+    }
+
+    private struct TurnInfoMessage: Decodable {
+        let type: String
+        let event: String
+        let transcript: String?
+        let turnIndex: Int?
+
+        enum CodingKeys: String, CodingKey {
+            case type
+            case event
+            case transcript
+            case turnIndex = "turn_index"
         }
     }
 

@@ -71,6 +71,29 @@ final class DeepgramProtocolTests: XCTestCase {
         XCTAssertEqual(items.values(for: "keyterm"), ["Type4Me", "Hangzhou"])
         XCTAssertNil(items.value(for: "keywords"))
     }
+    func testBuildWebSocketURL_routesFluxToV2Endpoint() throws {
+        let config = try XCTUnwrap(DeepgramASRConfig(credentials: [
+            "apiKey": "dg_test_key",
+            "model": "flux-general-multi",
+            "language": "zh",
+        ]))
+        let url = try DeepgramProtocol.buildWebSocketURL(
+            config: config,
+            options: ASRRequestOptions(enablePunc: true)
+        )
+        let components = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false))
+        let items = components.queryItems ?? []
+
+        XCTAssertEqual(components.path, "/v2/listen")
+        XCTAssertEqual(items.value(for: "model"), "flux-general-multi")
+        XCTAssertEqual(items.value(for: "encoding"), "linear16")
+        XCTAssertEqual(items.value(for: "sample_rate"), "16000")
+        XCTAssertEqual(items.value(for: "eot_threshold"), "0.7")
+        XCTAssertEqual(items.value(for: "language_hint"), "zh")
+        XCTAssertNil(items.value(for: "language"))
+        XCTAssertNil(items.value(for: "interim_results"))
+    }
+
 
     func testUpdateTranscript_buildsPartialTextAgainstConfirmedSegments() throws {
         let message = """
@@ -140,6 +163,41 @@ final class DeepgramProtocolTests: XCTestCase {
         )
 
         XCTAssertNil(update)
+    }
+
+    func testUpdateTranscript_parsesFluxTurnInfoUpdates() throws {
+        let updateMessage = """
+        {
+          "type": "TurnInfo",
+          "event": "Update",
+          "transcript": "hello world"
+        }
+        """
+        let update = try XCTUnwrap(
+            DeepgramProtocol.makeTranscriptUpdate(
+                from: Data(updateMessage.utf8),
+                confirmedSegments: []
+            )
+        )
+        XCTAssertEqual(update.transcript.partialText, "hello world")
+        XCTAssertFalse(update.transcript.isFinal)
+
+        let eotMessage = """
+        {
+          "type": "TurnInfo",
+          "event": "EndOfTurn",
+          "transcript": "hello world"
+        }
+        """
+        let finalized = try XCTUnwrap(
+            DeepgramProtocol.makeTranscriptUpdate(
+                from: Data(eotMessage.utf8),
+                confirmedSegments: []
+            )
+        )
+        XCTAssertEqual(finalized.confirmedSegments, ["hello world"])
+        XCTAssertEqual(finalized.transcript.partialText, "")
+        XCTAssertTrue(finalized.transcript.isFinal)
     }
 }
 
