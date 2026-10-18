@@ -97,6 +97,18 @@ enum StepFunBatchASRProtocol {
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             throw StepFunBatchASRError.requestFailed(code: http.statusCode, message: message)
         }
+
+        // Consume SSE events to verify business acceptance (detect error events in stream)
+        for try await line in bytes.lines {
+            if let event = try parseSSELine(line) {
+                switch event {
+                case .delta, .done:
+                    return
+                case .error(let message):
+                    throw StepFunBatchASRError.requestFailed(code: 200, message: message)
+                }
+            }
+        }
     }
 
 

@@ -195,6 +195,43 @@ struct TencentRecTaskTranscriber: BatchASRTranscriber {
         }
 
         guard !cleanedLines.isEmpty else { return "" }
-        return cleanedLines.joined()
+
+        var buffer = ""
+        for line in cleanedLines {
+            if buffer.isEmpty {
+                buffer = line
+            } else {
+                let lastChar = buffer.last!
+                let firstChar = line.first!
+                if shouldInsertSpace(between: lastChar, and: firstChar) {
+                    buffer += " " + line
+                } else {
+                    buffer += line
+                }
+            }
+        }
+        return buffer
+    }
+
+    private static func shouldInsertSpace(between last: Character, and next: Character) -> Bool {
+        for scalar in last.unicodeScalars {
+            if isHan(scalar) { return false }
+        }
+        for scalar in next.unicodeScalars {
+            if isHan(scalar) { return false }
+        }
+        let cjkPunctuation = "。，、？！；：“”‘’（）《》【】…—"
+        if cjkPunctuation.contains(last) || cjkPunctuation.contains(next) {
+            return false
+        }
+        return true
+    }
+
+    private static func isHan(_ scalar: Unicode.Scalar) -> Bool {
+        let v = scalar.value
+        return (v >= 0x4E00 && v <= 0x9FFF) ||
+               (v >= 0x3400 && v <= 0x4DBF) ||
+               (v >= 0x20000 && v <= 0x2A6DF) ||
+               (v >= 0xF900 && v <= 0xFAFF)
     }
 }

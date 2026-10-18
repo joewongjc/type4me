@@ -35,12 +35,19 @@ final class TencentRecTaskProtocolTests: XCTestCase {
     }
 
     func testCleanResultText_stripsTimestampsAndJoins() {
-        let raw = """
+        let rawZh = """
         [0:0.000,0:5.120]  这是第一句话。
         [0:5.120,0:9.800]  这是第二句话。
         """
-        let cleaned = TencentRecTaskTranscriber.cleanResultText(raw)
-        XCTAssertEqual(cleaned, "这是第一句话。这是第二句话。")
+        let cleanedZh = TencentRecTaskTranscriber.cleanResultText(rawZh)
+        XCTAssertEqual(cleanedZh, "这是第一句话。这是第二句话。")
+
+        let rawEn = """
+        [0:0.000,0:2.100]  Hello world.
+        [0:2.100,0:4.300]  Nice to meet you.
+        """
+        let cleanedEn = TencentRecTaskTranscriber.cleanResultText(rawEn)
+        XCTAssertEqual(cleanedEn, "Hello world. Nice to meet you.")
     }
 
     func testApiErrorExtraction() {

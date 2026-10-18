@@ -117,6 +117,14 @@ final class TencentASRProtocolTests: XCTestCase {
         XCTAssertEqual(state.transcript.authoritativeText, "今天下午3点。开会")
     }
 
+    func testTranscriptState_staysNonFinalWhenInterruptedBeforeFinal() {
+        var state = TencentTranscriptState()
+        state.apply(TencentSentenceUpdate(id: 0, text: "说了一半的话", isFinal: false))
+        XCTAssertFalse(state.transcript.isFinal)
+        XCTAssertEqual(state.transcript.partialText, "说了一半的话")
+        XCTAssertEqual(state.transcript.confirmedSegments, [])
+    }
+
     // MARK: - Hotwords Formatting
 
     func testHotwordsFormatting() {

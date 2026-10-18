@@ -9,6 +9,21 @@ final class ASRProviderRegistryTests: XCTestCase {
         }
     }
 
+    func testSelectedASRProvider_retainsExistingDeprecatedSelection() {
+        let key = "tf_selectedASRProvider"
+        let original = UserDefaults.standard.string(forKey: key)
+        defer {
+            if let original {
+                UserDefaults.standard.set(original, forKey: key)
+            } else {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
+        }
+
+        UserDefaults.standard.set(ASRProvider.baidu.rawValue, forKey: key)
+        XCTAssertEqual(KeychainService.selectedASRProvider, .baidu, "Existing configuration must not be silently redirected to Volcano")
+    }
+
     func testResolvedModeFallsBackToDirectForUnavailableProvider() {
         let customMode = ProcessingMode(
             id: UUID(),

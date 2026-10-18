@@ -15,6 +15,7 @@ actor TencentASRClient: SpeechRecognizer {
     private var receiveTask: Task<Void, Never>?
     private var transcriptState = TencentTranscriptState()
     private var didRequestCommit = false
+    private var didReceiveFinal = false
     private var voiceId = ""
 
     var events: AsyncStream<RecognitionEvent> {
@@ -33,6 +34,7 @@ actor TencentASRClient: SpeechRecognizer {
         self.config = tencentConfig
         self.options = options
         self.didRequestCommit = false
+        self.didReceiveFinal = false
         self.transcriptState = TencentTranscriptState()
         self.voiceId = UUID().uuidString
 
@@ -188,6 +190,7 @@ actor TencentASRClient: SpeechRecognizer {
         }
 
         if parsed.isFinal {
+            didReceiveFinal = true
             transcriptState.markFinal()
             eventContinuation?.yield(.transcript(transcriptState.transcript))
             eventContinuation?.yield(.completed)
@@ -196,15 +199,12 @@ actor TencentASRClient: SpeechRecognizer {
     }
 
     private func handleReceiveFailure(_ error: Error) {
-        if didRequestCommit {
-            // End was already requested, commit whatever text we have
-            transcriptState.markFinal()
-            eventContinuation?.yield(.transcript(transcriptState.transcript))
-            eventContinuation?.yield(.completed)
-        } else {
-            eventContinuation?.yield(.error(error))
-            eventContinuation?.yield(.completed)
+        guard !didReceiveFinal else {
+            finishSession()
+            return
         }
+        eventContinuation?.yield(.error(error))
+        eventContinuation?.yield(.completed)
         finishSession()
     }
 
@@ -215,6 +215,11 @@ actor TencentASRClient: SpeechRecognizer {
     }
 
     // MARK: - Credential Validation
+    private enum ValidationProbeResult {
+        case success
+        case error(Error)
+        case timedOut
+    }
 
     static func validateCredentials(config: any ASRProviderConfig, options: ASRRequestOptions) async throws {
         let client = TencentASRClient()
@@ -226,27 +231,32 @@ actor TencentASRClient: SpeechRecognizer {
         try await client.sendAudio(silence)
         try await client.endAudio()
 
-        // Wait for first error or clean completion within 2 seconds
-        let serverError = await withTaskGroup(of: Error?.self) { group in
+        // Wait for first error or clean completion with an explicit 3-second deadline
+        let result = await withTaskGroup(of: ValidationProbeResult.self) { group in
             group.addTask {
                 for await event in events {
-                    if case .error(let error) = event { return error }
-                    if case .completed = event { return nil }
+                    if case .error(let error) = event { return .error(error) }
+                    if case .completed = event { return .success }
                 }
-                return nil
+                return .timedOut
             }
             group.addTask {
-                try? await Task.sleep(for: .seconds(2))
-                return nil
+                try? await Task.sleep(for: .seconds(3))
+                return .timedOut
             }
-            let first = await group.next() ?? nil
+            let first = await group.next() ?? .timedOut
             group.cancelAll()
             return first
         }
 
         await client.disconnect()
-        if let serverError {
-            throw serverError
+        switch result {
+        case .success:
+            return
+        case .error(let error):
+            throw error
+        case .timedOut:
+            throw TencentASRError.taskTimedOut
         }
     }
 }

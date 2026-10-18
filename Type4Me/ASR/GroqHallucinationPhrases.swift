@@ -51,8 +51,8 @@ enum GroqHallucinationPhrases {
             let segments = responseRoot["segments"] as? [[String: Any]] ?? []
 
             guard let firstSeg = segments.first else {
-                // No segment metadata to prove speech
-                return true
+                // Without segment metadata, adopt a conservative policy: preserve speech rather than deleting it
+                return false
             }
 
             let end = firstSeg["end"] as? Double ?? 0

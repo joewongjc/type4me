@@ -103,8 +103,7 @@ enum KeychainService {
     static var selectedASRProvider: ASRProvider {
         get {
             guard let raw = UserDefaults.standard.string(forKey: selectedProviderKey),
-                  let provider = ASRProvider(rawValue: raw),
-                  !provider.isDeprecated
+                  let provider = ASRProvider(rawValue: raw)
             else { return .volcano }
             return provider
         }
