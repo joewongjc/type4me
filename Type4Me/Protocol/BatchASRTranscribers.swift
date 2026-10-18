@@ -473,18 +473,14 @@ struct GroqBatchTranscriber: BatchASRTranscriber {
 
         guard !text.isEmpty else { return "" }
 
-        // 1. Filter known hallucination phrases
-        if GroqHallucinationPhrases.isHallucination(text) {
+        // 1. Filter known hallucination phrases (combining text and audio evidence)
+        if GroqHallucinationPhrases.isHallucination(text: text, responseRoot: root) {
             return ""
         }
 
         // 2. Hotword echo sanitization
         text = ASRHotwordLeakSanitizer.sanitize(text, hotwords: options.hotwords)
         guard !text.isEmpty else { return "" }
-
-        if isHotwordEcho(text, hotwords: options.hotwords) {
-            return ""
-        }
 
         // 3. Simplified Chinese conversion when language is Chinese
         let detectedLanguage = (root["language"] as? String)?.lowercased()
@@ -499,55 +495,5 @@ struct GroqBatchTranscriber: BatchASRTranscriber {
         }
 
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private func isHotwordEcho(_ text: String, hotwords: [String]) -> Bool {
-        guard !hotwords.isEmpty else { return false }
-        let separators = CharacterSet(charactersIn: "、，, \t\r\n")
-        let tokens = text.components(separatedBy: separators)
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-
-        guard tokens.count >= 2 else { return false }
-
-        let normalizedHotwords = hotwords.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
-        var matchCount = 0
-
-        for token in tokens {
-            let lowerToken = token.lowercased()
-            if normalizedHotwords.contains(where: { hw in
-                Self.isNearMatch(lowerToken, hw)
-            }) {
-                matchCount += 1
-            }
-        }
-
-        return Double(matchCount) / Double(tokens.count) >= 0.5
-    }
-
-    private static func isNearMatch(_ a: String, _ b: String) -> Bool {
-        if a == b { return true }
-        if abs(a.count - b.count) > 1 { return false }
-        return levenshtein(a, b) <= 1
-    }
-
-    private static func levenshtein(_ s1: String, _ s2: String) -> Int {
-        let a = Array(s1)
-        let b = Array(s2)
-        if a.isEmpty { return b.count }
-        if b.isEmpty { return a.count }
-
-        var row = Array(0...b.count)
-        for i in 1...a.count {
-            var prev = row[0]
-            row[0] = i
-            for j in 1...b.count {
-                let cost = a[i - 1] == b[j - 1] ? 0 : 1
-                let next = min(row[j] + 1, row[j - 1] + 1, prev + cost)
-                prev = row[j]
-                row[j] = next
-            }
-        }
-        return row[b.count]
     }
 }

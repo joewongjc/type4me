@@ -76,17 +76,22 @@ actor TencentASRClient: SpeechRecognizer {
 
         // Wait for handshake response (timeout 5s)
         do {
-            let handshakeMessage = try await withThrowingTaskGroup(of: URLSessionWebSocketTask.Message.self) { group in
-                group.addTask {
-                    try await ws.receive()
+            let handshakeMessage = try await withTaskCancellationHandler {
+                try await withThrowingTaskGroup(of: URLSessionWebSocketTask.Message.self) { group in
+                    group.addTask {
+                        try await ws.receive()
+                    }
+                    group.addTask {
+                        try await Task.sleep(for: .seconds(5))
+                        ws.cancel(with: .goingAway, reason: nil)
+                        throw TencentASRError.handshakeFailed(code: -1, message: "Handshake timed out")
+                    }
+                    let first = try await group.next()!
+                    group.cancelAll()
+                    return first
                 }
-                group.addTask {
-                    try await Task.sleep(for: .seconds(5))
-                    throw TencentASRError.handshakeFailed(code: -1, message: "Handshake timed out")
-                }
-                let first = try await group.next()!
-                group.cancelAll()
-                return first
+            } onCancel: {
+                ws.cancel(with: .goingAway, reason: nil)
             }
 
             let data: Data

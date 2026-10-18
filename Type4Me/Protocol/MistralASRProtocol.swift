@@ -257,9 +257,11 @@ struct MistralBatchTranscriber: BatchASRTranscriber {
         text = stripLeadingLabels(text)
         text = stripWrappingQuotes(text)
 
-        // Check sentinel
-        if text == Self.noSpeechSentinel ||
-           text.replacingOccurrences(of: Self.noSpeechSentinel, with: "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        // Check sentinel (including trailing punctuation variants such as <<NO_SPEECH>>.)
+        let punctuation = CharacterSet.punctuationCharacters.union(CharacterSet(charactersIn: "。，、？！；：“”‘’（）《》【】…—.!?,:;\"'"))
+        let remaining = text.replacingOccurrences(of: Self.noSpeechSentinel, with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines.union(punctuation))
+        if remaining.isEmpty {
             return ""
         }
 

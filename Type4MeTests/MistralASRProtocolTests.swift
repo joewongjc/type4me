@@ -141,4 +141,25 @@ final class MistralASRProtocolTests: XCTestCase {
         let text = try transcriber.parseTranscript(from: Data(json.utf8), config: config, options: ASRRequestOptions())
         XCTAssertEqual(text, "")
     }
+
+    func testSmall_returnsEmptyForNoSpeechSentinelWithPunctuationVariants() throws {
+        let transcriber = MistralBatchTranscriber()
+        let config = try XCTUnwrap(MistralASRConfig(credentials: ["apiKey": "test-key", "model": "voxtral-small-2507"]))
+        let variants = ["<<NO_SPEECH>>.", "<<NO_SPEECH>>。", "  <<NO_SPEECH>>!  "]
+
+        for v in variants {
+            let json = """
+            {
+                "choices": [{
+                    "message": {
+                        "role": "assistant",
+                        "content": "\(v)"
+                    }
+                }]
+            }
+            """
+            let text = try transcriber.parseTranscript(from: Data(json.utf8), config: config, options: ASRRequestOptions())
+            XCTAssertEqual(text, "", "Failed for variant: \(v)")
+        }
+    }
 }
