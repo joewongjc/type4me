@@ -81,12 +81,22 @@ fi
 BINARY="${BINARY:-}"
 if [ -z "$BINARY" ]; then
     if [ "${SKIP_BUILD:-0}" != "1" ]; then
+        # SwiftPM's Swift Build backend links with `--sysroot` only, so clang
+        # cannot read the SDK version and stamps LC_BUILD_VERSION with the
+        # deployment target (14.0). AppKit then runs the app in legacy-design
+        # compatibility mode (old traffic lights, window chrome and controls).
+        # Passing `-isysroot` to the link step records the real SDK version.
+        SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
+        LINK_SDK_FLAGS=(
+            -Xswiftc -Xclang-linker -Xswiftc -isysroot
+            -Xswiftc -Xclang-linker -Xswiftc "$SDK_PATH"
+        )
         if [ "$ARCH" = "arm64" ]; then
             echo "Building arm64 release..."
-            swift build -c release --package-path "$PROJECT_DIR" --arch arm64
+            swift build -c release --package-path "$PROJECT_DIR" --arch arm64 "${LINK_SDK_FLAGS[@]}"
         else
             echo "Building universal release (arm64 + x86_64)..."
-            swift build -c release --package-path "$PROJECT_DIR" --arch arm64 --arch x86_64
+            swift build -c release --package-path "$PROJECT_DIR" --arch arm64 --arch x86_64 "${LINK_SDK_FLAGS[@]}"
         fi
     fi
 
