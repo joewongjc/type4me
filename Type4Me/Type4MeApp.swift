@@ -243,31 +243,64 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             for await event in recognitionEvents {
                     switch event {
-                    case .ready:
-                        NSLog("[Type4Me] ready event received")
-                        DebugFileLogger.log("ready event received, current barPhase=\(String(describing: appState.barPhase))")
-                        appState.markRecordingReady()
+                    case .sessionReady(let generation):
+                        NSLog("[Type4Me] sessionReady event received gen=\(generation)")
+                        DebugFileLogger.log("sessionReady event received gen=\(generation), current barPhase=\(String(describing: appState.barPhase))")
+                        appState.markRecordingReady(generation: generation)
                         let volumeToken = SystemVolumeManager.reserveAttenuation()
                         Task { @MainActor in
-                            guard appState.barPhase == .recording else {
-                                DebugFileLogger.log("playStart aborted, barPhase=\(String(describing: appState.barPhase))")
+                            let outcome = await StartSoundRouteGate.shared.waitUntilSettled(generation: generation)
+                            guard StartSoundPlaybackDecision.shouldPlayStartSound(
+                                outcome: outcome,
+                                barPhase: appState.barPhase,
+                                readyGeneration: appState.recordingReadyGeneration,
+                                expectedGeneration: generation
+                            ) else {
+                                DebugFileLogger.log("playStart aborted stage=main gen=\(generation) outcome=\(outcome) barPhase=\(appState.barPhase)")
                                 return
                             }
-                            NSLog("[Type4Me] playStart firing")
-                            DebugFileLogger.log("playStart firing")
-                            // BT wake-up preamble is baked into the sound buffer itself.
-                            SoundFeedback.playStart()
-                            // Lower volume after start sound finishes playing
+                            NSLog("[Type4Me] playStart firing gen=\(generation)")
+                            DebugFileLogger.log("playStart firing gen=\(generation)")
+                            let graceArmer = await session.speechGraceArmer(generation: generation)
+                            let playback = await SoundFeedback.playStart(StartSoundRequest(
+                                generation: generation,
+                                isStillValid: { StartSoundRouteGate.shared.isCurrent(generation: generation) },
+                                rebuildPlayer: outcome == .switched || outcome == .timeout,
+                                willPlay: graceArmer
+                            ))
+
+                            // Volume reduction schedule
                             let targetVolumePercent = SystemVolumeManager.configuredReductionPercent()
                             if targetVolumePercent >= 0 {
-                                let delayMs = SoundFeedback.startSoundDurationMs()
-                                if delayMs > 0 {
-                                    try? await Task.sleep(for: .milliseconds(delayMs))
+                                let soundDurationMs = SoundFeedback.startSoundDurationMs()
+                                let soundDuration = Duration.milliseconds(soundDurationMs)
+                                let schedule = StartSoundPlaybackDecision.volumeSchedule(for: playback, soundDuration: soundDuration)
+                                switch schedule {
+                                case .afterSound(let targetInstant):
+                                    let remaining = targetInstant - ContinuousClock.now
+                                    if remaining > .zero {
+                                        try? await Task.sleep(until: targetInstant, clock: .continuous)
+                                    }
+                                    guard appState.barPhase == .recording,
+                                          appState.recordingReadyGeneration == generation,
+                                          StartSoundRouteGate.shared.isCurrent(generation: generation) else {
+                                        return
+                                    }
+                                    SystemVolumeManager.lower(to: Float(targetVolumePercent) / 100.0, token: volumeToken)
+                                case .immediately:
+                                    guard appState.barPhase == .recording,
+                                          appState.recordingReadyGeneration == generation,
+                                          StartSoundRouteGate.shared.isCurrent(generation: generation) else {
+                                        return
+                                    }
+                                    SystemVolumeManager.lower(to: Float(targetVolumePercent) / 100.0, token: volumeToken)
+                                case .none:
+                                    break
                                 }
-                                guard appState.barPhase == .recording else { return }
-                                SystemVolumeManager.lower(to: Float(targetVolumePercent) / 100.0, token: volumeToken)
                             }
                         }
+                    case .ready:
+                        break
                     case .transcript(let transcript):
                         appState.setLiveTranscript(transcript)
                     case .completed:
@@ -547,6 +580,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ) { [weak self] _ in
                 MainActor.assumeIsolated {
                     AudioKeepAliveManager.syncMicState()
+                    Task {
+                        await self?.session.handleInputDeviceChange()
+                    }
                     self?.updateEffectiveInputDevice(notify: true)
                 }
             }
@@ -732,7 +768,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task {
             // Keep the existing session as the only recording owner and wait
             // for its previous teardown before starting a new capture.
+            let awaitIdleT0 = ContinuousClock.now
             let ready = await self.session.awaitIdle()
+            let awaitIdleDuration = ContinuousClock.now - awaitIdleT0
             if !ready {
                 NSLog("[Type4Me] >>> %@: previous session did not reach idle in time", source.rawValue)
                 DebugFileLogger.log("\(source.rawValue) start: awaitIdle timed out")
@@ -748,6 +786,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await self.session.startRecording(
                 mode: effectiveMode,
                 requestedAt: recordingRequestedAt,
+                awaitIdleDuration: awaitIdleDuration,
                 isAutomation: isAutomation
             )
         }
@@ -1196,48 +1235,64 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             guard let newMode = availableModes.first(where: { $0.id == newModeId }) else { return }
             let phase = MainActor.assumeIsolated { self.appState.barPhase }
-            if phase == .recovering {
-                MainActor.assumeIsolated { self.hotkeyManager.resetActiveState() }
-                Task { _ = await self.session.handleRecoveryHotkeyPress() }
-                return
-            }
             let startingMode = MainActor.assumeIsolated { self.appState.currentMode }
             let allowsModeSwitch = CrossModeFinishPreference.isEnabled()
-            let endingMode: ProcessingMode
+            let resolvedMode: ProcessingMode?
             if allowsModeSwitch {
                 let selectedProvider = KeychainService.selectedASRProvider
-                let resolvedMode = ASRProviderRegistry.resolvedMode(for: newMode, provider: selectedProvider)
-                endingMode = availableModes.first(where: { $0.id == resolvedMode.id }) ?? resolvedMode
+                let res = ASRProviderRegistry.resolvedMode(for: newMode, provider: selectedProvider)
+                resolvedMode = availableModes.first(where: { $0.id == res.id }) ?? res
             } else {
-                // Avoid provider resolution entirely when the starting mode must be retained.
-                endingMode = newMode
+                resolvedMode = nil
             }
-            let processingMode = CrossModeFinishPreference.processingMode(
+
+            let decision = CrossModeFinishRouter.decide(
+                phase: phase,
                 startingMode: startingMode,
-                endingMode: endingMode,
-                isEnabled: allowsModeSwitch
-            )
-            NSLog(
-                "[Type4Me] >>> HOTKEY: Cross-mode finish (start=%@, end=%@, process=%@)",
-                startingMode.name,
-                newMode.name,
-                processingMode.name
-            )
-            DebugFileLogger.log(
-                "hotkey cross-mode finish start=\(startingMode.name) end=\(newMode.name) process=\(processingMode.name)"
+                newMode: newMode,
+                resolvedMode: resolvedMode,
+                allowsModeSwitch: allowsModeSwitch
             )
 
-            MainActor.assumeIsolated {
-                if allowsModeSwitch {
-                    self.appState.currentMode = processingMode
+            switch decision {
+            case .recover:
+                MainActor.assumeIsolated { self.hotkeyManager.resetActiveState() }
+                Task { _ = await self.session.handleRecoveryHotkeyPress() }
+            case .cancel:
+                NSLog("[Type4Me] >>> HOTKEY: Cross-mode finish cancelled in preparing phase")
+                DebugFileLogger.log("hotkey cross-mode finish cancelled in preparing phase")
+                MainActor.assumeIsolated {
+                    self.recordingStartGate.invalidate()
+                    self.selectionAskFollowUpStartGate.invalidate()
+                    self.appState.stopRecording()
                 }
-                self.appState.stopRecording()
-            }
-            Task {
-                if allowsModeSwitch {
-                    await self.session.switchMode(to: processingMode)
+                Task {
+                    await self.session.cancelRecording()
                 }
-                await self.session.stopRecording()
+            case .finish(let processingMode, let allowsSwitch):
+                NSLog(
+                    "[Type4Me] >>> HOTKEY: Cross-mode finish (start=%@, end=%@, process=%@)",
+                    startingMode.name,
+                    newMode.name,
+                    processingMode.name
+                )
+                DebugFileLogger.log(
+                    "hotkey cross-mode finish start=\(startingMode.name) end=\(newMode.name) process=\(processingMode.name)"
+                )
+                MainActor.assumeIsolated {
+                    if allowsSwitch {
+                        self.appState.currentMode = processingMode
+                    }
+                    self.appState.stopRecording()
+                }
+                Task {
+                    if allowsSwitch {
+                        await self.session.switchMode(to: processingMode)
+                    }
+                    await self.session.stopRecording()
+                }
+            case .ignore:
+                break
             }
         }
 

@@ -108,6 +108,7 @@ enum InjectionOutcome: Sendable, Equatable {
 
 enum RecognitionEvent: Sendable {
     case ready
+    case sessionReady(generation: UInt64)
     case transcript(RecognitionTranscript)
     case error(Error)
     case completed

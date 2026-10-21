@@ -52,7 +52,19 @@ enum SoundFeedback {
 
     /// Cached PCM buffers for tone generation and bundled sounds.
     nonisolated(unsafe) private static var cachedBuffers: [String: AVAudioPCMBuffer] = [:]
+    nonisolated(unsafe) private static var cachedWAVData: [String: Data] = [:]
 
+    #if DEBUG
+    nonisolated(unsafe) static var customSoundQueue: DispatchQueue?
+    nonisolated(unsafe) static var customPlayerFactory: ((String) -> (any SoundPlaying)?)?
+    #endif
+
+    private static var effectiveSoundQueue: DispatchQueue {
+        #if DEBUG
+        if let custom = customSoundQueue { return custom }
+        #endif
+        return soundQueue
+    }
     private static let sampleRate: Double = 44100
     private static let engineFormat = AVAudioFormat(
         commonFormat: .pcmFormatFloat32, sampleRate: 44100, channels: 1, interleaved: true
@@ -106,6 +118,102 @@ enum SoundFeedback {
             return Int(Double(buffer.frameLength) / sampleRate * 1000)
         }
     }
+    static func playStart(_ request: StartSoundRequest) async -> StartSoundPlayback {
+        let style = StartSoundStyle(
+            rawValue: UserDefaults.standard.string(forKey: "tf_startSound") ?? StartSoundStyle.chime.rawValue
+        ) ?? .chime
+
+        guard style != .off else {
+            DebugFileLogger.log("sound playStart disabled gen=\(request.generation)")
+            return .disabled
+        }
+
+        let enqueuedAt = ContinuousClock.now
+        let targetQueue = effectiveSoundQueue
+
+        return await withCheckedContinuation { continuation in
+            targetQueue.async {
+                // ① Check validity before touching any playback state
+                guard request.isStillValid() else {
+                    let waitMs = formatWait(from: enqueuedAt)
+                    DebugFileLogger.log("start sound queue gen=\(request.generation) result=skipped(invalidated) waitedInQueue=\(waitMs)ms")
+                    continuation.resume(returning: .skipped(.invalidated))
+                    return
+                }
+
+                let (label, volume) = resolveStartSoundSpec(for: style)
+                var player: (any SoundPlaying)?
+                if request.rebuildPlayer {
+                    player = rebuildPlayer(for: label)
+                } else {
+                    player = cachedPlayers[label] ?? rebuildPlayer(for: label)
+                }
+
+                guard let activePlayer = player else {
+                    continuation.resume(returning: .skipped(.noPlayer))
+                    return
+                }
+
+                if let avPlayer = activePlayer as? AVAudioPlayer {
+                    applyOutputDevice(to: avPlayer)
+                    avPlayer.prepareToPlay()
+                }
+
+                // Allow currently playing sound to finish gracefully without clicking
+                for (key, p) in cachedPlayers where key != label {
+                    if p.isPlaying {
+                        let remaining = max(0, p.duration - p.currentTime)
+                        if remaining > 0 && remaining < 0.35 {
+                            Thread.sleep(forTimeInterval: remaining)
+                        }
+                    }
+                    p.stop()
+                }
+                // ③ Re-check after rebuild
+                guard request.isStillValid() else {
+                    let waitMs = formatWait(from: enqueuedAt)
+                    DebugFileLogger.log("start sound queue gen=\(request.generation) result=skipped(invalidated) waitedInQueue=\(waitMs)ms")
+                    continuation.resume(returning: .skipped(.invalidated))
+                    return
+                }
+
+                // ④ Notify willPlay with actual playback start time
+                let startedAt = ContinuousClock.now
+                request.willPlay?(startedAt)
+
+                // ⑤ Play and retry if failed
+                activePlayer.volume = volume
+                activePlayer.currentTime = 0
+                var ok = activePlayer.play()
+                if !ok {
+                    // Retry once with rebuilt player
+                    if let retried = rebuildPlayer(for: label) {
+                        guard request.isStillValid() else {
+                            continuation.resume(returning: .skipped(.invalidated))
+                            return
+                        }
+                        if let avPlayer = retried as? AVAudioPlayer {
+                            applyOutputDevice(to: avPlayer)
+                        }
+                        let retryTime = ContinuousClock.now
+                        request.willPlay?(retryTime)
+                        retried.volume = volume
+                        retried.currentTime = 0
+                        ok = retried.play()
+                    }
+                }
+
+                let waitMs = formatWait(from: enqueuedAt)
+                if ok {
+                    DebugFileLogger.log("start sound queue gen=\(request.generation) result=played waitedInQueue=\(waitMs)ms")
+                    continuation.resume(returning: .played(startedAt: startedAt))
+                } else {
+                    DebugFileLogger.log("start sound queue gen=\(request.generation) result=skipped(playFailed) waitedInQueue=\(waitMs)ms")
+                    continuation.resume(returning: .skipped(.playFailed))
+                }
+            }
+        }
+    }
 
     static func playStart() {
         let style = StartSoundStyle(
@@ -113,17 +221,28 @@ enum SoundFeedback {
         ) ?? .chime
         NSLog("[SoundFeedback] playStart style=%@", style.rawValue)
         DebugFileLogger.log("sound playStart style=\(style.rawValue)")
-        switch style {
-        case .off: return
-        case .chime: playSound(startSpec.label, volume: startSpec.volume)
-        case .pluck: playSound("pluck", volume: 1.0, fallback: startSpec)
-        case .submerge: playSound("submerge", volume: 1.0, fallback: startSpec)
-        case .pong: playSound("pong", volume: 1.0, fallback: startSpec)
-        case .waterDrop1, .waterDrop2, .keyboard:
-            playSound(style.rawValue, volume: 1.0, fallback: startSpec)
+        let (label, volume) = resolveStartSoundSpec(for: style)
+        if style != .off {
+            playSound(label, volume: volume)
         }
     }
 
+    private static func resolveStartSoundSpec(for style: StartSoundStyle) -> (label: String, volume: Float) {
+        switch style {
+        case .off: return (startSpec.label, 0)
+        case .chime: return (startSpec.label, startSpec.volume)
+        case .pluck: return ("pluck", 1.0)
+        case .submerge: return ("submerge", 1.0)
+        case .pong: return ("pong", 1.0)
+        case .waterDrop1, .waterDrop2, .keyboard:
+            return (style.rawValue, 1.0)
+        }
+    }
+
+    private static func formatWait(from instant: ContinuousClock.Instant) -> Int {
+        let diff = ContinuousClock.now - instant
+        return Int(round(Double(diff.components.seconds) * 1000.0 + Double(diff.components.attoseconds) / 1_000_000_000_000_000.0))
+    }
     static func playStop() {
         let style = StartSoundStyle(
             rawValue: UserDefaults.standard.string(forKey: "tf_startSound") ?? StartSoundStyle.chime.rawValue
@@ -169,24 +288,6 @@ enum SoundFeedback {
         }
     }
 
-    /// Play a silent primer to wake up BT amplifiers before the real sound.
-    /// The primer is a short silent WAV played via AVAudioPlayer. By the time
-    /// it finishes, the BT output path is warm and the next sound plays instantly.
-    static func playBTPrimer(durationMs: Int) {
-        soundQueue.async {
-            let frames = Int(sampleRate * Double(durationMs) / 1000.0)
-            guard let buffer = AVAudioPCMBuffer(pcmFormat: engineFormat, frameCapacity: AVAudioFrameCount(frames)) else { return }
-            buffer.frameLength = AVAudioFrameCount(frames)
-            // Buffer is already zeroed (silence)
-            guard let wavData = pcmBufferToWAVData(buffer),
-                  let player = try? AVAudioPlayer(data: wavData) else { return }
-            applyOutputDevice(to: player)
-            player.play()
-            cachedPlayers["_btPrimer"] = player // retain
-            NSLog("[SoundFeedback] BT primer playing (%dms)", durationMs)
-            DebugFileLogger.log("sound BT primer \(durationMs)ms")
-        }
-    }
 
     // MARK: - Buffer Preparation
 
@@ -218,6 +319,7 @@ enum SoundFeedback {
                 NSLog("[SoundFeedback] failed to convert %@ to WAV", label)
                 continue
             }
+            cachedWAVData[label] = wavData
             do {
                 let player = try AVAudioPlayer(data: wavData)
                 player.volume = 1.0
@@ -230,6 +332,34 @@ enum SoundFeedback {
             }
         }
         DebugFileLogger.log("sound players prepared: \(cachedPlayers.keys.sorted().joined(separator: ", "))")
+    }
+
+    static func rebuildPlayer(for label: String) -> (any SoundPlaying)? {
+        #if DEBUG
+        if let factory = customPlayerFactory, let mock = factory(label) {
+            return mock
+        }
+        #endif
+        guard let wavData = cachedWAVData[label] else {
+            // Try fallback
+            if let fallbackData = cachedWAVData[startSpec.label] {
+                if let player = try? AVAudioPlayer(data: fallbackData) {
+                    player.prepareToPlay()
+                    cachedPlayers[label] = player
+                    return player
+                }
+            }
+            return nil
+        }
+        do {
+            let player = try AVAudioPlayer(data: wavData)
+            applyOutputDevice(to: player)
+            player.prepareToPlay()
+            cachedPlayers[label] = player
+            return player
+        } catch {
+            return nil
+        }
     }
 
     private static func buildToneBuffer(for spec: ToneSpec) -> AVAudioPCMBuffer {
@@ -290,24 +420,52 @@ enum SoundFeedback {
     // MARK: - Playback via AVAudioPlayer
 
     private static func playSound(_ label: String, volume: Float, fallback: ToneSpec? = nil) {
-        soundQueue.async {
-            let player = cachedPlayers[label] ?? (fallback.flatMap { cachedPlayers[$0.label] })
-            guard let player else {
+        effectiveSoundQueue.async {
+            var player = cachedPlayers[label] ?? (fallback.flatMap { cachedPlayers[$0.label] })
+            if player == nil {
+                player = rebuildPlayer(for: label) as? AVAudioPlayer
+            }
+            guard let activePlayer = player else {
                 NSLog("[SoundFeedback] %@ no player, no fallback", label)
                 NSSound.beep()
                 return
             }
-            // Stop all other sounds first (like Howler.js: audioCache.forEach(r=>r.stop()))
+            // If another sound is currently playing, allow it to finish gracefully
+            // instead of cutting off mid-waveform and producing clicks or truncation.
             for (key, p) in cachedPlayers where key != label {
+                if p.isPlaying {
+                    let remaining = max(0, p.duration - p.currentTime)
+                    if remaining > 0 && remaining < 0.35 {
+                        Thread.sleep(forTimeInterval: remaining)
+                    }
+                }
                 p.stop()
             }
-            applyOutputDevice(to: player)
-            player.volume = volume
-            player.currentTime = 0
-            player.play()
-            NSLog("[SoundFeedback] %@ playing via AVAudioPlayer (vol=%.2f)", label, player.volume)
+            applyOutputDevice(to: activePlayer)
+            activePlayer.prepareToPlay()
+            activePlayer.volume = volume
+            activePlayer.currentTime = 0
+            let ok = activePlayer.play()
+            if !ok {
+                // Rebuild and retry once
+                if let rebuilt = rebuildPlayer(for: label) as? AVAudioPlayer {
+                    applyOutputDevice(to: rebuilt)
+                    rebuilt.volume = volume
+                    rebuilt.currentTime = 0
+                    _ = rebuilt.play()
+                }
+            }
+            NSLog("[SoundFeedback] %@ playing via AVAudioPlayer (vol=%.2f)", label, activePlayer.volume)
             DebugFileLogger.log("sound \(label) play() => AVAudioPlayer")
         }
+    }
+
+    static var isStartSoundEnabled: Bool {
+        UserDefaults.standard.string(forKey: "tf_startSound") != "off"
+    }
+
+    static func startSoundSpecDurationMs() -> Int {
+        startSoundDurationMs()
     }
 
     /// Set the output device on an AVAudioPlayer based on user preference.
@@ -477,4 +635,28 @@ enum SoundFeedback {
         let url = appSupport.appendingPathComponent("\(filename).wav")
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
     }
+}
+
+protocol SoundPlaying: AnyObject {
+    var volume: Float { get set }
+    var currentTime: TimeInterval { get set }
+    func play() -> Bool
+    func stop()
+}
+
+extension AVAudioPlayer: SoundPlaying {}
+
+struct StartSoundRequest: Sendable {
+    let generation: UInt64
+    let isStillValid: @Sendable () -> Bool
+    let rebuildPlayer: Bool
+    let willPlay: (@Sendable (ContinuousClock.Instant) -> Void)?
+}
+
+enum StartSoundPlayback: Sendable, Equatable {
+    enum SkipReason: String, Sendable { case invalidated, noPlayer, playFailed }
+
+    case played(startedAt: ContinuousClock.Instant)
+    case disabled
+    case skipped(SkipReason)
 }

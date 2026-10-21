@@ -291,7 +291,7 @@ enum AudioInputDeviceDiscovery {
         )
     }
 
-    private static func category(for device: AVCaptureDevice) -> AudioInputDeviceCategory {
+    static func category(for device: AVCaptureDevice) -> AudioInputDeviceCategory {
         let transport = coreAudioDeviceID(forUID: device.uniqueID).map { transportType(device: $0) }
         return category(forName: device.localizedName, uid: device.uniqueID, transportType: transport)
     }
@@ -321,7 +321,7 @@ enum AudioInputDeviceDiscovery {
         }
     }
 
-    private static func coreAudioDeviceID(forUID uid: String) -> AudioDeviceID? {
+    static func coreAudioDeviceID(forUID uid: String) -> AudioDeviceID? {
         var size: UInt32 = 0
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyDevices,
@@ -415,6 +415,40 @@ enum AudioInputDeviceDiscovery {
         let status = AudioObjectGetPropertyData(device, &address, 0, nil, &size, &transport)
         guard status == noErr else { return 0 }
         return transport
+    }
+
+    static func aggregateContainsBluetooth(uid: String) -> Bool {
+        guard let aggregateID = coreAudioDeviceID(forUID: uid) else {
+            return true // Fallback: conservative assumption
+        }
+        var size: UInt32 = 0
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioAggregateDevicePropertyActiveSubDeviceList,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        guard AudioObjectGetPropertyDataSize(aggregateID, &address, 0, nil, &size) == noErr, size > 0 else {
+            return true // Fail safe: assume contains bluetooth
+        }
+        let count = Int(size) / MemoryLayout<AudioDeviceID>.size
+        guard count > 0 else { return false }
+        var subDeviceIDs = Array(repeating: AudioDeviceID(0), count: count)
+        guard AudioObjectGetPropertyData(aggregateID, &address, 0, nil, &size, &subDeviceIDs) == noErr else {
+            return true
+        }
+        for subID in subDeviceIDs {
+            let transport = transportType(device: subID)
+            if transport == kAudioDeviceTransportTypeBluetooth || transport == kAudioDeviceTransportTypeBluetoothLE {
+                return true
+            }
+            if let subName = deviceName(subID) {
+                let lower = subName.lowercased()
+                if lower.contains("airpods") || lower.contains("bluetooth") || lower.contains("蓝牙") {
+                    return true
+                }
+            }
+        }
+        return false
     }
 }
 

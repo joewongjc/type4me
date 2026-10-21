@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import os
 import Type4MeIntelliSenseCore
 import Type4MeReviseCore
@@ -97,8 +98,8 @@ actor RecognitionSession {
     /// the recording lifecycle. Stopping or replacing the session deliberately
     /// tears down an in-flight connection.
     static func shouldReportASRConnectFailure(
-        expectedGeneration: Int,
-        currentGeneration: Int,
+        expectedGeneration: UInt64,
+        currentGeneration: UInt64,
         state: SessionState
     ) -> Bool {
         expectedGeneration == currentGeneration && state == .recording
@@ -205,7 +206,19 @@ actor RecognitionSession {
 
     // MARK: - Dependencies
 
-    private let audioEngine = AudioCaptureEngine()
+    private let audioEngine: any AudioCapturing
+    private let intelliSenseSettingsLoader: @Sendable () async -> IntelliSenseSettings
+    private var currentSpeechGraceGate: SpeechGraceGate?
+    private var audioStartTimingTracker: AudioStartTimingTracker?
+
+    init(
+        audioEngine: any AudioCapturing = AudioCaptureEngine(),
+        intelliSenseSettingsLoader: (@Sendable () async -> IntelliSenseSettings)? = nil
+    ) {
+        self.audioEngine = audioEngine
+        self.intelliSenseSettingsLoader = intelliSenseSettingsLoader ?? { await IntelliSenseSettingsStore.shared.load() }
+    }
+
     private let injectionEngine = TextInjectionEngine()
     let historyStore = HistoryStore.shared
     private var asrClient: (any SpeechRecognizer)?
@@ -216,7 +229,6 @@ actor RecognitionSession {
         subsystem: "com.type4me.session",
         category: "RecognitionSession"
     )
-
     #if HAS_CLOUD_SUBSCRIPTION
     private var isCloudMode: Bool { activeProvider == .cloud }
     #endif
@@ -555,6 +567,11 @@ actor RecognitionSession {
     func setInjectedLLMClientForTesting(_ client: (any LLMClient)?) {
         injectedLLMClient = client
     }
+
+    private var injectedASRClient: (any SpeechRecognizer)?
+    func setInjectedASRClientForTesting(_ client: (any SpeechRecognizer)?) {
+        injectedASRClient = client
+    }
     #endif
 
 
@@ -567,7 +584,7 @@ actor RecognitionSession {
 
     // MARK: - Session generation (prevents zombie tasks after forceReset)
 
-    private var sessionGeneration: Int = 0
+    private var sessionGeneration: UInt64 = 0
 
     // MARK: - Accumulated text
 
@@ -590,7 +607,7 @@ actor RecognitionSession {
     private var eventConsumptionTask: Task<Void, Never>?
     private var maxDurationTask: Task<Void, Never>?
     private var asrCleanupTask: Task<Void, Never>?
-    private var asrCleanupGeneration: Int?
+    private var asrCleanupGeneration: UInt64?
     private var finalTranscriptTimeoutTask: Task<Void, Never>?
     private var firstStreamingTextTimeoutTask: Task<Void, Never>?
     private var hasEmittedReadyForCurrentSession = false
@@ -624,7 +641,7 @@ actor RecognitionSession {
 
     private struct PendingPromptContextCapture: Sendable {
         let id: UUID
-        let generation: Int
+        let generation: UInt64
         let requirements: PromptContext.CaptureRequirements
         let task: Task<PromptContext, Never>
     }
@@ -639,7 +656,7 @@ actor RecognitionSession {
 
     private func resetPromptContextCapture(
         for purpose: RecordingPurpose,
-        generation: Int
+        generation: UInt64
     ) {
         promptContext = .empty
         capturedPromptContextRequirements = []
@@ -650,7 +667,7 @@ actor RecognitionSession {
 
     private func schedulePromptContextCaptureIfNeeded(
         for mode: ProcessingMode,
-        generation: Int
+        generation: UInt64
     ) {
         // Selection Ask consumes the selection outside normal template expansion.
         // Mac Action passes it to selection-aware actions after the LLM reply.
@@ -724,7 +741,7 @@ actor RecognitionSession {
         lastPromptContextCaptureID = nil
     }
 
-    private func resolvePromptContextIfNeeded(generation: Int) async {
+    private func resolvePromptContextIfNeeded(generation: UInt64) async {
         while let pending = pendingPromptContextCapture,
               pending.generation == generation {
             let context = await pending.task.value
@@ -750,7 +767,7 @@ actor RecognitionSession {
         let snapshot: IntelliSenseContextSnapshot
         let expressionProfile: EffectiveExpressionProfile?
         let startingModeID: UUID
-        let generation: Int
+        let generation: UInt64
     }
 
     private var intelliSenseContextTask: Task<IntelliSenseContextSnapshot, Never>?
@@ -763,7 +780,7 @@ actor RecognitionSession {
     private var intelliSenseLastProcessingResult: IntelliSenseProcessingResult?
 
     private struct TranslationRequestContext: Sendable {
-        let generation: Int
+        let generation: UInt64
         let target: TranslationLanguage
         let prompt: String
     }
@@ -947,11 +964,13 @@ actor RecognitionSession {
     func startRecording(
         mode: ProcessingMode = .direct,
         requestedAt: ContinuousClock.Instant? = nil,
+        awaitIdleDuration: Duration? = nil,
         isAutomation: Bool = false
     ) async {
         await startRecording(
             purpose: .input(mode),
             requestedAt: requestedAt,
+            awaitIdleDuration: awaitIdleDuration,
             isAutomation: isAutomation
         )
     }
@@ -1020,10 +1039,12 @@ actor RecognitionSession {
     func startRecording(
         purpose: RecordingPurpose,
         requestedAt: ContinuousClock.Instant? = nil,
+        awaitIdleDuration: Duration? = nil,
         isAutomation: Bool = false,
         manualInput: Bool = false
     ) async {
         let recordingRequestStartedAt = requestedAt ?? ContinuousClock.now
+        let sessionEntryAt = ContinuousClock.now
         if state == .finishing || state == .injecting || state == .postProcessing || state == .recovering {
             NSLog("[Session] startRecording: blocked, current session still processing (state=%@)", String(describing: state))
             DebugFileLogger.log("startRecording blocked: still processing state=\(state)")
@@ -1039,23 +1060,7 @@ actor RecognitionSession {
         let myGeneration = sessionGeneration
         state = .starting
         hasReceivedASRText = false
-        await MainActor.run {
-            CorrectionLearningCoordinator.shared.finalizeBeforeNextRecording()
-        }
-        guard sessionGeneration == myGeneration else { return }
 
-        self.isManualInput = manualInput
-        self.recordingPurpose = purpose
-        self.isAutomationTarget = isAutomation
-        clipboardOutputPolicy = ClipboardOutputPolicy.current()
-        completionIntent = .normal
-        stoppedByMaxDuration = false
-        // Determine the injection target fresh for every recording. Never inherit
-        // the previous session's target: if Type4Me itself is frontmost (e.g. a URL
-        // Scheme command activated the app), we deliberately clear the target rather
-        // than reusing a stale one, so we can never re-activate and paste into the
-        // wrong application. In that case the natural frontmost app at paste time
-        // receives the text, guarded by the frontmost confirmation below.
         let frontmostApplication = NSWorkspace.shared.frontmostApplication
         let isSelf = frontmostApplication?.bundleIdentifier == Bundle.main.bundleIdentifier
         if isSelf {
@@ -1072,6 +1077,10 @@ actor RecognitionSession {
         #if HAS_CLOUD_SUBSCRIPTION
         if provider == .cloud && !manualInput {
             let canUse = await CloudQuotaManager.shared.canUse()
+            guard sessionGeneration == myGeneration else {
+                DebugFileLogger.log("startRecording: zombie after cloud quota check, bailing")
+                return
+            }
             if !canUse {
                 SoundFeedback.playError()
                 state = .idle
@@ -1084,6 +1093,114 @@ actor RecognitionSession {
             }
         }
         #endif
+
+        // Every early return between capture start and the hand-off below must
+        // release the microphone; Bluetooth routes depend on it.
+        var earlyCaptureOwned = false
+        defer {
+            if earlyCaptureOwned {
+                releaseEarlyCapture(generation: myGeneration)
+            }
+        }
+
+        let audioBuffer = AudioChunkBuffer()
+
+        if !manualInput {
+            let captureStartBeginAt = ContinuousClock.now
+            let gate = SpeechGraceGate()
+            self.currentSpeechGraceGate = gate
+            speechDetected = false
+            let levelHandler = self.onAudioLevel
+
+            audioEngine.onAudioLevel = { [weak self, weak gate] level in
+                if level > RecognitionSession.speechLevelThreshold {
+                    if let gate, !gate.isSpeechIgnored() {
+                        Task { await self?.markSpeechDetected() }
+                    }
+                }
+                levelHandler?(level)
+            }
+
+            audioEngine.onAudioChunk = { [weak self] data in
+                guard self != nil else { return }
+                audioBuffer.append(data)
+            }
+
+            let captureResolution = AudioInputDevicePreferenceStore.cachedCaptureResolution()
+            let selectedDeviceUID: String?
+            switch captureResolution {
+            case .explicitDevice(let uid):
+                selectedDeviceUID = uid
+            case .systemDefault:
+                selectedDeviceUID = nil
+            }
+            let preferenceMode = AudioInputDevicePreferenceStore.mode().rawValue
+            let priorityUIDs = AudioInputDevicePreferenceStore.priorityEntries().map(\.uid).joined(separator: ",")
+            audioEngine.selectedDeviceUID = selectedDeviceUID
+            DebugFileLogger.log(
+                "audio input selected uid=\(selectedDeviceUID ?? "system-default") " +
+                "mode=\(preferenceMode) priority=[\(priorityUIDs)]"
+            )
+
+            let inputDevice: AVCaptureDevice?
+            if let uid = selectedDeviceUID, !uid.isEmpty {
+                inputDevice = AVCaptureDevice(uniqueID: uid)
+            } else {
+                inputDevice = AVCaptureDevice.default(for: .audio)
+            }
+            StartSoundRouteGate.shared.arm(generation: myGeneration, inputDevice: inputDevice)
+
+            let startTimingTracker = AudioStartTimingTracker(
+                generation: myGeneration,
+                requestedAt: recordingRequestStartedAt,
+                awaitIdleDuration: awaitIdleDuration,
+                sessionEntryDuration: sessionEntryAt - recordingRequestStartedAt,
+                captureStartBeginDuration: captureStartBeginAt - recordingRequestStartedAt
+            )
+            self.audioStartTimingTracker = startTimingTracker
+
+            audioEngine.onFirstSample = { [weak self] sampleTime in
+                Task { [weak self] in
+                    await self?.recordFirstSample(at: sampleTime, generation: myGeneration)
+                }
+            }
+
+            do {
+                try audioEngine.start()
+                earlyCaptureOwned = true
+                let startInfo = audioEngine.lastStartInfo
+                startTimingTracker.recordEngineStart(info: startInfo)
+                DebugFileLogger.log("audio engine early started OK gen=\(myGeneration)")
+            } catch {
+                NSLog("[Session] Audio engine early start FAILED: %@", String(describing: error))
+                DebugFileLogger.log("audio engine early start failed: \(String(describing: error))")
+                SoundFeedback.playError()
+                StartSoundRouteGate.shared.disarm(generation: myGeneration)
+                audioEngine.onAudioChunk = nil
+                audioEngine.onAudioLevel = nil
+                audioEngine.onFirstSample = nil
+                state = .idle
+                onASREvent?(.error(error))
+                onASREvent?(.completed)
+                clearIntelliSenseSessionContext()
+                return
+            }
+        }
+
+        await MainActor.run {
+            CorrectionLearningCoordinator.shared.finalizeBeforeNextRecording()
+        }
+        guard sessionGeneration == myGeneration else {
+            DebugFileLogger.log("startRecording: zombie after finalizeBeforeNextRecording, bailing")
+            return
+        }
+
+        self.isManualInput = manualInput
+        self.recordingPurpose = purpose
+        self.isAutomationTarget = isAutomation
+        clipboardOutputPolicy = ClipboardOutputPolicy.current()
+        completionIntent = .normal
+        stoppedByMaxDuration = false
 
         historyLLMProvider = nil
         historyLLMModel = nil
@@ -1132,7 +1249,11 @@ actor RecognitionSession {
                 )
             }
             if effectiveMode.id == ProcessingMode.intelliSenseId {
-                let settings = await IntelliSenseSettingsStore.shared.load()
+                let settings = await intelliSenseSettingsLoader()
+                guard sessionGeneration == myGeneration else {
+                    DebugFileLogger.log("startRecording: zombie after IntelliSense settings load, bailing")
+                    return
+                }
                 let target = TargetApplicationContext(
                     processIdentifier: frontmostApplication?.processIdentifier,
                     bundleIdentifier: frontmostApplication?.bundleIdentifier,
@@ -1141,8 +1262,6 @@ actor RecognitionSession {
                 intelliSenseSettings = settings
                 intelliSenseTarget = target
                 intelliSenseStartedModeID = effectiveMode.id
-                // Interactive speech chooses its environment after ASR finishes.
-                // Automation retains the context of its pinned destination.
                 if isAutomation {
                     intelliSenseContextTask = Task {
                         await IntelliSenseContextCapturer.capture(target: target, settings: settings)
@@ -1154,8 +1273,6 @@ actor RecognitionSession {
             pendingSelectionAskRequestContext = nil
         }
 
-        // Capture prompt context beside credential loading and audio startup.
-        // It is resolved only when a prompt or selection-aware action needs it.
         resetPromptContextCapture(for: purpose, generation: myGeneration)
 
         self.recordingStartTime = nil
@@ -1165,7 +1282,6 @@ actor RecognitionSession {
         state = .starting
 
         if manualInput {
-            // Capture selection/clipboard while the original app still owns keyboard focus.
             currentTranscript = .empty
             currentConfig = nil
             uploadFailureFlag = nil
@@ -1176,11 +1292,21 @@ actor RecognitionSession {
             return
         }
 
+        #if DEBUG
+        if let mockClient = injectedASRClient {
+            self.asrClient = mockClient
+            self.currentConfig = SherpaASRConfig(credentials: ["modelDir": ModelManager.defaultModelsDir])!
+            earlyCaptureOwned = false
+            state = .recording
+            markReadyIfNeeded()
+            return
+        }
+        #endif
+
         // Load credentials for selected provider
         let config: any ASRProviderConfig
 
         if provider.isLocal {
-            // Local providers: use default model directory if no saved config
             if let savedConfig = KeychainService.loadASRConfig(for: provider) {
                 config = savedConfig
                 NSLog("[Session] Loaded %@ config from file store", provider.rawValue)
@@ -1196,7 +1322,6 @@ actor RecognitionSession {
                 clearIntelliSenseSessionContext()
                 return
             }
-            // Verify required models are downloaded
             if !ModelManager.shared.areRequiredModelsAvailable() {
                 NSLog("[Session] Required local models not downloaded for %@", provider.rawValue)
                 SoundFeedback.playError()
@@ -1213,7 +1338,6 @@ actor RecognitionSession {
                   let volcConfig = Self.volcanoConfigFromEnvironment(
                       ProcessInfo.processInfo.environment
                   ) {
-            // Env var fallback (volcano only, for dev convenience)
             do {
                 try KeychainService.saveASRCredentials(for: .volcano, values: volcConfig.toCredentials())
                 NSLog("[Session] Loaded credentials from env vars and persisted to file")
@@ -1225,7 +1349,7 @@ actor RecognitionSession {
             NSLog("[Session] No ASR credentials found for provider=%@!", provider.rawValue)
             SoundFeedback.playError()
             state = .idle
-            onASREvent?(.error(NSError(domain: "Type4Me", code: -1, userInfo: [NSLocalizedDescriptionKey: L("未配置 API 凭证", "API credentials not configured")])))
+            onASREvent?(.error(NSError(domain: "Type4Me", code: -1, userInfo: [NSLocalizedDescriptionKey: L("未配置 API凭证", "API credentials not configured")])))
             onASREvent?(.completed)
             clearIntelliSenseSessionContext()
             return
@@ -1245,7 +1369,6 @@ actor RecognitionSession {
         }
         self.asrClient = client
 
-        // Load hotwords
         let hotwords = HotwordStorage.loadEffective()
         let biasSettings = ASRBiasSettingsStorage.load()
         let requestOptions = ASRRequestOptions(
@@ -1255,7 +1378,6 @@ actor RecognitionSession {
             bypassProxy: ProxyBypassMode.current.bypassASR
         )
 
-        // Reset text state and clean up previous pipeline
         currentTranscript = .empty
         await finishAudioChunkPipeline(timeout: .milliseconds(100))
         guard sessionGeneration == myGeneration else {
@@ -1263,71 +1385,10 @@ actor RecognitionSession {
             return
         }
 
-        // ── Phase 1: Start recording immediately (before ASR connects) ──
-        // Audio chunks are buffered while WebSocket handshake is in progress.
-        // This eliminates the ~1s perceived latency from connect().
-
-        let audioBuffer = AudioChunkBuffer()
-
-        speechDetected = false
-        let levelHandler = self.onAudioLevel
-        let speechGraceMs = SoundFeedback.startSoundDurationMs()
-        let speechGraceEnd = ContinuousClock.now + .milliseconds(speechGraceMs)
-        audioEngine.onAudioLevel = { [weak self] level in
-            if level > RecognitionSession.speechLevelThreshold,
-               ContinuousClock.now >= speechGraceEnd {
-                Task { await self?.markSpeechDetected() }
-            }
-            levelHandler?(level)
-        }
-
-        audioEngine.onAudioChunk = { [weak self] data in
-            guard self != nil else { return }
-            audioBuffer.append(data)
-        }
-
-        do {
-            let captureResolution = AudioInputDevicePreferenceStore.cachedCaptureResolution()
-            let selectedDeviceUID: String?
-            switch captureResolution {
-            case .explicitDevice(let uid):
-                selectedDeviceUID = uid
-            case .systemDefault:
-                selectedDeviceUID = nil
-            }
-            let preferenceMode = AudioInputDevicePreferenceStore.mode().rawValue
-            let priorityUIDs = AudioInputDevicePreferenceStore.priorityEntries().map(\.uid).joined(separator: ",")
-            audioEngine.selectedDeviceUID = selectedDeviceUID
-            DebugFileLogger.log(
-                "audio input selected uid=\(selectedDeviceUID ?? "system-default") " +
-                "mode=\(preferenceMode) priority=[\(priorityUIDs)]"
-            )
-            let audioEngineStartAt = ContinuousClock.now
-            try audioEngine.start()
-            NSLog("[Session] Audio engine started OK")
-            let audioReadyAt = ContinuousClock.now
-            DebugFileLogger.log(
-                "audio engine started OK "
-                    + "requestToReady=\(audioReadyAt - recordingRequestStartedAt) "
-                    + "engineStart=\(audioReadyAt - audioEngineStartAt)"
-            )
-        } catch {
-            NSLog("[Session] Audio engine start FAILED: %@", String(describing: error))
-            DebugFileLogger.log("audio engine start failed: \(String(describing: error))")
-            SoundFeedback.playError()
-            await client.disconnect()
-            self.asrClient = nil
-            state = .idle
-            onASREvent?(.error(error))
-            onASREvent?(.completed)
-            clearIntelliSenseSessionContext()
-            return
-        }
-
+        earlyCaptureOwned = false
         state = .recording
         markReadyIfNeeded()
         DebugFileLogger.log("session entered recording state (buffering, ASR connecting)")
-
         // Volume lowered in Type4MeApp .ready handler
 
         // ── Phase 2: Connect ASR (audio is already recording) ──
@@ -1457,7 +1518,7 @@ actor RecognitionSession {
     }
 
 
-    private func clearASRCleanupTask(generation: Int) {
+    private func clearASRCleanupTask(generation: UInt64) {
         if asrCleanupGeneration == generation {
             asrCleanupTask = nil
             asrCleanupGeneration = nil
@@ -1513,6 +1574,8 @@ actor RecognitionSession {
             return
         }
         DebugFileLogger.log("cancelRecording: discarding session from state=\(state)")
+        StartSoundRouteGate.shared.disarm(generation: sessionGeneration)
+        audioStartTimingTracker?.flushRemainingLog()
         SystemVolumeManager.restore()
         await forceReset()
     }
@@ -1572,7 +1635,7 @@ actor RecognitionSession {
         rawText: String,
         recordingStartTime: Date?,
         activeProvider: ASRProvider,
-        myGeneration: Int
+        myGeneration: UInt64
     ) async {
         let recordId = UUID().uuidString
         let duration = recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0
@@ -1620,7 +1683,7 @@ actor RecognitionSession {
         questionText: String,
         recordingStartTime: Date?,
         activeProvider: ASRProvider,
-        myGeneration: Int
+        myGeneration: UInt64
     ) async {
         await resolvePromptContextIfNeeded(generation: myGeneration)
         guard sessionGeneration == myGeneration else { return }
@@ -1734,7 +1797,7 @@ actor RecognitionSession {
         onASREvent?(.selectionAskAnswerDelta(requestID: requestID, delta: delta))
     }
 
-    private func finishSelectionAskSession(myGeneration: Int) {
+    private func finishSelectionAskSession(myGeneration: UInt64) {
         if sessionGeneration == myGeneration, state != .idle {
             state = .idle
             hasEmittedReadyForCurrentSession = false
@@ -1763,6 +1826,8 @@ actor RecognitionSession {
         // Set state BEFORE any await to prevent a second stop from
         // slipping through the guard during the suspension point.
         state = .finishing
+        StartSoundRouteGate.shared.disarm(generation: myGeneration)
+        audioStartTimingTracker?.flushRemainingLog()
         if let translationContext = translationRequestContext,
            currentMode.id == ProcessingMode.translationModeId {
             onASREvent?(.processingLabelOverride(L(
@@ -2113,7 +2178,7 @@ actor RecognitionSession {
     /// Shared by finalized speech and typed input: prompt expansion, LLM, guarded output and history.
     private func finishTextOutput(
         _ effectiveText: String,
-        generation myGeneration: Int,
+        generation myGeneration: UInt64,
         stopStartedAt stopT0: ContinuousClock.Instant,
         needsLLM initialNeedsLLM: Bool,
         finalLLMTask initialFinalLLMTask: Task<TimedLLMResult, Never>? = nil,
@@ -2861,7 +2926,7 @@ actor RecognitionSession {
 
     private func finishRecovery(
         recoveredText: String?,
-        generation: Int,
+        generation: UInt64,
         failureMessage: String
     ) async {
         guard state == .recovering, generation == sessionGeneration, !Task.isCancelled else {
@@ -2962,7 +3027,7 @@ actor RecognitionSession {
 
     // MARK: - ASR Events
 
-    private func handleASREvent(_ event: RecognitionEvent, expectedGeneration: Int) {
+    private func handleASREvent(_ event: RecognitionEvent, expectedGeneration: UInt64) {
         guard expectedGeneration == sessionGeneration else {
             DebugFileLogger.log("ignoring stale ASR event for gen=\(expectedGeneration), active=\(sessionGeneration)")
             return
@@ -2973,8 +3038,9 @@ actor RecognitionSession {
             // on first audio chunk via markReadyIfNeeded(). Route both through
             // the same guard to avoid double-firing the start sound.
             markReadyIfNeeded()
-            return  // markReadyIfNeeded calls onASREvent(.ready) internally
-
+            return  // markReadyIfNeeded calls onASREvent internally
+        case .sessionReady:
+            return
         default:
             break
         }
@@ -2988,9 +3054,8 @@ actor RecognitionSession {
         }
 
         switch event {
-        case .ready:
+        case .ready, .sessionReady:
             break  // handled above
-
         case .transcript(let transcript):
             currentTranscript = transcript
             if !transcript.displayText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -3181,8 +3246,10 @@ actor RecognitionSession {
         guard !hasEmittedReadyForCurrentSession else { return }
         hasEmittedReadyForCurrentSession = true
         recordingStartTime = Date()
-        DebugFileLogger.log("session emitting ready")
-        onASREvent?(.ready)
+        let gen = sessionGeneration
+        DebugFileLogger.log("session emitting ready gen=\(gen)")
+        audioStartTimingTracker?.recordReady(at: .now)
+        onASREvent?(.sessionReady(generation: gen))
         logger.info("Recording started")
     }
 
@@ -3365,7 +3432,7 @@ actor RecognitionSession {
         )
     }
 
-    private func refreshIntelliSenseProcessingContext(generation: Int) async {
+    private func refreshIntelliSenseProcessingContext(generation: UInt64) async {
         guard let settings = intelliSenseSettings else { return }
         var target = currentIntelliSenseTarget()
         var snapshot: IntelliSenseContextSnapshot
@@ -3581,7 +3648,7 @@ actor RecognitionSession {
     private func failTranslation(
         _ error: Error,
         rawText: String,
-        myGeneration: Int
+        myGeneration: UInt64
     ) async {
         DebugFileLogger.log("translation failed reason=\(String(describing: error))")
         let duration = recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0
@@ -3940,9 +4007,13 @@ actor RecognitionSession {
         recoveryTask = nil
         resetSessionLLMState()
 
+        StartSoundRouteGate.shared.disarm(generation: sessionGeneration)
+        currentSpeechGraceGate?.disarm()
+        audioStartTimingTracker?.flushRemainingLog()
         audioEngine.stop()
         audioEngine.onAudioChunk = nil
         audioEngine.onAudioLevel = nil
+        audioEngine.onFirstSample = nil
         await finishAudioChunkPipeline(timeout: .milliseconds(100))
 
         if let client = asrClient {
@@ -3971,7 +4042,7 @@ actor RecognitionSession {
         prepared: RevisePreparedTarget,
         rawInstruction: String,
         asrDuration: Double?,
-        myGeneration: Int
+        myGeneration: UInt64
     ) async {
         let trimmedInstruction = rawInstruction.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedInstruction.isEmpty else {
@@ -4164,7 +4235,7 @@ actor RecognitionSession {
         cleanupSessionAfterRevise(myGeneration: myGeneration)
     }
 
-    private func cleanupSessionAfterRevise(myGeneration: Int) {
+    private func cleanupSessionAfterRevise(myGeneration: UInt64) {
         if sessionGeneration == myGeneration, state != .idle {
             state = .idle
             hasEmittedReadyForCurrentSession = false
@@ -4176,4 +4247,131 @@ actor RecognitionSession {
         SystemVolumeManager.restore()
     }
 
+    private func releaseEarlyCapture(generation: UInt64) {
+        StartSoundRouteGate.shared.disarm(generation: generation)
+        audioEngine.onAudioChunk = nil
+        audioEngine.onAudioLevel = nil
+        audioEngine.onFirstSample = nil
+        currentSpeechGraceGate = nil
+        audioStartTimingTracker = nil
+        guard sessionGeneration == generation else {
+            return
+        }
+        audioEngine.stop()
+        DebugFileLogger.log("releaseEarlyCapture: microphone released for generation=\(generation)")
+    }
+
+    func recordFirstSample(at instant: ContinuousClock.Instant, generation: UInt64) {
+        guard sessionGeneration == generation else { return }
+        audioStartTimingTracker?.recordFirstSample(at: instant)
+    }
+
+    func speechGraceArmer(generation: UInt64) -> (@Sendable (ContinuousClock.Instant) -> Void)? {
+        guard sessionGeneration == generation, let gate = currentSpeechGraceGate else { return nil }
+        let durationMs = SoundFeedback.startSoundDurationMs()
+        guard durationMs > 0 else { return nil }
+        return { [weak gate] startedAt in
+            gate?.arm(until: startedAt + .milliseconds(durationMs))
+        }
+    }
+
+    func handleInputDeviceChange() {
+        audioEngine.invalidatePrepared(reason: "input-device-changed")
+        audioEngine.prepareIfEligible()
+    }
+
+}
+
+private final class AudioStartTimingTracker: @unchecked Sendable {
+    let generation: UInt64
+    let requestedAt: ContinuousClock.Instant
+    let awaitIdleDuration: Duration?
+    let sessionEntryDuration: Duration?
+    let captureStartBeginDuration: Duration?
+
+    private let lock = NSLock()
+    private var deviceInputDuration: Duration?
+    private var startRunningDuration: Duration?
+    private var preparedStatus: String = "-"
+    private var deviceCategory: String = "-"
+    private var firstSampleDuration: Duration?
+    private var readyDuration: Duration?
+    private var hasLogged = false
+
+    init(
+        generation: UInt64,
+        requestedAt: ContinuousClock.Instant,
+        awaitIdleDuration: Duration?,
+        sessionEntryDuration: Duration?,
+        captureStartBeginDuration: Duration?
+    ) {
+        self.generation = generation
+        self.requestedAt = requestedAt
+        self.awaitIdleDuration = awaitIdleDuration
+        self.sessionEntryDuration = sessionEntryDuration
+        self.captureStartBeginDuration = captureStartBeginDuration
+    }
+
+    func recordEngineStart(info: AudioCaptureStartInfo) {
+        lock.withLock {
+            deviceInputDuration = info.deviceInputDuration
+            startRunningDuration = info.startRunningDuration
+            preparedStatus = info.preparedStatus
+            deviceCategory = info.deviceCategory
+        }
+    }
+
+    func recordFirstSample(at instant: ContinuousClock.Instant) {
+        lock.withLock {
+            if firstSampleDuration == nil {
+                firstSampleDuration = instant - requestedAt
+            }
+            logIfReadyLocked()
+        }
+    }
+
+    func recordReady(at instant: ContinuousClock.Instant) {
+        lock.withLock {
+            if readyDuration == nil {
+                readyDuration = instant - requestedAt
+            }
+            logIfReadyLocked()
+        }
+    }
+
+    private func logIfReadyLocked() {
+        guard !hasLogged, readyDuration != nil, firstSampleDuration != nil else { return }
+        hasLogged = true
+        let timing = AudioStartTiming(
+            awaitIdle: awaitIdleDuration,
+            sessionEntry: sessionEntryDuration,
+            captureStartBegin: captureStartBeginDuration,
+            deviceInput: deviceInputDuration,
+            startRunning: startRunningDuration,
+            prepared: preparedStatus,
+            firstSample: firstSampleDuration,
+            ready: readyDuration,
+            device: deviceCategory
+        )
+        DebugFileLogger.log(timing.formattedLine())
+    }
+
+    func flushRemainingLog() {
+        lock.withLock {
+            guard !hasLogged else { return }
+            hasLogged = true
+            let timing = AudioStartTiming(
+                awaitIdle: awaitIdleDuration,
+                sessionEntry: sessionEntryDuration,
+                captureStartBegin: captureStartBeginDuration,
+                deviceInput: deviceInputDuration,
+                startRunning: startRunningDuration,
+                prepared: preparedStatus,
+                firstSample: firstSampleDuration,
+                ready: readyDuration,
+                device: deviceCategory
+            )
+            DebugFileLogger.log(timing.formattedLine())
+        }
+    }
 }

@@ -1,5 +1,5 @@
 @preconcurrency import AVFoundation
-
+import AppKit
 enum AudioCaptureError: Error, LocalizedError {
     case converterCreationFailed
     case microphonePermissionDenied
@@ -17,8 +17,7 @@ enum AudioCaptureError: Error, LocalizedError {
     }
 }
 
-final class AudioCaptureEngine: NSObject, @unchecked Sendable, AVCaptureAudioDataOutputSampleBufferDelegate {
-
+final class AudioCaptureEngine: NSObject, @unchecked Sendable, AVCaptureAudioDataOutputSampleBufferDelegate, AudioCapturing {
     // MARK: - Static properties
 
     static let sampleRate: Double = 16000
@@ -54,8 +53,21 @@ final class AudioCaptureEngine: NSObject, @unchecked Sendable, AVCaptureAudioDat
     // MARK: - Device Selection
 
     /// Set before calling `start()`. Empty string or nil means system default.
-    var selectedDeviceUID: String?
+    var selectedDeviceUID: String? {
+        didSet {
+            if oldValue != selectedDeviceUID {
+                prepareIfEligible()
+            }
+        }
+    }
 
+    static var isPreparedCaptureSessionEnabled: Bool {
+        let key = "tf_audioPreparedCaptureSession"
+        if UserDefaults.standard.object(forKey: key) != nil {
+            return UserDefaults.standard.bool(forKey: key)
+        }
+        return true
+    }
     /// Returns rich metadata for available audio input devices.
     static func availableAudioInputDevices() -> [AudioInputDevice] {
         AudioInputDeviceDiscovery.availableInputDevices()
@@ -79,8 +91,27 @@ final class AudioCaptureEngine: NSObject, @unchecked Sendable, AVCaptureAudioDat
 
     var onAudioChunk: ((Data) -> Void)?
     var onAudioLevel: ((Float) -> Void)?
+    var onFirstSample: (@Sendable (ContinuousClock.Instant) -> Void)?
+
+    private(set) var lastStartInfo = AudioCaptureStartInfo()
 
     // MARK: - Private
+
+    private struct PreparedCapture {
+        let session: AVCaptureSession
+        let input: AVCaptureDeviceInput
+        let output: AVCaptureAudioDataOutput
+        let deviceUID: String
+        let isAggregate: Bool
+        let topologyObserver: AggregateTopologyObserver?
+    }
+
+    private var prepared: PreparedCapture?
+    private var pendingInvalidate = false
+    private let configurationQueue = DispatchQueue(label: "com.type4me.audiocapture.config", qos: .userInitiated)
+    private var notificationObservers: [NSObjectProtocol] = []
+    private let firstSampleLock = NSLock()
+    private var hasEmittedFirstSample = false
 
     private var captureSession: AVCaptureSession?
     private let stateLock = NSLock()
@@ -100,23 +131,171 @@ final class AudioCaptureEngine: NSObject, @unchecked Sendable, AVCaptureAudioDat
     override init() {
         super.init()
         outputQueue.setSpecific(key: outputQueueKey, value: outputQueueTag)
+        setupNotificationObservers()
     }
 
-    /// Pre-initialize the audio capture pipeline so the first real recording starts instantly.
+    deinit {
+        for observer in notificationObservers {
+            NotificationCenter.default.removeObserver(observer)
+            NSWorkspace.shared.notificationCenter.removeObserver(observer)
+        }
+        prepared?.topologyObserver?.invalidate()
+    }
+
+    private func setupNotificationObservers() {
+        let center = NotificationCenter.default
+        notificationObservers.append(
+            center.addObserver(forName: AVCaptureDevice.wasDisconnectedNotification, object: nil, queue: nil) { [weak self] notif in
+                guard let device = notif.object as? AVCaptureDevice else { return }
+                self?.configurationQueue.async { [weak self] in
+                    if self?.prepared?.deviceUID == device.uniqueID {
+                        self?.invalidatePreparedSynchronously(reason: "device-disconnected")
+                    }
+                }
+            }
+        )
+        notificationObservers.append(
+            center.addObserver(forName: AVCaptureSession.runtimeErrorNotification, object: nil, queue: nil) { [weak self] _ in
+                self?.configurationQueue.async { [weak self] in
+                    self?.invalidatePreparedSynchronously(reason: "runtime-error")
+                }
+            }
+        )
+        let wsCenter = NSWorkspace.shared.notificationCenter
+        notificationObservers.append(
+            wsCenter.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: nil) { [weak self] _ in
+                self?.configurationQueue.async { [weak self] in
+                    self?.invalidatePreparedSynchronously(reason: "sleep")
+                }
+            }
+        )
+        notificationObservers.append(
+            wsCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: nil) { [weak self] _ in
+                self?.configurationQueue.asyncAfter(deadline: .now() + .seconds(2)) { [weak self] in
+                    self?.prepareIfEligibleSynchronously()
+                }
+            }
+        )
+    }
+
+    /// Pre-initialize the audio capture pipeline or prepared session so the first real recording starts instantly.
     func warmUp() {
-        guard !isWarmedUp else { return }
-        guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else {
-            NSLog("[Audio] Warm-up skipped: microphone permission not granted")
+        prepareIfEligible()
+    }
+
+    func prepareIfEligible() {
+        configurationQueue.async { [weak self] in
+            self?.prepareIfEligibleSynchronously()
+        }
+    }
+
+    func invalidatePrepared(reason: String) {
+        configurationQueue.async { [weak self] in
+            self?.invalidatePreparedSynchronously(reason: reason)
+        }
+    }
+
+    private func invalidatePreparedSynchronously(reason: String) {
+        guard let p = prepared else { return }
+        p.topologyObserver?.invalidate()
+        p.session.beginConfiguration()
+        p.session.removeOutput(p.output)
+        p.session.removeInput(p.input)
+        p.session.commitConfiguration()
+        prepared = nil
+        DebugFileLogger.log("audio capture prepared invalidated reason=\(reason)")
+    }
+
+    private func isAggregateDevice(_ device: AVCaptureDevice) -> Bool {
+        guard let deviceID = AudioInputDeviceDiscovery.coreAudioDeviceID(forUID: device.uniqueID) else { return false }
+        var transport: UInt32 = 0
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyTransportType,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        let status = AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, &transport)
+        return status == noErr && transport == kAudioDeviceTransportTypeAggregate
+    }
+
+    private func handleAggregateTopologyChange(uid: String) {
+        let isBT = AudioInputDeviceDiscovery.aggregateContainsBluetooth(uid: uid)
+        let eligible = !isBT
+        if captureSession != nil {
+            pendingInvalidate = true
+            DebugFileLogger.log("audio aggregate topology changed uid=\(uid) state=running eligible=\(eligible)")
+        } else {
+            DebugFileLogger.log("audio aggregate topology changed uid=\(uid) state=prepared eligible=\(eligible)")
+            invalidatePreparedSynchronously(reason: "aggregate-topology-change")
+            if eligible {
+                prepareIfEligibleSynchronously()
+            }
+        }
+    }
+
+    private func prepareIfEligibleSynchronously() {
+        guard Self.isPreparedCaptureSessionEnabled else {
+            invalidatePreparedSynchronously(reason: "disabled")
             return
         }
-        DispatchQueue.global(qos: .utility).async { [weak self] in
-            // Loading AVAudioEngine and its input node primes the framework without
-            // opening the microphone. Starting a warm-up capture here would push a
-            // Bluetooth headset into call mode while the app is merely launching.
-            let engine = AVAudioEngine()
-            _ = engine.inputNode
-            self?.isWarmedUp = true
-            NSLog("[Audio] Warm-up complete (AVAudioEngine graph initialized)")
+        guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else {
+            invalidatePreparedSynchronously(reason: "no-permission")
+            return
+        }
+        guard captureSession == nil else {
+            return
+        }
+        guard let target = resolveDevice() else {
+            invalidatePreparedSynchronously(reason: "no-target")
+            return
+        }
+        let cat = AudioInputDeviceDiscovery.category(for: target)
+        let isAgg = isAggregateDevice(target)
+        let isAggWithBT = isAgg && AudioInputDeviceDiscovery.aggregateContainsBluetooth(uid: target.uniqueID)
+        guard AudioCapturePreparationPolicy.allowsPreparedSession(for: cat, isAggregateWithBluetooth: isAggWithBT) else {
+            invalidatePreparedSynchronously(reason: "ineligible(\(cat.rawValue))")
+            return
+        }
+
+        if let p = prepared {
+            if p.deviceUID == target.uniqueID && target.isConnected && (!p.isAggregate || !AudioInputDeviceDiscovery.aggregateContainsBluetooth(uid: p.deviceUID)) {
+                return
+            } else {
+                invalidatePreparedSynchronously(reason: "device-mismatch")
+            }
+        }
+
+        do {
+            let session = AVCaptureSession()
+            let input = try AVCaptureDeviceInput(device: target)
+            guard session.canAddInput(input) else { return }
+            session.addInput(input)
+
+            let output = AVCaptureAudioDataOutput()
+            guard session.canAddOutput(output) else { return }
+            session.addOutput(output)
+
+            let observer: AggregateTopologyObserver?
+            if isAgg {
+                observer = AggregateTopologyObserver(aggregateUID: target.uniqueID, queue: configurationQueue) { [weak self] in
+                    self?.handleAggregateTopologyChange(uid: target.uniqueID)
+                }
+            } else {
+                observer = nil
+            }
+
+            prepared = PreparedCapture(
+                session: session,
+                input: input,
+                output: output,
+                deviceUID: target.uniqueID,
+                isAggregate: isAgg,
+                topologyObserver: observer
+            )
+            DebugFileLogger.log("audio capture prepared for device=\(target.localizedName) uid=\(target.uniqueID)")
+        } catch {
+            DebugFileLogger.log("audio capture prepare failed: \(error)")
         }
     }
 
@@ -125,6 +304,9 @@ final class AudioCaptureEngine: NSObject, @unchecked Sendable, AVCaptureAudioDat
     func start() throws {
         let authStatus = AVCaptureDevice.authorizationStatus(for: .audio)
         guard authStatus == .authorized else {
+            configurationQueue.async { [weak self] in
+                self?.invalidatePreparedSynchronously(reason: "permission-denied")
+            }
             throw AudioCaptureError.microphonePermissionDenied
         }
 
@@ -134,43 +316,112 @@ final class AudioCaptureEngine: NSObject, @unchecked Sendable, AVCaptureAudioDat
         accumulatedAudio = Data()
         bufferLock.unlock()
         converter = nil
+        firstSampleLock.withLock {
+            hasEmittedFirstSample = false
+        }
 
-        try startWithAVCapture()
+        try configurationQueue.sync {
+            try startSynchronously()
+        }
     }
 
-    private func startWithAVCapture() throws {
-        let session = AVCaptureSession()
-
-        guard let device = resolveDevice() else {
+    private func startSynchronously() throws {
+        guard let target = resolveDevice() else {
             throw AudioCaptureError.noInputDevice
         }
+        let targetCategory = AudioInputDeviceDiscovery.category(for: target)
+        let isAgg = isAggregateDevice(target)
+        let isAggWithBT = isAgg && AudioInputDeviceDiscovery.aggregateContainsBluetooth(uid: target.uniqueID)
 
-        let input = try AVCaptureDeviceInput(device: device)
-        guard session.canAddInput(input) else {
-            throw AudioCaptureError.converterCreationFailed
-        }
-        session.addInput(input)
-
-        let output = AVCaptureAudioDataOutput()
-        output.setSampleBufferDelegate(self, queue: outputQueue)
-        guard session.canAddOutput(output) else {
-            throw AudioCaptureError.converterCreationFailed
-        }
-        session.addOutput(output)
-        stateLock.withLock {
-            activeOutput = output
+        var canReuse = false
+        if Self.isPreparedCaptureSessionEnabled,
+           let p = prepared,
+           p.deviceUID == target.uniqueID,
+           target.isConnected,
+           (!p.isAggregate || !AudioInputDeviceDiscovery.aggregateContainsBluetooth(uid: p.deviceUID)) {
+            canReuse = true
         }
 
-        session.startRunning()
-        captureSession = session
-        isWarmedUp = true
-        NSLog("[Audio] Capture session started (AVCapture), device: %@", device.localizedName)
-        DebugFileLogger.log("audio capture started device=\(device.localizedName)")
+        if canReuse, let p = prepared {
+            stateLock.withLock {
+                activeOutput = p.output
+            }
+            p.output.setSampleBufferDelegate(self, queue: outputQueue)
+            let tStart = ContinuousClock.now
+            p.session.startRunning()
+            let runningDuration = ContinuousClock.now - tStart
+            captureSession = p.session
+            isWarmedUp = true
+            lastStartInfo = AudioCaptureStartInfo(
+                deviceInputDuration: nil,
+                startRunningDuration: runningDuration,
+                preparedStatus: "hit",
+                deviceCategory: targetCategory.rawValue
+            )
+            DebugFileLogger.log("audio capture started prepared=hit device=\(target.localizedName)")
+        } else {
+            let missReason: String
+            if !Self.isPreparedCaptureSessionEnabled {
+                missReason = "disabled"
+            } else if targetCategory == .bluetooth {
+                missReason = "n/a(bluetooth)"
+            } else if isAggWithBT {
+                missReason = "n/a(aggregate-bluetooth)"
+            } else if targetCategory == .other {
+                missReason = "n/a(other)"
+            } else if let p = prepared, p.deviceUID != target.uniqueID {
+                missReason = "miss(mismatch)"
+            } else {
+                missReason = "miss(cold)"
+            }
+
+            invalidatePreparedSynchronously(reason: missReason)
+
+            let session = AVCaptureSession()
+            let tInput = ContinuousClock.now
+            let input = try AVCaptureDeviceInput(device: target)
+            let inputDuration = ContinuousClock.now - tInput
+
+            guard session.canAddInput(input) else {
+                throw AudioCaptureError.converterCreationFailed
+            }
+            session.addInput(input)
+
+            let output = AVCaptureAudioDataOutput()
+            output.setSampleBufferDelegate(self, queue: outputQueue)
+            guard session.canAddOutput(output) else {
+                throw AudioCaptureError.converterCreationFailed
+            }
+            session.addOutput(output)
+            stateLock.withLock {
+                activeOutput = output
+            }
+
+            let tStart = ContinuousClock.now
+            session.startRunning()
+            let runningDuration = ContinuousClock.now - tStart
+            captureSession = session
+            isWarmedUp = true
+            lastStartInfo = AudioCaptureStartInfo(
+                deviceInputDuration: inputDuration,
+                startRunningDuration: runningDuration,
+                preparedStatus: missReason,
+                deviceCategory: targetCategory.rawValue
+            )
+            DebugFileLogger.log("audio capture started prepared=\(missReason) device=\(target.localizedName)")
+        }
     }
 
     func stop() {
+        configurationQueue.sync {
+            stopSynchronously()
+        }
+        flushRemaining()
+        clearCaptureState()
+    }
+
+    private func stopSynchronously() {
         guard let session = captureSession else {
-            clearCaptureState()
             return
         }
 
@@ -184,24 +435,53 @@ final class AudioCaptureEngine: NSObject, @unchecked Sendable, AVCaptureAudioDat
         }
         output?.setSampleBufferDelegate(nil, queue: nil)
 
-        // stopRunning() stops delivery, but explicitly detaching every graph node
-        // releases the AVCaptureDeviceInput immediately. This is important for a
-        // Bluetooth headset: CoreAudio can leave the HFP input route alive while
-        // a stopped session still owns its device input.
-        session.beginConfiguration()
-        for captureOutput in session.outputs {
-            session.removeOutput(captureOutput)
-        }
-        for captureInput in session.inputs {
-            session.removeInput(captureInput)
-        }
-        session.commitConfiguration()
-        captureSession = nil
+        let target = resolveDevice()
+        let category = target.map { AudioInputDeviceDiscovery.category(for: $0) } ?? .other
+        let isAgg = target.map { isAggregateDevice($0) } ?? false
+        let isAggWithBT = isAgg && (target.map { AudioInputDeviceDiscovery.aggregateContainsBluetooth(uid: $0.uniqueID) } ?? true)
+        let eligible = Self.isPreparedCaptureSessionEnabled && AudioCapturePreparationPolicy.allowsPreparedSession(for: category, isAggregateWithBluetooth: isAggWithBT)
 
-        flushRemaining()
-        clearCaptureState()
-        NSLog("[Audio] Capture session stopped and graph detached")
-        DebugFileLogger.log("audio capture stopped; AVCapture graph detached")
+        if eligible && !pendingInvalidate, let target, let output, let currentInput = session.inputs.first as? AVCaptureDeviceInput {
+            let observer: AggregateTopologyObserver?
+            if isAgg {
+                observer = prepared?.topologyObserver ?? AggregateTopologyObserver(aggregateUID: target.uniqueID, queue: configurationQueue) { [weak self] in
+                    self?.handleAggregateTopologyChange(uid: target.uniqueID)
+                }
+            } else {
+                observer = nil
+            }
+            prepared = PreparedCapture(
+                session: session,
+                input: currentInput,
+                output: output,
+                deviceUID: target.uniqueID,
+                isAggregate: isAgg,
+                topologyObserver: observer
+            )
+            captureSession = nil
+            DebugFileLogger.log("audio capture stopped; prepared session retained")
+        } else {
+            session.beginConfiguration()
+            for captureOutput in session.outputs {
+                session.removeOutput(captureOutput)
+            }
+            for captureInput in session.inputs {
+                session.removeInput(captureInput)
+            }
+            session.commitConfiguration()
+            prepared?.topologyObserver?.invalidate()
+            prepared = nil
+            captureSession = nil
+            DebugFileLogger.log("audio capture stopped; AVCapture graph detached")
+        }
+
+        pendingInvalidate = false
+
+        if prepared == nil {
+            configurationQueue.async { [weak self] in
+                self?.prepareIfEligibleSynchronously()
+            }
+        }
     }
 
     private func clearCaptureState() {
@@ -221,6 +501,13 @@ final class AudioCaptureEngine: NSObject, @unchecked Sendable, AVCaptureAudioDat
         from connection: AVCaptureConnection
     ) {
         let isActiveOutput = stateLock.withLock { activeOutput === output }
+        firstSampleLock.withLock {
+            if !hasEmittedFirstSample {
+                hasEmittedFirstSample = true
+                let sampleTime = ContinuousClock.now
+                onFirstSample?(sampleTime)
+            }
+        }
         guard isActiveOutput else { return }
         guard let pcmBuffer = sampleBuffer.toPCMBuffer() else { return }
 

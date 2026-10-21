@@ -1421,6 +1421,7 @@ final class AppState {
     @ObservationIgnored private let modeSelectionDefaults: UserDefaults
     @ObservationIgnored let audioLevel = AudioLevelMeter()
     var recordingStartDate: Date?
+    var recordingReadyGeneration: UInt64? = nil
     var availableModes: [ProcessingMode]
 
     /// Mode id -> that mode's whole-block recording-display override. Modes
@@ -1514,6 +1515,7 @@ final class AppState {
         segments = []
         audioLevel.current = 0
         recordingStartDate = nil
+        recordingReadyGeneration = nil
         feedbackMessage = L("已完成", "Done")
         feedbackKind = .standard
         processingLabelOverride = nil
@@ -1531,6 +1533,7 @@ final class AppState {
         segments = []
         audioLevel.current = 0
         recordingStartDate = nil
+        recordingReadyGeneration = nil
         feedbackMessage = L("已改好", "Revised")
         feedbackKind = .standard
         processingLabelOverride = nil
@@ -1544,10 +1547,11 @@ final class AppState {
         ModeSelectionPreference.persist(currentMode, userDefaults: modeSelectionDefaults)
     }
 
-    func markRecordingReady() {
+    func markRecordingReady(generation: UInt64? = nil) {
         guard barPhase == .preparing else { return }
         audioLevel.current = 0
         recordingStartDate = Date()
+        recordingReadyGeneration = generation
         barPhase = .recording
     }
 
@@ -1555,6 +1559,7 @@ final class AppState {
         if suppressProcessingUI {
             guard barPhase == .recording || barPhase == .processing else { return }
             awaitsSuppressedCancellationFinalization = true
+            recordingReadyGeneration = nil
             processingFinishTime = nil
             processingLabelOverride = nil
             barPhase = .hidden
@@ -1566,6 +1571,7 @@ final class AppState {
         case .preparing:
             cancel()
         case .recording:
+            recordingReadyGeneration = nil
             processingFinishTime = nil
             if currentMode.id == ProcessingMode.directId {
                 processingLabelOverride = L("校准中", "Calibrating")
@@ -1711,6 +1717,7 @@ final class AppState {
         activityKind = .standard
         latestReviseUndoTicketID = nil
         awaitsSuppressedCancellationFinalization = false
+        recordingReadyGeneration = nil
         barPhase = .hidden
         segments = []
         audioLevel.current = 0
