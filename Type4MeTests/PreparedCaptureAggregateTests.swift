@@ -28,6 +28,25 @@ final class PreparedCaptureAggregateTests: XCTestCase {
         wait(for: [exp], timeout: 0.2)
     }
 
+    func testInvalidatingFromInsideOnChangeDoesNotDeadlock() {
+        let exp = expectation(description: "onChange returned after invalidating itself")
+        let queue = DispatchQueue(label: "test.topology.queue")
+        var observer: AggregateTopologyObserver?
+        observer = AggregateTopologyObserver(testAggregateUID: "TestAggUID", queue: queue) {
+            // The engine drops its prepared graph here, which invalidates this observer.
+            observer?.invalidate()
+            exp.fulfill()
+        }
+
+        observer?.triggerChangeForTesting()
+        wait(for: [exp], timeout: 1.0)
+
+        // The queue is still serviceable, and the invalidated observer stays silent.
+        let drained = expectation(description: "queue drained")
+        queue.async { drained.fulfill() }
+        wait(for: [drained], timeout: 1.0)
+    }
+
     func testAggregatePolicyDisallowsWhenBluetoothPresent() {
         // When aggregate contains bluetooth, policy strictly disallows preparation
         XCTAssertFalse(

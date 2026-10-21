@@ -156,6 +156,13 @@ final class RecordingStartLatencyTests: XCTestCase {
 
         // Assert: Round 2 is NOT stopped by Round 1's resume
         XCTAssertEqual(mockAudio.stopCallCount, 1)
+        // Round 2 still owns the capture callbacks; the stale round must not clear them.
+        XCTAssertNotNil(mockAudio.onAudioChunk)
+        XCTAssertNotNil(mockAudio.onAudioLevel)
+        XCTAssertNotNil(mockAudio.onFirstSample)
         _ = await round2Task.value
+        XCTAssertNotNil(mockAudio.onAudioChunk)
+        XCTAssertNotNil(mockAudio.onAudioLevel)
+        XCTAssertNotNil(mockAudio.onFirstSample)
     }
 }

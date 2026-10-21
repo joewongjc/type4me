@@ -106,7 +106,11 @@ final class AudioCaptureEngine: NSObject, @unchecked Sendable, AVCaptureAudioDat
         let topologyObserver: AggregateTopologyObserver?
     }
 
+    /// Idle graph only. Once activated, the graph is owned by `captureSession`
+    /// and returns here only if `stop()` decides it can be reused.
     private var prepared: PreparedCapture?
+    /// Aggregate observer carried over from a prepared graph while it is running.
+    private var runningTopologyObserver: AggregateTopologyObserver?
     private var pendingInvalidate = false
     private let configurationQueue = DispatchQueue(label: "com.type4me.audiocapture.config", qos: .userInitiated)
     private var notificationObservers: [NSObjectProtocol] = []
@@ -140,6 +144,7 @@ final class AudioCaptureEngine: NSObject, @unchecked Sendable, AVCaptureAudioDat
             NSWorkspace.shared.notificationCenter.removeObserver(observer)
         }
         prepared?.topologyObserver?.invalidate()
+        runningTopologyObserver?.invalidate()
     }
 
     private func setupNotificationObservers() {
@@ -196,6 +201,11 @@ final class AudioCaptureEngine: NSObject, @unchecked Sendable, AVCaptureAudioDat
     }
 
     private func invalidatePreparedSynchronously(reason: String) {
+        if captureSession != nil {
+            // The running graph is never torn down mid-recording; stop() detaches
+            // it instead of retaining it.
+            pendingInvalidate = true
+        }
         guard let p = prepared else { return }
         p.topologyObserver?.invalidate()
         p.session.beginConfiguration()
@@ -217,6 +227,16 @@ final class AudioCaptureEngine: NSObject, @unchecked Sendable, AVCaptureAudioDat
         )
         let status = AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, &transport)
         return status == noErr && transport == kAudioDeviceTransportTypeAggregate
+    }
+
+    private func makeTopologyObserver(uid: String) -> AggregateTopologyObserver? {
+        AggregateTopologyObserver(aggregateUID: uid, queue: configurationQueue) { [weak self] in
+            // Handle on a later queue turn so invalidation never runs inside the
+            // CoreAudio listener block that delivered the change.
+            self?.configurationQueue.async { [weak self] in
+                self?.handleAggregateTopologyChange(uid: uid)
+            }
+        }
     }
 
     private func handleAggregateTopologyChange(uid: String) {
@@ -276,14 +296,7 @@ final class AudioCaptureEngine: NSObject, @unchecked Sendable, AVCaptureAudioDat
             guard session.canAddOutput(output) else { return }
             session.addOutput(output)
 
-            let observer: AggregateTopologyObserver?
-            if isAgg {
-                observer = AggregateTopologyObserver(aggregateUID: target.uniqueID, queue: configurationQueue) { [weak self] in
-                    self?.handleAggregateTopologyChange(uid: target.uniqueID)
-                }
-            } else {
-                observer = nil
-            }
+            let observer = isAgg ? makeTopologyObserver(uid: target.uniqueID) : nil
 
             prepared = PreparedCapture(
                 session: session,
@@ -343,6 +356,10 @@ final class AudioCaptureEngine: NSObject, @unchecked Sendable, AVCaptureAudioDat
         }
 
         if canReuse, let p = prepared {
+            // Hand the graph to the running capture so idle-graph invalidation
+            // can never tear down an active recording.
+            prepared = nil
+            runningTopologyObserver = p.topologyObserver
             stateLock.withLock {
                 activeOutput = p.output
             }
@@ -435,31 +452,40 @@ final class AudioCaptureEngine: NSObject, @unchecked Sendable, AVCaptureAudioDat
         }
         output?.setSampleBufferDelegate(nil, queue: nil)
 
-        let target = resolveDevice()
-        let category = target.map { AudioInputDeviceDiscovery.category(for: $0) } ?? .other
-        let isAgg = target.map { isAggregateDevice($0) } ?? false
-        let isAggWithBT = isAgg && (target.map { AudioInputDeviceDiscovery.aggregateContainsBluetooth(uid: $0.uniqueID) } ?? true)
-        let eligible = Self.isPreparedCaptureSessionEnabled && AudioCapturePreparationPolicy.allowsPreparedSession(for: category, isAggregateWithBluetooth: isAggWithBT)
+        // Decide from the device this graph actually captured: the resolved
+        // target may have moved (e.g. AirPods → built-in) during the recording.
+        let capturedInput = session.inputs.lazy.compactMap { $0 as? AVCaptureDeviceInput }.first
+        let capturedDevice = capturedInput?.device
+        let capturedCategory = capturedDevice.map { AudioInputDeviceDiscovery.category(for: $0) } ?? .other
+        let isAgg = capturedDevice.map { isAggregateDevice($0) } ?? false
+        let isAggWithBT = isAgg && (capturedDevice.map { AudioInputDeviceDiscovery.aggregateContainsBluetooth(uid: $0.uniqueID) } ?? true)
+        let retain = AudioCapturePreparationPolicy.shouldRetainAfterStop(
+            isEnabled: Self.isPreparedCaptureSessionEnabled,
+            pendingInvalidate: pendingInvalidate,
+            capturedDeviceUID: capturedDevice?.uniqueID,
+            capturedCategory: capturedCategory,
+            capturedIsAggregateWithBluetooth: isAggWithBT,
+            targetDeviceUID: resolveDevice()?.uniqueID
+        )
 
-        if eligible && !pendingInvalidate, let target, let output, let currentInput = session.inputs.first as? AVCaptureDeviceInput {
-            let observer: AggregateTopologyObserver?
-            if isAgg {
-                observer = prepared?.topologyObserver ?? AggregateTopologyObserver(aggregateUID: target.uniqueID, queue: configurationQueue) { [weak self] in
-                    self?.handleAggregateTopologyChange(uid: target.uniqueID)
-                }
-            } else {
-                observer = nil
+        if retain, let capturedInput, let capturedDevice, let output {
+            let observer = isAgg
+                ? (runningTopologyObserver ?? makeTopologyObserver(uid: capturedDevice.uniqueID))
+                : nil
+            if observer !== runningTopologyObserver {
+                runningTopologyObserver?.invalidate()
             }
+            runningTopologyObserver = nil
             prepared = PreparedCapture(
                 session: session,
-                input: currentInput,
+                input: capturedInput,
                 output: output,
-                deviceUID: target.uniqueID,
+                deviceUID: capturedDevice.uniqueID,
                 isAggregate: isAgg,
                 topologyObserver: observer
             )
             captureSession = nil
-            DebugFileLogger.log("audio capture stopped; prepared session retained")
+            DebugFileLogger.log("audio capture stopped; prepared session retained device=\(capturedDevice.localizedName)")
         } else {
             session.beginConfiguration()
             for captureOutput in session.outputs {
@@ -469,10 +495,15 @@ final class AudioCaptureEngine: NSObject, @unchecked Sendable, AVCaptureAudioDat
                 session.removeInput(captureInput)
             }
             session.commitConfiguration()
+            runningTopologyObserver?.invalidate()
+            runningTopologyObserver = nil
             prepared?.topologyObserver?.invalidate()
             prepared = nil
             captureSession = nil
-            DebugFileLogger.log("audio capture stopped; AVCapture graph detached")
+            DebugFileLogger.log(
+                "audio capture stopped; AVCapture graph detached "
+                    + "captured=\(capturedCategory.rawValue) pendingInvalidate=\(pendingInvalidate)"
+            )
         }
 
         pendingInvalidate = false

@@ -4248,15 +4248,20 @@ actor RecognitionSession {
     }
 
     private func releaseEarlyCapture(generation: UInt64) {
+        // The gate ignores a stale generation, so disarming is always safe.
         StartSoundRouteGate.shared.disarm(generation: generation)
+        // A superseded round must not touch shared capture state: forceReset()
+        // already stopped its microphone, and the callbacks, speech gate and
+        // timing tracker now belong to the newer round.
+        guard sessionGeneration == generation else {
+            DebugFileLogger.log("releaseEarlyCapture: generation=\(generation) superseded by \(sessionGeneration), leaving capture state")
+            return
+        }
         audioEngine.onAudioChunk = nil
         audioEngine.onAudioLevel = nil
         audioEngine.onFirstSample = nil
         currentSpeechGraceGate = nil
         audioStartTimingTracker = nil
-        guard sessionGeneration == generation else {
-            return
-        }
         audioEngine.stop()
         DebugFileLogger.log("releaseEarlyCapture: microphone released for generation=\(generation)")
     }

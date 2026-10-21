@@ -40,11 +40,7 @@ final class AggregateTopologyObserver: @unchecked Sendable {
                 mElement: kAudioObjectPropertyElementMain
             )
             let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
-                guard let self else { return }
-                self.lock.withLock {
-                    guard !self.isInvalidated else { return }
-                    self.onChange()
-                }
+                self?.deliverChange()
             }
             let status = AudioObjectAddPropertyListenerBlock(deviceID, &address, queue, block)
             if status == noErr {
@@ -77,12 +73,16 @@ final class AggregateTopologyObserver: @unchecked Sendable {
     /// Triggers the change callback manually (primarily for testing).
     func triggerChangeForTesting() {
         queue.async { [weak self] in
-            guard let self else { return }
-            self.lock.withLock {
-                guard !self.isInvalidated else { return }
-                self.onChange()
-            }
+            self?.deliverChange()
         }
+    }
+
+    /// Checks invalidation under the lock but calls `onChange` outside it, so the
+    /// callback may invalidate this observer without re-entering the lock.
+    private func deliverChange() {
+        let isLive = lock.withLock { !isInvalidated }
+        guard isLive else { return }
+        onChange()
     }
 
     func invalidate() {
