@@ -12,7 +12,7 @@ final class AggregateTopologyObserver: @unchecked Sendable {
     private var isInvalidated = false
     private let lock = NSLock()
 
-    private var activeListeners: [(AudioObjectPropertyAddress, AudioObjectPropertyListenerBlock)] = []
+    private var activeListeners: [(AudioObjectPropertyAddress, CoreAudioListenerBlock)] = []
 
     init?(aggregateUID: String, queue: DispatchQueue, onChange: @escaping () -> Void) {
         self.aggregateUID = aggregateUID
@@ -30,19 +30,19 @@ final class AggregateTopologyObserver: @unchecked Sendable {
             kAudioAggregateDevicePropertyComposition
         ]
 
-        var registered: [(AudioObjectPropertyAddress, AudioObjectPropertyListenerBlock)] = []
+        var registered: [(AudioObjectPropertyAddress, CoreAudioListenerBlock)] = []
         var allSucceeded = true
 
         for selector in selectors {
-            var address = AudioObjectPropertyAddress(
+            let address = AudioObjectPropertyAddress(
                 mSelector: selector,
                 mScope: kAudioObjectPropertyScopeGlobal,
                 mElement: kAudioObjectPropertyElementMain
             )
-            let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+            let block: CoreAudioListenerBlock = { [weak self] _, _ in
                 self?.deliverChange()
             }
-            let status = AudioObjectAddPropertyListenerBlock(deviceID, &address, queue, block)
+            let status = CoreAudioListenerBlocks.add(deviceID, address, queue, block)
             if status == noErr {
                 registered.append((address, block))
             } else {
@@ -53,8 +53,8 @@ final class AggregateTopologyObserver: @unchecked Sendable {
 
         guard allSucceeded else {
             // Rollback any successfully registered listeners
-            for (var addr, blk) in registered {
-                AudioObjectRemovePropertyListenerBlock(deviceID, &addr, queue, blk)
+            for (addr, blk) in registered {
+                _ = CoreAudioListenerBlocks.remove(deviceID, addr, queue, blk)
             }
             return nil
         }
@@ -89,8 +89,8 @@ final class AggregateTopologyObserver: @unchecked Sendable {
         lock.withLock {
             guard !isInvalidated else { return }
             isInvalidated = true
-            for (var address, block) in activeListeners {
-                AudioObjectRemovePropertyListenerBlock(deviceID, &address, queue, block)
+            for (address, block) in activeListeners {
+                _ = CoreAudioListenerBlocks.remove(deviceID, address, queue, block)
             }
             activeListeners.removeAll()
         }

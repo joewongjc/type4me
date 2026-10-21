@@ -12,7 +12,25 @@ protocol AudioOutputRouteMonitor: AnyObject, Sendable {
     func removeRouteChangeListener(_ token: any Sendable)
 }
 
+/// CoreAudio property-listener entry points, injectable so tests can verify that
+/// a listener is removed with exactly the arguments it was registered with.
+struct CoreAudioListenerAPI: Sendable {
+    var add: @Sendable (AudioObjectID, AudioObjectPropertyAddress, DispatchQueue, @escaping CoreAudioListenerBlock) -> OSStatus
+    var remove: @Sendable (AudioObjectID, AudioObjectPropertyAddress, DispatchQueue, @escaping CoreAudioListenerBlock) -> OSStatus
+
+    static let live = CoreAudioListenerAPI(
+        add: { CoreAudioListenerBlocks.add($0, $1, $2, $3) },
+        remove: { CoreAudioListenerBlocks.remove($0, $1, $2, $3) }
+    )
+}
+
 final class CoreAudioOutputRouteMonitor: AudioOutputRouteMonitor, @unchecked Sendable {
+    private let listenerAPI: CoreAudioListenerAPI
+
+    init(listenerAPI: CoreAudioListenerAPI = .live) {
+        self.listenerAPI = listenerAPI
+    }
+
     func currentNominalSampleRate(for deviceID: AudioDeviceID) -> Double? {
         var rate: Float64 = 0
         var size = UInt32(MemoryLayout<Float64>.size)
@@ -31,15 +49,25 @@ final class CoreAudioOutputRouteMonitor: AudioOutputRouteMonitor, @unchecked Sen
         return Double(rate)
     }
 
+    /// Holds only the addresses that registered successfully, plus the queue and
+    /// block object they were registered with: CoreAudio removes a block listener
+    /// only when the object, address, queue and block all match the registration.
     private final class ListenerToken: @unchecked Sendable {
         let deviceID: AudioDeviceID
-        var addresses: [AudioObjectPropertyAddress]
-        let block: AudioObjectPropertyListenerBlock
+        let queue: DispatchQueue
+        let addresses: [AudioObjectPropertyAddress]
+        let block: CoreAudioListenerBlock
         var isRemoved = false
         let lock = NSLock()
 
-        init(deviceID: AudioDeviceID, addresses: [AudioObjectPropertyAddress], block: @escaping AudioObjectPropertyListenerBlock) {
+        init(
+            deviceID: AudioDeviceID,
+            queue: DispatchQueue,
+            addresses: [AudioObjectPropertyAddress],
+            block: @escaping CoreAudioListenerBlock
+        ) {
             self.deviceID = deviceID
+            self.queue = queue
             self.addresses = addresses
             self.block = block
         }
@@ -68,18 +96,26 @@ final class CoreAudioOutputRouteMonitor: AudioOutputRouteMonitor, @unchecked Sen
             ))
         }
 
-        let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+        let block: CoreAudioListenerBlock = { [weak self] _, _ in
             guard let self else { return }
             if let rate = self.currentNominalSampleRate(for: deviceID) {
                 onChange(rate)
             }
         }
 
-        let token = ListenerToken(deviceID: deviceID, addresses: addresses, block: block)
-        for var address in addresses {
-            AudioObjectAddPropertyListenerBlock(deviceID, &address, queue, block)
+        var registered: [AudioObjectPropertyAddress] = []
+        for address in addresses {
+            let status = listenerAPI.add(deviceID, address, queue, block)
+            if status == noErr {
+                registered.append(address)
+            } else {
+                DebugFileLogger.log(
+                    "start sound route listener add failed selector=\(address.mSelector) scope=\(address.mScope) status=\(status)"
+                )
+            }
         }
-        return token
+        guard !registered.isEmpty else { return nil }
+        return ListenerToken(deviceID: deviceID, queue: queue, addresses: registered, block: block)
     }
 
     func removeRouteChangeListener(_ token: any Sendable) {
@@ -87,8 +123,15 @@ final class CoreAudioOutputRouteMonitor: AudioOutputRouteMonitor, @unchecked Sen
         listenerToken.lock.withLock {
             guard !listenerToken.isRemoved else { return }
             listenerToken.isRemoved = true
-            for var address in listenerToken.addresses {
-                AudioObjectRemovePropertyListenerBlock(listenerToken.deviceID, &address, nil, listenerToken.block)
+            for address in listenerToken.addresses {
+                let status = listenerAPI.remove(
+                    listenerToken.deviceID, address, listenerToken.queue, listenerToken.block
+                )
+                if status != noErr {
+                    DebugFileLogger.log(
+                        "start sound route listener remove failed selector=\(address.mSelector) scope=\(address.mScope) status=\(status)"
+                    )
+                }
             }
         }
     }
@@ -183,6 +226,9 @@ final class StartSoundRouteGate: @unchecked Sendable {
         // Register route listener
         listenerToken = routeMonitor.addRouteChangeListener(for: outputDeviceID, queue: queue) { [weak self] newRate in
             self?.handleRateChange(newRate: newRate, generation: generation)
+        }
+        if listenerToken == nil {
+            DebugFileLogger.log("start sound gate listener unavailable; relying on timeout gen=\(generation)")
         }
 
         // Arm 900ms timeout
