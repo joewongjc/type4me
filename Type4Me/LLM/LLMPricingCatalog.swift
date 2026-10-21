@@ -8,6 +8,7 @@ public enum LLMPricingCatalog {
 
     public static let seedEntries: [ModelPriceEntry] = [
         // OpenAI
+        ModelPriceEntry(key: "gpt-6-luna", inputPricePerMTok: 0.20, outputPricePerMTok: 1.20),
         ModelPriceEntry(key: "gpt-5.6-luna", inputPricePerMTok: 0.20, outputPricePerMTok: 1.20),
         ModelPriceEntry(key: "gpt-5.6-sol", inputPricePerMTok: 2.00, outputPricePerMTok: 10.00),
         ModelPriceEntry(key: "gpt-5.6-terra", inputPricePerMTok: 2.00, outputPricePerMTok: 12.00),

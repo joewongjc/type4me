@@ -312,7 +312,8 @@ enum KeychainService {
             return configType.init(credentials: values)
         }
         if provider == .codexCLI {
-            return configType.init(credentials: ["model": "gpt-5.6-luna"])
+            let defaultModel = LLMProvider.codexCLI.modelOptions.first?.value ?? "gpt-6-luna"
+            return configType.init(credentials: ["model": defaultModel])
         }
         return nil
     }

@@ -81,7 +81,7 @@ final class ModelSettingsTabTests: XCTestCase {
     func testCodexCLIFallbackConfigWhenKeychainEmpty() {
         let config = KeychainService.loadLLMProviderConfig(for: .codexCLI)
         XCTAssertNotNil(config, "Codex CLI should safely resolve a default configuration even without Keychain values")
-        XCTAssertEqual(config?.toLLMConfig().model, "gpt-5.6-luna")
+        XCTAssertEqual(config?.toLLMConfig().model, "gpt-6-luna")
     }
 
     func testBrandIconDevPathResolution() {

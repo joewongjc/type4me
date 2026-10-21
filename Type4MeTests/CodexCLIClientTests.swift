@@ -6,18 +6,29 @@ final class CodexCLIClientTests: XCTestCase {
     func testConfigUsesLunaByDefaultWithoutAPIKey() throws {
         let field = try XCTUnwrap(CodexCLILLMConfig.credentialFields.first)
         XCTAssertEqual(field.key, "model")
-        XCTAssertEqual(field.defaultValue, "gpt-5.6-luna")
+        XCTAssertEqual(field.defaultValue, "gpt-6-luna")
         XCTAssertFalse(field.isSecure)
+        XCTAssertTrue(field.allowCustomInput)
 
         let config = try XCTUnwrap(CodexCLILLMConfig(credentials: ["model": field.defaultValue]))
-        XCTAssertEqual(config.toCredentials(), ["model": "gpt-5.6-luna"])
+        XCTAssertEqual(config.toCredentials(), ["model": "gpt-6-luna"])
         XCTAssertEqual(config.toLLMConfig().apiKey, "")
     }
 
     func testProviderExposesSparkAndDisablesRequiresAPIKey() {
-        XCTAssertEqual(LLMProvider.codexCLI.modelOptions.first?.value, "gpt-5.6-luna")
+        XCTAssertEqual(LLMProvider.codexCLI.modelOptions.first?.value, "gpt-6-luna")
+        XCTAssertTrue(LLMProvider.codexCLI.modelOptions.contains { $0.value == "gpt-5.6-luna" })
         XCTAssertTrue(LLMProvider.codexCLI.modelOptions.contains { $0.value == "gpt-5.3-codex-spark" })
         XCTAssertFalse(LLMProvider.codexCLI.requiresAPIKey)
+    }
+
+    func testModelNameNormalization() {
+        XCTAssertEqual(CodexCLILLMConfig.normalizeModel("6-luna"), "gpt-6-luna")
+        XCTAssertEqual(CodexCLILLMConfig.normalizeModel("6luna"), "gpt-6-luna")
+        XCTAssertEqual(CodexCLILLMConfig.normalizeModel("5.6-luna"), "gpt-5.6-luna")
+        XCTAssertEqual(CodexCLILLMConfig.normalizeModel("5.6luna"), "gpt-5.6-luna")
+        XCTAssertEqual(CodexCLILLMConfig.normalizeModel("5.3-codex-spark"), "gpt-5.3-codex-spark")
+        XCTAssertEqual(CodexCLILLMConfig.normalizeModel("custom-model"), "custom-model")
     }
 
     func testRuntimeCandidatesPreferChatGPTBundledCodex() {
@@ -159,7 +170,7 @@ final class CodexCLIClientTests: XCTestCase {
             throw XCTSkip("Set TYPE4ME_LIVE_CODEX_TEST=1 to use the signed-in Codex account")
         }
 
-        for model in ["gpt-5.6-luna", "gpt-5.3-codex-spark"] {
+        for model in ["gpt-6-luna", "gpt-5.6-luna", "gpt-5.3-codex-spark"] {
             let marker = "TYPE4ME_CODEX_RUNTIME_OK_\(model)"
             let result = try await CodexCLIClient().process(
                 text: marker,

@@ -158,7 +158,8 @@ enum LLMProvider: String, CaseIterable, Codable, Sendable {
             ]
         case .codexCLI:
             return [
-                FieldOption(value: "gpt-5.6-luna", label: L("GPT-5.6 Luna（推荐）", "GPT-5.6 Luna (Recommended)")),
+                FieldOption(value: "gpt-6-luna", label: L("GPT-6 Luna（推荐）", "GPT-6 Luna (Recommended)")),
+                FieldOption(value: "gpt-5.6-luna", label: "GPT-5.6 Luna"),
                 FieldOption(value: "gpt-5.3-codex-spark", label: L("GPT-5.3 Codex Spark（极速实验）", "GPT-5.3 Codex Spark (Fast, Experimental)")),
             ]
         case .openrouter, .ollama, .magpie, .custom:

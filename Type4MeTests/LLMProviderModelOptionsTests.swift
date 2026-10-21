@@ -41,7 +41,8 @@ final class LLMProviderModelOptionsTests: XCTestCase {
         XCTAssertTrue(LLMProvider.claude.optionValues.contains("claude-fable-5"))
         XCTAssertTrue(LLMProvider.claude.optionValues.contains("claude-opus-4-8"))
 
-        XCTAssertEqual(LLMProvider.codexCLI.optionValues.first, "gpt-5.6-luna")
+        XCTAssertEqual(LLMProvider.codexCLI.optionValues.first, "gpt-6-luna")
+        XCTAssertTrue(LLMProvider.codexCLI.optionValues.contains("gpt-5.6-luna"))
         XCTAssertTrue(LLMProvider.codexCLI.optionValues.contains("gpt-5.3-codex-spark"))
 
         XCTAssertEqual(LLMProvider.mimo.optionValues.first, "mimo-v2.6-flash")
