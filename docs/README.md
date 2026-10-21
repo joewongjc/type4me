@@ -21,6 +21,7 @@
 
 | 功能 | 文档 | 类型 | 状态 | 设计日期 | 实现基线 |
 |---|---|---|---|---:|---|
+| 运行时性能 | [录音启动延迟优化与蓝牙开始提示音](features/runtime/recording-start-latency-design.md) | 专项开发设计 | 设计完成，待实现 | 2026-10-21 | `0d33f5b4`（分支 `fix/356-recording-start-audio`） |
 | 腾讯云 ASR（中英大模型 2.0） | [产品设计](features/tencent-asr/product-design.md) / [开发设计](features/tencent-asr/development-design.md) | 产品与开发设计 | 已实现，持续验证 | 2026-10-17 | 工作树 |
 | Mistral Voxtral ASR | [产品设计](features/mistral-asr/product-design.md) / [开发设计](features/mistral-asr/development-design.md) | 产品与开发设计 | 已实现，持续验证 | 2026-10-17 | 工作树 |
 | Groq Whisper ASR | [产品设计](features/groq-asr/product-design.md) / [开发设计](features/groq-asr/development-design.md) | 产品与开发设计 | 已实现，持续验证 | 2026-10-17 | 工作树 |
