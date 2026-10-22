@@ -326,6 +326,30 @@ final class AppearancePreviewTests: XCTestCase {
         XCTAssertEqual(compactTranscriptOffset(textWidth: 190, viewportWidth: 164), -26)
         XCTAssertEqual(compactTranscriptOffset(textWidth: 300, viewportWidth: 164), -136)
     }
+    func testCompactTranscriptAlignment() {
+        let previousLanguage = UserDefaults.standard.string(forKey: "tf_language")
+        defer {
+            UserDefaults.standard.setValue(previousLanguage, forKey: "tf_language")
+        }
+
+        // Chinese placeholder
+        UserDefaults.standard.set("zh", forKey: "tf_language")
+        XCTAssertEqual(compactTranscriptAlignment(text: "录音中 · 结束后识别"), .center)
+        XCTAssertEqual(compactTranscriptAlignment(text: "Recording · text at end"), .center)
+        XCTAssertEqual(compactTranscriptAlignment(text: "  录音中 · 结束后识别 \n"), .center)
+        XCTAssertEqual(compactTranscriptAlignment(text: ASRRecognitionMode.batchRecordingPlaceholder), .center)
+        XCTAssertEqual(compactTranscriptAlignment(text: "用户说的话"), .leading)
+        XCTAssertEqual(compactTranscriptAlignment(text: ""), .leading)
+
+        // English placeholder
+        UserDefaults.standard.set("en", forKey: "tf_language")
+        XCTAssertEqual(compactTranscriptAlignment(text: "录音中 · 结束后识别"), .center)
+        XCTAssertEqual(compactTranscriptAlignment(text: "Recording · text at end"), .center)
+        XCTAssertEqual(compactTranscriptAlignment(text: ASRRecognitionMode.batchRecordingPlaceholder), .center)
+        XCTAssertEqual(compactTranscriptAlignment(text: "Hello live transcript"), .leading)
+        XCTAssertEqual(compactTranscriptAlignment(text: ""), .leading)
+    }
+
 
     func testCompactLiveTranscriptDesignTokens() {
         XCTAssertEqual(TF.compactIndicatorWidth, 180)

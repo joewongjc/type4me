@@ -8,6 +8,14 @@ import AppKit
 func compactTranscriptOffset(textWidth: CGFloat, viewportWidth: CGFloat) -> CGFloat {
     -max(0, textWidth - viewportWidth)
 }
+/// Pure helper to calculate alignment for compact transcript text.
+///
+/// Batch recording placeholders (e.g. "录音中 · 结束后识别") are centered.
+/// Live streaming transcription text is leading aligned (growing left-to-right).
+func compactTranscriptAlignment(text: String) -> Alignment {
+    ASRRecognitionMode.isBatchRecordingPlaceholder(text) ? .center : .leading
+}
+
 
 /// Single-line live transcript row embedded in the expanded compact recording capsule.
 ///
@@ -31,15 +39,22 @@ struct CompactLiveTranscriptRow: View {
     private var viewportWidth: CGFloat {
         TF.compactIndicatorWidth - TF.compactTranscriptHorizontalInset * 2
     }
+    private var isBatchPlaceholder: Bool {
+        ASRRecognitionMode.isBatchRecordingPlaceholder(text)
+    }
 
     private var offset: CGFloat {
-        compactTranscriptOffset(textWidth: textWidth, viewportWidth: viewportWidth)
+        if isBatchPlaceholder { return 0 }
+        return compactTranscriptOffset(textWidth: textWidth, viewportWidth: viewportWidth)
     }
 
     private var isOverflowing: Bool {
-        textWidth > viewportWidth
+        !isBatchPlaceholder && textWidth > viewportWidth
     }
 
+    private var alignment: Alignment {
+        compactTranscriptAlignment(text: text)
+    }
     var body: some View {
         HStack(spacing: 0) {
             Text(text)
@@ -48,7 +63,7 @@ struct CompactLiveTranscriptRow: View {
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
                 .offset(x: offset)
-                .frame(width: viewportWidth, alignment: .leading)
+                .frame(width: viewportWidth, alignment: alignment)
                 .mask {
                     if isOverflowing {
                         HStack(spacing: 0) {
