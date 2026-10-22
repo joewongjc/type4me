@@ -2155,6 +2155,7 @@ actor RecognitionSession {
                 let inputBoundary = llmInputBoundaryForCurrentMode()
                 let client = runtime.client
                 state = .postProcessing
+                onASREvent?(.enterProcessing)
                 DebugFileLogger.log("stop: final LLM firing mode=\(currentMode.name) model=\(llmConfig.model) with \(finalASRText.count) chars +\(ContinuousClock.now - stopT0)")
                 finalLLMTask = Task {
                     let requestStartedAt = Date()
@@ -2364,6 +2365,7 @@ actor RecognitionSession {
                 }
             } else if needsLLM {
                 state = .postProcessing
+                onASREvent?(.enterProcessing)
                 if let runtime = await resolveLLMRuntime() {
                     if refreshesIntelliSenseAtProcessing, !cancellationSkipsLLM {
                         await refreshIntelliSenseProcessingContext(generation: myGeneration)
@@ -3143,7 +3145,7 @@ actor RecognitionSession {
              .selectionAskStarted, .selectionAskAnswerDelta,
              .selectionAskAnswerCompleted, .selectionAskAnswerFailed,
              .reviseProcessing, .reviseCompleted, .reviseFailed,
-             .reviseCancelled, .reviseUndone, .finishHint, .useFinishingLabel, .willInject:
+             .reviseCancelled, .reviseUndone, .finishHint, .useFinishingLabel, .willInject, .enterProcessing:
             break
         }
     }

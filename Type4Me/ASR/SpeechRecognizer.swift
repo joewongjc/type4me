@@ -133,6 +133,7 @@ enum RecognitionEvent: Sendable {
     case finishHint(RecordingFinishHint)
     case useFinishingLabel
     case willInject
+    case enterProcessing
     case transcript(RecognitionTranscript)
     case error(Error)
     case completed

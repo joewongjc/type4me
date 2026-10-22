@@ -307,6 +307,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         appState.usesFinishingLabel = true
                     case .willInject:
                         appState.markWillInject()
+                    case .enterProcessing:
+                        appState.showProcessing()
                     case .transcript(let transcript):
                         appState.setLiveTranscript(transcript)
                     case .completed:
@@ -935,7 +937,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         registerHotkeys(for: KeychainService.selectedASRProvider)
         appState.appendSegment(text, isConfirmed: true)
         floatingBarController?.setManualInputEditing(false)
-        appState.stopRecording()
+        appState.stopRecording(reason: .manualInput)
         hotkeyManager.resetActiveState()
         hotkeyManager.isProcessing = true
         Task { await session.submitManualInput(text, mode: mode) }
@@ -1291,6 +1293,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 MainActor.assumeIsolated {
                     if allowsSwitch {
                         self.appState.currentMode = processingMode
+                        self.appState.updateFinishHint(for: processingMode)
                     }
                     self.appState.stopRecording()
                 }

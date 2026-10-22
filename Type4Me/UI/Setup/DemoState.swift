@@ -26,6 +26,7 @@ final class DemoState {
     var effectiveProcessingLabel: String {
         currentMode.processingLabel
     }
+    var finishingSnapshotSegments: [TranscriptionSegment]? { nil }
 
     // MARK: Private
 

@@ -36,6 +36,7 @@ enum FinishingLabel: Equatable, Sendable {
 enum StopRecordingReason: Equatable, Sendable {
     case user
     case maxDuration
+    case manualInput
 }
 enum RecordingControlAction: Equatable {
     case finish
@@ -1503,6 +1504,7 @@ final class AppState {
     private var stopRecordingInstant: ContinuousClock.Instant? = nil
     private var stopRecordingPath: String = "finishing"
     private var finishingWasRevealed: Bool = false
+    private(set) var finishingSnapshotSegments: [TranscriptionSegment]? = nil
 
     init(
         modeStorage: ModeStorage = ModeStorage(),
@@ -1536,11 +1538,31 @@ final class AppState {
     }
 
     var expectsQuickFinish: Bool {
-        guard let hint = recordingFinishHint else { return true }
-        if hint.waitsForFullAudioRecognition { return false }
-        guard hint.runsLLM else { return true }
+        if let hint = recordingFinishHint, hint.waitsForFullAudioRecognition {
+            return false
+        }
+        let runsLLM = recordingFinishHint?.runsLLM ?? (!currentMode.prompt.isEmpty && currentMode.executionKind == .recording)
+        guard runsLLM else { return true }
         let text = transcriptionText.trimmingCharacters(in: .whitespacesAndNewlines)
-        return hint.shortTextExemption > 0 && text.count < hint.shortTextExemption
+        let exemption = recordingFinishHint?.shortTextExemption ?? currentMode.shortTextExemption
+        return exemption > 0 && text.count < exemption
+    }
+
+    func updateFinishHint(for mode: ProcessingMode) {
+        let runsLLM = !mode.prompt.isEmpty && mode.executionKind == .recording
+        let exemption = mode.shortTextExemption
+        if var hint = recordingFinishHint {
+            hint.runsLLM = runsLLM
+            hint.shortTextExemption = exemption
+            recordingFinishHint = hint
+        } else {
+            recordingFinishHint = RecordingFinishHint(
+                waitsForFullAudioRecognition: false,
+                performsCalibration: false,
+                runsLLM: runsLLM,
+                shortTextExemption: exemption
+            )
+        }
     }
 
     // MARK: Actions
@@ -1563,6 +1585,7 @@ final class AppState {
         usesFinishingLabel = false
         finishingLabel = .recognizing
         finishingGeneration += 1
+        finishingSnapshotSegments = nil
         stopRecordingInstant = nil
         // Typed input uses its own key-capable panel while editing.
         if showsPanel { onShowPanel?() }
@@ -1586,6 +1609,7 @@ final class AppState {
         usesFinishingLabel = false
         finishingLabel = .recognizing
         finishingGeneration += 1
+        finishingSnapshotSegments = nil
         stopRecordingInstant = nil
         onShowPanel?()
     }
@@ -1616,6 +1640,21 @@ final class AppState {
             }
             return
         }
+        if reason == .manualInput {
+            stopRecordingInstant = ContinuousClock.now
+            stopRecordingPath = "processing"
+            finishingWasRevealed = false
+            recordingReadyGeneration = nil
+            processingFinishTime = nil
+            audioLevel.current = 0
+            recordingStartDate = nil
+            processingLabelOverride = nil
+            usesFinishingLabel = false
+            barPhase = .processing
+            onShowPanel?()
+            return
+        }
+
 
         switch barPhase {
         case .preparing:
@@ -1632,10 +1671,15 @@ final class AppState {
                 processingLabelOverride = L("已达最大时长", "Max duration reached")
                 usesFinishingLabel = false
                 barPhase = .processing
+            } else if reason == .manualInput {
+                processingLabelOverride = nil
+                usesFinishingLabel = false
+                barPhase = .processing
             } else if expectsQuickFinish {
                 processingLabelOverride = nil
                 usesFinishingLabel = false
                 finishingLabel = (recordingFinishHint?.performsCalibration ?? false) ? .calibrating : .recognizing
+                finishingSnapshotSegments = segments
                 barPhase = .finishing
                 scheduleFinishingReveal()
             } else {
@@ -1686,9 +1730,6 @@ final class AppState {
             DebugFileLogger.log("dropping stale partial transcript latency=\(latencyMs)ms")
             return
         }
-        if transcript.isFinal {
-            finishingGeneration += 1
-        }
 
         if transcript.isFinal,
            !transcript.authoritativeText.isEmpty,
@@ -1707,6 +1748,16 @@ final class AppState {
 
     func markWillInject() {
         finishingGeneration += 1
+    }
+
+    func showProcessing() {
+        guard barPhase == .finishing || barPhase == .recording else { return }
+        finishingGeneration += 1
+        finishingSnapshotSegments = nil
+        processingLabelOverride = nil
+        usesFinishingLabel = false
+        barPhase = .processing
+        onShowPanel?()
     }
 
     func showProcessingResult(_ result: String) {
@@ -1851,6 +1902,7 @@ final class AppState {
                 segments = []
             }
         }
+        finishingSnapshotSegments = nil
     }
 
     func showReviseProcessing() {

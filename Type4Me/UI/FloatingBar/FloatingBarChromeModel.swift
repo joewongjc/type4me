@@ -17,10 +17,13 @@ struct FloatingBarExitSnapshot: Equatable {
 
     @MainActor
     static func capture(from state: AppState, generation: Int) -> FloatingBarExitSnapshot {
-        FloatingBarExitSnapshot(
+        let segments = (state.barPhase == .finishing && state.finishingSnapshotSegments != nil)
+            ? state.finishingSnapshotSegments!
+            : state.segments
+        return FloatingBarExitSnapshot(
             generation: generation,
             phase: state.barPhase,
-            segments: state.segments,
+            segments: segments,
             processingLabel: state.effectiveProcessingLabel,
             feedbackMessage: state.feedbackMessage,
             feedbackKind: state.feedbackKind,

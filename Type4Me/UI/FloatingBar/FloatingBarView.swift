@@ -83,6 +83,7 @@ protocol FloatingBarState: AnyObject, Observable {
     var transcriptionText: String { get }
     var recordingStartDate: Date? { get }
     var pinsTranscriptPopup: Bool { get }
+    var finishingSnapshotSegments: [TranscriptionSegment]? { get }
     /// True when recording without SenseVoice streaming (Qwen3-only).
     var isQwen3OnlyMode: Bool { get }
     var effectiveProcessingLabel: String { get }
@@ -350,7 +351,15 @@ struct FloatingBarView<S: FloatingBarState>: View {
         state.barPhase == .hidden ? chrome?.exitSnapshot : nil
     }
     private var presentedPhase: FloatingBarPhase { exitSnapshot?.phase ?? state.barPhase }
-    private var presentedSegments: [TranscriptionSegment] { exitSnapshot?.segments ?? state.segments }
+    private var presentedSegments: [TranscriptionSegment] {
+        if let exitSnapshot {
+            return exitSnapshot.segments
+        }
+        if presentedPhase == .finishing, let frozen = state.finishingSnapshotSegments {
+            return frozen
+        }
+        return state.segments
+    }
     private var presentedTranscriptionText: String {
         exitSnapshot != nil ? presentedSegments.map(\.text).joined() : state.transcriptionText
     }
@@ -588,8 +597,8 @@ struct FloatingBarView<S: FloatingBarState>: View {
     }
 
     private func updateRecordingPeakWidthIfNeeded() {
-        guard !usesCompactPresentation, (state.barPhase == .recording || state.barPhase == .finishing), effectiveShowsLiveTranscript else {
-            if !effectiveShowsLiveTranscript && (state.barPhase == .recording || state.barPhase == .finishing) {
+        guard !usesCompactPresentation, state.barPhase == .recording, effectiveShowsLiveTranscript else {
+            if !effectiveShowsLiveTranscript && state.barPhase == .recording {
                 recordingPeakWidth = baseRecordingWidth
             }
             return

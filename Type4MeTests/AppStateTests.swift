@@ -267,6 +267,63 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(appState.feedbackMessage, "麦克风已切换")
     }
 
+    func testStopRecordingManualInputEntersProcessingDirectly() {
+        let appState = AppState()
+        appState.currentMode = .smartDirect
+        appState.stopRecording(reason: .manualInput)
+
+        XCTAssertEqual(appState.barPhase, .processing)
+        XCTAssertFalse(appState.usesFinishingLabel)
+        XCTAssertEqual(appState.effectiveProcessingLabel, appState.currentMode.processingLabel)
+    }
+
+    func testCrossModeFinishUpdatesFinishHintAndEntersProcessing() {
+        let appState = AppState()
+        appState.currentMode = .direct
+        appState.startRecording()
+        appState.markRecordingReady()
+
+        // Cross-mode finish switches to smartDirect (which runs LLM)
+        appState.currentMode = .smartDirect
+        appState.updateFinishHint(for: .smartDirect)
+
+        appState.stopRecording()
+
+        XCTAssertEqual(appState.barPhase, .processing)
+        XCTAssertEqual(appState.effectiveProcessingLabel, appState.currentMode.processingLabel)
+    }
+
+    func testEnterProcessingSwitchesFinishingToProcessingForLLM() {
+        let appState = AppState()
+        appState.currentMode = .smartDirect
+        appState.barPhase = .finishing
+
+        appState.showProcessing()
+
+        XCTAssertEqual(appState.barPhase, .processing)
+        XCTAssertFalse(appState.usesFinishingLabel)
+        XCTAssertEqual(appState.effectiveProcessingLabel, appState.currentMode.processingLabel)
+    }
+
+    func testFinishingFreezesSegmentsSnapshotWhileStateSegmentsUpdates() {
+        let appState = AppState()
+        appState.currentMode = .direct
+        appState.startRecording()
+        appState.appendSegment("正在说话", isConfirmed: true)
+        appState.markRecordingReady()
+
+        appState.stopRecording()
+
+        XCTAssertEqual(appState.barPhase, .finishing)
+        XCTAssertEqual(appState.finishingSnapshotSegments?.map(\.text).joined(), "正在说话")
+
+        // Later arrival of ASR text does not mutate the frozen snapshot
+        appState.appendSegment("，最终识别完整文本", isConfirmed: true)
+
+        XCTAssertEqual(appState.transcriptionText, "正在说话，最终识别完整文本")
+        XCTAssertEqual(appState.finishingSnapshotSegments?.map(\.text).joined(), "正在说话")
+    }
+
     func testShowRecoveryDisplaysPartialTextAndStatus() {
         let appState = AppState()
 
