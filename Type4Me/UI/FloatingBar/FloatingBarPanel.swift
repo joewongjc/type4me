@@ -133,6 +133,7 @@ final class FloatingBarController {
     private var panelGeneration = 0
     private var panelShrinkTask: Task<Void, Never>?
     private var isSuppressedForManualInput = false
+    private var isHiding = false
 
     let chrome = FloatingBarChromeModel()
     private var placement = FloatingBarPlacementStore.load()
@@ -157,6 +158,7 @@ final class FloatingBarController {
         chrome.isRetainedForDrag = dragLifecycle.isRetainedForDrag
         isSuppressedForManualInput = editing
         if editing {
+            isHiding = false
             panelGeneration &+= 1
             cancelPendingPanelShrink()
             panel.ignoresMouseEvents = true
@@ -237,6 +239,8 @@ final class FloatingBarController {
 
     func show() {
         guard !isSuppressedForManualInput else { return }
+        let wasHiding = isHiding
+        isHiding = false
         _ = dragLifecycle.showRequested()
         chrome.isRetainedForDrag = dragLifecycle.isRetainedForDrag
         chrome.resetHover()
@@ -258,7 +262,27 @@ final class FloatingBarController {
         resizePanel(from: currentLayout, to: layout, display: panel.isVisible)
         panel.ignoresMouseEvents = false
 
-        panel.contentView?.layer?.removeAllAnimations()
+        // 1. Panel is already stably visible and was not fading out:
+        // Keep existing animations intact and maintain current opacity.
+        if panel.isVisible && !wasHiding && panel.alphaValue >= 0.99 {
+            panel.orderFrontRegardless()
+            return
+        }
+
+        // 2. Panel is visible but was fading out or partially transparent:
+        // Smoothly restore full opacity rather than zero-resetting.
+        if panel.isVisible {
+            panel.orderFrontRegardless()
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = max(0.1, 0.3 * Double(1.0 - panel.alphaValue))
+                ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                panel.animator().alphaValue = 1
+            }
+            return
+        }
+
+        // 3. Fresh reveal from completely hidden:
+        // Must orderFrontRegardless so the window is on screen before fading in!
         panel.alphaValue = 0
         panel.orderFrontRegardless()
         NSAnimationContext.runAnimationGroup { ctx in
@@ -278,6 +302,7 @@ final class FloatingBarController {
         guard panel.isVisible else { return }
         cancelPendingPanelShrink()
         panel.ignoresMouseEvents = true
+        isHiding = true
 
         let expectedGeneration = panelGeneration
         let panelRef = panel
@@ -288,6 +313,7 @@ final class FloatingBarController {
         }, completionHandler: { [weak self] in
             MainActor.assumeIsolated {
                 guard let self, self.panelGeneration == expectedGeneration else { return }
+                self.isHiding = false
                 panelRef.orderOut(nil)
                 self.anchorDisplayID = nil
             }

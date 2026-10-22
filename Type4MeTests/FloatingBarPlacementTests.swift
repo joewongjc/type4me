@@ -910,4 +910,93 @@ final class FloatingBarPlacementTests: XCTestCase {
         appState.barPhase = .done
         XCTAssertFalse(controller.chrome.isHandleVisible, "Handle must not automatically appear during done")
     }
+
+    @MainActor
+    func testFloatingBarControllerFirstShowMakesPanelVisibleWithoutPrearming() {
+        let appState = AppState()
+        let controller = FloatingBarController(state: appState)
+        defer { controller.panel.orderOut(nil) }
+
+        // Must be initially invisible before show()
+        XCTAssertFalse(controller.panel.isVisible)
+
+        // First show() with real SwiftUI contentView attached
+        controller.show()
+
+        // Must become truly visible on screen without any external manual orderFront
+        XCTAssertTrue(controller.panel.isVisible, "First show() must genuinely order the panel front")
+    }
+
+    @MainActor
+    func testFloatingBarControllerShowAfterCompleteHideReappears() async throws {
+        let appState = AppState()
+        let controller = FloatingBarController(state: appState)
+        defer { controller.panel.orderOut(nil) }
+
+        controller.show()
+        XCTAssertTrue(controller.panel.isVisible)
+
+        // Perform full hide
+        controller.hide()
+        // Wait for hide animation (0.25s) to complete orderOut
+        try await Task.sleep(for: .milliseconds(350))
+        XCTAssertFalse(controller.panel.isVisible, "Panel must be ordered out after complete hide")
+
+        // Secondary show after complete hide must bring panel back
+        controller.show()
+        XCTAssertTrue(controller.panel.isVisible, "Panel must reappear when show() is called after complete hide")
+    }
+
+    @MainActor
+    func testFloatingBarControllerShowWhileHideAnimationInProgressCancelsHide() async throws {
+        let appState = AppState()
+        let controller = FloatingBarController(state: appState)
+        defer { controller.panel.orderOut(nil) }
+
+        controller.show()
+        XCTAssertTrue(controller.panel.isVisible)
+
+        // Trigger hide
+        controller.hide()
+        // Mid-flight interruption (hide takes 250ms)
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertTrue(controller.panel.isVisible)
+
+        // Call show() while fade-out is active
+        controller.show()
+        XCTAssertTrue(controller.panel.isVisible)
+
+        // Wait beyond original hide deadline (350ms total)
+        try await Task.sleep(for: .milliseconds(350))
+
+        // The previous hide completion must be superseded, so the panel must remain visible and opaque
+        XCTAssertTrue(controller.panel.isVisible, "Panel must remain visible and not be ordered out by stale hide completion")
+        XCTAssertEqual(controller.panel.alphaValue, 1.0, accuracy: 0.05)
+    }
+
+    @MainActor
+    func testFloatingBarControllerRecordingToProcessingKeepsPanelVisibleWithoutReset() async throws {
+        let appState = AppState()
+        let controller = FloatingBarController(state: appState)
+        defer { controller.panel.orderOut(nil) }
+
+        appState.startRecording()
+        appState.markRecordingReady()
+        XCTAssertEqual(appState.barPhase, .recording)
+
+        // Panel is displayed for recording session
+        controller.show()
+        XCTAssertTrue(controller.panel.isVisible)
+        // Wait for entrance fade-in (300ms) to settle
+        try await Task.sleep(for: .milliseconds(450))
+        XCTAssertEqual(controller.panel.alphaValue, 1.0, accuracy: 0.05)
+
+        // State transition: recording -> processing (stopRecording triggers onShowPanel)
+        appState.stopRecording()
+        XCTAssertEqual(appState.barPhase, .processing)
+
+        // Panel must remain fully visible and NOT zero-reset or flash
+        XCTAssertTrue(controller.panel.isVisible)
+        XCTAssertEqual(controller.panel.alphaValue, 1.0, accuracy: 0.05, "Panel opacity must stay at full opacity during phase transition")
+    }
 }
