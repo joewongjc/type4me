@@ -77,9 +77,15 @@ final class MenuBarControlCenterTests: XCTestCase {
         let appState = AppState()
         let model = MenuBarControlCenterModel(appState: appState)
 
-        let originalASR = KeychainService.selectedASRProvider
+        let defaults = UserDefaults.standard
+        let originalASRObject = defaults.object(forKey: KeychainService.selectedASRProviderKey)
         defer {
-            KeychainService.selectedASRProvider = originalASR
+            if let originalASRObject {
+                defaults.set(originalASRObject, forKey: KeychainService.selectedASRProviderKey)
+            } else {
+                defaults.removeObject(forKey: KeychainService.selectedASRProviderKey)
+            }
+            NotificationCenter.default.post(name: .asrProviderDidChange, object: nil)
         }
 
         let providerA: ASRProvider = .volcano
@@ -132,9 +138,15 @@ final class MenuBarControlCenterTests: XCTestCase {
         let appState = AppState()
         let model = MenuBarControlCenterModel(appState: appState)
 
-        let originalLLM = KeychainService.selectedLLMProvider
+        let defaults = UserDefaults.standard
+        let originalLLMObject = defaults.object(forKey: KeychainService.selectedLLMProviderKey)
         defer {
-            KeychainService.selectedLLMProvider = originalLLM
+            if let originalLLMObject {
+                defaults.set(originalLLMObject, forKey: KeychainService.selectedLLMProviderKey)
+            } else {
+                defaults.removeObject(forKey: KeychainService.selectedLLMProviderKey)
+            }
+            NotificationCenter.default.post(name: .credentialsDidChange, object: nil)
         }
 
         let providerA: LLMProvider = .doubao
@@ -187,14 +199,22 @@ final class MenuBarControlCenterTests: XCTestCase {
         let appState = AppState()
         let model = MenuBarControlCenterModel(appState: appState)
 
-        let originalMode = AudioInputDevicePreferenceStore.mode()
-        let originalEntries = AudioInputDevicePreferenceStore.priorityEntries()
+        let defaults = UserDefaults.standard
+        let originalModeObject = defaults.object(forKey: AudioInputDevicePreferenceStore.modeKey)
+        let originalPriorityObject = defaults.object(forKey: AudioInputDevicePreferenceStore.priorityEntriesKey)
         defer {
-            if originalMode == .systemDefault {
-                AudioInputDevicePreferenceStore.resetToSystemDefault()
+            if let originalModeObject {
+                defaults.set(originalModeObject, forKey: AudioInputDevicePreferenceStore.modeKey)
             } else {
-                AudioInputDevicePreferenceStore.savePriorityEntries(originalEntries)
+                defaults.removeObject(forKey: AudioInputDevicePreferenceStore.modeKey)
             }
+
+            if let originalPriorityObject {
+                defaults.set(originalPriorityObject, forKey: AudioInputDevicePreferenceStore.priorityEntriesKey)
+            } else {
+                defaults.removeObject(forKey: AudioInputDevicePreferenceStore.priorityEntriesKey)
+            }
+            NotificationCenter.default.post(name: .audioInputDevicePreferenceDidChange, object: nil)
         }
 
         // Step 1: Follow system
@@ -246,11 +266,22 @@ final class MenuBarControlCenterTests: XCTestCase {
         let appState = AppState()
         let model = MenuBarControlCenterModel(appState: appState)
 
-        let originalASR = KeychainService.selectedASRProvider
-        let originalLLM = KeychainService.selectedLLMProvider
+        let defaults = UserDefaults.standard
+        let originalASRObject = defaults.object(forKey: KeychainService.selectedASRProviderKey)
+        let originalLLMObject = defaults.object(forKey: KeychainService.selectedLLMProviderKey)
         defer {
-            KeychainService.selectedASRProvider = originalASR
-            KeychainService.selectedLLMProvider = originalLLM
+            if let originalASRObject {
+                defaults.set(originalASRObject, forKey: KeychainService.selectedASRProviderKey)
+            } else {
+                defaults.removeObject(forKey: KeychainService.selectedASRProviderKey)
+            }
+            if let originalLLMObject {
+                defaults.set(originalLLMObject, forKey: KeychainService.selectedLLMProviderKey)
+            } else {
+                defaults.removeObject(forKey: KeychainService.selectedLLMProviderKey)
+            }
+            NotificationCenter.default.post(name: .asrProviderDidChange, object: nil)
+            NotificationCenter.default.post(name: .credentialsDidChange, object: nil)
         }
 
         // Simulate Settings changing ASR to Tencent
