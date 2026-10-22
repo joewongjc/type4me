@@ -852,4 +852,62 @@ final class FloatingBarPlacementTests: XCTestCase {
         controller.hide()
         XCTAssertFalse(controller.chrome.isHandleVisible, "Hiding the panel must reset handle hover state")
     }
+
+    @MainActor
+    func testHoverPersistsAcrossRecordingProcessingDonePhases() {
+        let appState = AppState()
+        let controller = FloatingBarController(state: appState)
+
+        // 1. Start recording and show panel
+        appState.barPhase = .preparing
+        controller.show()
+        XCTAssertFalse(controller.chrome.isHandleVisible, "Initial state on show must not show handle")
+
+        appState.barPhase = .recording
+        XCTAssertFalse(controller.chrome.isHandleVisible)
+
+        // 2. User moves mouse onto capsule during recording
+        controller.chrome.setHovering(true)
+        XCTAssertTrue(controller.chrome.isHandleVisible, "Hovering over capsule must make handle visible during recording")
+
+        // 3. Recording ends -> enters processing while mouse continues hovering
+        appState.barPhase = .processing
+        XCTAssertTrue(controller.chrome.isHandleVisible, "Handle must remain visible during processing when mouse continues hovering")
+
+        // 4. Processing completes -> enters done while mouse continues hovering
+        appState.barPhase = .done
+        XCTAssertTrue(controller.chrome.isHandleVisible, "Handle must remain visible during done when mouse continues hovering")
+
+        // 5. Session completes and panel hides
+        appState.barPhase = .hidden
+        controller.hide()
+        XCTAssertFalse(controller.chrome.isHandleVisible, "Hiding the panel must cleanly reset handle visibility")
+    }
+
+    @MainActor
+    func testNewSessionFromHiddenStateDoesNotShowHandleWithoutHover() {
+        let appState = AppState()
+        let controller = FloatingBarController(state: appState)
+
+        // Simulate a previous session where user had hovered and finished
+        controller.chrome.setHovering(true)
+        XCTAssertTrue(controller.chrome.isHandleVisible)
+        controller.hide()
+        XCTAssertFalse(controller.chrome.isHandleVisible)
+
+        // Start a brand new session from hidden state without mouse hover
+        appState.barPhase = .preparing
+        controller.show()
+        XCTAssertFalse(controller.chrome.isHandleVisible, "Handle must be initially invisible on new session invocation")
+
+        // Advance through phases without hover; handle must stay invisible throughout
+        appState.barPhase = .recording
+        XCTAssertFalse(controller.chrome.isHandleVisible, "Handle must not automatically appear during recording")
+
+        appState.barPhase = .processing
+        XCTAssertFalse(controller.chrome.isHandleVisible, "Handle must not automatically appear during processing")
+
+        appState.barPhase = .done
+        XCTAssertFalse(controller.chrome.isHandleVisible, "Handle must not automatically appear during done")
+    }
 }

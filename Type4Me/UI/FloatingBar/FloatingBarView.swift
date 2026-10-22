@@ -385,9 +385,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
     }
 
     private var showsHandle: Bool {
-        chrome?.isHandleVisible == true
-            && shouldRenderCapsule
-            && (state.barPhase == .recording || chrome?.isDragging == true || isRetainedForDrag)
+        chrome?.isHandleVisible == true && shouldRenderCapsule
     }
 
     private var handleReserve: CGFloat {
@@ -1368,24 +1366,19 @@ struct FloatingBarView<S: FloatingBarState>: View {
             recordingActionLocked = false
         case .processing:
             dismissModeHint()
-            chrome?.resetHover()
             processingStartDate = Date()
             doneStartDate = nil
         case .recovering:
             dismissModeHint()
-            chrome?.resetHover()
             processingStartDate = Date()
             doneStartDate = nil
         case .done:
             dismissModeHint()
-            chrome?.resetHover()
             doneStartDate = Date()
         case .error:
             dismissModeHint()
-            chrome?.resetHover()
         default:
             dismissModeHint()
-            chrome?.resetHover()
         }
     }
 
