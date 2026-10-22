@@ -473,7 +473,7 @@ struct MenuBarControlCenterView: View {
         switch appState.barPhase {
         case .preparing, .recording:
             activeRecordingActions
-        case .processing, .recovering:
+        case .finishing, .processing, .recovering:
             processingActions
         case .error:
             errorFeedback
@@ -897,12 +897,12 @@ enum MenuBarPresentation {
         switch phase {
         case .hidden, .done, .error:
             return true
-        case .preparing, .recording, .processing, .recovering:
+        case .preparing, .recording, .finishing, .processing, .recovering:
             return false
         }
     }
 
     static func locksRuntimeSettings(in phase: FloatingBarPhase) -> Bool {
-        phase == .preparing || phase == .recording
+        phase == .preparing || phase == .recording || phase == .finishing
     }
 }

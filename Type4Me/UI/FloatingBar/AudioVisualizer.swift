@@ -5,6 +5,7 @@ import SwiftUI
 struct AudioVisualizer: View {
 
     let level: Float
+    var isFrozen: Bool = false
 
     private let barCount = 4
     private let barWidth: CGFloat = 3.5
@@ -16,8 +17,8 @@ struct AudioVisualizer: View {
     private let phaseOffsets: [Double] = [0.0, 0.7, 1.4, 2.1]
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30)) { timeline in
-            let time = timeline.date.timeIntervalSinceReferenceDate
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: isFrozen)) { timeline in
+            let time = isFrozen ? 0 : timeline.date.timeIntervalSinceReferenceDate
             HStack(spacing: barSpacing) {
                 ForEach(0..<barCount, id: \.self) { index in
                     singleBar(index: index, time: time)
@@ -34,8 +35,8 @@ struct AudioVisualizer: View {
         let harmonic = sin(time * 7.2 + phase * 1.3) * 0.2 + 0.5
         let combined = (wave * 0.7 + harmonic * 0.3)
 
-        let levelFactor = CGFloat(max(0.2, min(1.0, level)))
-        let height = minHeight + (maxHeight - minHeight) * combined * levelFactor
+        let levelFactor = CGFloat(max(0.2, min(1.0, isFrozen ? 0 : level)))
+        let height = isFrozen ? minHeight : (minHeight + (maxHeight - minHeight) * combined * levelFactor)
 
         return RoundedRectangle(cornerRadius: barWidth / 2)
             .fill(.primary.opacity(0.5 + combined * 0.5))

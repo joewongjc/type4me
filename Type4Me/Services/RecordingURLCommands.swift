@@ -62,14 +62,14 @@ enum RecordingURLDecision: Equatable, Sendable {
             switch phase {
             case .hidden, .done, .error:
                 return .start
-            case .preparing, .recording, .processing, .recovering:
+            case .preparing, .recording, .finishing, .processing, .recovering:
                 return .ignore
             }
         case .stop:
             switch phase {
             case .preparing, .recording:
                 return .finish
-            case .hidden, .done, .error, .processing, .recovering:
+            case .hidden, .done, .error, .finishing, .processing, .recovering:
                 return .ignore
             }
         case .toggle:
@@ -78,7 +78,7 @@ enum RecordingURLDecision: Equatable, Sendable {
                 return .start
             case .preparing, .recording:
                 return .finish
-            case .processing, .recovering:
+            case .finishing, .processing, .recovering:
                 return .ignore
             }
         }

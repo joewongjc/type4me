@@ -78,14 +78,21 @@ final class AppStateTests: XCTestCase {
         let appState = AppState()
         appState.currentMode = .smartDirect
         appState.startRecording()
+        appState.recordingFinishHint = RecordingFinishHint(
+            waitsForFullAudioRecognition: false,
+            performsCalibration: false,
+            runsLLM: true,
+            shortTextExemption: 0
+        )
         appState.markRecordingReady()
 
         appState.stopRecording()
 
         XCTAssertEqual(appState.barPhase, .processing)
+        XCTAssertEqual(appState.effectiveProcessingLabel, appState.currentMode.processingLabel)
     }
 
-    func testStopRecordingTransitionsDirectModeToProcessing() {
+    func testStopRecordingEntersFinishingWhenQuickFinishExpected() {
         let appState = AppState()
         appState.currentMode = .direct
         appState.startRecording()
@@ -93,7 +100,171 @@ final class AppStateTests: XCTestCase {
 
         appState.stopRecording()
 
+        XCTAssertEqual(appState.barPhase, .finishing)
+        XCTAssertNil(appState.processingLabelOverride)
+    }
+
+    func testStopRecordingBatchRecognitionEntersProcessingDirectly() {
+        let appState = AppState()
+        appState.currentMode = .direct
+        appState.startRecording()
+        appState.recordingFinishHint = RecordingFinishHint(
+            waitsForFullAudioRecognition: true,
+            performsCalibration: false,
+            runsLLM: false,
+            shortTextExemption: 0
+        )
+        appState.markRecordingReady()
+
+        appState.stopRecording()
+
         XCTAssertEqual(appState.barPhase, .processing)
+        XCTAssertTrue(appState.usesFinishingLabel)
+        XCTAssertEqual(appState.effectiveProcessingLabel, L("识别中", "Recognizing"))
+    }
+
+    func testStopRecordingShortTextExemptionEntersFinishing() {
+        let appState = AppState()
+        appState.currentMode = .smartDirect
+        appState.startRecording()
+        appState.recordingFinishHint = RecordingFinishHint(
+            waitsForFullAudioRecognition: false,
+            performsCalibration: false,
+            runsLLM: true,
+            shortTextExemption: 10
+        )
+        appState.markRecordingReady()
+        appState.appendSegment("短文本", isConfirmed: true)
+
+        appState.stopRecording()
+
+        XCTAssertEqual(appState.barPhase, .finishing)
+    }
+
+    func testFinishingRevealTimeoutUpgradesToProcessing() async throws {
+        let appState = AppState(finishingRevealDelay: .milliseconds(20))
+        appState.currentMode = .direct
+        appState.startRecording()
+        appState.recordingFinishHint = RecordingFinishHint(
+            waitsForFullAudioRecognition: false,
+            performsCalibration: true,
+            runsLLM: false,
+            shortTextExemption: 0
+        )
+        appState.markRecordingReady()
+        appState.stopRecording()
+
+        XCTAssertEqual(appState.barPhase, .finishing)
+
+        try await Task.sleep(for: .milliseconds(50))
+
+        XCTAssertEqual(appState.barPhase, .processing)
+        XCTAssertTrue(appState.usesFinishingLabel)
+        XCTAssertEqual(appState.effectiveProcessingLabel, L("校准中", "Calibrating"))
+    }
+
+    func testOldFinishingTimerDoesNotUpgradeNewSession() async throws {
+        let appState = AppState(finishingRevealDelay: .milliseconds(30))
+        appState.currentMode = .direct
+        appState.startRecording()
+        appState.markRecordingReady()
+        appState.stopRecording()
+
+        XCTAssertEqual(appState.barPhase, .finishing)
+
+        appState.finalize(text: "出字", outcome: .inserted)
+        XCTAssertEqual(appState.barPhase, .hidden)
+
+        try await Task.sleep(for: .milliseconds(60))
+
+        XCTAssertEqual(appState.barPhase, .hidden)
+    }
+
+    func testFinishingDismissesImmediatelyAfterOutput() {
+        let appState = AppState()
+        appState.currentMode = .direct
+        appState.startRecording()
+        appState.markRecordingReady()
+        appState.stopRecording()
+        XCTAssertEqual(appState.barPhase, .finishing)
+
+        var hideStyle: FloatingBarHideStyle?
+        appState.onHidePanel = { style in hideStyle = style }
+
+        appState.finalize(text: "最终出字", outcome: .inserted)
+
+        XCTAssertEqual(appState.barPhase, .hidden)
+        XCTAssertEqual(hideStyle, .output)
+        XCTAssertEqual(appState.transcriptionText, "最终出字")
+    }
+
+    func testProcessingDismissesImmediatelyAfterOutput() {
+        let appState = AppState()
+        appState.barPhase = .processing
+
+        var hideStyle: FloatingBarHideStyle?
+        appState.onHidePanel = { style in hideStyle = style }
+
+        appState.finalize(text: "最终出字", outcome: .inserted)
+
+        XCTAssertEqual(appState.barPhase, .hidden)
+        XCTAssertEqual(hideStyle, .output)
+    }
+
+    func testHidePanelOrderingPreservesStateDuringExitSnapshot() {
+        let appState = AppState()
+        appState.barPhase = .finishing
+        appState.appendSegment("正在退场", isConfirmed: true)
+
+        var observedPhaseDuringHide: FloatingBarPhase?
+        var observedSegmentsDuringHide: [TranscriptionSegment] = []
+        appState.onHidePanel = { _ in
+            observedPhaseDuringHide = appState.barPhase
+            observedSegmentsDuringHide = appState.segments
+        }
+
+        appState.finalize(text: "正在退场", outcome: .inserted)
+
+        XCTAssertEqual(observedPhaseDuringHide, .finishing)
+        XCTAssertEqual(observedSegmentsDuringHide.map(\.text).joined(), "正在退场")
+        XCTAssertEqual(appState.barPhase, .hidden)
+    }
+
+    func testStopRecordingMaxDuration() {
+        let appState = AppState()
+        appState.currentMode = .direct
+        appState.startRecording()
+        appState.markRecordingReady()
+
+        appState.stopRecording(reason: .maxDuration)
+
+        XCTAssertEqual(appState.barPhase, .processing)
+        XCTAssertEqual(appState.processingLabelOverride, L("已达最大时长", "Max duration reached"))
+    }
+
+    func testLanguageSwitchUpdatesEffectiveProcessingLabel() {
+        let appState = AppState()
+        appState.usesFinishingLabel = true
+        appState.finishingLabel = .recognizing
+
+        UserDefaults.standard.set("en", forKey: "tf_language")
+        defer { UserDefaults.standard.removeObject(forKey: "tf_language") }
+
+        XCTAssertEqual(appState.effectiveProcessingLabel, "Recognizing")
+
+        UserDefaults.standard.set("zh", forKey: "tf_language")
+        XCTAssertEqual(appState.effectiveProcessingLabel, "识别中")
+    }
+
+    func testTransientNotificationPreemptsDirectHide() {
+        let appState = AppState()
+        appState.barPhase = .finishing
+        appState.showTransientNotification("麦克风已切换")
+
+        appState.finalize(text: "完成文本", outcome: .inserted)
+
+        XCTAssertEqual(appState.barPhase, .done)
+        XCTAssertEqual(appState.feedbackMessage, "麦克风已切换")
     }
 
     func testShowRecoveryDisplaysPartialTextAndStatus() {
@@ -151,7 +322,7 @@ final class AppStateTests: XCTestCase {
         var showCount = 0
         var hideCount = 0
         appState.onShowPanel = { showCount += 1 }
-        appState.onHidePanel = { hideCount += 1 }
+        appState.onHidePanel = { _ in hideCount += 1 }
 
         appState.startRecording()
         appState.markRecordingReady()
@@ -162,7 +333,7 @@ final class AppStateTests: XCTestCase {
 
         appState.stopRecording()
 
-        XCTAssertEqual(appState.barPhase, .processing)
+        XCTAssertEqual(appState.barPhase, .finishing)
         XCTAssertEqual(showCount, 2)
         XCTAssertEqual(hideCount, 0)
     }
@@ -792,16 +963,103 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(appState.feedbackKind, .warning)
         XCTAssertEqual(appState.feedbackMessage, InjectionOutcome.discarded.completionMessage)
     }
-    func testFinalizeSuccessResetsFeedbackKindToStandard() {
+    func testFinalizeSuccessDismissesAfterOutput() {
         let appState = AppState()
         appState.barPhase = .processing
         appState.feedbackKind = .warning
+        var hideStyleReceived: FloatingBarHideStyle?
+        appState.onHidePanel = { style in
+            hideStyleReceived = style
+        }
 
         appState.finalize(text: "处理后的文本", outcome: .inserted, llmFailed: false)
 
-        XCTAssertEqual(appState.barPhase, .done)
-        XCTAssertEqual(appState.feedbackKind, .standard)
-        XCTAssertEqual(appState.feedbackMessage, InjectionOutcome.inserted.completionMessage)
+        XCTAssertEqual(appState.barPhase, .hidden)
+        XCTAssertEqual(hideStyleReceived, .output)
+        XCTAssertEqual(appState.transcriptionText, "处理后的文本")
+    }
+
+    func testFloatingBarControllerCapturesExitSnapshotOnHide() {
+        let appState = AppState()
+        let controller = FloatingBarController(state: appState)
+        controller.panel.contentView = nil
+        appState.barPhase = .finishing
+        appState.appendSegment("快照文本", isConfirmed: true)
+        controller.panel.alphaValue = 1
+        controller.panel.orderFrontRegardless()
+        defer { controller.panel.orderOut(nil) }
+
+        controller.hide(style: .output)
+
+        let snapshot = controller.chrome.exitSnapshot
+        XCTAssertNotNil(snapshot)
+        XCTAssertEqual(snapshot?.phase, .finishing)
+        XCTAssertEqual(snapshot?.segments.map(\.text).joined(), "快照文本")
+        XCTAssertEqual(snapshot?.generation, controller.panelGeneration)
+
+        controller.finishHide(generation: controller.panelGeneration)
+        XCTAssertNil(controller.chrome.exitSnapshot)
+        XCTAssertFalse(controller.panel.isVisible)
+    }
+
+    func testFloatingBarControllerShowClearsExitSnapshotImmediately() {
+        let appState = AppState()
+        let controller = FloatingBarController(state: appState)
+        controller.panel.contentView = nil
+        appState.barPhase = .finishing
+        controller.panel.alphaValue = 1
+        controller.panel.orderFrontRegardless()
+        defer { controller.panel.orderOut(nil) }
+
+        controller.hide(style: .output)
+        let oldGen = controller.panelGeneration
+        XCTAssertNotNil(controller.chrome.exitSnapshot)
+
+        appState.barPhase = .preparing
+        controller.show()
+
+        XCTAssertNil(controller.chrome.exitSnapshot)
+        XCTAssertNotEqual(controller.panelGeneration, oldGen)
+
+        // Stale completion handler with old generation should be ignored
+        controller.finishHide(generation: oldGen)
+        XCTAssertTrue(controller.panel.isVisible)
+    }
+
+    func testFloatingBarControllerRepeatedHideDoesNotOverwriteSnapshot() {
+        let appState = AppState()
+        let controller = FloatingBarController(state: appState)
+        controller.panel.contentView = nil
+        appState.barPhase = .finishing
+        appState.appendSegment("第一份文本", isConfirmed: true)
+        controller.panel.alphaValue = 1
+        controller.panel.orderFrontRegardless()
+        defer { controller.panel.orderOut(nil) }
+
+        controller.hide(style: .output)
+        let firstSnapshot = controller.chrome.exitSnapshot
+
+        appState.barPhase = .hidden
+        appState.segments = [TranscriptionSegment(text: "第二份文本", isConfirmed: true)]
+
+        controller.hide(style: .standard)
+        XCTAssertEqual(controller.chrome.exitSnapshot, firstSnapshot)
+    }
+
+    func testFloatingBarControllerDragRetainDoesNotCaptureSnapshot() {
+        let appState = AppState()
+        let controller = FloatingBarController(state: appState)
+        controller.panel.contentView = nil
+        appState.barPhase = .finishing
+        controller.panel.alphaValue = 1
+        controller.panel.orderFrontRegardless()
+        defer { controller.panel.orderOut(nil) }
+
+        controller.dragLifecycle.dragBegan()
+        controller.hide(style: .output)
+
+        XCTAssertNil(controller.chrome.exitSnapshot)
+        XCTAssertTrue(controller.chrome.isRetainedForDrag)
     }
 
     func testLocalASREngineSelectionNeverDisablesBothEngines() {

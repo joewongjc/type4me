@@ -89,6 +89,7 @@ final class RecordingURLDecisionTests: XCTestCase {
             (.hidden, .start),
             (.preparing, .ignore),
             (.recording, .ignore),
+            (.finishing, .ignore),
             (.processing, .ignore),
             (.recovering, .ignore),
             (.done, .start),
@@ -111,6 +112,7 @@ final class RecordingURLDecisionTests: XCTestCase {
             (.preparing, .finish),
             (.recording, .finish),
             (.processing, .ignore),
+            (.finishing, .ignore),
             (.recovering, .ignore),
             (.done, .ignore),
             (.error, .ignore),
@@ -133,6 +135,7 @@ final class RecordingURLDecisionTests: XCTestCase {
             (.recording, .finish),
             (.processing, .ignore),
             (.recovering, .ignore),
+            (.finishing, .ignore),
             (.done, .start),
             (.error, .start),
         ]

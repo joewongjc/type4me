@@ -1,3 +1,8 @@
+enum FloatingBarHideStyle: Equatable, Sendable {
+    case standard
+    case output
+}
+
 import AppKit
 import SwiftUI
 
@@ -130,7 +135,7 @@ final class FloatingBarController {
     private let state: AppState
     private var currentLayout = FloatingBarPanelLayout.hidden
     private var anchorDisplayID: CGDirectDisplayID?
-    private var panelGeneration = 0
+    private(set) var panelGeneration = 0
     private var panelShrinkTask: Task<Void, Never>?
     private var isSuppressedForManualInput = false
     private var isHiding = false
@@ -138,7 +143,7 @@ final class FloatingBarController {
     let chrome = FloatingBarChromeModel()
     private var placement = FloatingBarPlacementStore.load()
     private var drag: DragSession?
-    private var dragLifecycle = FloatingBarDragLifecycle()
+    var dragLifecycle = FloatingBarDragLifecycle()
     private var isSelfOriginatedPlacementChange = false
     private var guideWindow: FloatingBarPlacementGuideWindow?
 
@@ -194,7 +199,7 @@ final class FloatingBarController {
         panel.setFrame(frame, display: false)
 
         state.onShowPanel = { [weak self] in self?.show() }
-        state.onHidePanel = { [weak self] in self?.hide() }
+        state.onHidePanel = { [weak self] style in self?.hide(style: style) }
 
         NotificationCenter.default.addObserver(
             self,
@@ -245,6 +250,7 @@ final class FloatingBarController {
         chrome.isRetainedForDrag = dragLifecycle.isRetainedForDrag
         chrome.resetHover()
         panelGeneration &+= 1
+        chrome.setExitSnapshot(nil)
         panel.updateAppearance(theme: currentDisplayOverride()?.theme)
 
         if drag == nil && (anchorDisplayID == nil || state.barPhase == .preparing) {
@@ -292,7 +298,7 @@ final class FloatingBarController {
         }
     }
 
-    func hide() {
+    func hide(style: FloatingBarHideStyle = .standard) {
         let action = dragLifecycle.hideRequested()
         chrome.isRetainedForDrag = dragLifecycle.isRetainedForDrag
         if action == .retainForDrag {
@@ -300,6 +306,9 @@ final class FloatingBarController {
         }
         chrome.resetHover()
         guard panel.isVisible else { return }
+        if chrome.exitSnapshot == nil, state.barPhase != .hidden {
+            chrome.setExitSnapshot(.capture(from: state, generation: panelGeneration))
+        }
         cancelPendingPanelShrink()
         panel.ignoresMouseEvents = true
         isHiding = true
@@ -307,17 +316,23 @@ final class FloatingBarController {
         let expectedGeneration = panelGeneration
         let panelRef = panel
         NSAnimationContext.runAnimationGroup({ ctx in
-            ctx.duration = 0.25
-            ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            ctx.duration = style == .output ? 0.15 : 0.25
+            ctx.timingFunction = CAMediaTimingFunction(name: style == .output ? .easeOut : .easeIn)
             panelRef.animator().alphaValue = 0
         }, completionHandler: { [weak self] in
             MainActor.assumeIsolated {
-                guard let self, self.panelGeneration == expectedGeneration else { return }
-                self.isHiding = false
-                panelRef.orderOut(nil)
-                self.anchorDisplayID = nil
+                self?.finishHide(generation: expectedGeneration)
             }
         })
+    }
+
+    /// Internal so tests can complete the exit without waiting for AppKit.
+    func finishHide(generation: Int) {
+        guard panelGeneration == generation else { return }
+        isHiding = false
+        panel.orderOut(nil)
+        anchorDisplayID = nil
+        chrome.setExitSnapshot(nil)
     }
 
     private func layoutForShow() -> FloatingBarPanelLayout {

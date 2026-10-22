@@ -1275,6 +1275,29 @@ actor RecognitionSession {
 
         resetPromptContextCapture(for: purpose, generation: myGeneration)
 
+        func makeFinishHint(for provider: ASRProvider, config: any ASRProviderConfig) -> RecordingFinishHint {
+        let isStreaming = ASRProviderRegistry.capabilities(for: provider, config: config).isStreaming
+        let isQwen3Only: Bool = {
+            guard provider == .sherpa else { return false }
+            let streamingEnabled = UserDefaults.standard.object(forKey: "tf_sensevoiceEnabled") as? Bool ?? true
+            return !streamingEnabled
+        }()
+        let waitsForFullAudio = !isStreaming || isQwen3Only
+        let performsCalibration: Bool = {
+            guard provider == .sherpa, !isQwen3Only else { return false }
+            let qwen3Enabled = UserDefaults.standard.object(forKey: "tf_qwen3FinalEnabled") as? Bool ?? true
+            return qwen3Enabled
+        }()
+        let runsLLM = Self.shouldRunInputModeLLM(recordingPurpose: recordingPurpose, mode: currentMode)
+        let shortTextExemption = currentMode.shortTextExemption
+        return RecordingFinishHint(
+            waitsForFullAudioRecognition: waitsForFullAudio,
+            performsCalibration: performsCalibration,
+            runsLLM: runsLLM,
+            shortTextExemption: shortTextExemption
+        )
+    }
+
         self.recordingStartTime = nil
         hasEmittedReadyForCurrentSession = false
         pendingLLMError = nil
@@ -1296,6 +1319,8 @@ actor RecognitionSession {
         if let mockClient = injectedASRClient {
             self.asrClient = mockClient
             self.currentConfig = SherpaASRConfig(credentials: ["modelDir": ModelManager.defaultModelsDir])!
+            let hint = makeFinishHint(for: .sherpa, config: self.currentConfig!)
+            onASREvent?(.finishHint(hint))
             earlyCaptureOwned = false
             state = .recording
             markReadyIfNeeded()
@@ -1357,6 +1382,8 @@ actor RecognitionSession {
 
         self.currentConfig = config
         sessionASRModelLabel = Self.asrModelLabel(for: provider, config: config)
+        let hint = makeFinishHint(for: provider, config: config)
+        onASREvent?(.finishHint(hint))
 
         guard let client = ASRProviderRegistry.createClient(for: provider, config: config) else {
             NSLog("[Session] No client implementation for provider=%@", provider.rawValue)
@@ -1966,19 +1993,6 @@ actor RecognitionSession {
             DebugFileLogger.log("stop: cancelled output skips LLM")
         }
 
-        // Early label override for short text exemption (语音润色 only).
-        // Use streaming transcript to update UI immediately, before ASR teardown,
-        // so the floating bar doesn't flash "润色中" → "校准中".
-        if needsLLM && currentMode.shortTextExemption > 0 {
-            let exemptionThreshold = currentMode.shortTextExemption
-            if exemptionThreshold > 0 {
-                let streamingText = currentTranscript.composedText
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                if streamingText.count < exemptionThreshold {
-                    onASREvent?(.processingLabelOverride(L("校准中", "Calibrating")))
-                }
-            }
-        }
 
         // ASR teardown: send endAudio, then wait for the final transcript.
         // For streaming providers we wait for the precise isFinal signal rather than
@@ -2128,7 +2142,7 @@ actor RecognitionSession {
                 DebugFileLogger.log("stop: short text exemption (\(finalASRText.count) < \(exemptionThreshold) chars), skipping LLM")
                 needsLLM = false
                 clearHistoryLLMMetadata()
-                onASREvent?(.processingLabelOverride(L("校准中", "Calibrating")))
+                onASREvent?(.useFinishingLabel)
             }
 
             DebugFileLogger.log(
@@ -2253,7 +2267,7 @@ actor RecognitionSession {
                     historyLLMProvider = nil
                     historyLLMModel = nil
                     historyLLMDurationSeconds = nil
-                    onASREvent?(.processingLabelOverride(L("校准中", "Calibrating")))
+                    onASREvent?(.useFinishingLabel)
                 }
             }
 
@@ -2510,6 +2524,7 @@ actor RecognitionSession {
 
             guard sessionGeneration == myGeneration else { return }
             finalText = formattedOutputText(finalText)
+            onASREvent?(.willInject)
 
             state = .injecting
             let wasCancelled = completionIntent == .cancelled
@@ -3128,7 +3143,7 @@ actor RecognitionSession {
              .selectionAskStarted, .selectionAskAnswerDelta,
              .selectionAskAnswerCompleted, .selectionAskAnswerFailed,
              .reviseProcessing, .reviseCompleted, .reviseFailed,
-             .reviseCancelled, .reviseUndone:
+             .reviseCancelled, .reviseUndone, .finishHint, .useFinishingLabel, .willInject:
             break
         }
     }

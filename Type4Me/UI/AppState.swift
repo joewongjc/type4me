@@ -8,6 +8,7 @@ enum FloatingBarPhase: Equatable {
     case hidden
     case preparing
     case recording
+    case finishing
     case processing
     case recovering
     case done
@@ -19,6 +20,23 @@ enum RecordingActivityKind: Equatable, Sendable {
     case revise
 }
 
+
+enum FinishingLabel: Equatable, Sendable {
+    case recognizing
+    case calibrating
+
+    var localized: String {
+        switch self {
+        case .recognizing: L("识别中", "Recognizing")
+        case .calibrating: L("校准中", "Calibrating")
+        }
+    }
+}
+
+enum StopRecordingReason: Equatable, Sendable {
+    case user
+    case maxDuration
+}
 enum RecordingControlAction: Equatable {
     case finish
     case cancel
@@ -151,7 +169,7 @@ enum LiveTranscriptDisplayPreference {
     /// Disabling live text only affects the active recording phase. Recovery
     /// and final-result feedback can still show text that needs the user's attention.
     static func showsTranscript(isEnabled: Bool, phase: FloatingBarPhase) -> Bool {
-        isEnabled || phase != .recording
+        isEnabled || (phase != .recording && phase != .finishing)
     }
 }
 
@@ -1447,14 +1465,17 @@ final class AppState {
         guard KeychainService.selectedASRProvider != .sherpa else { return false }
         return SenseVoiceServerManager.currentQwen3Port != nil
     }
+    var recordingFinishHint: RecordingFinishHint? = nil
+    var usesFinishingLabel: Bool = false
+    var finishingLabel: FinishingLabel = .recognizing
     var effectiveProcessingLabel: String {
-        processingLabelOverride ?? currentMode.processingLabel
+        processingLabelOverride ?? (usesFinishingLabel ? finishingLabel.localized : currentMode.processingLabel)
     }
 
     // MARK: Panel Control (not observed by SwiftUI)
 
     @ObservationIgnored var onShowPanel: (() -> Void)?
-    @ObservationIgnored var onHidePanel: (() -> Void)?
+    @ObservationIgnored var onHidePanel: ((FloatingBarHideStyle) -> Void)?
     @ObservationIgnored var onRecordingControlAction: ((RecordingControlAction) -> Void)?
     @ObservationIgnored var onReviseUndo: ((UUID) -> Void)?
 
@@ -1476,11 +1497,20 @@ final class AppState {
     var appEdition: AppEdition? { AppEditionMigration.current }
     #endif
 
+    nonisolated static let finishingRevealDelay: Duration = .milliseconds(800)
+    let finishingRevealDelay: Duration
+    private var finishingGeneration = 0
+    private var stopRecordingInstant: ContinuousClock.Instant? = nil
+    private var stopRecordingPath: String = "finishing"
+    private var finishingWasRevealed: Bool = false
+
     init(
         modeStorage: ModeStorage = ModeStorage(),
         recordingDisplayStore: RecordingDisplayProfileStore = RecordingDisplayProfileStore(),
-        userDefaults: UserDefaults = .standard
+        userDefaults: UserDefaults = .standard,
+        finishingRevealDelay: Duration = AppState.finishingRevealDelay
     ) {
+        self.finishingRevealDelay = finishingRevealDelay
         let isFreshInstall = !FileManager.default.fileExists(atPath: modeStorage.fileURL.path)
         let modes = modeStorage.load()
         availableModes = modes
@@ -1505,6 +1535,14 @@ final class AppState {
         recordingDisplayProfiles[modeID]
     }
 
+    var expectsQuickFinish: Bool {
+        guard let hint = recordingFinishHint else { return true }
+        if hint.waitsForFullAudioRecognition { return false }
+        guard hint.runsLLM else { return true }
+        let text = transcriptionText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return hint.shortTextExemption > 0 && text.count < hint.shortTextExemption
+    }
+
     // MARK: Actions
 
     func startRecording(showsPanel: Bool = true) {
@@ -1521,6 +1559,11 @@ final class AppState {
         processingLabelOverride = nil
         pinsTranscriptPopup = false
         barPhase = .preparing
+        recordingFinishHint = nil
+        usesFinishingLabel = false
+        finishingLabel = .recognizing
+        finishingGeneration += 1
+        stopRecordingInstant = nil
         // Typed input uses its own key-capable panel while editing.
         if showsPanel { onShowPanel?() }
     }
@@ -1539,6 +1582,11 @@ final class AppState {
         processingLabelOverride = nil
         pinsTranscriptPopup = false
         barPhase = .preparing
+        recordingFinishHint = nil
+        usesFinishingLabel = false
+        finishingLabel = .recognizing
+        finishingGeneration += 1
+        stopRecordingInstant = nil
         onShowPanel?()
     }
 
@@ -1555,15 +1603,17 @@ final class AppState {
         barPhase = .recording
     }
 
-    func stopRecording(suppressProcessingUI: Bool = false) {
+    func stopRecording(reason: StopRecordingReason = .user, suppressProcessingUI: Bool = false) {
         if suppressProcessingUI {
-            guard barPhase == .recording || barPhase == .processing else { return }
+            guard barPhase == .recording || barPhase == .finishing || barPhase == .processing else { return }
             awaitsSuppressedCancellationFinalization = true
+            finishingGeneration += 1
             recordingReadyGeneration = nil
             processingFinishTime = nil
             processingLabelOverride = nil
-            barPhase = .hidden
-            onHidePanel?()
+            hidePanel(style: .standard) {
+                barPhase = .hidden
+            }
             return
         }
 
@@ -1571,15 +1621,52 @@ final class AppState {
         case .preparing:
             cancel()
         case .recording:
+            stopRecordingInstant = ContinuousClock.now
+            stopRecordingPath = (reason == .maxDuration || !expectsQuickFinish) ? "processing" : "finishing"
+            finishingWasRevealed = false
             recordingReadyGeneration = nil
             processingFinishTime = nil
-            if currentMode.id == ProcessingMode.directId {
-                processingLabelOverride = L("校准中", "Calibrating")
+            audioLevel.current = 0
+            recordingStartDate = nil
+            if reason == .maxDuration {
+                processingLabelOverride = L("已达最大时长", "Max duration reached")
+                usesFinishingLabel = false
+                barPhase = .processing
+            } else if expectsQuickFinish {
+                processingLabelOverride = nil
+                usesFinishingLabel = false
+                finishingLabel = (recordingFinishHint?.performsCalibration ?? false) ? .calibrating : .recognizing
+                barPhase = .finishing
+                scheduleFinishingReveal()
+            } else {
+                processingLabelOverride = nil
+                if let hint = recordingFinishHint, hint.waitsForFullAudioRecognition, !hint.runsLLM {
+                    usesFinishingLabel = true
+                    finishingLabel = hint.performsCalibration ? .calibrating : .recognizing
+                } else if currentMode.id == ProcessingMode.directId || (currentMode.executionKind == .recording && currentMode.prompt.isEmpty) {
+                    usesFinishingLabel = true
+                    finishingLabel = .recognizing
+                } else {
+                    usesFinishingLabel = false
+                }
+                barPhase = .processing
             }
-            barPhase = .processing
             onShowPanel?()
         default:
             break
+        }
+    }
+
+    private func scheduleFinishingReveal() {
+        finishingGeneration += 1
+        let myGeneration = finishingGeneration
+        Task { @MainActor in
+            try? await Task.sleep(for: finishingRevealDelay)
+            guard barPhase == .finishing, finishingGeneration == myGeneration else { return }
+            DebugFileLogger.log("finishing: revealed processing after \(finishingRevealDelay)")
+            finishingWasRevealed = true
+            usesFinishingLabel = true
+            barPhase = .processing
         }
     }
 
@@ -1599,6 +1686,9 @@ final class AppState {
             DebugFileLogger.log("dropping stale partial transcript latency=\(latencyMs)ms")
             return
         }
+        if transcript.isFinal {
+            finishingGeneration += 1
+        }
 
         if transcript.isFinal,
            !transcript.authoritativeText.isEmpty,
@@ -1613,6 +1703,10 @@ final class AppState {
         if !transcript.partialText.isEmpty {
             segments.append(TranscriptionSegment(text: transcript.partialText, isConfirmed: false))
         }
+    }
+
+    func markWillInject() {
+        finishingGeneration += 1
     }
 
     func showProcessingResult(_ result: String) {
@@ -1647,16 +1741,13 @@ final class AppState {
     }
 
     func finalize(text: String, outcome: InjectionOutcome, llmFailed: Bool = false) {
-        // Only accept finalization while the bar is in processing state.
-        // A suppressed raw/no-copy cancellation can also finalize from .hidden.
-        // A stale event from a previous session is still rejected because a
-        // new recording clears `awaitsSuppressedCancellationFinalization`.
         let shouldRevealSuppressedFinalization = barPhase == .hidden
             && awaitsSuppressedCancellationFinalization
-        guard barPhase == .processing || shouldRevealSuppressedFinalization else {
+        guard barPhase == .processing || barPhase == .finishing || shouldRevealSuppressedFinalization else {
             DebugFileLogger.log("finalize: ignored (barPhase=\(barPhase))")
             return
         }
+        finishingGeneration += 1
         awaitsSuppressedCancellationFinalization = false
         guard !text.isEmpty else {
             cancel()
@@ -1681,14 +1772,43 @@ final class AppState {
                     "Processing failed; paste attempted, raw text kept in clipboard"
                 )
             }
-            showDone(message: message, delay: .seconds(2.0))
+            showDone(message: message, delay: .seconds(2.0), outcomeForLog: "llmFailed")
+        } else if outcome == .inserted {
+            dismissAfterOutput()
         } else {
             feedbackKind = .standard
-            showDone(message: outcome.completionMessage)
+            showDone(message: outcome.completionMessage, delay: outcome.completionHoldDuration, outcomeForLog: "\(outcome)")
         }
         if shouldRevealSuppressedFinalization {
             onShowPanel?()
         }
+    }
+
+    private func dismissAfterOutput() {
+        DebugFileLogger.log("dismissAfterOutput: barPhase \(barPhase) → .hidden")
+        logReleaseToHidden(outcome: "inserted")
+        hideGeneration += 1
+        if let message = takePendingTransientNotification() {
+            presentTransientNotification(message, delay: .seconds(2))
+            return
+        }
+        hidePanel(style: .output) {
+            barPhase = .hidden
+            pinsTranscriptPopup = false
+        }
+    }
+
+    private func hidePanel(style: FloatingBarHideStyle = .standard, then endSession: () -> Void) {
+        onHidePanel?(style)
+        endSession()
+    }
+
+    private func logReleaseToHidden(outcome: String) {
+        guard let start = stopRecordingInstant else { return }
+        let elapsed = ContinuousClock.now - start
+        let elapsedMs = Int(elapsed.components.seconds * 1000 + elapsed.components.attoseconds / 1_000_000_000_000_000)
+        let revealedStr = stopRecordingPath == "finishing" ? "\(finishingWasRevealed)" : "n/a"
+        DebugFileLogger.log("floating bar: release → hidden \(elapsedMs)ms (path=\(stopRecordingPath), revealed=\(revealedStr), outcome=\(outcome))")
     }
 
     func showError(_ message: String) {
@@ -1714,18 +1834,22 @@ final class AppState {
     }
 
     func cancel() {
+        finishingGeneration += 1
         activityKind = .standard
         latestReviseUndoTicketID = nil
         awaitsSuppressedCancellationFinalization = false
         recordingReadyGeneration = nil
-        barPhase = .hidden
-        segments = []
         audioLevel.current = 0
         pinsTranscriptPopup = false
         if let message = takePendingTransientNotification() {
+            barPhase = .hidden
+            segments = []
             presentTransientNotification(message, delay: .seconds(2))
         } else {
-            onHidePanel?()
+            hidePanel(style: .standard) {
+                barPhase = .hidden
+                segments = []
+            }
         }
     }
 
@@ -1888,26 +2012,31 @@ final class AppState {
         return message
     }
 
-    private func showDone(message: String = L("已完成", "Done"), delay: Duration = .seconds(0.5)) {
+    private func showDone(message: String = L("已完成", "Done"), delay: Duration = .seconds(0.5), outcomeForLog: String? = nil) {
+        finishingGeneration += 1
         DebugFileLogger.log("showDone: barPhase → .done, message=\(message)")
         feedbackMessage = message
         barPhase = .done
-        scheduleAutoHide(for: .done, delay: delay)
+        scheduleAutoHide(for: .done, delay: delay, outcomeForLog: outcomeForLog)
     }
 
-    private func scheduleAutoHide(for phase: FloatingBarPhase, delay: Duration) {
+    private func scheduleAutoHide(for phase: FloatingBarPhase, delay: Duration, outcomeForLog: String? = nil) {
         hideGeneration += 1
         let myGeneration = hideGeneration
         Task { @MainActor in
             try? await Task.sleep(for: delay)
             guard barPhase == phase, hideGeneration == myGeneration else { return }
             DebugFileLogger.log("autoHide: barPhase → .hidden (was \(phase))")
-            barPhase = .hidden
+            if let outcomeForLog {
+                logReleaseToHidden(outcome: outcomeForLog)
+            }
             pinsTranscriptPopup = false
             if let message = takePendingTransientNotification() {
                 presentTransientNotification(message, delay: .seconds(2))
             } else {
-                onHidePanel?()
+                hidePanel(style: .standard) {
+                    barPhase = .hidden
+                }
             }
         }
     }

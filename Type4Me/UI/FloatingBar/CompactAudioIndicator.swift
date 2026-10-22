@@ -67,14 +67,15 @@ struct CompactAudioIndicator: View {
 
     let meter: AudioLevelMeter
     var theme: RecordingTheme = .dark
+    var isFrozen: Bool = false
 
     @State private var history = CompactAudioHistoryModel()
 
     var body: some View {
-        TimelineView(.animation) { timeline in
+        TimelineView(.animation(paused: isFrozen)) { timeline in
             Canvas { context, size in
                 let time = timeline.date.timeIntervalSinceReferenceDate
-                let fraction = history.update(currentTime: time, level: meter.current)
+                let fraction = isFrozen ? 0 : history.update(currentTime: time, level: meter.current)
 
                 let barWidth = TF.compactIndicatorWaveBarWidth
                 let minHeight = TF.compactIndicatorWaveMinHeight

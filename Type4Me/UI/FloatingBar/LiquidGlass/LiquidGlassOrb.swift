@@ -293,6 +293,7 @@ struct LiquidGlassOrb: View {
     let audioLevelMeter: AudioLevelMeter
     var isHovered: Bool = false
     var isPressed: Bool = false
+    var isFrozen: Bool = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -306,7 +307,7 @@ struct LiquidGlassOrb: View {
             LiquidOrbMetalSurface(
                 preset: style.preset,
                 audioLevelMeter: audioLevelMeter,
-                isAnimated: style.isAnimated && !reduceMotion,
+                isAnimated: style.isAnimated && !reduceMotion && !isFrozen,
                 size: orbSize
             )
             .frame(width: orbSize, height: orbSize)
@@ -316,7 +317,7 @@ struct LiquidGlassOrb: View {
                 .fill(Color.white.opacity(isPressed ? 0.75 : 0.95))
                 .frame(width: 10, height: 10)
                 .shadow(color: Color.black.opacity(0.6), radius: 2, x: 0, y: 1)
-                .opacity(isHovered || isPressed ? 1.0 : 0.0)
+                .opacity((isHovered || isPressed) && !isFrozen ? 1.0 : 0.0)
                 .animation(.easeInOut(duration: 0.15), value: isHovered)
                 .animation(.easeInOut(duration: 0.15), value: isPressed)
         }

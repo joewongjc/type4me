@@ -150,17 +150,11 @@ final class DemoState {
 
         stopAudioSimulation()
 
-        // 2. Processing for 0.5s
-        processingFinishTime = nil
-        barPhase = .processing
-        guard await sleep(0.5) else { return }
+        // 2. Finishing for 0.15s
+        barPhase = .finishing
+        guard await sleep(0.15) else { return }
 
-        // 3. Done "已完成" for 1.5s
-        feedbackMessage = L("已完成", "Done")
-        barPhase = .done
-        guard await sleep(1.5) else { return }
-
-        // 4. Hidden for 1.5s
+        // 3. Hidden for 1.5s
         barPhase = .hidden
         segments = []
         recordingStartDate = nil

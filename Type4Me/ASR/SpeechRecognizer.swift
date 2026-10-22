@@ -104,11 +104,35 @@ enum InjectionOutcome: Sendable, Equatable {
             return L("已取消", "Cancelled")
         }
     }
+
+    var completionHoldDuration: Duration {
+        switch self {
+        case .copiedToClipboard, .pasteAttemptedClipboardRetained, .notInserted:
+            return .milliseconds(1500)
+        case .discarded, .inserted:
+            return .milliseconds(500)
+        }
+    }
+}
+
+/// Decided once per recording, when the session's provider config is resolved.
+struct RecordingFinishHint: Equatable, Sendable {
+    /// Whether the end of recording waits on a batch upload or a Qwen3-only final pass.
+    var waitsForFullAudioRecognition: Bool
+    /// SenseVoice streaming + Qwen3 final calibration.
+    var performsCalibration: Bool
+    /// The mode will call an LLM unless short-text exemption applies.
+    var runsLLM: Bool
+    /// `ProcessingMode.shortTextExemption`; 0 means disabled.
+    var shortTextExemption: Int
 }
 
 enum RecognitionEvent: Sendable {
     case ready
     case sessionReady(generation: UInt64)
+    case finishHint(RecordingFinishHint)
+    case useFinishingLabel
+    case willInject
     case transcript(RecognitionTranscript)
     case error(Error)
     case completed
