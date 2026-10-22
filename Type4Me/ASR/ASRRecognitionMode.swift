@@ -48,6 +48,14 @@ enum ASRRecognitionMode: String, CaseIterable, Sendable {
         L("录音中 · 结束后识别", "Recording · text at end")
     }
 
+    /// Checks if a string matches the batch recording placeholder in any supported language.
+    static func isBatchRecordingPlaceholder(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed == "录音中 · 结束后识别"
+            || trimmed == "Recording · text at end"
+            || trimmed == batchRecordingPlaceholder
+    }
+
     /// Credential field rendered as a segmented control at the top of the provider settings.
     static var credentialField: CredentialField {
         CredentialField(

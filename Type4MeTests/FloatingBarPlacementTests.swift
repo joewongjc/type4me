@@ -812,4 +812,44 @@ final class FloatingBarPlacementTests: XCTestCase {
 
         XCTAssertEqual(clampedMoved.x, 750, accuracy: 0.1, "Moving mouse inward after widening must move center immediately without dead zone")
     }
+
+    @MainActor
+    func testChromeModelResetHoverClearsHandleVisibility() {
+        let chrome = FloatingBarChromeModel()
+        XCTAssertFalse(chrome.isHandleVisible)
+
+        chrome.setHovering(true)
+        XCTAssertTrue(chrome.isHandleVisible)
+
+        chrome.resetHover()
+        XCTAssertFalse(chrome.isHandleVisible)
+
+        // Dragging preserves handle visibility during resetHover
+        chrome.isDragging = true
+        XCTAssertTrue(chrome.isHandleVisible)
+        chrome.resetHover()
+        XCTAssertTrue(chrome.isHandleVisible)
+
+        chrome.isDragging = false
+        chrome.resetHover()
+        XCTAssertFalse(chrome.isHandleVisible)
+    }
+
+    @MainActor
+    func testFloatingBarControllerShowAndHideResetsHandleHover() {
+        let appState = AppState()
+        let controller = FloatingBarController(state: appState)
+
+        controller.chrome.setHovering(true)
+        XCTAssertTrue(controller.chrome.isHandleVisible)
+
+        controller.show()
+        XCTAssertFalse(controller.chrome.isHandleVisible, "Showing the panel for a new session must reset handle hover state")
+
+        controller.chrome.setHovering(true)
+        XCTAssertTrue(controller.chrome.isHandleVisible)
+
+        controller.hide()
+        XCTAssertFalse(controller.chrome.isHandleVisible, "Hiding the panel must reset handle hover state")
+    }
 }

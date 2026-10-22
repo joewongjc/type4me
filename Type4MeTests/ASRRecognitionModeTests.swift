@@ -47,6 +47,21 @@ final class ASRRecognitionModeTests: XCTestCase {
         )
     }
 
+    func testIsBatchRecordingPlaceholder() {
+        UserDefaults.standard.set("zh", forKey: "tf_language")
+        XCTAssertTrue(ASRRecognitionMode.isBatchRecordingPlaceholder("录音中 · 结束后识别"))
+        XCTAssertTrue(ASRRecognitionMode.isBatchRecordingPlaceholder("Recording · text at end"))
+        XCTAssertTrue(ASRRecognitionMode.isBatchRecordingPlaceholder("  录音中 · 结束后识别 \n"))
+        XCTAssertFalse(ASRRecognitionMode.isBatchRecordingPlaceholder("实际转录的文字"))
+        XCTAssertFalse(ASRRecognitionMode.isBatchRecordingPlaceholder(""))
+
+        UserDefaults.standard.set("en", forKey: "tf_language")
+        XCTAssertTrue(ASRRecognitionMode.isBatchRecordingPlaceholder("录音中 · 结束后识别"))
+        XCTAssertTrue(ASRRecognitionMode.isBatchRecordingPlaceholder("Recording · text at end"))
+        XCTAssertFalse(ASRRecognitionMode.isBatchRecordingPlaceholder("Actual transcribed speech"))
+        XCTAssertFalse(ASRRecognitionMode.isBatchRecordingPlaceholder(""))
+    }
+
     func testModelFieldIsSwappedPerMode() {
         func keys(_ type: any ASRProviderConfig.Type, _ mode: ASRRecognitionMode) -> [String] {
             type.displayedCredentialFields(for: ["recognitionMode": mode.rawValue]).map(\.key)

@@ -385,7 +385,9 @@ struct FloatingBarView<S: FloatingBarState>: View {
     }
 
     private var showsHandle: Bool {
-        chrome?.isHandleVisible == true && shouldRenderCapsule
+        chrome?.isHandleVisible == true
+            && shouldRenderCapsule
+            && (state.barPhase == .recording || chrome?.isDragging == true || isRetainedForDrag)
     }
 
     private var handleReserve: CGFloat {
@@ -624,7 +626,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
             updateRecordingPeakWidthIfNeeded()
         }
         .onChange(of: state.transcriptionText) { _, text in
-            if !text.isEmpty && !usesCompactPresentation {
+            if !text.isEmpty && !usesCompactPresentation && !ASRRecognitionMode.isBatchRecordingPlaceholder(text) {
                 dismissModeHint()
             }
             updateRecordingPeakWidthIfNeeded()
@@ -1346,6 +1348,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
             handleHintTask?.cancel()
             hoveredHandle = false
             hintedHandle = false
+            chrome?.resetHover()
         }
         switch phase {
         case .preparing:
@@ -1365,19 +1368,24 @@ struct FloatingBarView<S: FloatingBarState>: View {
             recordingActionLocked = false
         case .processing:
             dismissModeHint()
+            chrome?.resetHover()
             processingStartDate = Date()
             doneStartDate = nil
         case .recovering:
             dismissModeHint()
+            chrome?.resetHover()
             processingStartDate = Date()
             doneStartDate = nil
         case .done:
             dismissModeHint()
+            chrome?.resetHover()
             doneStartDate = Date()
         case .error:
             dismissModeHint()
+            chrome?.resetHover()
         default:
             dismissModeHint()
+            chrome?.resetHover()
         }
     }
 

@@ -239,6 +239,7 @@ final class FloatingBarController {
         guard !isSuppressedForManualInput else { return }
         _ = dragLifecycle.showRequested()
         chrome.isRetainedForDrag = dragLifecycle.isRetainedForDrag
+        chrome.resetHover()
         panelGeneration &+= 1
         panel.updateAppearance(theme: currentDisplayOverride()?.theme)
 
@@ -273,6 +274,7 @@ final class FloatingBarController {
         if action == .retainForDrag {
             return
         }
+        chrome.resetHover()
         guard panel.isVisible else { return }
         cancelPendingPanelShrink()
         panel.ignoresMouseEvents = true

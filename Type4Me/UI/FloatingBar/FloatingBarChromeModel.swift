@@ -42,6 +42,13 @@ final class FloatingBarChromeModel: ObservableObject {
         hideTask = nil
     }
 
+    func resetHover() {
+        hideTask?.cancel()
+        hideTask = nil
+        guard !isDragging else { return }
+        isHandleVisible = false
+    }
+
     func forceHandleVisible(_ visible: Bool) {
         hideTask?.cancel()
         hideTask = nil
