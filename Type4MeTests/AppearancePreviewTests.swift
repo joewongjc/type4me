@@ -329,7 +329,11 @@ final class AppearancePreviewTests: XCTestCase {
     func testCompactTranscriptAlignment() {
         let previousLanguage = UserDefaults.standard.string(forKey: "tf_language")
         defer {
-            UserDefaults.standard.setValue(previousLanguage, forKey: "tf_language")
+            if let previousLanguage {
+                UserDefaults.standard.set(previousLanguage, forKey: "tf_language")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "tf_language")
+            }
         }
 
         // Chinese placeholder
