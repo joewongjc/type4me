@@ -78,6 +78,9 @@ final class MenuBarControlCenterModel {
     private(set) var inputDevices: [AudioInputDevice] = []
     private(set) var configuredASRProviders: [MenuBarASRProviderItem] = []
     private(set) var configuredLLMProviders: [MenuBarLLMProviderItem] = []
+    private(set) var selectedASRProvider: ASRProvider = KeychainService.selectedASRProvider
+    private(set) var selectedLLMProvider: LLMProvider = KeychainService.selectedLLMProvider
+    private(set) var microphonePreferenceMode: AudioInputDevicePreferenceMode = AudioInputDevicePreferenceStore.mode()
     private(set) var canCopyLatestResult = false
     private(set) var permissionIssue: MenuBarPermissionIssue?
     private(set) var canStartRevise = false
@@ -123,7 +126,7 @@ final class MenuBarControlCenterModel {
     }
 
     var selectedProviderLabel: String {
-        let provider = KeychainService.selectedASRProvider
+        let provider = selectedASRProvider
         let isBatch = !ASRProviderRegistry.capabilities(for: provider).supportsRealtimeRecognition
         if isBatch {
             return "\(provider.displayName) (\(L("非实时", "Batch")))"
@@ -148,6 +151,9 @@ final class MenuBarControlCenterModel {
             : cached
         configuredASRProviders = MenuBarASRProviderAvailability.configuredItems()
         configuredLLMProviders = MenuBarLLMProviderAvailability.configuredItems()
+        selectedASRProvider = KeychainService.selectedASRProvider
+        selectedLLMProvider = KeychainService.selectedLLMProvider
+        microphonePreferenceMode = AudioInputDevicePreferenceStore.mode()
         permissionIssue = Self.currentPermissionIssue()
         refreshHistoryAvailability()
         refreshReviseAvailability()
@@ -418,6 +424,34 @@ struct MenuBarControlCenterView: View {
     @AppStorage(CJKSpacingMode.storageKey) private var cjkSpacingRaw = CJKSpacingMode.defaultValue
     @AppStorage(CornerQuotePreference.storageKey) private var useCornerQuotes = CornerQuotePreference.defaultValue
     @AppStorage("tf_language") private var language = AppLanguage.systemDefault
+    @AppStorage(KeychainService.selectedASRProviderKey)
+    private var selectedASRProviderRaw = ""
+    @AppStorage(KeychainService.selectedLLMProviderKey)
+    private var selectedLLMProviderRaw = ""
+    @AppStorage(AudioInputDevicePreferenceStore.modeKey)
+    private var microphonePreferenceModeRaw = AudioInputDevicePreferenceMode.systemDefault.rawValue
+    @AppStorage(AudioInputDevicePreferenceStore.priorityEntriesKey)
+    private var microphonePriorityEntriesRaw = ""
+
+    private var currentASRProvider: ASRProvider {
+        if !selectedASRProviderRaw.isEmpty,
+           let provider = ASRProvider(rawValue: selectedASRProviderRaw) {
+            return provider
+        }
+        return model.selectedASRProvider
+    }
+
+    private var currentLLMProvider: LLMProvider {
+        if !selectedLLMProviderRaw.isEmpty,
+           let provider = LLMProvider(rawValue: selectedLLMProviderRaw) {
+            return provider
+        }
+        return model.selectedLLMProvider
+    }
+
+    private var currentMicrophoneMode: AudioInputDevicePreferenceMode {
+        AudioInputDevicePreferenceMode(rawValue: microphonePreferenceModeRaw) ?? model.microphonePreferenceMode
+    }
 
     var body: some View {
         switch appState.barPhase {
@@ -531,14 +565,15 @@ struct MenuBarControlCenterView: View {
     }
 
     private var microphoneMenu: some View {
-        Menu(L("麦克风", "Microphone")) {
+        let _ = microphonePriorityEntriesRaw
+        return Menu(L("麦克风", "Microphone")) {
             menuSelectionToggle(
                 systemDefaultMicrophoneTitle,
-                isSelected: AudioInputDevicePreferenceStore.mode() == .systemDefault
+                isSelected: currentMicrophoneMode == .systemDefault
             ) {
                 actions.setMicrophone(.systemDefault)
             }
-            if AudioInputDevicePreferenceStore.mode() == .priority,
+            if currentMicrophoneMode == .priority,
                let effectiveInputDevice = model.effectiveInputDevice {
                 Label(
                     L(
@@ -587,7 +622,7 @@ struct MenuBarControlCenterView: View {
                 ForEach(model.configuredASRProviders) { item in
                     menuSelectionToggle(
                         item.title,
-                        isSelected: item.provider == KeychainService.selectedASRProvider
+                        isSelected: item.provider == currentASRProvider
                     ) {
                         actions.setASRProvider(item.provider)
                     }
@@ -610,7 +645,7 @@ struct MenuBarControlCenterView: View {
                 ForEach(model.configuredLLMProviders) { item in
                     menuSelectionToggle(
                         item.title,
-                        isSelected: item.provider == KeychainService.selectedLLMProvider
+                        isSelected: item.provider == currentLLMProvider
                     ) {
                         actions.setLLMProvider(item.provider)
                     }

@@ -67,4 +67,24 @@ final class MenuBarControlCenterTests: XCTestCase {
         let items = MenuBarLLMProviderAvailability.configuredItems()
         XCTAssertTrue(items.contains { $0.provider == KeychainService.selectedLLMProvider })
     }
+
+    func testModelTracksSelectedASRAndLLMProviders() {
+        let appState = AppState()
+        let model = MenuBarControlCenterModel(appState: appState)
+
+        let originalASR = KeychainService.selectedASRProvider
+        let targetASR: ASRProvider = (originalASR == .volcano) ? .mimo : .volcano
+        KeychainService.selectedASRProvider = targetASR
+
+        XCTAssertEqual(model.selectedASRProvider, targetASR)
+
+        // Restore
+        KeychainService.selectedASRProvider = originalASR
+        XCTAssertEqual(model.selectedASRProvider, originalASR)
+    }
+
+    func testStorageKeysMatchKeychainServiceKeys() {
+        XCTAssertEqual(KeychainService.selectedASRProviderKey, "tf_selectedASRProvider")
+        XCTAssertEqual(KeychainService.selectedLLMProviderKey, "tf_selectedLLMProvider")
+    }
 }

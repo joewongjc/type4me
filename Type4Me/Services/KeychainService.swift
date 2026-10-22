@@ -98,7 +98,8 @@ enum KeychainService {
 
     // MARK: - Selected ASR Provider (UserDefaults)
 
-    private static let selectedProviderKey = "tf_selectedASRProvider"
+    static let selectedProviderKey = "tf_selectedASRProvider"
+    static let selectedASRProviderKey = selectedProviderKey
 
     static var selectedASRProvider: ASRProvider {
         get {
@@ -223,7 +224,7 @@ enum KeychainService {
 
     // MARK: - Selected LLM Provider (UserDefaults)
 
-    private static let selectedLLMProviderKey = "tf_selectedLLMProvider"
+    static let selectedLLMProviderKey = "tf_selectedLLMProvider"
 
     static var selectedLLMProvider: LLMProvider {
         get {
