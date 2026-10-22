@@ -361,7 +361,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
         return state.segments
     }
     private var presentedTranscriptionText: String {
-        exitSnapshot != nil ? presentedSegments.map(\.text).joined() : state.transcriptionText
+        presentedSegments.map(\.text).joined()
     }
     private var presentedProcessingLabel: String { exitSnapshot?.processingLabel ?? state.effectiveProcessingLabel }
     private var presentedFeedbackMessage: String { exitSnapshot?.feedbackMessage ?? state.feedbackMessage }
@@ -1463,7 +1463,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
 
     private var transcriptPopupHeight: CGFloat {
         let textWidth = TF.transcriptPopupWidth - 24
-        let bounds = (state.transcriptionText as NSString).boundingRect(
+        let bounds = (presentedTranscriptionText as NSString).boundingRect(
             with: NSSize(width: textWidth, height: .greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin, .usesFontLeading],
             attributes: [.font: floatingBarFont]
@@ -1516,7 +1516,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
         switch overlay {
         case .transcript:
             TranscriptPopup(
-                text: state.transcriptionText,
+                text: presentedTranscriptionText,
                 height: transcriptPopupHeight,
                 theme: effectiveTheme,
                 onHoverChanged: updateTranscriptHover

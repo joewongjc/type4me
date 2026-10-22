@@ -1641,6 +1641,7 @@ final class AppState {
             return
         }
         if reason == .manualInput {
+            guard barPhase == .preparing || barPhase == .recording else { return }
             stopRecordingInstant = ContinuousClock.now
             stopRecordingPath = "processing"
             finishingWasRevealed = false
@@ -1669,10 +1670,6 @@ final class AppState {
             recordingStartDate = nil
             if reason == .maxDuration {
                 processingLabelOverride = L("已达最大时长", "Max duration reached")
-                usesFinishingLabel = false
-                barPhase = .processing
-            } else if reason == .manualInput {
-                processingLabelOverride = nil
                 usesFinishingLabel = false
                 barPhase = .processing
             } else if expectsQuickFinish {
@@ -2082,12 +2079,13 @@ final class AppState {
             if let outcomeForLog {
                 logReleaseToHidden(outcome: outcomeForLog)
             }
-            pinsTranscriptPopup = false
             if let message = takePendingTransientNotification() {
+                pinsTranscriptPopup = false
                 presentTransientNotification(message, delay: .seconds(2))
             } else {
                 hidePanel(style: .standard) {
                     barPhase = .hidden
+                    pinsTranscriptPopup = false
                 }
             }
         }

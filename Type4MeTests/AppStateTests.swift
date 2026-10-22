@@ -270,11 +270,24 @@ final class AppStateTests: XCTestCase {
     func testStopRecordingManualInputEntersProcessingDirectly() {
         let appState = AppState()
         appState.currentMode = .smartDirect
+        appState.startRecording(showsPanel: false)
+        XCTAssertEqual(appState.barPhase, .preparing)
+
         appState.stopRecording(reason: .manualInput)
 
         XCTAssertEqual(appState.barPhase, .processing)
         XCTAssertFalse(appState.usesFinishingLabel)
         XCTAssertEqual(appState.effectiveProcessingLabel, appState.currentMode.processingLabel)
+    }
+
+    func testStopRecordingManualInputIgnoredWhenHidden() {
+        let appState = AppState()
+        appState.currentMode = .smartDirect
+        XCTAssertEqual(appState.barPhase, .hidden)
+
+        appState.stopRecording(reason: .manualInput)
+
+        XCTAssertEqual(appState.barPhase, .hidden)
     }
 
     func testCrossModeFinishUpdatesFinishHintAndEntersProcessing() {
@@ -1117,6 +1130,22 @@ final class AppStateTests: XCTestCase {
 
         XCTAssertNil(controller.chrome.exitSnapshot)
         XCTAssertTrue(controller.chrome.isRetainedForDrag)
+    }
+
+    func testFloatingBarControllerCapturesPinsTranscriptPopupInExitSnapshot() {
+        let appState = AppState()
+        let controller = FloatingBarController(state: appState)
+        controller.panel.contentView = nil
+        appState.barPhase = .done
+        appState.pinsTranscriptPopup = true
+        appState.appendSegment("气泡文本", isConfirmed: true)
+        controller.panel.alphaValue = 1
+        controller.panel.orderFrontRegardless()
+        defer { controller.panel.orderOut(nil) }
+
+        controller.hide(style: .standard)
+
+        XCTAssertEqual(controller.chrome.exitSnapshot?.pinsTranscriptPopup, true)
     }
 
     func testLocalASREngineSelectionNeverDisablesBothEngines() {
