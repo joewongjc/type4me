@@ -708,6 +708,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
               )
         else { return }
 
+        guard appState.availableModes[index].translationTargetLanguageCode != language.rawValue else { return }
         var modes = appState.availableModes
         modes[index].translationTargetLanguageCode = language.rawValue
         persistModesFromMenu(modes)
@@ -720,6 +721,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
               )
         else { return }
 
+        guard appState.availableModes[index].punctuationMode != punctuationMode else { return }
         var modes = appState.availableModes
         modes[index].punctuationMode = punctuationMode
         persistModesFromMenu(modes)
