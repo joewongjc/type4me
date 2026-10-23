@@ -22,8 +22,8 @@ Type4Me is a free, open-source voice input app for macOS. Hold a hotkey and talk
 
 | Edition | Details | Size |
 | --- | --- | --- |
-| ✨ **[Cloud (recommended)](https://github.com/joewongjc/type4me/releases/download/v2.13.0/Type4Me-v2.13.0-cloud.dmg)** | Intel and Apple Silicon. Bring your own speech and LLM API keys; Volcano Engine (Doubao) or Soniox recommended for recognition. [Setup guide](https://my.feishu.cn/wiki/QdEnwBMfUi0mN4k3ucMcNYhUnXr) | ~16 MB |
-| **[Local](https://github.com/joewongjc/type4me/releases/download/v2.13.0/Type4Me-v2.13.0-local-apple-silicon.dmg)** | Apple Silicon only. Bundles SenseVoice + Qwen3-ASR for offline recognition (~8 GB RAM, 32 GB+ Macs recommended). Text processing still needs an API key or local Ollama | ~720 MB |
+| ✨ **[Cloud (recommended)](https://github.com/joewongjc/type4me/releases/download/v2.14.0/Type4Me-v2.14.0-cloud.dmg)** | Intel and Apple Silicon. Bring your own speech and LLM API keys; Volcano Engine (Doubao) or Soniox recommended for recognition. [Setup guide](https://my.feishu.cn/wiki/QdEnwBMfUi0mN4k3ucMcNYhUnXr) | ~16 MB |
+| **[Local](https://github.com/joewongjc/type4me/releases/download/v2.14.0/Type4Me-v2.14.0-local-apple-silicon.dmg)** | Apple Silicon only. Bundles SenseVoice + Qwen3-ASR for offline recognition (~8 GB RAM, 32 GB+ Macs recommended). Text processing still needs an API key or local Ollama | ~720 MB |
 
 Requires macOS 14 (Sonoma) or later. Both editions share the same settings, so you can switch anytime. The app is notarized by Apple; on first launch, grant **Microphone** and **Accessibility** access as prompted.
 
