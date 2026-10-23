@@ -6,11 +6,20 @@ actor CodexCLIClient: LLMClient {
 
     private let logger = Logger(subsystem: "com.type4me.llm", category: "CodexCLIClient")
     private var appServerSession: CodexAppServerSession?
+    private let runtimeLocator: () throws -> URL
+
+    init(
+        appServerSession: CodexAppServerSession? = nil,
+        runtimeLocator: @escaping () throws -> URL = { try CodexCLIRuntimeLocator.locate() }
+    ) {
+        self.appServerSession = appServerSession
+        self.runtimeLocator = runtimeLocator
+    }
 
     func warmUp(baseURL: String) async {
         _ = baseURL
         guard appServerSession == nil,
-              let executable = try? CodexCLIRuntimeLocator.locate()
+              let executable = try? runtimeLocator()
         else { return }
 
         let session = CodexAppServerSession(executable: executable)
@@ -40,7 +49,6 @@ actor CodexCLIClient: LLMClient {
         let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedText.isEmpty else { return text }
 
-        let executable = try CodexCLIRuntimeLocator.locate()
         let finalPrompt = CodexCLIInvocation.wrappedPrompt(
             text: trimmedText,
             transformationPrompt: prompt,
@@ -48,8 +56,14 @@ actor CodexCLIClient: LLMClient {
         )
         let startedAt = ContinuousClock.now
 
-        let session = appServerSession ?? CodexAppServerSession(executable: executable)
-        appServerSession = session
+        let session: CodexAppServerSession
+        if let existing = appServerSession {
+            session = existing
+        } else {
+            let executable = try runtimeLocator()
+            session = CodexAppServerSession(executable: executable)
+            appServerSession = session
+        }
         do {
             let data = try await session.transform(prompt: finalPrompt, model: config.model)
             let result = try Self.decodeResult(from: data)
@@ -66,8 +80,9 @@ actor CodexCLIClient: LLMClient {
             await resetAppServer(session)
         }
 
+        let fallbackExecutable = try runtimeLocator()
         return try await processOneShot(
-            executable: executable,
+            executable: fallbackExecutable,
             prompt: finalPrompt,
             model: config.model,
             startedAt: startedAt
@@ -145,28 +160,6 @@ actor CodexCLIClient: LLMClient {
         let result = envelope.result.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !result.isEmpty else { throw LLMError.emptyResponse(nil) }
         return result
-    }
-}
-
-enum CodexCLIRuntimeLocator {
-    static func locate(
-        fileManager: FileManager = .default,
-        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
-    ) throws -> URL {
-        for candidate in candidates(homeDirectory: homeDirectory)
-        where fileManager.isExecutableFile(atPath: candidate.path) {
-            return candidate
-        }
-        throw CodexCLIError.notInstalled
-    }
-
-    static func candidates(homeDirectory: URL) -> [URL] {
-        [
-            URL(fileURLWithPath: "/Applications/ChatGPT.app/Contents/Resources/codex"),
-            URL(fileURLWithPath: "/opt/homebrew/bin/codex"),
-            URL(fileURLWithPath: "/usr/local/bin/codex"),
-            homeDirectory.appendingPathComponent(".local/bin/codex"),
-        ]
     }
 }
 
@@ -288,7 +281,10 @@ enum CodexCLIError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .notInstalled:
-            return L("未找到 Codex CLI，请安装或更新 ChatGPT App", "Codex CLI not found; install or update the ChatGPT app")
+            return L(
+                "未找到 Codex CLI，请安装 Codex CLI 或更新支持内置 CLI 的 ChatGPT/Codex 桌面应用",
+                "Codex CLI not found; install Codex CLI or update the ChatGPT/Codex desktop app"
+            )
         case .timedOut:
             return L("Codex CLI 超时，已回退到原始文本", "Codex CLI timed out; falling back to raw text")
         case .processWaitFailed:
@@ -308,7 +304,10 @@ enum CodexCLIError: Error, LocalizedError {
             return L("请先在 Codex CLI 中登录 ChatGPT 账号", "Sign in to ChatGPT from Codex CLI first")
         }
         if lower.contains("requires a newer version") || lower.contains("please upgrade") {
-            return L("Codex CLI 版本过旧，请更新 ChatGPT App 或 CLI", "Codex CLI is too old; update the ChatGPT app or CLI")
+            return L(
+                "Codex CLI 版本过旧，请更新支持内置 CLI 的 ChatGPT/Codex 桌面应用或 CLI",
+                "Codex CLI is too old; update the ChatGPT/Codex desktop app or CLI"
+            )
         }
         if lower.contains("usage limit") || lower.contains("rate limit") {
             return L("Codex 额度不足或请求超限", "Codex usage or rate limit reached")

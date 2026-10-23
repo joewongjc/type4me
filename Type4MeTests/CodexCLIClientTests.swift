@@ -31,13 +31,13 @@ final class CodexCLIClientTests: XCTestCase {
         XCTAssertEqual(CodexCLILLMConfig.normalizeModel("custom-model"), "custom-model")
     }
 
-    func testRuntimeCandidatesPreferChatGPTBundledCodex() {
+    func testRuntimeCandidatesRetainStandaloneFallbacks() {
         let home = URL(fileURLWithPath: "/Users/tester")
         let candidates = CodexCLIRuntimeLocator.candidates(homeDirectory: home)
 
         XCTAssertEqual(
             candidates.first?.path,
-            "/Applications/ChatGPT.app/Contents/Resources/codex"
+            "/opt/homebrew/bin/codex"
         )
         XCTAssertEqual(candidates.last?.path, "/Users/tester/.local/bin/codex")
     }
@@ -163,6 +163,76 @@ final class CodexCLIClientTests: XCTestCase {
     func testConciseErrorsMapCommonRuntimeFailures() {
         XCTAssertTrue(CodexCLIError.concise("Error: not logged in").contains("ChatGPT"))
         XCTAssertTrue(CodexCLIError.concise("model requires a newer version").contains(L("更新", "update")))
+    }
+
+    func testNotInstalledErrorMentionsBothDesktopAppAndStandaloneCLI() {
+        let description = CodexCLIError.notInstalled.errorDescription ?? ""
+        XCTAssertTrue(
+            description.contains("ChatGPT/Codex") && description.contains("Codex CLI"),
+            "Expected description to mention both desktop app and standalone CLI: \(description)"
+        )
+    }
+
+    func testProcessReusesExistingAppServerSessionWithoutLocatingCLI() async throws {
+        let workspace = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Type4Me-Fake-Codex-Reuse-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: workspace) }
+
+        let executable = workspace.appendingPathComponent("fake-codex")
+        let script = #"""
+        #!/bin/sh
+        request_id=0
+        current_thread="thread-reuse"
+        while IFS= read -r line
+        do
+            case "$line" in
+                *'"id":'*) request_id=$((request_id + 1)) ;;
+            esac
+            case "$line" in
+                *'"method":"initialize"'*)
+                    printf '{"id":%s,"result":{}}\n' "$request_id"
+                    ;;
+                *'"method":"thread/start"'*|*'"method":"thread\/start"'*)
+                    printf '{"id":%s,"result":{"thread":{"id":"%s"}}}\n' "$request_id" "$current_thread"
+                    ;;
+                *'"method":"turn/start"'*|*'"method":"turn\/start"'*)
+                    printf '{"id":%s,"result":{}}\n' "$request_id"
+                    printf '{"method":"item/completed","params":{"threadId":"%s","item":{"type":"agentMessage","text":"{\\"result\\":\\"reused-ok\\"}"}}}\n' "$current_thread"
+                    printf '{"method":"turn/completed","params":{"threadId":"%s","turn":{"status":"completed"}}}\n' "$current_thread"
+                    ;;
+            esac
+        done
+        """#
+        try Data(script.utf8).write(to: executable)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)
+        let session = CodexAppServerSession(executable: executable)
+        final class Counter: @unchecked Sendable {
+            var value = 0
+        }
+        let counter = Counter()
+        let client = CodexCLIClient(
+            appServerSession: session,
+            runtimeLocator: {
+                counter.value += 1
+                return executable
+            }
+        )
+
+        do {
+            let result = try await client.process(
+                text: "hello",
+                prompt: "polish: {text}",
+                config: LLMConfig(apiKey: "", model: "gpt-6-luna", baseURL: "codex-cli"),
+                inputBoundary: .inline
+            )
+            XCTAssertEqual(result, "reused-ok")
+            XCTAssertEqual(counter.value, 0, "Expected locate() not to be called when session is pre-warmed")
+            await client.invalidate()
+        } catch {
+            await client.invalidate()
+            throw error
+        }
     }
 
     func testLiveCodexCLIWhenEnabled() async throws {
