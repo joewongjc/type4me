@@ -54,7 +54,10 @@ actor HistoryStore {
                 user_edit_observed_at TEXT,
                 user_edit_version INTEGER,
                 post_snippet_text TEXT,
-                applied_snippets TEXT
+                applied_snippets TEXT,
+                processing_mode_id TEXT,
+                target_bundle_id TEXT,
+                target_app_name TEXT
             );
             """
             sqlite3_exec(db, sql, nil, nil, nil)
@@ -172,6 +175,12 @@ actor HistoryStore {
             sqlite3_exec(db, "ALTER TABLE recognition_history ADD COLUMN post_snippet_text TEXT;", nil, nil, nil)
             sqlite3_exec(db, "ALTER TABLE recognition_history ADD COLUMN applied_snippets TEXT;", nil, nil, nil)
 
+            // Home dashboard attribution, appended after every existing column so
+            // older builds keep decoding indexes 0-21 unchanged.
+            sqlite3_exec(db, "ALTER TABLE recognition_history ADD COLUMN processing_mode_id TEXT;", nil, nil, nil)
+            sqlite3_exec(db, "ALTER TABLE recognition_history ADD COLUMN target_bundle_id TEXT;", nil, nil, nil)
+            sqlite3_exec(db, "ALTER TABLE recognition_history ADD COLUMN target_app_name TEXT;", nil, nil, nil)
+
             // Index for ORDER BY created_at DESC pagination
             sqlite3_exec(db, "CREATE INDEX IF NOT EXISTS idx_history_created_at ON recognition_history(created_at DESC);", nil, nil, nil)
             // LLM usage history table and indexes
@@ -202,6 +211,7 @@ actor HistoryStore {
             Task { [weak self] in
                 await self?.backfillHistoricalLLMUsageIfNeeded()
                 await self?.recalculateZeroCostRecordsIfNeeded()
+                await self?.backfillTargetAppsFromTraces()
             }
         } else if let db {
             sqlite3_close_v2(db)
@@ -248,8 +258,8 @@ actor HistoryStore {
     func insert(_ record: HistoryRecord) {
         let sql = """
         INSERT OR REPLACE INTO recognition_history
-        (id, created_at, duration_seconds, raw_text, processing_mode, processed_text, final_text, status, character_count, asr_provider, asr_model, intelli_sense_trace, llm_provider, llm_model, asr_duration_seconds, llm_duration_seconds, user_edited_text, user_edit_status, user_edit_observed_at, user_edit_version, post_snippet_text, applied_snippets)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+        (id, created_at, duration_seconds, raw_text, processing_mode, processed_text, final_text, status, character_count, asr_provider, asr_model, intelli_sense_trace, llm_provider, llm_model, asr_duration_seconds, llm_duration_seconds, user_edited_text, user_edit_status, user_edit_observed_at, user_edit_version, post_snippet_text, applied_snippets, processing_mode_id, target_bundle_id, target_app_name)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
         """
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
@@ -286,6 +296,9 @@ actor HistoryStore {
         }
         bindOptional(stmt, 21, record.postSnippetText)
         bindOptional(stmt, 22, Self.encodeAppliedSnippets(record.appliedSnippets))
+        bindOptional(stmt, 23, record.processingModeId)
+        bindOptional(stmt, 24, record.targetBundleId)
+        bindOptional(stmt, 25, record.targetAppName)
         if sqlite3_step(stmt) == SQLITE_DONE {
             postDidChangeNotification()
         }
@@ -380,7 +393,7 @@ actor HistoryStore {
         return readRows(stmt)
     }
 
-    private func readRows(_ stmt: OpaquePointer?) -> [HistoryRecord] {
+    func readRows(_ stmt: OpaquePointer?) -> [HistoryRecord] {
         let iso = ISO8601DateFormatter()
         var records: [HistoryRecord] = []
         while sqlite3_step(stmt) == SQLITE_ROW {
@@ -406,7 +419,10 @@ actor HistoryStore {
                 userEditObservedAt: optionalColumn(stmt, 18).flatMap(iso.date(from:)),
                 userEditVersion: optionalIntColumn(stmt, 19),
                 postSnippetText: optionalColumn(stmt, 20),
-                appliedSnippets: Self.decodeAppliedSnippets(optionalColumn(stmt, 21))
+                appliedSnippets: Self.decodeAppliedSnippets(optionalColumn(stmt, 21)),
+                processingModeId: optionalColumn(stmt, 22),
+                targetBundleId: optionalColumn(stmt, 23),
+                targetAppName: optionalColumn(stmt, 24)
             ))
         }
         return records
@@ -1142,7 +1158,7 @@ actor HistoryStore {
         sqlite3_db_release_memory(db)
     }
 
-    private func postDidChangeNotification() {
+    func postDidChangeNotification() {
         Task { @MainActor in
             NotificationCenter.default.post(name: .historyStoreDidChange, object: nil)
         }

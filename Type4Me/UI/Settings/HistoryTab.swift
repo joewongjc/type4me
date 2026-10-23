@@ -32,6 +32,12 @@ struct HistoryRecord: Identifiable, Hashable {
     /// The rules that rewrote this record's recognised text, captured when they
     /// fired. `nil` means unknown, which is not the same as `[]` — no rule fired.
     let appliedSnippets: [AppliedSnippetRule]?
+    /// Stable `ProcessingMode.id`. `processingMode` keeps the name for display
+    /// and for records written before this column existed.
+    let processingModeId: String?
+    /// The app the text was written into, captured when the record was saved.
+    let targetBundleId: String?
+    let targetAppName: String?
 
     init(
         id: String,
@@ -55,7 +61,10 @@ struct HistoryRecord: Identifiable, Hashable {
         userEditObservedAt: Date? = nil,
         userEditVersion: Int? = nil,
         postSnippetText: String? = nil,
-        appliedSnippets: [AppliedSnippetRule]? = nil
+        appliedSnippets: [AppliedSnippetRule]? = nil,
+        processingModeId: String? = nil,
+        targetBundleId: String? = nil,
+        targetAppName: String? = nil
     ) {
         self.id = id
         self.createdAt = createdAt
@@ -79,6 +88,28 @@ struct HistoryRecord: Identifiable, Hashable {
         self.userEditVersion = userEditVersion
         self.postSnippetText = postSnippetText
         self.appliedSnippets = appliedSnippets
+        self.processingModeId = processingModeId
+        self.targetBundleId = targetBundleId
+        self.targetAppName = targetAppName
+    }
+}
+
+// MARK: - Search hand-off
+
+/// A search started on another surface (the Home search field). Navigation
+/// rebuilds the History page, which applies the query when it appears.
+@MainActor
+enum HistorySearchRequest {
+    private static var pending: String?
+
+    static func open(query: String?) {
+        pending = query
+        NotificationCenter.default.post(name: .navigateToHistory, object: nil)
+    }
+
+    static func consume() -> String? {
+        defer { pending = nil }
+        return pending
     }
 }
 
@@ -582,6 +613,11 @@ struct HistoryTab: View {
         .onChange(of: searchText) { _, _ in
             selectedIds.removeAll()
             recomputeSections()
+        }
+        .onAppear {
+            if let query = HistorySearchRequest.consume(), !query.isEmpty {
+                searchText = query
+            }
         }
         .onChange(of: records) { _, _ in
             recomputeSections()

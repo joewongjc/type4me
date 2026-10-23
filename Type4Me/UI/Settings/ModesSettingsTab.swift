@@ -126,6 +126,9 @@ struct ModesSettingsTab: View, SettingsCardHelpers {
         .onChange(of: navigationModel.pendingModeSelectionID) { _, _ in
             consumePendingSelection()
         }
+        .onChange(of: navigationModel.pendingModeCreation) { _, _ in
+            consumePendingSelection()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .asrProviderDidChange)) { note in
             if let provider = note.object as? ASRProvider {
                 selectedASRProvider = provider
@@ -217,6 +220,11 @@ struct ModesSettingsTab: View, SettingsCardHelpers {
     /// (from Home or the menu bar). Selecting here rather than via an async
     /// notification avoids racing the `onAppear` first-mode fallback below.
     private func consumePendingSelection() {
+        if navigationModel.pendingModeCreation {
+            navigationModel.pendingModeCreation = false
+            addMode()
+            return
+        }
         guard let id = navigationModel.pendingModeSelectionID else { return }
         navigationModel.pendingModeSelectionID = nil
         guard modes.contains(where: { $0.id == id }) else { return }
@@ -917,13 +925,13 @@ struct HotkeySectionView: View, SettingsCardHelpers {
     /// would otherwise push a neighboring "add" button to the next line and make
     /// hover oscillate near a wrap boundary).
     private func capsule(_ binding: HotkeyBinding) -> some View {
-        let accent = styleColor(binding.style)
+        let accent = Self.styleColor(binding.style)
         let hovered = hoveredId == binding.id
         return Button {
             onEdit(binding)
         } label: {
             HStack(spacing: 5) {
-                Image(systemName: styleIcon(binding.style))
+                Image(systemName: Self.styleIcon(binding.style))
                     .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(accent)
 
@@ -987,14 +995,14 @@ struct HotkeySectionView: View, SettingsCardHelpers {
         .buttonStyle(.plain)
     }
 
-    private func styleIcon(_ style: ProcessingMode.HotkeyStyle) -> String {
+    static func styleIcon(_ style: ProcessingMode.HotkeyStyle) -> String {
         switch style {
         case .hold: return "hand.tap.fill"
         case .toggle: return "arrow.triangle.2.circlepath"
         }
     }
 
-    private func styleColor(_ style: ProcessingMode.HotkeyStyle) -> Color {
+    static func styleColor(_ style: ProcessingMode.HotkeyStyle) -> Color {
         switch style {
         case .hold: return Color(red: 0.20, green: 0.60, blue: 0.86)
         case .toggle: return TF.settingsAccentGreen

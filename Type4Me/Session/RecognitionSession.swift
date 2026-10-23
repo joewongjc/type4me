@@ -623,6 +623,8 @@ actor RecognitionSession {
     private var recoveryPartialText = ""
     private var recoveryDuration: Double = 0
     private var recoveryModeName: String?
+    private var recoveryModeId: String?
+    private var recoveryTarget: (bundleId: String?, appName: String?) = (nil, nil)
     private var recoveryProvider: ASRProvider = .volcano
     private var recoveryASRModel: String?
 
@@ -800,6 +802,19 @@ actor RecognitionSession {
     private var targetBundleId: String?
     /// The frontmost application captured when recording starts, used to restore focus if needed.
     private var targetApplication: NSRunningApplication?
+
+    /// The app a history record is attributed to: where the text actually
+    /// landed when known, otherwise the app focused at recording start.
+    private func historyTarget(insertedInto bundleId: String? = nil) -> (bundleId: String?, appName: String?) {
+        guard let id = bundleId ?? targetBundleId, id != Bundle.main.bundleIdentifier else {
+            return (nil, nil)
+        }
+        if targetApplication?.bundleIdentifier == id {
+            return (id, targetApplication?.localizedName)
+        }
+        let running = NSWorkspace.shared.runningApplications.first { $0.bundleIdentifier == id }
+        return (id, running?.localizedName)
+    }
     /// Whether this recording was triggered by an automated flow (e.g. URL Scheme).
     /// Automated flows require restoring/activating their pinned target application.
     /// Ordinary user input writes to the current keyboard focus without switching apps.
@@ -1690,7 +1705,8 @@ actor RecognitionSession {
             asrDurationSeconds: historyASRDurationSeconds,
             llmDurationSeconds: historyLLMDurationSeconds,
             postSnippetText: historySnippetApplication?.text,
-            appliedSnippets: historySnippetApplication?.appliedRules
+            appliedSnippets: historySnippetApplication?.appliedRules,
+            processingModeId: currentMode.id.uuidString
         ))
 
         onASREvent?(.macActionResult(message: message, status: status))
@@ -2701,6 +2717,10 @@ actor RecognitionSession {
             else if llmFailed { status = "llm_error" }
             else if needsBatchFallback { status = "stream_recovered" }
             else { status = "completed" }
+            let recordTarget = historyTarget(
+                insertedInto: injectionResult.outcome == .inserted
+                    ? injectionResult.observationContext?.bundleIdentifier : nil
+            )
             let intelliSenseTraceJSON = await makeIntelliSenseHistoryTraceJSON(
                 input: rawText,
                 finalText: finalText,
@@ -2724,7 +2744,10 @@ actor RecognitionSession {
                 llmDurationSeconds: historyLLMDurationSeconds,
                 intelliSenseTraceJSON: intelliSenseTraceJSON,
                 postSnippetText: historySnippetApplication?.text,
-                appliedSnippets: historySnippetApplication?.appliedRules
+                appliedSnippets: historySnippetApplication?.appliedRules,
+                processingModeId: currentMode.id.uuidString,
+                targetBundleId: recordTarget.bundleId,
+                targetAppName: recordTarget.appName
             ))
             if injectionResult.outcome == .inserted,
                let context = injectionResult.observationContext {
@@ -2875,6 +2898,8 @@ actor RecognitionSession {
         recoveryPartialText = partialText
         recoveryDuration = duration
         recoveryModeName = currentMode == .direct ? nil : currentMode.name
+        recoveryModeId = currentMode.id.uuidString
+        recoveryTarget = historyTarget()
         recoveryProvider = provider
         recoveryASRModel = asrModel
 
@@ -3023,7 +3048,10 @@ actor RecognitionSession {
             status: status,
             characterCount: finalText.count,
             asrProvider: recoveryProvider.displayName,
-            asrModel: recoveryASRModel
+            asrModel: recoveryASRModel,
+            processingModeId: recoveryModeId,
+            targetBundleId: recoveryTarget.bundleId,
+            targetAppName: recoveryTarget.appName
         ))
     }
 
@@ -3037,6 +3065,8 @@ actor RecognitionSession {
         recoveryPartialText = ""
         recoveryDuration = 0
         recoveryModeName = nil
+        recoveryModeId = nil
+        recoveryTarget = (nil, nil)
         recoveryProvider = .volcano
         recoveryASRModel = nil
         currentConfig = nil
@@ -3686,7 +3716,10 @@ actor RecognitionSession {
             asrDurationSeconds: historyASRDurationSeconds,
             llmDurationSeconds: historyLLMDurationSeconds,
             postSnippetText: historySnippetApplication?.text,
-            appliedSnippets: historySnippetApplication?.appliedRules
+            appliedSnippets: historySnippetApplication?.appliedRules,
+            processingModeId: currentMode.id.uuidString,
+            targetBundleId: historyTarget().bundleId,
+            targetAppName: historyTarget().appName
         ))
         if !isManualInput { KeychainService.addASRUsage(seconds: duration) }
         SoundFeedback.playError()

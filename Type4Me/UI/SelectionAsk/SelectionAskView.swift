@@ -379,7 +379,7 @@ struct SelectionAskView: View {
     }
 }
 
-private enum Type4MeWordmarkAsset {
+enum Type4MeWordmarkAsset {
     private static let light = load("type4me-wordmark-light")
     private static let dark = load("type4me-wordmark-dark")
 

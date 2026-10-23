@@ -2,36 +2,39 @@ import XCTest
 @testable import Type4Me
 
 final class HomeActivitySummaryTests: XCTestCase {
-    func testHeatmapWindowExpandsWithAvailableWidth() {
-        let narrow = HomeHeatmapLayout(width: 350)
-        let wide = HomeHeatmapLayout(width: 900)
-        let veryWide = HomeHeatmapLayout(width: 2_000)
+    func testGrowthStartsAtFirstUseAndRunsThroughToday() {
+        let fixture = makeFixture()
+        let days = [
+            activityDay(-3, calendar: fixture.calendar, today: fixture.today, characters: 300),
+            activityDay(-1, calendar: fixture.calendar, today: fixture.today, characters: 200),
+        ]
 
-        XCTAssertGreaterThan(wide.weekCount, narrow.weekCount)
-        XCTAssertEqual(veryWide.weekCount, 104)
+        let summary = HomeGrowthSummary(activityDays: days, today: fixture.today, calendar: fixture.calendar)
+
+        XCTAssertEqual(summary.cumulative, [300, 300, 500, 500])
+        XCTAssertEqual(summary.startDate, fixture.calendar.date(byAdding: .day, value: -3, to: fixture.calendar.startOfDay(for: fixture.today)))
     }
 
-    func testHeatmapActivityLevelThresholds() {
-        // 0 records -> Level 0
-        XCTAssertEqual(HomeHeatmapLayout.activityLevel(characterCount: 0, recordCount: 0), 0)
-        XCTAssertEqual(HomeHeatmapLayout.activityLevel(characterCount: 100, recordCount: 0), 0)
+    func testGrowthShowsLatestTwoMilestonesOnTheCurve() {
+        let fixture = makeFixture()
+        let days = [
+            activityDay(-9, calendar: fixture.calendar, today: fixture.today, characters: 1_500),
+            activityDay(-5, calendar: fixture.calendar, today: fixture.today, characters: 4_000),
+            activityDay(0, calendar: fixture.calendar, today: fixture.today, characters: 6_000),
+        ]
 
-        // >0 records with 0...500 characters (including 0 characters floor) -> Level 1
-        XCTAssertEqual(HomeHeatmapLayout.activityLevel(characterCount: 0, recordCount: 1), 1)
-        XCTAssertEqual(HomeHeatmapLayout.activityLevel(characterCount: 1, recordCount: 1), 1)
-        XCTAssertEqual(HomeHeatmapLayout.activityLevel(characterCount: 500, recordCount: 2), 1)
+        let summary = HomeGrowthSummary(activityDays: days, today: fixture.today, calendar: fixture.calendar)
 
-        // 501...2000 characters -> Level 2
-        XCTAssertEqual(HomeHeatmapLayout.activityLevel(characterCount: 501, recordCount: 1), 2)
-        XCTAssertEqual(HomeHeatmapLayout.activityLevel(characterCount: 2000, recordCount: 5), 2)
+        XCTAssertEqual(summary.shownMilestones.map(\.value), [5_000, 10_000])
+        XCTAssertEqual(summary.shownMilestones.first?.position ?? 0, 5.0 / 10.0, accuracy: 0.0001)
+        XCTAssertEqual(summary.shownMilestones.last?.position ?? 0, 1, accuracy: 0.0001)
+    }
 
-        // 2001...5000 characters -> Level 3
-        XCTAssertEqual(HomeHeatmapLayout.activityLevel(characterCount: 2001, recordCount: 1), 3)
-        XCTAssertEqual(HomeHeatmapLayout.activityLevel(characterCount: 5000, recordCount: 10), 3)
+    func testGrowthIsEmptyWithoutActivity() {
+        let summary = HomeGrowthSummary(activityDays: [])
 
-        // 5001+ characters -> Level 4
-        XCTAssertEqual(HomeHeatmapLayout.activityLevel(characterCount: 5001, recordCount: 1), 4)
-        XCTAssertEqual(HomeHeatmapLayout.activityLevel(characterCount: 20000, recordCount: 20), 4)
+        XCTAssertNil(summary.startDate)
+        XCTAssertTrue(summary.cumulative.isEmpty)
     }
 
     func testSummarizesActiveAndLongestStreaks() {
@@ -128,7 +131,8 @@ final class HomeActivitySummaryTests: XCTestCase {
     private func activityDay(
         _ offset: Int,
         calendar: Calendar,
-        today: Date
+        today: Date,
+        characters: Int = 0
     ) -> HistoryStore.ActivityDay {
         let date = calendar.date(byAdding: .day, value: offset, to: today)!
         let formatter = DateFormatter()
@@ -138,7 +142,8 @@ final class HomeActivitySummaryTests: XCTestCase {
         formatter.dateFormat = "yyyy-MM-dd"
         return HistoryStore.ActivityDay(
             dayIdentifier: formatter.string(from: date),
-            recordCount: 1
+            recordCount: 1,
+            characterCount: characters
         )
     }
 }

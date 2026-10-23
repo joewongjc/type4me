@@ -92,9 +92,23 @@ final class AppNavigationModel {
     var pendingModelCategory: ModelCategory?
     var pendingAskAnythingSessionID: UUID?
     var pendingModeSelectionID: UUID?
+    var pendingModeCreation = false
 }
 
 // MARK: - Settings View
+
+/// The handwritten Type4Me wordmark, switched with the window's appearance.
+private struct SidebarWordmark: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        Image(nsImage: Type4MeWordmarkAsset.image(for: colorScheme))
+            .resizable()
+            .aspectRatio(contentMode: .fit)
+            .frame(height: 32)
+            .accessibilityLabel("Type4Me")
+    }
+}
 
 struct SettingsView: View {
 
@@ -206,16 +220,9 @@ struct SettingsView: View {
             Color.clear.frame(height: 54)
 
             // Brand
-            HStack(spacing: 9) {
-                Image(systemName: "waveform.circle.fill")
-                    .font(.system(size: 21, weight: .semibold))
-                    .foregroundStyle(TF.settingsText)
-                Text("Type4Me")
-                    .font(.system(size: 20, weight: .bold, design: .rounded))
-                    .foregroundStyle(TF.settingsText)
-            }
-            .padding(.horizontal, 22)
-            .padding(.bottom, 30)
+            SidebarWordmark()
+                .padding(.horizontal, 22)
+                .padding(.bottom, 30)
 
             // Nav items
             VStack(spacing: 4) {
@@ -357,7 +364,7 @@ struct SettingsView: View {
         case .general:
             ZStack(alignment: .bottomTrailing) {
                 HomeDottedWaveBackground()
-                tabPage {
+                fixedPage {
                     HomeDashboardView(isActive: selectedTab == .general) { modeId in
                         requestNavigation(to: .modes, beforeCommit: {
                             navigationModel.pendingModeSelectionID = modeId
