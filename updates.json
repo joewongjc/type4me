@@ -1,6 +1,17 @@
 {
-  "latest": "2.13.0",
+  "latest": "2.14.0",
   "releases": [
+    {
+      "version": "2.14.0",
+      "date": "2026-10-23",
+      "notes": "### 新功能\n\n- **首页改版**：「我的模式」移到顶部，默认折叠成一行，展开后可以直接编辑快捷键、拖拽排序和新建模式；主栏显示最近说过的话，标出写入的 App、所用模式和大模型改了哪些字，支持隐藏内容、复制、纠错，搜索会带着关键词跳到历史页；右侧显示使用以来的累计字数曲线和里程碑，以及文字写进了哪些 App。窗口拉高时卡片随之变高，变窄时保持两栏。\n- **历史记录归属**：新的识别记录会保存所用模式和写入的 App；旧记录按模式名称归入对应模式，经过智能感知的旧记录会补回 App。\n- **新版字标**：侧栏换成新的手写 Type4Me 字标，并适配深色模式。\n\n### 改进与修复\n\n- **松手出字**：快速与流式模式松手后录音条定格收尾，出字后直接淡出，不再停留「已完成」；处理超过 800 毫秒才显示处理文案，复制到剪贴板、未找到输入位置等结果仍保留提示。\n- **Codex CLI 检测**：通过已注册的桌面应用找到内置的 Codex CLI，复用正在运行的应用服务会话，并更新未安装时的提示文案。",
+      "cloud_dmg_url": "https://github.com/joewongjc/type4me/releases/download/v2.14.0/Type4Me-v2.14.0-cloud.dmg",
+      "cloud_dmg_size": 16609776,
+      "cloud_dmg_sha256": "a3ae1bff539595af07dd84a77d84b50594f19a543b1928250f085b5927521628",
+      "local_dmg_url": "https://github.com/joewongjc/type4me/releases/download/v2.14.0/Type4Me-v2.14.0-local-apple-silicon.dmg",
+      "local_dmg_size": 718180731,
+      "local_dmg_sha256": "c6fd3e1d308528fb14226f4ee4d9347594ba341002ec19c5461d8708e264241e"
+    },
     {
       "version": "2.13.0",
       "date": "2026-10-21",
