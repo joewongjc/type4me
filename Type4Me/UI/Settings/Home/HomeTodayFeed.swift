@@ -10,6 +10,7 @@ struct HomeTodayFeed: View {
     let onCorrect: (HistoryRecord) -> Void
 
     @AppStorage("tf_homeHideContent") private var hideContent = false
+    @AppStorage("tf_language") private var language = AppLanguage.systemDefault
     @State private var filter: UUID?
     @State private var searchText = ""
     @State private var copiedId: String?
@@ -20,15 +21,9 @@ struct HomeTodayFeed: View {
     private let visibleLimit = 50
 
     struct Entry: Identifiable {
-        enum Change {
-            case diff(AttributedString)
-            case original(String)
-        }
         let record: HistoryRecord
         let modeId: UUID?
         let appLabel: String?
-        let modeLabel: String?
-        let change: Change?
         var id: String { record.id }
     }
 
@@ -62,8 +57,10 @@ struct HomeTodayFeed: View {
                 ScrollView(.vertical, showsIndicators: false) {
                     LazyVStack(spacing: 0) {
                         ForEach(Array(visible.enumerated()), id: \.element.id) { index, item in
+                            let mode = item.modeId.flatMap { id in modes.first { $0.id == id } }
                             HomeFeedRow(
                                 entry: item,
+                                mode: mode,
                                 hideContent: hideContent,
                                 isCopied: copiedId == item.id,
                                 onCorrect: { onCorrect(item.record) },
@@ -130,28 +127,6 @@ struct HomeTodayFeed: View {
         filterModes = Self.filterOptions(entries, modes: modes)
     }
 
-    private static func modeLabel(_ record: HistoryRecord, modeId: UUID?, modes: [ProcessingMode]) -> String? {
-        guard let mode = modeId.flatMap({ id in modes.first { $0.id == id } }) else {
-            return record.processingMode
-        }
-        guard let binding = mode.hotkeyBindings.first else { return mode.localizedDisplayName }
-        let key = HotkeyRecorderView.keyDisplayName(keyCode: binding.keyCode, modifiers: binding.modifiers)
-        return "\(mode.localizedDisplayName) · \(key)"
-    }
-
-    private static func makeChange(for record: HistoryRecord) -> Entry.Change? {
-        let baseline = record.postSnippetText ?? record.rawText
-        guard record.llmProvider != nil, !baseline.isEmpty, baseline != record.finalText else {
-            return nil
-        }
-        if let segments = HomeTextDiff.segments(from: baseline, to: record.finalText),
-           HomeTextDiff.unchangedRatio(segments, originalLength: baseline.count) >= 0.35 {
-            return .diff(Self.attributed(segments))
-        } else {
-            return .original(L("原话：", "Original: ") + baseline)
-        }
-    }
-
     @MainActor
     static func makeEntries(records: [HistoryRecord], modes: [ProcessingMode]) -> [Entry] {
         records.map { record in
@@ -163,14 +138,10 @@ struct HomeTodayFeed: View {
             let appLabel = record.targetAppName
                 ?? record.targetBundleId.flatMap(HomeAppIconCache.name(for:))
                 ?? record.targetBundleId
-            let modeLabel = Self.modeLabel(record, modeId: modeId, modes: modes)
-            let change = Self.makeChange(for: record)
             return Entry(
                 record: record,
                 modeId: modeId,
-                appLabel: appLabel,
-                modeLabel: modeLabel,
-                change: change
+                appLabel: appLabel
             )
         }
     }
@@ -287,13 +258,21 @@ struct HomeTodayFeed: View {
 
 private struct HomeFeedRow: View {
     let entry: HomeTodayFeed.Entry
+    let mode: ProcessingMode?
     let hideContent: Bool
     let isCopied: Bool
     let onCorrect: () -> Void
     let onCopy: () -> Void
 
+    @AppStorage("tf_language") private var language = AppLanguage.systemDefault
     @State private var isHovered = false
 
+    private var modeLabel: String? {
+        guard let mode else { return entry.record.processingMode }
+        guard let binding = mode.hotkeyBindings.first else { return mode.localizedDisplayName }
+        let key = HotkeyRecorderView.keyDisplayName(keyCode: binding.keyCode, modifiers: binding.modifiers)
+        return "\(mode.localizedDisplayName) · \(key)"
+    }
     var body: some View {
         let record = entry.record
         HStack(alignment: .top, spacing: 12) {
@@ -351,7 +330,7 @@ private struct HomeFeedRow: View {
                         .lineLimit(1)
                 }
             }
-            if let label = entry.modeLabel {
+            if let label = modeLabel {
                 Text(label)
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(TF.settingsTextSecondary)
@@ -386,13 +365,13 @@ private struct HomeFeedRow: View {
 
     @ViewBuilder
     private var changeView: some View {
-        if let change = entry.change {
+        if let change = HomeDiffCache.change(for: entry.record) {
             Group {
                 switch change {
                 case .diff(let text):
                     Text(text)
-                case .original(let text):
-                    Text(text)
+                case .rewrite(let baseline):
+                    Text(L("原话：", "Original: ") + baseline)
                 }
             }
             .font(.system(size: 12.5))
@@ -407,6 +386,50 @@ private struct HomeFeedRow: View {
                     .fill(TF.settingsBg)
             )
         }
+    }
+}
+
+/// Caches Myers diff computation on demand for records with LLM changes.
+@MainActor
+enum HomeDiffCache {
+    enum Change: Equatable {
+        case diff(AttributedString)
+        case rewrite(baseline: String)
+    }
+
+    private struct Key: Hashable {
+        let id: String
+        let baselineHash: Int
+        let finalTextHash: Int
+    }
+
+    private static var cache: [Key: Change?] = [:]
+
+    static func change(for record: HistoryRecord) -> Change? {
+        let baseline = record.postSnippetText ?? record.rawText
+        guard record.llmProvider != nil, !baseline.isEmpty, baseline != record.finalText else {
+            return nil
+        }
+        let key = Key(
+            id: record.id,
+            baselineHash: baseline.hashValue,
+            finalTextHash: record.finalText.hashValue
+        )
+        if let cached = cache[key] { return cached }
+
+        let result: Change?
+        if let segments = HomeTextDiff.segments(from: baseline, to: record.finalText),
+           HomeTextDiff.unchangedRatio(segments, originalLength: baseline.count) >= 0.35 {
+            result = .diff(HomeTodayFeed.attributed(segments))
+        } else {
+            result = .rewrite(baseline: baseline)
+        }
+
+        if cache.count > 300 {
+            cache.removeAll(keepingCapacity: true)
+        }
+        cache[key] = result
+        return result
     }
 }
 
