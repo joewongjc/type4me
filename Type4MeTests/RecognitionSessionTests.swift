@@ -1,3 +1,4 @@
+import os
 import XCTest
 @testable import Type4Me
 @testable import Type4MeIntelliSenseCore
@@ -537,6 +538,76 @@ final class RecognitionSessionTests: XCTestCase {
             XCTFail("Expected .finalized event")
         }
     }
+
+    func testBatchPlaceholderDoesNotTripSpeechDetectedOrHasReceivedASRText() async {
+        let session = RecognitionSession()
+        await session.setState(.recording)
+
+        let placeholderTranscript = RecognitionTranscript(
+            confirmedSegments: [],
+            partialText: ASRRecognitionMode.batchRecordingPlaceholder,
+            authoritativeText: "",
+            isFinal: false
+        )
+        await session.ingestASREventForTesting(.transcript(placeholderTranscript))
+
+        let speechDetected1 = await session.speechDetectedForTesting()
+        let hasReceived1 = await session.hasReceivedASRTextForTesting()
+        XCTAssertFalse(speechDetected1, "Placeholder should not trip speechDetected")
+        XCTAssertFalse(hasReceived1, "Placeholder should not trip hasReceivedASRText")
+        let englishPlaceholder = RecognitionTranscript(
+            confirmedSegments: [],
+            partialText: "Recording · text at end",
+            authoritativeText: "",
+            isFinal: false
+        )
+        await session.ingestASREventForTesting(.transcript(englishPlaceholder))
+
+        let speechDetected2 = await session.speechDetectedForTesting()
+        let hasReceived2 = await session.hasReceivedASRTextForTesting()
+        XCTAssertFalse(speechDetected2, "English placeholder should not trip speechDetected")
+        XCTAssertFalse(hasReceived2, "English placeholder should not trip hasReceivedASRText")
+        let realTranscript = RecognitionTranscript(
+            confirmedSegments: [],
+            partialText: "你好",
+            authoritativeText: "",
+            isFinal: false
+        )
+        await session.ingestASREventForTesting(.transcript(realTranscript))
+
+        let speechDetected3 = await session.speechDetectedForTesting()
+        let hasReceived3 = await session.hasReceivedASRTextForTesting()
+        XCTAssertTrue(speechDetected3, "Real speech should trip speechDetected")
+        XCTAssertTrue(hasReceived3, "Real speech should trip hasReceivedASRText")
+    }
+    func testQwen3OnlyOrBatchPlaceholderWithNoSpeech_triggersFastExitOnStop() async throws {
+        let session = RecognitionSession()
+        let retryCount = os.OSAllocatedUnfairLock<Int>(initialState: 0)
+        let stub = PlaceholderASRStub()
+
+        let config = try XCTUnwrap(SherpaASRConfig(credentials: [:]))
+        await session.prepareRecordingStopForTesting(
+            client: stub,
+            config: config,
+            provider: .sherpa,
+            speechDetected: false
+        ) {
+            retryCount.withLock { $0 += 1 }
+            return nil
+        }
+        await stub.emitPlaceholder()
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        let speechDetectedBeforeStop = await session.speechDetectedForTesting()
+        XCTAssertFalse(speechDetectedBeforeStop, "Placeholder must not trip speechDetected before stop")
+        await session.stopRecording()
+
+        let state = await session.state
+        XCTAssertEqual(state, .idle)
+        XCTAssertEqual(retryCount.withLock { $0 }, 0, "Fast exit should skip fallback/retry when no speech was detected")
+        let disconnected = await stub.isDisconnected
+        XCTAssertTrue(disconnected, "Fast exit should disconnect client")
+    }
 }
 
 private actor MockLLMProcessCounter: LLMClient {
@@ -556,4 +627,35 @@ private actor MockLLMProcessCounter: LLMClient {
 
     func warmUp(baseURL: String) async {}
     func invalidate() async {}
+}
+
+private actor PlaceholderASRStub: SpeechRecognizer {
+    private let stream: AsyncStream<RecognitionEvent>
+    private let continuation: AsyncStream<RecognitionEvent>.Continuation
+    private(set) var isDisconnected = false
+
+    init() {
+        var cont: AsyncStream<RecognitionEvent>.Continuation!
+        self.stream = AsyncStream { cont = $0 }
+        self.continuation = cont
+    }
+
+    var events: AsyncStream<RecognitionEvent> { stream }
+
+    func emitPlaceholder() {
+        continuation.yield(.transcript(RecognitionTranscript(
+            confirmedSegments: [],
+            partialText: ASRRecognitionMode.batchRecordingPlaceholder,
+            authoritativeText: "",
+            isFinal: false
+        )))
+    }
+
+    func connect(config: any ASRProviderConfig, options: ASRRequestOptions) async throws {}
+    func sendAudio(_ data: Data) async throws {}
+    func endAudio() async throws {}
+    func disconnect() async {
+        isDisconnected = true
+        continuation.finish()
+    }
 }

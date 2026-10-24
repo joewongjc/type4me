@@ -1170,4 +1170,95 @@ final class AppStateTests: XCTestCase {
 
         XCTAssertEqual(selection, LocalASREngineSelection(senseVoiceEnabled: true, qwen3Enabled: false))
     }
+
+    func testIsNonRealtimeASR_followsProviderCapabilitiesAndHint() {
+        let appState = AppState()
+
+        // Streaming providers
+        appState.recordingProvider = .volcano
+        XCTAssertFalse(appState.isNonRealtimeASR)
+
+        appState.recordingProvider = .apple
+        XCTAssertFalse(appState.isNonRealtimeASR)
+
+        // Batch providers
+        appState.recordingProvider = .openai
+        XCTAssertTrue(appState.isNonRealtimeASR)
+
+        appState.recordingProvider = .mimo
+        XCTAssertTrue(appState.isNonRealtimeASR)
+
+        appState.recordingProvider = .groq
+        XCTAssertTrue(appState.isNonRealtimeASR)
+
+        appState.recordingProvider = .mistral
+        XCTAssertTrue(appState.isNonRealtimeASR)
+
+        // Finish hint overrides provider default via supportsRealtimeRecognition
+        appState.recordingFinishHint = RecordingFinishHint(
+            waitsForFullAudioRecognition: true,
+            performsCalibration: false,
+            runsLLM: false,
+            shortTextExemption: 0,
+            supportsRealtimeRecognition: false
+        )
+        XCTAssertTrue(appState.isNonRealtimeASR)
+
+        appState.recordingFinishHint = RecordingFinishHint(
+            waitsForFullAudioRecognition: true,
+            performsCalibration: false,
+            runsLLM: false,
+            shortTextExemption: 0,
+            supportsRealtimeRecognition: true
+        )
+        XCTAssertFalse(appState.isNonRealtimeASR)
+    }
+
+    func testIsQwen3OnlyMode_andSherpaNonRealtime() {
+        let appState = AppState()
+        appState.recordingProvider = .sherpa
+
+        let previous = UserDefaults.standard.object(forKey: "tf_sensevoiceEnabled")
+        defer {
+            if let previous {
+                UserDefaults.standard.set(previous, forKey: "tf_sensevoiceEnabled")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "tf_sensevoiceEnabled")
+            }
+        }
+
+        // When sensevoice is enabled (default), not Qwen3-only and is realtime
+        UserDefaults.standard.set(true, forKey: "tf_sensevoiceEnabled")
+        XCTAssertFalse(appState.isQwen3OnlyMode)
+        XCTAssertFalse(appState.isNonRealtimeASR)
+
+        // Critical: Even when Sherpa's finish hint arrives with waitsForFullAudioRecognition: true,
+        // SenseVoice real-time streaming must NOT be misclassified as non-realtime.
+        appState.recordingFinishHint = RecordingFinishHint(
+            waitsForFullAudioRecognition: true,
+            performsCalibration: true,
+            runsLLM: false,
+            shortTextExemption: 0,
+            supportsRealtimeRecognition: true
+        )
+        XCTAssertFalse(appState.isNonRealtimeASR)
+
+        // When sensevoice is disabled before session starts (hint == nil), Qwen3-only and is non-realtime
+        appState.recordingFinishHint = nil
+        UserDefaults.standard.set(false, forKey: "tf_sensevoiceEnabled")
+        XCTAssertTrue(appState.isQwen3OnlyMode)
+        XCTAssertTrue(appState.isNonRealtimeASR)
+
+        // Mid-session setting change protection: if a recording started with SenseVoice (hint.supportsRealtimeRecognition = true),
+        // changing tf_sensevoiceEnabled mid-recording must NOT cause the active session to switch to batch placeholder.
+        appState.recordingFinishHint = RecordingFinishHint(
+            waitsForFullAudioRecognition: true,
+            performsCalibration: true,
+            runsLLM: false,
+            shortTextExemption: 0,
+            supportsRealtimeRecognition: true
+        )
+        // Setting is false, but active session hint is true -> stays realtime (isNonRealtimeASR == false)
+        XCTAssertFalse(appState.isNonRealtimeASR)
+    }
 }

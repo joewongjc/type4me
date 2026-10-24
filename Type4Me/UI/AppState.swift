@@ -1462,9 +1462,20 @@ final class AppState {
     var activityKind: RecordingActivityKind = .standard
     var latestReviseUndoTicketID: UUID? = nil
     var isQwen3OnlyMode: Bool {
-        // SenseVoice (sherpa) provides real-time partials even when Qwen3 also runs for calibration
-        guard KeychainService.selectedASRProvider != .sherpa else { return false }
-        return SenseVoiceServerManager.currentQwen3Port != nil
+        let provider = recordingProvider ?? KeychainService.selectedASRProvider
+        guard provider == .sherpa else { return false }
+        let streamingEnabled = UserDefaults.standard.object(forKey: "tf_sensevoiceEnabled") as? Bool ?? true
+        return !streamingEnabled
+    }
+    var isNonRealtimeASR: Bool {
+        if let hint = recordingFinishHint {
+            return !hint.supportsRealtimeRecognition
+        }
+        let provider = recordingProvider ?? KeychainService.selectedASRProvider
+        if provider == .sherpa {
+            return isQwen3OnlyMode
+        }
+        return !ASRProviderRegistry.capabilities(for: provider).supportsRealtimeRecognition
     }
     var recordingFinishHint: RecordingFinishHint? = nil
     var usesFinishingLabel: Bool = false

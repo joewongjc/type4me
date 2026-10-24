@@ -49,6 +49,7 @@ final class ASRRecognitionModeTests: XCTestCase {
 
     func testIsBatchRecordingPlaceholder() {
         UserDefaults.standard.set("zh", forKey: "tf_language")
+        XCTAssertEqual(ASRRecognitionMode.batchRecordingPlaceholder, "录音中 · 结束后识别")
         XCTAssertTrue(ASRRecognitionMode.isBatchRecordingPlaceholder("录音中 · 结束后识别"))
         XCTAssertTrue(ASRRecognitionMode.isBatchRecordingPlaceholder("Recording · text at end"))
         XCTAssertTrue(ASRRecognitionMode.isBatchRecordingPlaceholder("  录音中 · 结束后识别 \n"))
@@ -56,6 +57,7 @@ final class ASRRecognitionModeTests: XCTestCase {
         XCTAssertFalse(ASRRecognitionMode.isBatchRecordingPlaceholder(""))
 
         UserDefaults.standard.set("en", forKey: "tf_language")
+        XCTAssertEqual(ASRRecognitionMode.batchRecordingPlaceholder, "Recording · text at end")
         XCTAssertTrue(ASRRecognitionMode.isBatchRecordingPlaceholder("录音中 · 结束后识别"))
         XCTAssertTrue(ASRRecognitionMode.isBatchRecordingPlaceholder("Recording · text at end"))
         XCTAssertFalse(ASRRecognitionMode.isBatchRecordingPlaceholder("Actual transcribed speech"))

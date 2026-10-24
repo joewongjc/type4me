@@ -449,4 +449,147 @@ final class AppearancePreviewTests: XCTestCase {
         XCTAssertGreaterThan(TF.glassDarkContrastFloor, 0.25)
         XCTAssertLessThan(TF.glassDarkContrastFloor, 1.0)
     }
+
+    func testResolveRecordingDefaultPlaceholder_andDisplayText() {
+        let previousLanguage = UserDefaults.standard.string(forKey: "tf_language")
+        defer {
+            if let previousLanguage {
+                UserDefaults.standard.set(previousLanguage, forKey: "tf_language")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "tf_language")
+            }
+        }
+
+        // --- Chinese ---
+        UserDefaults.standard.set("zh", forKey: "tf_language")
+
+        // Default placeholders
+        XCTAssertEqual(resolveRecordingDefaultPlaceholder(isRevise: false, isNonRealtime: false), "倾听中")
+        XCTAssertEqual(resolveRecordingDefaultPlaceholder(isRevise: false, isNonRealtime: true), "录音中 · 结束后识别")
+        XCTAssertEqual(resolveRecordingDefaultPlaceholder(isRevise: true, isNonRealtime: false), "说说你想怎么改")
+        XCTAssertEqual(resolveRecordingDefaultPlaceholder(isRevise: true, isNonRealtime: true), "说说你想怎么改")
+
+        // Display text: non-realtime engine always displays batch placeholder regardless of live transcript toggle or empty segments
+        XCTAssertEqual(resolveRecordingDisplayText(isRevise: false, isNonRealtime: true, showsLiveTranscript: true, hasRealtimeSegments: false, transcriptionText: ""), "录音中 · 结束后识别")
+        XCTAssertEqual(resolveRecordingDisplayText(isRevise: false, isNonRealtime: true, showsLiveTranscript: false, hasRealtimeSegments: false, transcriptionText: ""), "录音中 · 结束后识别")
+        XCTAssertEqual(resolveRecordingDisplayText(isRevise: false, isNonRealtime: true, showsLiveTranscript: false, hasRealtimeSegments: true, transcriptionText: "录音中 · 结束后识别"), "录音中 · 结束后识别")
+        XCTAssertEqual(resolveRecordingDisplayText(isRevise: false, isNonRealtime: true, showsLiveTranscript: true, hasRealtimeSegments: true, transcriptionText: "录音中 · 结束后识别"), "录音中 · 结束后识别")
+
+        // Display text: realtime engine
+        XCTAssertEqual(resolveRecordingDisplayText(isRevise: false, isNonRealtime: false, showsLiveTranscript: true, hasRealtimeSegments: false, transcriptionText: ""), "倾听中")
+        XCTAssertEqual(resolveRecordingDisplayText(isRevise: false, isNonRealtime: false, showsLiveTranscript: false, hasRealtimeSegments: true, transcriptionText: "用户说话"), "倾听中")
+        XCTAssertEqual(resolveRecordingDisplayText(isRevise: false, isNonRealtime: false, showsLiveTranscript: true, hasRealtimeSegments: true, transcriptionText: "用户说话"), "用户说话")
+
+        // Display text: revise
+        XCTAssertEqual(resolveRecordingDisplayText(isRevise: true, isNonRealtime: false, showsLiveTranscript: true, hasRealtimeSegments: false, transcriptionText: ""), "说说你想怎么改")
+        XCTAssertEqual(resolveRecordingDisplayText(isRevise: true, isNonRealtime: true, showsLiveTranscript: true, hasRealtimeSegments: false, transcriptionText: ""), "说说你想怎么改")
+
+        // --- English ---
+        UserDefaults.standard.set("en", forKey: "tf_language")
+
+        XCTAssertEqual(resolveRecordingDefaultPlaceholder(isRevise: false, isNonRealtime: false), "Listening")
+        XCTAssertEqual(resolveRecordingDefaultPlaceholder(isRevise: false, isNonRealtime: true), "Recording · text at end")
+        XCTAssertEqual(resolveRecordingDefaultPlaceholder(isRevise: true, isNonRealtime: false), "Say how to revise")
+        XCTAssertEqual(resolveRecordingDefaultPlaceholder(isRevise: true, isNonRealtime: true), "Say how to revise")
+
+        XCTAssertEqual(resolveRecordingDisplayText(isRevise: false, isNonRealtime: true, showsLiveTranscript: true, hasRealtimeSegments: false, transcriptionText: ""), "Recording · text at end")
+        XCTAssertEqual(resolveRecordingDisplayText(isRevise: false, isNonRealtime: true, showsLiveTranscript: false, hasRealtimeSegments: false, transcriptionText: ""), "Recording · text at end")
+        XCTAssertEqual(resolveRecordingDisplayText(isRevise: false, isNonRealtime: false, showsLiveTranscript: true, hasRealtimeSegments: false, transcriptionText: ""), "Listening")
+        XCTAssertEqual(resolveRecordingDisplayText(isRevise: false, isNonRealtime: false, showsLiveTranscript: false, hasRealtimeSegments: true, transcriptionText: "Hello"), "Listening")
+        XCTAssertEqual(resolveRecordingDisplayText(isRevise: false, isNonRealtime: false, showsLiveTranscript: true, hasRealtimeSegments: true, transcriptionText: "Hello"), "Hello")
+        XCTAssertEqual(resolveRecordingDisplayText(isRevise: true, isNonRealtime: false, showsLiveTranscript: true, hasRealtimeSegments: false, transcriptionText: ""), "Say how to revise")
+        XCTAssertEqual(resolveRecordingDisplayText(isRevise: true, isNonRealtime: true, showsLiveTranscript: true, hasRealtimeSegments: false, transcriptionText: ""), "Say how to revise")
+    }
+
+    func testResolveShowTranscriptPopup_recoveringAndHoverBehavior() {
+        // 1. In recovering phase with segments, popup must show even for non-realtime ASR (e.g. Groq batch)
+        let recoveryPopupForBatch = resolveShowTranscriptPopup(
+            usesCompactPresentation: false,
+            transcriptionText: "识别出的真实文本",
+            showsTranscriptInCurrentPhase: true,
+            isPinned: false,
+            phase: .recovering,
+            hasSegments: true,
+            hoverPreviewEnabled: true,
+            isHoverActive: false,
+            isNonRealtimeASR: true,
+            textOverflowsBar: false
+        )
+        XCTAssertTrue(recoveryPopupForBatch, "Recovery phase must show transcript popup even for non-realtime ASR")
+
+        // 2. Pinned popup with segments shows regardless of non-realtime
+        let pinnedPopup = resolveShowTranscriptPopup(
+            usesCompactPresentation: false,
+            transcriptionText: "识别出的真实文本",
+            showsTranscriptInCurrentPhase: true,
+            isPinned: true,
+            phase: .recording,
+            hasSegments: true,
+            hoverPreviewEnabled: true,
+            isHoverActive: false,
+            isNonRealtimeASR: true,
+            textOverflowsBar: false
+        )
+        XCTAssertTrue(pinnedPopup, "Pinned popup must show when segments are present")
+
+        // 3. Batch recording placeholder must never trigger popup
+        let placeholderPopup = resolveShowTranscriptPopup(
+            usesCompactPresentation: false,
+            transcriptionText: "录音中 · 结束后识别",
+            showsTranscriptInCurrentPhase: true,
+            isPinned: true,
+            phase: .recording,
+            hasSegments: true,
+            hoverPreviewEnabled: true,
+            isHoverActive: true,
+            isNonRealtimeASR: true,
+            textOverflowsBar: true
+        )
+        XCTAssertFalse(placeholderPopup, "Placeholder text must never show transcript popup")
+
+        // 4. Hover preview in recording phase is suppressed for non-realtime ASR
+        let hoverForBatch = resolveShowTranscriptPopup(
+            usesCompactPresentation: false,
+            transcriptionText: "一些文本",
+            showsTranscriptInCurrentPhase: true,
+            isPinned: false,
+            phase: .recording,
+            hasSegments: true,
+            hoverPreviewEnabled: true,
+            isHoverActive: true,
+            isNonRealtimeASR: true,
+            textOverflowsBar: true
+        )
+        XCTAssertFalse(hoverForBatch, "Hover preview must be suppressed for non-realtime ASR during recording")
+
+        // 5. Hover preview for realtime ASR shows when text overflows
+        let hoverForRealtime = resolveShowTranscriptPopup(
+            usesCompactPresentation: false,
+            transcriptionText: "很长的实时流式转录文本超出指示条宽度",
+            showsTranscriptInCurrentPhase: true,
+            isPinned: false,
+            phase: .recording,
+            hasSegments: true,
+            hoverPreviewEnabled: true,
+            isHoverActive: true,
+            isNonRealtimeASR: false,
+            textOverflowsBar: true
+        )
+        XCTAssertTrue(hoverForRealtime, "Hover preview for realtime ASR must show when hovering over overflowing text")
+
+        // 6. Compact presentation never shows popup
+        let compactPopup = resolveShowTranscriptPopup(
+            usesCompactPresentation: true,
+            transcriptionText: "文本",
+            showsTranscriptInCurrentPhase: true,
+            isPinned: false,
+            phase: .recovering,
+            hasSegments: true,
+            hoverPreviewEnabled: true,
+            isHoverActive: true,
+            isNonRealtimeASR: false,
+            textOverflowsBar: true
+        )
+        XCTAssertFalse(compactPopup, "Compact presentation must never show popup")
+    }
 }

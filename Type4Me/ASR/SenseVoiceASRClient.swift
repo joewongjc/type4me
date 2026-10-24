@@ -246,6 +246,12 @@ actor SenseVoiceASRClient: SpeechRecognizer {
 
         if !streamingPreviewEnabled {
             eventContinuation?.yield(.ready)
+            eventContinuation?.yield(.transcript(RecognitionTranscript(
+                confirmedSegments: [],
+                partialText: ASRRecognitionMode.batchRecordingPlaceholder,
+                authoritativeText: "",
+                isFinal: false
+            )))
             logger.info("SenseVoiceASR connected in Qwen3-only mode")
             return
         }
