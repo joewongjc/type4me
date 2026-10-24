@@ -67,6 +67,38 @@ func recordingActionHorizontalOffset(
     return action == .finish ? -distanceFromCenter : distanceFromCenter
 }
 
+func resolveRecordingDefaultPlaceholder(
+    isRevise: Bool,
+    isNonRealtime: Bool
+) -> String {
+    if isRevise {
+        return L("说说你想怎么改", "Say how to revise")
+    }
+    if isNonRealtime {
+        return ASRRecognitionMode.batchRecordingPlaceholder
+    }
+    return L("倾听中", "Listening")
+}
+
+func resolveRecordingDisplayText(
+    isRevise: Bool,
+    isNonRealtime: Bool,
+    showsLiveTranscript: Bool,
+    hasRealtimeSegments: Bool,
+    transcriptionText: String
+) -> String {
+    if isRevise {
+        return L("说说你想怎么改", "Say how to revise")
+    }
+    if isNonRealtime || ASRRecognitionMode.isBatchRecordingPlaceholder(transcriptionText) {
+        return ASRRecognitionMode.batchRecordingPlaceholder
+    }
+    guard showsLiveTranscript, hasRealtimeSegments else {
+        return L("倾听中", "Listening")
+    }
+    return transcriptionText
+}
+
 // MARK: - FloatingBarState Protocol
 
 @MainActor
@@ -86,6 +118,8 @@ protocol FloatingBarState: AnyObject, Observable {
     var finishingSnapshotSegments: [TranscriptionSegment]? { get }
     /// True when recording without SenseVoice streaming (Qwen3-only).
     var isQwen3OnlyMode: Bool { get }
+    /// True when recording with a non-realtime (batch or Qwen3-only) ASR engine.
+    var isNonRealtimeASR: Bool { get }
     var effectiveProcessingLabel: String { get }
     var activityKind: RecordingActivityKind { get }
     var latestReviseUndoTicketID: UUID? { get }
@@ -360,8 +394,19 @@ struct FloatingBarView<S: FloatingBarState>: View {
         }
         return state.segments
     }
+
+    private var isNonRealtimeRecording: Bool {
+        (presentedPhase == .preparing || presentedPhase == .recording || presentedPhase == .finishing)
+            && state.isNonRealtimeASR
+            && presentedActivityKind != .revise
+    }
+
     private var presentedTranscriptionText: String {
-        presentedSegments.map(\.text).joined()
+        let text = presentedSegments.map(\.text).joined()
+        if text.isEmpty && isNonRealtimeRecording {
+            return ASRRecognitionMode.batchRecordingPlaceholder
+        }
+        return text
     }
     private var presentedProcessingLabel: String { exitSnapshot?.processingLabel ?? state.effectiveProcessingLabel }
     private var presentedFeedbackMessage: String { exitSnapshot?.feedbackMessage ?? state.feedbackMessage }
@@ -422,6 +467,8 @@ struct FloatingBarView<S: FloatingBarState>: View {
 
     private var showTranscriptPopup: Bool {
         guard !usesCompactPresentation else { return false }
+        guard !state.isNonRealtimeASR else { return false }
+        guard !ASRRecognitionMode.isBatchRecordingPlaceholder(presentedTranscriptionText) else { return false }
         guard showsTranscriptInCurrentPhase else { return false }
         if presentedPinsTranscriptPopup {
             return !presentedSegments.isEmpty
@@ -511,9 +558,15 @@ struct FloatingBarView<S: FloatingBarState>: View {
         }
     }
 
+    private var defaultPlaceholderText: String {
+        resolveRecordingDefaultPlaceholder(
+            isRevise: presentedActivityKind == .revise,
+            isNonRealtime: state.isNonRealtimeASR || ASRRecognitionMode.isBatchRecordingPlaceholder(presentedTranscriptionText)
+        )
+    }
+
     private var baseRecordingWidth: CGFloat {
-        let placeholder = presentedActivityKind == .revise ? L("说说你想怎么改", "Say how to revise") : L("倾听中", "Listening")
-        return max(TF.barWidthCompact, measureText(placeholder) + currentRecordingChromeWidth)
+        max(TF.barWidthCompact, measureText(defaultPlaceholderText) + currentRecordingChromeWidth)
     }
 
     /// Monotonic target width for the recording capsule during a live-transcript
@@ -1050,7 +1103,11 @@ struct FloatingBarView<S: FloatingBarState>: View {
     }
 
     private var isLiveTranscriptTrailingAligned: Bool {
-        effectiveShowsLiveTranscript && !presentedSegments.isEmpty && recordingPeakWidth >= TF.barWidth
+        effectiveShowsLiveTranscript
+            && !presentedSegments.isEmpty
+            && !state.isNonRealtimeASR
+            && !ASRRecognitionMode.isBatchRecordingPlaceholder(presentedTranscriptionText)
+            && recordingPeakWidth >= TF.barWidth
     }
 
     private var recordingText: some View {
@@ -1100,7 +1157,10 @@ struct FloatingBarView<S: FloatingBarState>: View {
 
     @ViewBuilder
     private var recordingTextContent: some View {
-        if effectiveShowsLiveTranscript && !presentedSegments.isEmpty {
+        if effectiveShowsLiveTranscript
+            && !presentedSegments.isEmpty
+            && !state.isNonRealtimeASR
+            && !ASRRecognitionMode.isBatchRecordingPlaceholder(presentedTranscriptionText) {
             Text(presentedTranscriptionText)
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(effectiveTheme == .light ? TF.floatingTextLight : TF.floatingText)
@@ -1115,10 +1175,13 @@ struct FloatingBarView<S: FloatingBarState>: View {
     }
 
     private var recordingDisplayText: String {
-        guard effectiveShowsLiveTranscript, !presentedSegments.isEmpty else {
-            return presentedActivityKind == .revise ? L("说说你想怎么改", "Say how to revise") : L("倾听中", "Listening")
-        }
-        return presentedTranscriptionText
+        resolveRecordingDisplayText(
+            isRevise: presentedActivityKind == .revise,
+            isNonRealtime: state.isNonRealtimeASR,
+            showsLiveTranscript: effectiveShowsLiveTranscript,
+            hasRealtimeSegments: !presentedSegments.isEmpty,
+            transcriptionText: presentedTranscriptionText
+        )
     }
 
     private func recordingButton(_ action: RecordingControlAction) -> some View {

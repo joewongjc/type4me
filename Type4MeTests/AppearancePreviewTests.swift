@@ -449,4 +449,55 @@ final class AppearancePreviewTests: XCTestCase {
         XCTAssertGreaterThan(TF.glassDarkContrastFloor, 0.25)
         XCTAssertLessThan(TF.glassDarkContrastFloor, 1.0)
     }
+
+    func testResolveRecordingDefaultPlaceholder_andDisplayText() {
+        let previousLanguage = UserDefaults.standard.string(forKey: "tf_language")
+        defer {
+            if let previousLanguage {
+                UserDefaults.standard.set(previousLanguage, forKey: "tf_language")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "tf_language")
+            }
+        }
+
+        // --- Chinese ---
+        UserDefaults.standard.set("zh", forKey: "tf_language")
+
+        // Default placeholders
+        XCTAssertEqual(resolveRecordingDefaultPlaceholder(isRevise: false, isNonRealtime: false), "倾听中")
+        XCTAssertEqual(resolveRecordingDefaultPlaceholder(isRevise: false, isNonRealtime: true), "录音中 · 结束后识别")
+        XCTAssertEqual(resolveRecordingDefaultPlaceholder(isRevise: true, isNonRealtime: false), "说说你想怎么改")
+        XCTAssertEqual(resolveRecordingDefaultPlaceholder(isRevise: true, isNonRealtime: true), "说说你想怎么改")
+
+        // Display text: non-realtime engine always displays batch placeholder regardless of live transcript toggle or empty segments
+        XCTAssertEqual(resolveRecordingDisplayText(isRevise: false, isNonRealtime: true, showsLiveTranscript: true, hasRealtimeSegments: false, transcriptionText: ""), "录音中 · 结束后识别")
+        XCTAssertEqual(resolveRecordingDisplayText(isRevise: false, isNonRealtime: true, showsLiveTranscript: false, hasRealtimeSegments: false, transcriptionText: ""), "录音中 · 结束后识别")
+        XCTAssertEqual(resolveRecordingDisplayText(isRevise: false, isNonRealtime: true, showsLiveTranscript: false, hasRealtimeSegments: true, transcriptionText: "录音中 · 结束后识别"), "录音中 · 结束后识别")
+        XCTAssertEqual(resolveRecordingDisplayText(isRevise: false, isNonRealtime: true, showsLiveTranscript: true, hasRealtimeSegments: true, transcriptionText: "录音中 · 结束后识别"), "录音中 · 结束后识别")
+
+        // Display text: realtime engine
+        XCTAssertEqual(resolveRecordingDisplayText(isRevise: false, isNonRealtime: false, showsLiveTranscript: true, hasRealtimeSegments: false, transcriptionText: ""), "倾听中")
+        XCTAssertEqual(resolveRecordingDisplayText(isRevise: false, isNonRealtime: false, showsLiveTranscript: false, hasRealtimeSegments: true, transcriptionText: "用户说话"), "倾听中")
+        XCTAssertEqual(resolveRecordingDisplayText(isRevise: false, isNonRealtime: false, showsLiveTranscript: true, hasRealtimeSegments: true, transcriptionText: "用户说话"), "用户说话")
+
+        // Display text: revise
+        XCTAssertEqual(resolveRecordingDisplayText(isRevise: true, isNonRealtime: false, showsLiveTranscript: true, hasRealtimeSegments: false, transcriptionText: ""), "说说你想怎么改")
+        XCTAssertEqual(resolveRecordingDisplayText(isRevise: true, isNonRealtime: true, showsLiveTranscript: true, hasRealtimeSegments: false, transcriptionText: ""), "说说你想怎么改")
+
+        // --- English ---
+        UserDefaults.standard.set("en", forKey: "tf_language")
+
+        XCTAssertEqual(resolveRecordingDefaultPlaceholder(isRevise: false, isNonRealtime: false), "Listening")
+        XCTAssertEqual(resolveRecordingDefaultPlaceholder(isRevise: false, isNonRealtime: true), "Recording · text at end")
+        XCTAssertEqual(resolveRecordingDefaultPlaceholder(isRevise: true, isNonRealtime: false), "Say how to revise")
+        XCTAssertEqual(resolveRecordingDefaultPlaceholder(isRevise: true, isNonRealtime: true), "Say how to revise")
+
+        XCTAssertEqual(resolveRecordingDisplayText(isRevise: false, isNonRealtime: true, showsLiveTranscript: true, hasRealtimeSegments: false, transcriptionText: ""), "Recording · text at end")
+        XCTAssertEqual(resolveRecordingDisplayText(isRevise: false, isNonRealtime: true, showsLiveTranscript: false, hasRealtimeSegments: false, transcriptionText: ""), "Recording · text at end")
+        XCTAssertEqual(resolveRecordingDisplayText(isRevise: false, isNonRealtime: false, showsLiveTranscript: true, hasRealtimeSegments: false, transcriptionText: ""), "Listening")
+        XCTAssertEqual(resolveRecordingDisplayText(isRevise: false, isNonRealtime: false, showsLiveTranscript: false, hasRealtimeSegments: true, transcriptionText: "Hello"), "Listening")
+        XCTAssertEqual(resolveRecordingDisplayText(isRevise: false, isNonRealtime: false, showsLiveTranscript: true, hasRealtimeSegments: true, transcriptionText: "Hello"), "Hello")
+        XCTAssertEqual(resolveRecordingDisplayText(isRevise: true, isNonRealtime: false, showsLiveTranscript: true, hasRealtimeSegments: false, transcriptionText: ""), "Say how to revise")
+        XCTAssertEqual(resolveRecordingDisplayText(isRevise: true, isNonRealtime: true, showsLiveTranscript: true, hasRealtimeSegments: false, transcriptionText: ""), "Say how to revise")
+    }
 }

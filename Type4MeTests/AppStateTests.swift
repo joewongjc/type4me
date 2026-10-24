@@ -1170,4 +1170,69 @@ final class AppStateTests: XCTestCase {
 
         XCTAssertEqual(selection, LocalASREngineSelection(senseVoiceEnabled: true, qwen3Enabled: false))
     }
+
+    func testIsNonRealtimeASR_followsProviderCapabilitiesAndHint() {
+        let appState = AppState()
+
+        // Streaming providers
+        appState.recordingProvider = .volcano
+        XCTAssertFalse(appState.isNonRealtimeASR)
+
+        appState.recordingProvider = .apple
+        XCTAssertFalse(appState.isNonRealtimeASR)
+
+        // Batch providers
+        appState.recordingProvider = .openai
+        XCTAssertTrue(appState.isNonRealtimeASR)
+
+        appState.recordingProvider = .mimo
+        XCTAssertTrue(appState.isNonRealtimeASR)
+
+        appState.recordingProvider = .groq
+        XCTAssertTrue(appState.isNonRealtimeASR)
+
+        appState.recordingProvider = .mistral
+        XCTAssertTrue(appState.isNonRealtimeASR)
+
+        // Finish hint overrides provider default
+        appState.recordingFinishHint = RecordingFinishHint(
+            waitsForFullAudioRecognition: true,
+            performsCalibration: false,
+            runsLLM: false,
+            shortTextExemption: 0
+        )
+        XCTAssertTrue(appState.isNonRealtimeASR)
+
+        appState.recordingFinishHint = RecordingFinishHint(
+            waitsForFullAudioRecognition: false,
+            performsCalibration: false,
+            runsLLM: false,
+            shortTextExemption: 0
+        )
+        XCTAssertFalse(appState.isNonRealtimeASR)
+    }
+
+    func testIsQwen3OnlyMode_andSherpaNonRealtime() {
+        let appState = AppState()
+        appState.recordingProvider = .sherpa
+
+        let previous = UserDefaults.standard.object(forKey: "tf_sensevoiceEnabled")
+        defer {
+            if let previous {
+                UserDefaults.standard.set(previous, forKey: "tf_sensevoiceEnabled")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "tf_sensevoiceEnabled")
+            }
+        }
+
+        // When sensevoice is enabled (default), not Qwen3-only and is realtime
+        UserDefaults.standard.set(true, forKey: "tf_sensevoiceEnabled")
+        XCTAssertFalse(appState.isQwen3OnlyMode)
+        XCTAssertFalse(appState.isNonRealtimeASR)
+
+        // When sensevoice is disabled, Qwen3-only and is non-realtime
+        UserDefaults.standard.set(false, forKey: "tf_sensevoiceEnabled")
+        XCTAssertTrue(appState.isQwen3OnlyMode)
+        XCTAssertTrue(appState.isNonRealtimeASR)
+    }
 }
