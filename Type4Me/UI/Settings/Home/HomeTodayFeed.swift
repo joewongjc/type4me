@@ -12,25 +12,28 @@ struct HomeTodayFeed: View {
     @AppStorage("tf_homeHideContent") private var hideContent = false
     @State private var filter: UUID?
     @State private var searchText = ""
-    @State private var hoveredId: String?
     @State private var copiedId: String?
+    @State private var entries: [Entry] = []
+    @State private var filterModes: [ProcessingMode] = []
 
     /// The list scrolls inside the card, so a taller window shows more rows.
     private let visibleLimit = 50
 
-    private struct Item: Identifiable {
+    struct Entry: Identifiable {
+        enum Change {
+            case diff(AttributedString)
+            case original(String)
+        }
         let record: HistoryRecord
         let modeId: UUID?
+        let appLabel: String?
+        let modeLabel: String?
+        let change: Change?
         var id: String { record.id }
     }
 
     var body: some View {
-        let items = records.map {
-            Item(record: $0, modeId: HomeModeUsage.resolve(modeId: $0.processingModeId, modeName: $0.processingMode, modes: modes))
-        }
-        let filtered = filter.map { selected in items.filter { $0.modeId == selected } } ?? items
-        let visible = Array(filtered.prefix(visibleLimit))
-
+        let visible = Array((filter.map { selected in entries.filter { $0.modeId == selected } } ?? entries).prefix(visibleLimit))
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
                 Text(L("最近说过的话", "Recent dictation"))
@@ -43,7 +46,7 @@ struct HomeTodayFeed: View {
 
             HStack(spacing: 8) {
                 searchField
-                filterPicker(options: filterOptions(items))
+                filterPicker(options: filterModes)
                 Button {
                     hideContent.toggle()
                 } label: {
@@ -54,12 +57,18 @@ struct HomeTodayFeed: View {
             }
 
             if visible.isEmpty {
-                emptyState(isFiltered: filter != nil && !items.isEmpty)
+                emptyState(isFiltered: filter != nil && !entries.isEmpty)
             } else {
                 ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: 0) {
+                    LazyVStack(spacing: 0) {
                         ForEach(Array(visible.enumerated()), id: \.element.id) { index, item in
-                            row(item)
+                            HomeFeedRow(
+                                entry: item,
+                                hideContent: hideContent,
+                                isCopied: copiedId == item.id,
+                                onCorrect: { onCorrect(item.record) },
+                                onCopy: { copy(item.record) }
+                            )
                             if index < visible.count - 1 {
                                 Divider()
                             }
@@ -79,8 +88,13 @@ struct HomeTodayFeed: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(16)
         .dashboardCard()
-        .onChange(of: modes.map(\.id)) { _, ids in
-            if let filter, !ids.contains(filter) { self.filter = nil }
+        .onAppear { rebuildEntries() }
+        .onChange(of: records) { _, _ in rebuildEntries() }
+        .onChange(of: modes) { _, newModes in
+            rebuildEntries()
+            if let filter, !newModes.contains(where: { $0.id == filter }) {
+                self.filter = nil
+            }
         }
     }
 
@@ -111,17 +125,67 @@ struct HomeTodayFeed: View {
         .settingsTooltip(L("回车后在历史中搜索", "Press Return to search all history"))
     }
 
+    private func rebuildEntries() {
+        entries = Self.makeEntries(records: records, modes: modes)
+        filterModes = Self.filterOptions(entries, modes: modes)
+    }
+
+    private static func modeLabel(_ record: HistoryRecord, modeId: UUID?, modes: [ProcessingMode]) -> String? {
+        guard let mode = modeId.flatMap({ id in modes.first { $0.id == id } }) else {
+            return record.processingMode
+        }
+        guard let binding = mode.hotkeyBindings.first else { return mode.localizedDisplayName }
+        let key = HotkeyRecorderView.keyDisplayName(keyCode: binding.keyCode, modifiers: binding.modifiers)
+        return "\(mode.localizedDisplayName) · \(key)"
+    }
+
+    private static func makeChange(for record: HistoryRecord) -> Entry.Change? {
+        let baseline = record.postSnippetText ?? record.rawText
+        guard record.llmProvider != nil, !baseline.isEmpty, baseline != record.finalText else {
+            return nil
+        }
+        if let segments = HomeTextDiff.segments(from: baseline, to: record.finalText),
+           HomeTextDiff.unchangedRatio(segments, originalLength: baseline.count) >= 0.35 {
+            return .diff(Self.attributed(segments))
+        } else {
+            return .original(L("原话：", "Original: ") + baseline)
+        }
+    }
+
+    @MainActor
+    static func makeEntries(records: [HistoryRecord], modes: [ProcessingMode]) -> [Entry] {
+        records.map { record in
+            let modeId = HomeModeUsage.resolve(
+                modeId: record.processingModeId,
+                modeName: record.processingMode,
+                modes: modes
+            )
+            let appLabel = record.targetAppName
+                ?? record.targetBundleId.flatMap(HomeAppIconCache.name(for:))
+                ?? record.targetBundleId
+            let modeLabel = Self.modeLabel(record, modeId: modeId, modes: modes)
+            let change = Self.makeChange(for: record)
+            return Entry(
+                record: record,
+                modeId: modeId,
+                appLabel: appLabel,
+                modeLabel: modeLabel,
+                change: change
+            )
+        }
+    }
+
     /// The modes used most today, so the filter only offers choices that
     /// return something.
-    private func filterOptions(_ items: [Item]) -> [ProcessingMode] {
+    static func filterOptions(_ entries: [Entry], modes: [ProcessingMode]) -> [ProcessingMode] {
         var counts: [UUID: Int] = [:]
-        for item in items {
-            if let id = item.modeId { counts[id, default: 0] += 1 }
+        for entry in entries {
+            if let id = entry.modeId { counts[id, default: 0] += 1 }
         }
         return counts
             .sorted { $0.value > $1.value }
             .prefix(3)
-            .compactMap { entry in modes.first { $0.id == entry.key } }
+            .compactMap { item in modes.first { $0.id == item.key } }
     }
 
     private func filterPicker(options: [ProcessingMode]) -> some View {
@@ -154,140 +218,12 @@ struct HomeTodayFeed: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: - Rows
-
-    private func row(_ item: Item) -> some View {
-        let record = item.record
-        let isHovered = hoveredId == record.id
-        return HStack(alignment: .top, spacing: 12) {
-            VStack(alignment: .leading, spacing: 1) {
-                if let day = Self.dayLabel(for: record.createdAt) {
-                    Text(day)
-                        .font(.system(size: 10.5, weight: .medium))
-                        .foregroundStyle(TF.settingsTextTertiary)
-                        .lineLimit(1)
-                }
-                Text(Self.timeFormatter.string(from: record.createdAt))
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
-                    .foregroundStyle(TF.settingsTextTertiary)
-            }
-            .frame(width: 44, alignment: .leading)
-            .padding(.top, 1)
-
-            VStack(alignment: .leading, spacing: 5) {
-                HStack(spacing: 8) {
-                    meta(record, modeId: item.modeId)
-                    Spacer(minLength: 8)
-                    actions(record)
-                        .opacity(isHovered || copiedId == record.id ? 1 : 0)
-                }
-
-                Text(record.finalText)
-                    .font(.system(size: 14))
-                    .foregroundStyle(TF.settingsText)
-                    .lineSpacing(3)
-                    .lineLimit(4)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .blur(radius: hideContent ? 5 : 0)
-
-                changeView(record)
-                    .blur(radius: hideContent ? 5 : 0)
-            }
-        }
-        .padding(.vertical, 12)
-        .padding(.horizontal, 4)
-        .contentShape(Rectangle())
-        .onHover { hovering in
-            withAnimation(.easeOut(duration: 0.1)) { hoveredId = hovering ? record.id : nil }
-        }
-    }
-
-    private func meta(_ record: HistoryRecord, modeId: UUID?) -> some View {
-        HStack(spacing: 8) {
-            if let appLabel = record.targetAppName
-                ?? record.targetBundleId.flatMap(HomeAppIconCache.name(for:))
-                ?? record.targetBundleId {
-                HStack(spacing: 5) {
-                    HomeAppIcon(bundleId: record.targetBundleId, size: 14)
-                    Text(appLabel)
-                        .font(.system(size: 11.5, weight: .semibold))
-                        .foregroundStyle(TF.settingsTextSecondary)
-                        .lineLimit(1)
-                }
-            }
-            if let label = modeLabel(record, modeId: modeId) {
-                Text(label)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(TF.settingsTextSecondary)
-                    .lineLimit(1)
-                    .padding(.horizontal, 8)
-                    .frame(height: 19)
-                    .background(Capsule().fill(TF.settingsCardAlt))
-            }
-            Text(L("\(record.characterCount ?? record.finalText.count) 字", "\(record.characterCount ?? record.finalText.count) chars"))
-                .font(.system(size: 11, weight: .medium, design: .rounded))
-                .foregroundStyle(TF.settingsTextTertiary)
-                .fixedSize()
-        }
-    }
-
-    private func modeLabel(_ record: HistoryRecord, modeId: UUID?) -> String? {
-        guard let mode = modeId.flatMap({ id in modes.first { $0.id == id } }) else {
-            return record.processingMode
-        }
-        guard let binding = mode.hotkeyBindings.first else { return mode.localizedDisplayName }
-        let key = HotkeyRecorderView.keyDisplayName(keyCode: binding.keyCode, modifiers: binding.modifiers)
-        return "\(mode.localizedDisplayName) · \(key)"
-    }
-
-    private func actions(_ record: HistoryRecord) -> some View {
-        HStack(spacing: 4) {
-            Button { onCorrect(record) } label: {
-                Image(systemName: "character.textbox")
-            }
-            .buttonStyle(.tfIcon())
-            .settingsTooltip(L("纠错并加入词汇", "Correct and add to vocabulary"))
-
-            Button {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(record.finalText, forType: .string)
-                copiedId = record.id
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                    if copiedId == record.id { copiedId = nil }
-                }
-            } label: {
-                Image(systemName: copiedId == record.id ? "checkmark" : "doc.on.doc")
-            }
-            .buttonStyle(.tfIcon(tint: copiedId == record.id ? TF.settingsAccentGreen : nil))
-            .settingsTooltip(copiedId == record.id ? L("已复制", "Copied") : L("复制", "Copy"))
-        }
-    }
-
-    /// What the LLM changed. Edits read as a diff; a rewrite (or a translation)
-    /// shows the original instead, since a diff of it is mostly noise.
-    @ViewBuilder
-    private func changeView(_ record: HistoryRecord) -> some View {
-        let baseline = record.postSnippetText ?? record.rawText
-        if record.llmProvider != nil, !baseline.isEmpty, baseline != record.finalText {
-            Group {
-                if let segments = HomeTextDiff.segments(from: baseline, to: record.finalText),
-                   HomeTextDiff.unchangedRatio(segments, originalLength: baseline.count) >= 0.35 {
-                    Text(Self.attributed(segments))
-                } else {
-                    Text(L("原话：", "Original: ") + baseline)
-                }
-            }
-            .font(.system(size: 12.5))
-            .foregroundStyle(TF.settingsTextTertiary)
-            .lineSpacing(3)
-            .lineLimit(3)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(TF.settingsBg)
-            )
+    private func copy(_ record: HistoryRecord) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(record.finalText, forType: .string)
+        copiedId = record.id
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            if copiedId == record.id { copiedId = nil }
         }
     }
 
@@ -341,7 +277,7 @@ struct HomeTodayFeed: View {
         return "\(month)/\(day)"
     }
 
-    private static let timeFormatter: DateFormatter = {
+    static let timeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "HH:mm"
@@ -349,10 +285,136 @@ struct HomeTodayFeed: View {
     }()
 }
 
+private struct HomeFeedRow: View {
+    let entry: HomeTodayFeed.Entry
+    let hideContent: Bool
+    let isCopied: Bool
+    let onCorrect: () -> Void
+    let onCopy: () -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        let record = entry.record
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 1) {
+                if let day = HomeTodayFeed.dayLabel(for: record.createdAt) {
+                    Text(day)
+                        .font(.system(size: 10.5, weight: .medium))
+                        .foregroundStyle(TF.settingsTextTertiary)
+                        .lineLimit(1)
+                }
+                Text(HomeTodayFeed.timeFormatter.string(from: record.createdAt))
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundStyle(TF.settingsTextTertiary)
+            }
+            .frame(width: 44, alignment: .leading)
+            .padding(.top, 1)
+
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 8) {
+                    meta
+                    Spacer(minLength: 8)
+                    Color.clear
+                        .frame(width: 48, height: 22)
+                        .overlay(alignment: .trailing) {
+                            if isHovered || isCopied { actions }
+                        }
+                }
+
+                Text(record.finalText)
+                    .font(.system(size: 14))
+                    .foregroundStyle(TF.settingsText)
+                    .lineSpacing(3)
+                    .lineLimit(4)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .blur(radius: hideContent ? 5 : 0)
+
+                changeView
+                    .blur(radius: hideContent ? 5 : 0)
+            }
+        }
+        .padding(.vertical, 12)
+        .padding(.horizontal, 4)
+        .contentShape(Rectangle())
+        .onHover { isHovered = $0 }
+    }
+
+    private var meta: some View {
+        HStack(spacing: 8) {
+            if let appLabel = entry.appLabel {
+                HStack(spacing: 5) {
+                    HomeAppIcon(bundleId: entry.record.targetBundleId, size: 14)
+                    Text(appLabel)
+                        .font(.system(size: 11.5, weight: .semibold))
+                        .foregroundStyle(TF.settingsTextSecondary)
+                        .lineLimit(1)
+                }
+            }
+            if let label = entry.modeLabel {
+                Text(label)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(TF.settingsTextSecondary)
+                    .lineLimit(1)
+                    .padding(.horizontal, 8)
+                    .frame(height: 19)
+                    .background(Capsule().fill(TF.settingsCardAlt))
+            }
+            let count = entry.record.characterCount ?? entry.record.finalText.count
+            Text(L("\(count) 字", "\(count) chars"))
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .foregroundStyle(TF.settingsTextTertiary)
+                .fixedSize()
+        }
+    }
+
+    private var actions: some View {
+        HStack(spacing: 4) {
+            Button(action: onCorrect) {
+                Image(systemName: "character.textbox")
+            }
+            .buttonStyle(.tfIcon())
+            .settingsTooltip(L("纠错并加入词汇", "Correct and add to vocabulary"))
+
+            Button(action: onCopy) {
+                Image(systemName: isCopied ? "checkmark" : "doc.on.doc")
+            }
+            .buttonStyle(.tfIcon(tint: isCopied ? TF.settingsAccentGreen : nil))
+            .settingsTooltip(isCopied ? L("已复制", "Copied") : L("复制", "Copy"))
+        }
+    }
+
+    @ViewBuilder
+    private var changeView: some View {
+        if let change = entry.change {
+            Group {
+                switch change {
+                case .diff(let text):
+                    Text(text)
+                case .original(let text):
+                    Text(text)
+                }
+            }
+            .font(.system(size: 12.5))
+            .foregroundStyle(TF.settingsTextTertiary)
+            .lineSpacing(3)
+            .lineLimit(3)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(TF.settingsBg)
+            )
+        }
+    }
+}
+
 /// Icons and display names for target apps, looked up once per bundle ID.
 @MainActor
 enum HomeAppIconCache {
     private static var icons: [String: NSImage?] = [:]
+    private static var names: [String: String?] = [:]
 
     static func icon(for bundleId: String) -> NSImage? {
         if let cached = icons[bundleId] { return cached }
@@ -363,8 +425,11 @@ enum HomeAppIconCache {
     }
 
     static func name(for bundleId: String) -> String? {
-        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) else { return nil }
-        return FileManager.default.displayName(atPath: url.path).replacingOccurrences(of: ".app", with: "")
+        if let cached = names[bundleId] { return cached }
+        let name = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId)
+            .map { FileManager.default.displayName(atPath: $0.path).replacingOccurrences(of: ".app", with: "") }
+        names[bundleId] = name
+        return name
     }
 }
 
