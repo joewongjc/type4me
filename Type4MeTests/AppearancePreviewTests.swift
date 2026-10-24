@@ -500,4 +500,96 @@ final class AppearancePreviewTests: XCTestCase {
         XCTAssertEqual(resolveRecordingDisplayText(isRevise: true, isNonRealtime: false, showsLiveTranscript: true, hasRealtimeSegments: false, transcriptionText: ""), "Say how to revise")
         XCTAssertEqual(resolveRecordingDisplayText(isRevise: true, isNonRealtime: true, showsLiveTranscript: true, hasRealtimeSegments: false, transcriptionText: ""), "Say how to revise")
     }
+
+    func testResolveShowTranscriptPopup_recoveringAndHoverBehavior() {
+        // 1. In recovering phase with segments, popup must show even for non-realtime ASR (e.g. Groq batch)
+        let recoveryPopupForBatch = resolveShowTranscriptPopup(
+            usesCompactPresentation: false,
+            transcriptionText: "识别出的真实文本",
+            showsTranscriptInCurrentPhase: true,
+            isPinned: false,
+            phase: .recovering,
+            hasSegments: true,
+            hoverPreviewEnabled: true,
+            isHoverActive: false,
+            isNonRealtimeASR: true,
+            textOverflowsBar: false
+        )
+        XCTAssertTrue(recoveryPopupForBatch, "Recovery phase must show transcript popup even for non-realtime ASR")
+
+        // 2. Pinned popup with segments shows regardless of non-realtime
+        let pinnedPopup = resolveShowTranscriptPopup(
+            usesCompactPresentation: false,
+            transcriptionText: "识别出的真实文本",
+            showsTranscriptInCurrentPhase: true,
+            isPinned: true,
+            phase: .recording,
+            hasSegments: true,
+            hoverPreviewEnabled: true,
+            isHoverActive: false,
+            isNonRealtimeASR: true,
+            textOverflowsBar: false
+        )
+        XCTAssertTrue(pinnedPopup, "Pinned popup must show when segments are present")
+
+        // 3. Batch recording placeholder must never trigger popup
+        let placeholderPopup = resolveShowTranscriptPopup(
+            usesCompactPresentation: false,
+            transcriptionText: "录音中 · 结束后识别",
+            showsTranscriptInCurrentPhase: true,
+            isPinned: true,
+            phase: .recording,
+            hasSegments: true,
+            hoverPreviewEnabled: true,
+            isHoverActive: true,
+            isNonRealtimeASR: true,
+            textOverflowsBar: true
+        )
+        XCTAssertFalse(placeholderPopup, "Placeholder text must never show transcript popup")
+
+        // 4. Hover preview in recording phase is suppressed for non-realtime ASR
+        let hoverForBatch = resolveShowTranscriptPopup(
+            usesCompactPresentation: false,
+            transcriptionText: "一些文本",
+            showsTranscriptInCurrentPhase: true,
+            isPinned: false,
+            phase: .recording,
+            hasSegments: true,
+            hoverPreviewEnabled: true,
+            isHoverActive: true,
+            isNonRealtimeASR: true,
+            textOverflowsBar: true
+        )
+        XCTAssertFalse(hoverForBatch, "Hover preview must be suppressed for non-realtime ASR during recording")
+
+        // 5. Hover preview for realtime ASR shows when text overflows
+        let hoverForRealtime = resolveShowTranscriptPopup(
+            usesCompactPresentation: false,
+            transcriptionText: "很长的实时流式转录文本超出指示条宽度",
+            showsTranscriptInCurrentPhase: true,
+            isPinned: false,
+            phase: .recording,
+            hasSegments: true,
+            hoverPreviewEnabled: true,
+            isHoverActive: true,
+            isNonRealtimeASR: false,
+            textOverflowsBar: true
+        )
+        XCTAssertTrue(hoverForRealtime, "Hover preview for realtime ASR must show when hovering over overflowing text")
+
+        // 6. Compact presentation never shows popup
+        let compactPopup = resolveShowTranscriptPopup(
+            usesCompactPresentation: true,
+            transcriptionText: "文本",
+            showsTranscriptInCurrentPhase: true,
+            isPinned: false,
+            phase: .recovering,
+            hasSegments: true,
+            hoverPreviewEnabled: true,
+            isHoverActive: true,
+            isNonRealtimeASR: false,
+            textOverflowsBar: true
+        )
+        XCTAssertFalse(compactPopup, "Compact presentation must never show popup")
+    }
 }

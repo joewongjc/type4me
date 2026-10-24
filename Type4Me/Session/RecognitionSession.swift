@@ -465,6 +465,7 @@ actor RecognitionSession {
         provider: ASRProvider = .stepfun,
         policy: ClipboardOutputPolicy = .cancelProcessed,
         uploadFailed: Bool = false,
+        speechDetected: Bool = true,
         audioSender: Task<Void, Never>? = nil,
         batchFallback: @escaping @Sendable () async -> String?
     ) async {
@@ -478,7 +479,7 @@ actor RecognitionSession {
         recordingStartTime = Date().addingTimeInterval(-10)
         currentTranscript = .empty
         hasReceivedASRText = false
-        speechDetected = true // noise tripped the level-only speech heuristic
+        self.speechDetected = speechDetected
         asrClient = client
         currentConfig = config
         lastStreamingError = nil
@@ -501,6 +502,8 @@ actor RecognitionSession {
     }
 
     func stoppedTextForTesting() -> String? { capturedTextOutputForTesting?.text }
+    func speechDetectedForTesting() -> Bool { speechDetected }
+    func hasReceivedASRTextForTesting() -> Bool { hasReceivedASRText }
     #endif
     #if DEBUG
     /// Test seam: test-injected LLM client override to precisely verify invocation count and input text.
@@ -1291,27 +1294,35 @@ actor RecognitionSession {
         resetPromptContextCapture(for: purpose, generation: myGeneration)
 
         func makeFinishHint(for provider: ASRProvider, config: any ASRProviderConfig) -> RecordingFinishHint {
-        let isStreaming = ASRProviderRegistry.capabilities(for: provider, config: config).isStreaming
-        let isQwen3Only: Bool = {
-            guard provider == .sherpa else { return false }
-            let streamingEnabled = UserDefaults.standard.object(forKey: "tf_sensevoiceEnabled") as? Bool ?? true
-            return !streamingEnabled
-        }()
-        let waitsForFullAudio = !isStreaming || isQwen3Only
-        let performsCalibration: Bool = {
-            guard provider == .sherpa, !isQwen3Only else { return false }
-            let qwen3Enabled = UserDefaults.standard.object(forKey: "tf_qwen3FinalEnabled") as? Bool ?? true
-            return qwen3Enabled
-        }()
-        let runsLLM = Self.shouldRunInputModeLLM(recordingPurpose: recordingPurpose, mode: currentMode)
-        let shortTextExemption = currentMode.shortTextExemption
-        return RecordingFinishHint(
-            waitsForFullAudioRecognition: waitsForFullAudio,
-            performsCalibration: performsCalibration,
-            runsLLM: runsLLM,
-            shortTextExemption: shortTextExemption
-        )
-    }
+            let capabilities = ASRProviderRegistry.capabilities(for: provider, config: config)
+            let isStreaming = capabilities.isStreaming
+            let isQwen3Only: Bool = {
+                guard provider == .sherpa else { return false }
+                let streamingEnabled = UserDefaults.standard.object(forKey: "tf_sensevoiceEnabled") as? Bool ?? true
+                return !streamingEnabled
+            }()
+            let waitsForFullAudio = !isStreaming || isQwen3Only
+            let performsCalibration: Bool = {
+                guard provider == .sherpa, !isQwen3Only else { return false }
+                let qwen3Enabled = UserDefaults.standard.object(forKey: "tf_qwen3FinalEnabled") as? Bool ?? true
+                return qwen3Enabled
+            }()
+            let supportsRealtime: Bool = {
+                if provider == .sherpa {
+                    return !isQwen3Only
+                }
+                return capabilities.supportsRealtimeRecognition
+            }()
+            let runsLLM = Self.shouldRunInputModeLLM(recordingPurpose: recordingPurpose, mode: currentMode)
+            let shortTextExemption = currentMode.shortTextExemption
+            return RecordingFinishHint(
+                waitsForFullAudioRecognition: waitsForFullAudio,
+                performsCalibration: performsCalibration,
+                runsLLM: runsLLM,
+                shortTextExemption: shortTextExemption,
+                supportsRealtimeRecognition: supportsRealtime
+            )
+        }
 
         self.recordingStartTime = nil
         hasEmittedReadyForCurrentSession = false
@@ -3105,17 +3116,22 @@ actor RecognitionSession {
             break  // handled above
         case .transcript(let transcript):
             currentTranscript = transcript
-            if !transcript.displayText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                || !transcript.composedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                hasReceivedASRText = true
-            }
-            if !transcript.displayText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                speechDetected = true
-                if let cont = firstStreamingTextCont {
-                    firstStreamingTextCont = nil
-                    firstStreamingTextTimeoutTask?.cancel()
-                    firstStreamingTextTimeoutTask = nil
-                    cont.resume(returning: true)
+            let trimmedDisplay = transcript.displayText.trimmingCharacters(in: .whitespacesAndNewlines)
+            let trimmedComposed = transcript.composedText.trimmingCharacters(in: .whitespacesAndNewlines)
+            let isPlaceholder = ASRRecognitionMode.isBatchRecordingPlaceholder(trimmedDisplay)
+                || ASRRecognitionMode.isBatchRecordingPlaceholder(trimmedComposed)
+            if !isPlaceholder {
+                if !trimmedDisplay.isEmpty || !trimmedComposed.isEmpty {
+                    hasReceivedASRText = true
+                }
+                if !trimmedDisplay.isEmpty {
+                    speechDetected = true
+                    if let cont = firstStreamingTextCont {
+                        firstStreamingTextCont = nil
+                        firstStreamingTextTimeoutTask?.cancel()
+                        firstStreamingTextTimeoutTask = nil
+                        cont.resume(returning: true)
+                    }
                 }
             }
             if let cont = finalTranscriptCont, isTranscriptEffectivelyFinal {

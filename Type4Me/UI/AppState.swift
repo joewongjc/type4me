@@ -1468,12 +1468,12 @@ final class AppState {
         return !streamingEnabled
     }
     var isNonRealtimeASR: Bool {
-        if let hint = recordingFinishHint {
-            return hint.waitsForFullAudioRecognition
-        }
         let provider = recordingProvider ?? KeychainService.selectedASRProvider
         if provider == .sherpa {
             return isQwen3OnlyMode
+        }
+        if let hint = recordingFinishHint {
+            return !hint.supportsRealtimeRecognition
         }
         return !ASRProviderRegistry.capabilities(for: provider).supportsRealtimeRecognition
     }

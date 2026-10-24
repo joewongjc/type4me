@@ -1194,20 +1194,22 @@ final class AppStateTests: XCTestCase {
         appState.recordingProvider = .mistral
         XCTAssertTrue(appState.isNonRealtimeASR)
 
-        // Finish hint overrides provider default
+        // Finish hint overrides provider default via supportsRealtimeRecognition
         appState.recordingFinishHint = RecordingFinishHint(
             waitsForFullAudioRecognition: true,
             performsCalibration: false,
             runsLLM: false,
-            shortTextExemption: 0
+            shortTextExemption: 0,
+            supportsRealtimeRecognition: false
         )
         XCTAssertTrue(appState.isNonRealtimeASR)
 
         appState.recordingFinishHint = RecordingFinishHint(
-            waitsForFullAudioRecognition: false,
+            waitsForFullAudioRecognition: true,
             performsCalibration: false,
             runsLLM: false,
-            shortTextExemption: 0
+            shortTextExemption: 0,
+            supportsRealtimeRecognition: true
         )
         XCTAssertFalse(appState.isNonRealtimeASR)
     }
@@ -1228,6 +1230,17 @@ final class AppStateTests: XCTestCase {
         // When sensevoice is enabled (default), not Qwen3-only and is realtime
         UserDefaults.standard.set(true, forKey: "tf_sensevoiceEnabled")
         XCTAssertFalse(appState.isQwen3OnlyMode)
+        XCTAssertFalse(appState.isNonRealtimeASR)
+
+        // Critical: Even when Sherpa's finish hint arrives with waitsForFullAudioRecognition: true,
+        // SenseVoice real-time streaming must NOT be misclassified as non-realtime.
+        appState.recordingFinishHint = RecordingFinishHint(
+            waitsForFullAudioRecognition: true,
+            performsCalibration: true,
+            runsLLM: false,
+            shortTextExemption: 0,
+            supportsRealtimeRecognition: true
+        )
         XCTAssertFalse(appState.isNonRealtimeASR)
 
         // When sensevoice is disabled, Qwen3-only and is non-realtime

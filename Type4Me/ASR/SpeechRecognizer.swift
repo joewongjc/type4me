@@ -125,6 +125,22 @@ struct RecordingFinishHint: Equatable, Sendable {
     var runsLLM: Bool
     /// `ProcessingMode.shortTextExemption`; 0 means disabled.
     var shortTextExemption: Int
+    /// Whether the active ASR engine provides real-time streaming recognition during recording.
+    var supportsRealtimeRecognition: Bool = true
+
+    init(
+        waitsForFullAudioRecognition: Bool,
+        performsCalibration: Bool,
+        runsLLM: Bool,
+        shortTextExemption: Int,
+        supportsRealtimeRecognition: Bool = true
+    ) {
+        self.waitsForFullAudioRecognition = waitsForFullAudioRecognition
+        self.performsCalibration = performsCalibration
+        self.runsLLM = runsLLM
+        self.shortTextExemption = shortTextExemption
+        self.supportsRealtimeRecognition = supportsRealtimeRecognition
+    }
 }
 
 enum RecognitionEvent: Sendable {

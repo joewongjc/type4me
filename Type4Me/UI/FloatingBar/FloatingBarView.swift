@@ -99,6 +99,36 @@ func resolveRecordingDisplayText(
     return transcriptionText
 }
 
+func resolveShowTranscriptPopup(
+    usesCompactPresentation: Bool,
+    transcriptionText: String,
+    showsTranscriptInCurrentPhase: Bool,
+    isPinned: Bool,
+    phase: FloatingBarPhase,
+    hasSegments: Bool,
+    hoverPreviewEnabled: Bool,
+    isHoverActive: Bool,
+    isNonRealtimeASR: Bool,
+    textOverflowsBar: Bool
+) -> Bool {
+    guard !usesCompactPresentation else { return false }
+    guard !ASRRecognitionMode.isBatchRecordingPlaceholder(transcriptionText) else { return false }
+    guard showsTranscriptInCurrentPhase else { return false }
+    if isPinned {
+        return hasSegments
+    }
+    if phase == .recovering {
+        return hasSegments
+    }
+    guard hoverPreviewEnabled,
+          isHoverActive,
+          phase == .recording,
+          !isNonRealtimeASR,
+          hasSegments
+    else { return false }
+    return textOverflowsBar
+}
+
 // MARK: - FloatingBarState Protocol
 
 @MainActor
@@ -466,23 +496,18 @@ struct FloatingBarView<S: FloatingBarState>: View {
     }
 
     private var showTranscriptPopup: Bool {
-        guard !usesCompactPresentation else { return false }
-        guard !state.isNonRealtimeASR else { return false }
-        guard !ASRRecognitionMode.isBatchRecordingPlaceholder(presentedTranscriptionText) else { return false }
-        guard showsTranscriptInCurrentPhase else { return false }
-        if presentedPinsTranscriptPopup {
-            return !presentedSegments.isEmpty
-        }
-        if presentedPhase == .recovering {
-            return !presentedSegments.isEmpty
-        }
-        guard effectiveHoverTranscriptPreview,
-              isTranscriptHoverActive,
-              presentedPhase == .recording,
-              !presentedSegments.isEmpty
-        else { return false }
-        let textWidth = measureText(presentedTranscriptionText)
-        return textWidth + currentRecordingChromeWidth > TF.barWidth
+        resolveShowTranscriptPopup(
+            usesCompactPresentation: usesCompactPresentation,
+            transcriptionText: presentedTranscriptionText,
+            showsTranscriptInCurrentPhase: showsTranscriptInCurrentPhase,
+            isPinned: presentedPinsTranscriptPopup,
+            phase: presentedPhase,
+            hasSegments: !presentedSegments.isEmpty,
+            hoverPreviewEnabled: effectiveHoverTranscriptPreview,
+            isHoverActive: isTranscriptHoverActive,
+            isNonRealtimeASR: state.isNonRealtimeASR,
+            textOverflowsBar: measureText(presentedTranscriptionText) + currentRecordingChromeWidth > TF.barWidth
+        )
     }
 
     private var activeTopOverlay: FloatingBarTopOverlay? {
