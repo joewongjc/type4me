@@ -1243,9 +1243,22 @@ final class AppStateTests: XCTestCase {
         )
         XCTAssertFalse(appState.isNonRealtimeASR)
 
-        // When sensevoice is disabled, Qwen3-only and is non-realtime
+        // When sensevoice is disabled before session starts (hint == nil), Qwen3-only and is non-realtime
+        appState.recordingFinishHint = nil
         UserDefaults.standard.set(false, forKey: "tf_sensevoiceEnabled")
         XCTAssertTrue(appState.isQwen3OnlyMode)
         XCTAssertTrue(appState.isNonRealtimeASR)
+
+        // Mid-session setting change protection: if a recording started with SenseVoice (hint.supportsRealtimeRecognition = true),
+        // changing tf_sensevoiceEnabled mid-recording must NOT cause the active session to switch to batch placeholder.
+        appState.recordingFinishHint = RecordingFinishHint(
+            waitsForFullAudioRecognition: true,
+            performsCalibration: true,
+            runsLLM: false,
+            shortTextExemption: 0,
+            supportsRealtimeRecognition: true
+        )
+        // Setting is false, but active session hint is true -> stays realtime (isNonRealtimeASR == false)
+        XCTAssertFalse(appState.isNonRealtimeASR)
     }
 }
