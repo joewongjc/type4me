@@ -80,7 +80,7 @@ enum ModelSettingsHelpers {
 
     // MARK: - ASR Groups & Checks
 
-    static let recommendedASRProviders: [ASRProvider] = [.volcano, .soniox]
+    static let recommendedASRProviders: [ASRProvider] = [.volcano, .mimo, .bailian, .soniox]
 
     #if HAS_SHERPA_ONNX
     static let localASRProviders: [ASRProvider] = ModelManager.isQwen3ASRBundled ? [.apple, .sherpa] : [.apple]
@@ -147,7 +147,7 @@ enum ModelSettingsHelpers {
 
     // MARK: - LLM Groups & Checks
 
-    static let recommendedLLMProviders: [LLMProvider] = [.doubao, .deepseek, .kimi, .openai, .gemini]
+    static let recommendedLLMProviders: [LLMProvider] = [.bailian, .doubao, .deepseek, .kimi, .openai, .gemini]
     static let localLLMProviders: [LLMProvider] = [.codexCLI, .ollama, .magpie]
 
     static func llmProviders(in group: ModelProviderGroup) -> [LLMProvider] {
