@@ -175,4 +175,35 @@ final class HomeDashboardDataTests: XCTestCase {
             targetAppName: appName
         )
     }
+
+    // MARK: - Ranked Card Value Width
+
+    func testRankedCardValueColumnWidthScalesWithNumberLength() {
+        // Small numbers (<= 3 chars, e.g. 999)
+        XCTAssertEqual(HomeRankedCard.valueColumnWidth(for: ["5", "42", "999"]), 34)
+
+        // 4 chars (e.g. 1,200 without comma or 4-digit unformatted)
+        XCTAssertEqual(HomeRankedCard.valueColumnWidth(for: ["1200"]), 40)
+
+        // 5 chars (e.g. 9,999)
+        XCTAssertEqual(HomeRankedCard.valueColumnWidth(for: ["9,999"]), 46)
+
+        // 6 chars (user case: 29,247 / 25,080 / 14,008 / 12,215)
+        // Previously hardcoded to 40, which caused 29,247 (42.7pt) to wrap into 2 lines.
+        let userRowValues = ["29,247", "25,080", "14,008", "12,215"]
+        XCTAssertEqual(HomeRankedCard.valueColumnWidth(for: userRowValues), 52)
+
+        // 7 chars (e.g. 100,000)
+        XCTAssertEqual(HomeRankedCard.valueColumnWidth(for: ["100,000"]), 60)
+
+        // 8-9+ chars (e.g. 1,250,000)
+        XCTAssertEqual(HomeRankedCard.valueColumnWidth(for: ["1,250,000"]), 68)
+    }
+
+    func testRankedCardValueColumnWidthUniformAcrossRows() {
+        // Card width must be based on the maximum value among the top rows
+        // so all rows share the same column width and the progress bars align.
+        let mixedValues = ["29,247", "500", "42"]
+        XCTAssertEqual(HomeRankedCard.valueColumnWidth(for: mixedValues), 52)
+    }
 }

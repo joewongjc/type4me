@@ -238,11 +238,12 @@ struct HomeRankedCard: View {
         let label: AnyView
         let value: String
         let ratio: Double
+        var tooltip: String? = nil
     }
 
     static let maxRows = 4
     private static let rowHeight: CGFloat = 30
-    private static let labelWidth: CGFloat = 96
+    private static let labelWidth: CGFloat = 90
 
     let title: String
     let subtitle: String
@@ -250,6 +251,20 @@ struct HomeRankedCard: View {
     let barTint: Color
     let emptyText: String
     let footnote: String
+
+    static func valueColumnWidth(for values: [String]) -> CGFloat {
+        let maxChars = values.prefix(maxRows).map(\.count).max() ?? 0
+        if maxChars <= 3 { return 34 }
+        if maxChars <= 4 { return 40 }
+        if maxChars <= 5 { return 46 }
+        if maxChars <= 6 { return 52 }
+        if maxChars <= 7 { return 60 }
+        return 68
+    }
+
+    private var valueColumnWidth: CGFloat {
+        Self.valueColumnWidth(for: rows.map(\.value))
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -284,25 +299,37 @@ struct HomeRankedCard: View {
         .dashboardCard()
     }
 
+    @ViewBuilder
     private func rowView(_ row: Row) -> some View {
-        HStack(spacing: 10) {
+        let rowContent = HStack(spacing: 8) {
             row.label
                 .frame(width: Self.labelWidth, alignment: .leading)
             GeometryReader { proxy in
                 ZStack(alignment: .leading) {
                     Capsule().fill(TF.settingsCardAlt)
-                    Capsule()
-                        .fill(barTint)
-                        .frame(width: max(6, proxy.size.width * row.ratio))
+                    if row.ratio > 0 {
+                        Capsule()
+                            .fill(barTint)
+                            .frame(width: min(proxy.size.width, max(6, proxy.size.width * row.ratio)))
+                    }
                 }
             }
             .frame(height: 6)
             Text(row.value)
-                .font(.system(size: 11.5, weight: .semibold, design: .rounded))
+                .font(.system(size: 11.5, weight: .semibold, design: .rounded).monospacedDigit())
                 .foregroundStyle(TF.settingsTextSecondary)
-                .frame(width: 40, alignment: .trailing)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .frame(width: valueColumnWidth, alignment: .trailing)
         }
         .frame(height: Self.rowHeight)
+        .contentShape(Rectangle())
+
+        if let tooltip = row.tooltip {
+            rowContent.settingsTooltip(tooltip)
+        } else {
+            rowContent
+        }
     }
 }
 
@@ -315,20 +342,23 @@ struct HomeAppsCard: View {
             title: L("话说到了哪里", "Where it went"),
             subtitle: L("累计", "All time"),
             rows: apps.map { app in
-                HomeRankedCard.Row(
+                let displayName = app.appName ?? app.bundleId.flatMap(HomeAppIconCache.name(for:)) ?? app.key
+                let formattedCount = HomeFormat.number(app.characterCount)
+                return HomeRankedCard.Row(
                     id: app.key,
                     label: AnyView(
-                        HStack(spacing: 7) {
+                        HStack(spacing: 6) {
                             HomeAppIcon(bundleId: app.bundleId, size: 16)
-                            Text(app.appName ?? app.bundleId.flatMap(HomeAppIconCache.name(for:)) ?? app.key)
+                            Text(displayName)
                                 .font(.system(size: 13))
                                 .foregroundStyle(TF.settingsText)
                                 .lineLimit(1)
                                 .truncationMode(.tail)
                         }
                     ),
-                    value: HomeFormat.number(app.characterCount),
-                    ratio: Double(app.characterCount) / peak
+                    value: formattedCount,
+                    ratio: Double(app.characterCount) / peak,
+                    tooltip: L("\(displayName)：\(formattedCount) 字", "\(displayName): \(formattedCount) chars")
                 )
             },
             barTint: TF.settingsText,
