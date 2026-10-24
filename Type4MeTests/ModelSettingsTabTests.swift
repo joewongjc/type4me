@@ -16,18 +16,27 @@ final class ModelSettingsTabTests: XCTestCase {
 
     func testModelProviderGroupASR() {
         let rec = ModelSettingsHelpers.asrProviders(in: .recommended)
+        XCTAssertEqual(rec, [.volcano, .mimo, .bailian, .soniox])
         XCTAssertTrue(rec.contains(.volcano))
+        XCTAssertTrue(rec.contains(.mimo))
+        XCTAssertTrue(rec.contains(.bailian))
+        XCTAssertTrue(rec.contains(.soniox))
 
         let local = ModelSettingsHelpers.asrProviders(in: .local)
         XCTAssertTrue(local.contains(.apple))
 
         let cloud = ModelSettingsHelpers.asrProviders(in: .cloud)
         XCTAssertFalse(cloud.contains(.volcano))
+        XCTAssertFalse(cloud.contains(.mimo))
+        XCTAssertFalse(cloud.contains(.bailian))
+        XCTAssertFalse(cloud.contains(.soniox))
         XCTAssertFalse(cloud.contains(.apple))
     }
 
     func testModelProviderGroupLLM() {
         let rec = ModelSettingsHelpers.llmProviders(in: .recommended)
+        XCTAssertEqual(rec.first, .bailian)
+        XCTAssertTrue(rec.contains(.bailian))
         XCTAssertTrue(rec.contains(.doubao))
         XCTAssertTrue(rec.contains(.deepseek))
 
@@ -36,6 +45,7 @@ final class ModelSettingsTabTests: XCTestCase {
         XCTAssertTrue(local.contains(.ollama))
 
         let cloud = ModelSettingsHelpers.llmProviders(in: .cloud)
+        XCTAssertFalse(cloud.contains(.bailian))
         XCTAssertFalse(cloud.contains(.doubao))
         XCTAssertFalse(cloud.contains(.codexCLI))
     }
