@@ -69,4 +69,8 @@ final class RecordingGlassTuningTests: XCTestCase {
         let keys = RecordingGlassTuning.StorageKey.all + [RecordingGlassStyle.storageKey]
         XCTAssertEqual(Set(keys).count, keys.count)
     }
+
+    func testPreviewDefaultsToPlainBackdrop() {
+        XCTAssertEqual(PreviewBackdrop.defaultValue, .plain)
+    }
 }

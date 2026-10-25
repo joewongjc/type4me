@@ -189,15 +189,17 @@ enum VolcRecognitionPreset: String, Codable, CaseIterable, Sendable {
 
 /// Saved choice plus the user's own parameters, kept even while a fixed
 /// preset is selected so switching back to custom restores them.
+/// Fast is the default: release-to-text is quicker, and the extra full stops
+/// it leaves at pauses are minor next to the wait it saves.
 struct VolcRecognitionProfile: Codable, Sendable, Equatable {
-    var preset: VolcRecognitionPreset = .accurate
+    var preset: VolcRecognitionPreset = .fast
     var custom: VolcTuningSettings?
 
     var effectiveSettings: VolcTuningSettings {
         switch preset {
         case .accurate: return .accurate
         case .fast: return .fast
-        case .custom: return (custom ?? .accurate).clamped
+        case .custom: return (custom ?? .fast).clamped
         }
     }
 }

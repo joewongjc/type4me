@@ -127,7 +127,7 @@ struct VolcRecognitionSettingsSection: View, SettingsCardHelpers {
 
     // MARK: - Custom
 
-    private var custom: VolcTuningSettings { profile.custom ?? .accurate }
+    private var custom: VolcTuningSettings { profile.custom ?? .fast }
 
     private func customBinding<Value>(_ keyPath: WritableKeyPath<VolcTuningSettings, Value>) -> Binding<Value> {
         Binding(

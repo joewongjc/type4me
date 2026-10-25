@@ -140,10 +140,10 @@ final class VolcTuningSettingsTests: XCTestCase {
     func testProfileEffectiveSettings() {
         var custom = VolcTuningSettings.fast
         custom.endWindowSizeMs = 2500
-        XCTAssertEqual(VolcRecognitionProfile().effectiveSettings, .accurate)
+        XCTAssertEqual(VolcRecognitionProfile().effectiveSettings, .fast, "Fast is the default preset")
         XCTAssertEqual(VolcRecognitionProfile(preset: .fast, custom: custom).effectiveSettings, .fast)
         XCTAssertEqual(VolcRecognitionProfile(preset: .custom, custom: custom).effectiveSettings.endWindowSizeMs, 2500)
-        XCTAssertEqual(VolcRecognitionProfile(preset: .custom, custom: nil).effectiveSettings, .accurate)
+        XCTAssertEqual(VolcRecognitionProfile(preset: .custom, custom: nil).effectiveSettings, .fast)
     }
 
     private func isolatedDefaults() throws -> UserDefaults {
@@ -161,6 +161,14 @@ final class VolcTuningSettingsTests: XCTestCase {
         let loaded = VolcRecognitionProfileStore.load(userDefaults: defaults)
         XCTAssertEqual(loaded.preset, .fast)
         XCTAssertEqual(loaded.custom?.endWindowSizeMs, 1500)
+    }
+
+    func testNothingSavedLoadsFastButSavedAccurateStays() throws {
+        XCTAssertEqual(VolcRecognitionProfileStore.load(userDefaults: try isolatedDefaults()).preset, .fast)
+
+        let defaults = try isolatedDefaults()
+        VolcRecognitionProfileStore.save(VolcRecognitionProfile(preset: .accurate, custom: nil), userDefaults: defaults)
+        XCTAssertEqual(VolcRecognitionProfileStore.load(userDefaults: defaults).preset, .accurate)
     }
 
     func testLegacyTuningMigratesToMatchingPresetOrCustom() throws {

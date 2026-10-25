@@ -26,7 +26,7 @@ enum PreviewBackdrop: String, CaseIterable {
     case dark
 
     static let storageKey = "tf_appearancePreviewBackdrop"
-    static let defaultValue = PreviewBackdrop.colorful
+    static let defaultValue = PreviewBackdrop.plain
 
     var iconName: String {
         switch self {
