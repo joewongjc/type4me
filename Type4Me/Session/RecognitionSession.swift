@@ -1943,18 +1943,19 @@ actor RecognitionSession {
         // Phase 2: if text arrives, endAudio + wait up to 1s for final result.
         let provider = activeProvider
         let providerIsStreaming = ASRProviderRegistry.capabilities(for: provider, config: currentConfig).isStreaming
+        let tuning = VolcTuningStorage.effective(for: provider)
         if providerIsStreaming {
             let duration = recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0
             let hasStreamingText = !currentTranscript.composedText
                 .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             if duration < 5 && !hasStreamingText {
-                // Phase 1: wait up to 1s for any streaming text
+                // Phase 1: wait (1s by default) for any streaming text
                 DebugFileLogger.log("stop: short recording (\(String(format: "%.1f", duration))s) with no streaming text, waiting for partial")
-                let gotText = await awaitFirstStreamingText(timeout: .seconds(1))
+                let gotText = await awaitFirstStreamingText(timeout: .milliseconds(tuning.shortRecordingFirstTextWaitMs))
 
                 if !gotText {
-                    // No streaming text after 1s — likely not real speech, fast exit
-                    DebugFileLogger.log("stop: no streaming text after 1s wait, fast exit")
+                    // No streaming text after the wait — likely not real speech, fast exit
+                    DebugFileLogger.log("stop: no streaming text after \(tuning.shortRecordingFirstTextWaitMs)ms wait, fast exit")
                     if let client = asrClient {
                         await client.disconnect()
                         self.asrClient = nil
@@ -1986,7 +1987,7 @@ actor RecognitionSession {
                     _ = await withTimeout(.seconds(3)) {
                         try await client.endAudio()
                     }
-                    let finalResult = await awaitFinalTranscript(timeout: .seconds(1))
+                    let finalResult = await awaitFinalTranscript(timeout: .milliseconds(tuning.shortRecordingFinalWaitMs))
                     DebugFileLogger.log("stop: phase 2 done, hasFinal=\(finalResult != nil) +\(ContinuousClock.now - stopT0)")
 
                     // Drain events + disconnect in background so post-teardown can start
@@ -2040,14 +2041,29 @@ actor RecognitionSession {
                 asrTeardownClean = false
             }
 
-            if providerIsStreaming, await awaitFinalTranscript(timeout: .seconds(2)) != nil {
-                // Fast path: isFinal arrived, text is confirmed complete.
-                // Run drain + disconnect in background so LLM can start immediately.
-                DebugFileLogger.log("stop: isFinal received +\(ContinuousClock.now - stopT0)")
-                let evtTask = eventConsumptionTask
+            let finalArrived = providerIsStreaming
+                ? await awaitFinalTranscript(timeout: .milliseconds(tuning.finalWaitMs)) != nil
+                : false
+            let commitWithoutFinal = providerIsStreaming && !finalArrived && tuning.commitOnFinalTimeout
+            if finalArrived || commitWithoutFinal {
+                // Fast path: isFinal arrived (or the tuning panel chose to commit
+                // the current text on timeout). Run drain + disconnect in
+                // background so LLM can start immediately.
+                DebugFileLogger.log(
+                    finalArrived
+                        ? "stop: isFinal received +\(ContinuousClock.now - stopT0)"
+                        : "stop: isFinal timeout after \(tuning.finalWaitMs)ms, committing current text +\(ContinuousClock.now - stopT0)"
+                )
+                var evtTask = eventConsumptionTask
+                if commitWithoutFinal {
+                    // The committed text is final from here on; late server
+                    // updates must not rewrite it while LLM/injection run.
+                    eventConsumptionTask?.cancel()
+                    evtTask = nil
+                }
                 asrCleanupTask?.cancel()
                 asrCleanupGeneration = myGeneration
-                asrCleanupTask = Task { [weak self, myGeneration] in
+                asrCleanupTask = Task { [weak self, myGeneration, evtTask] in
                     if let evtTask {
                         _ = await self?.withTimeout(.seconds(3)) { await evtTask.value }
                     }
