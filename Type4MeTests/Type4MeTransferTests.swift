@@ -199,4 +199,33 @@ final class Type4MeTransferTests: XCTestCase {
         var assembler = Type4MeTransferAssembler()
         XCTAssertEqual(assembler.add("https://example.com"), .ignored)
     }
+
+    // MARK: - Vocabulary
+
+    func testVocabularyRoundTrips() throws {
+        let payload = Type4MeTransferPayload(
+            asr: nil,
+            llm: nil,
+            hotwords: ["Claude Code", "Type4Me"],
+            snippets: [.init(trigger: "cloud code", replacement: "Claude Code")]
+        )
+        XCTAssertFalse(payload.isEmpty, "vocabulary alone is worth syncing")
+        XCTAssertEqual(try Type4MeTransferCodec.decode(Type4MeTransferCodec.encodeText(payload)), payload)
+    }
+
+    func testPayloadWithoutVocabularyStillDecodes() throws {
+        let decoded = try Type4MeTransferCodec.decode(Type4MeTransferCodec.encodeText(sample))
+        XCTAssertNil(decoded.hotwords)
+        XCTAssertNil(decoded.snippets)
+    }
+
+    func testSnippetPatternIgnoresCaseAndSpaces() {
+        let rules: [Type4MeTransferPayload.Snippet] = [
+            .init(trigger: "Cloud Code", replacement: "Claude Code"),
+            .init(trigger: "Jason", replacement: "JSON"),
+        ]
+        XCTAssertEqual(SnippetPattern.apply(rules, to: "用 cloudcode 写 jason"), "用 Claude Code 写 JSON")
+        XCTAssertEqual(SnippetPattern.apply(rules, to: "Jasonette"), "Jasonette", "only whole Latin words match")
+        XCTAssertEqual(SnippetPattern.apply([.init(trigger: "价格", replacement: "$1 起")], to: "价格"), "$1 起", "replacement is literal")
+    }
 }

@@ -22,6 +22,7 @@ xcuserdata/
 .DS_Store
 
 # Secrets
+iOS/Signing.local.xcconfig
 .env
 .env.local
 credentials.json

@@ -94,10 +94,39 @@ final class IPhoneConfigExporterTests: XCTestCase {
         let frames = try Type4MeTransferCodec.encodeFrames(Type4MeTransferPayload(asr: nil, llm: nil, modes: modes))
         let detector = try XCTUnwrap(CIDetector(ofType: CIDetectorTypeQRCode, context: nil, options: [CIDetectorAccuracy: CIDetectorAccuracyHigh]))
         for frame in frames {
-            let image = try XCTUnwrap(IPhoneExportSheet.qrImage(for: frame))
+            let image = try XCTUnwrap(MobileSyncPanel.qrImage(for: frame))
             let cg = try XCTUnwrap(image.cgImage(forProposedRect: nil, context: nil, hints: nil))
             let found = detector.features(in: CIImage(cgImage: cg)).compactMap { ($0 as? CIQRCodeFeature)?.messageString }
             XCTAssertEqual(found, [frame])
         }
+    }
+
+    func testHotwordsDropBlanksAndRepeats() {
+        XCTAssertEqual(
+            IPhoneConfigExporter.hotwords(from: [" Claude ", "", "claude", "Type4Me", "  "]),
+            ["Claude", "Type4Me"]
+        )
+    }
+
+    func testSnippetsKeepOrderAndDropBlankTriggers() {
+        let snippets = IPhoneConfigExporter.snippets(from: [
+            (trigger: " cloud code ", value: "Claude Code"),
+            (trigger: " ", value: "ignored"),
+            (trigger: "jason", value: "JSON"),
+        ])
+        XCTAssertEqual(snippets, [
+            .init(trigger: "cloud code", replacement: "Claude Code"),
+            .init(trigger: "jason", replacement: "JSON"),
+        ])
+    }
+
+    func testVocabularyOnlyPayload() throws {
+        let payload = try XCTUnwrap(IPhoneConfigExporter.makePayload(
+            asrs: [], defaultASR: nil, llms: [], defaultLLM: nil, modes: [],
+            hotwords: ["Type4Me"], snippets: []
+        ))
+        XCTAssertEqual(payload.hotwords, ["Type4Me"])
+        XCTAssertNil(payload.snippets)
+        XCTAssertNil(IPhoneConfigExporter.makePayload(asrs: [], defaultASR: nil, llms: [], defaultLLM: nil, modes: []))
     }
 }

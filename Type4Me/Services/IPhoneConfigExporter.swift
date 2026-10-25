@@ -2,7 +2,7 @@ import Foundation
 import Type4MeTransferCore
 
 /// Builds the configuration the iPhone app syncs: the speech services, the
-/// text models and the modes the user picked.
+/// text models, the modes and the vocabulary the user picked.
 ///
 /// Everything is resolved here (default base URLs, the Volcano model actually
 /// in use, the thinking switch, translation targets). Speech services travel
@@ -63,7 +63,9 @@ enum IPhoneConfigExporter {
         defaultASR: String?,
         llms: [String],
         defaultLLM: String?,
-        modes modeIDs: [String]
+        modes modeIDs: [String],
+        hotwords: [String] = [],
+        snippets: [Type4MeTransferPayload.Snippet] = []
     ) -> Type4MeTransferPayload? {
         let (asr, asrOthers) = split(
             asrs.compactMap { ASRProvider(rawValue: $0).flatMap(asrEndpoint(for:)) },
@@ -77,13 +79,16 @@ enum IPhoneConfigExporter {
         let modes = ModeStorage().load()
             .filter { wanted.contains($0.id.uuidString) }
             .compactMap(transferMode(for:))
-        guard asr != nil || llm != nil || !modes.isEmpty else { return nil }
+        guard asr != nil || llm != nil || !modes.isEmpty || !hotwords.isEmpty || !snippets.isEmpty
+        else { return nil }
         return Type4MeTransferPayload(
             asr: asr,
             asrProfiles: asrOthers.isEmpty ? nil : asrOthers,
             llm: llm,
             llmProfiles: llmOthers.isEmpty ? nil : llmOthers,
             modes: modes.isEmpty ? nil : modes,
+            hotwords: hotwords.isEmpty ? nil : hotwords,
+            snippets: snippets.isEmpty ? nil : snippets,
             sourceName: Host.current().localizedName,
             createdAt: Int(Date().timeIntervalSince1970)
         )
@@ -95,6 +100,28 @@ enum IPhoneConfigExporter {
     ) -> (Type4MeTransferPayload.Endpoint?, [Type4MeTransferPayload.Endpoint]) {
         let first = endpoints.first { $0.provider == active } ?? endpoints.first
         return (first, endpoints.filter { $0.provider != first?.provider })
+    }
+
+    // MARK: - Vocabulary
+
+    /// The hotwords from the Vocabulary page, without blanks or repeats.
+    static func hotwords(from words: [String] = HotwordStorage.load()) -> [String] {
+        var seen = Set<String>()
+        return words
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && seen.insert($0.lowercased()).inserted }
+    }
+
+    /// The global snippets from the Vocabulary page, in the order the Mac
+    /// applies them. App-specific snippets stay on the Mac.
+    static func snippets(
+        from rules: [(trigger: String, value: String)] = SnippetStorage.load()
+    ) -> [Type4MeTransferPayload.Snippet] {
+        rules.compactMap { rule in
+            let trigger = rule.trigger.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trigger.isEmpty else { return nil }
+            return .init(trigger: trigger, replacement: rule.value)
+        }
     }
 
     // MARK: - Modes

@@ -38,5 +38,7 @@
 		<key>NSExtensionPrincipalClass</key>
 		<string>$(PRODUCT_MODULE_NAME).KeyboardViewController</string>
 	</dict>
+	<key>T4MAppGroup</key>
+	<string>group.$(T4M_BUNDLE_ID_PREFIX).ios</string>
 </dict>
 </plist>

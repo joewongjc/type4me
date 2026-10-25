@@ -35,6 +35,8 @@ enum ConfigStore {
         /// Becomes the active text model; must be one of `llms`.
         var activeLLM: String?
         var modes: Set<String>
+        var hotwords: Bool
+        var snippets: Bool
 
         init(all payload: Type4MeTransferPayload) {
             asrs = Set(payload.allASRs.map(\.provider))
@@ -42,16 +44,19 @@ enum ConfigStore {
             llms = Set(payload.allLLMs.map(\.provider))
             activeLLM = payload.allLLMs.first?.provider
             modes = Set((payload.modes ?? []).map(\.id))
+            hotwords = !(payload.hotwords ?? []).isEmpty
+            snippets = !(payload.snippets ?? []).isEmpty
         }
 
-        var isEmpty: Bool { asrs.isEmpty && llms.isEmpty && modes.isEmpty }
+        var isEmpty: Bool { asrs.isEmpty && llms.isEmpty && modes.isEmpty && !hotwords && !snippets }
     }
 
     static func save(_ payload: Type4MeTransferPayload) throws {
         try save(payload, selection: ImportSelection(all: payload))
     }
 
-    /// Applies the services part of a sync. Modes go through `ModeLibrary`.
+    /// Applies the services part of a sync. Modes go through `ModeLibrary`,
+    /// vocabulary through `VocabularyStore`.
     static func save(_ payload: Type4MeTransferPayload, selection: ImportSelection) throws {
         let asrs = payload.allASRs.filter { selection.asrs.contains($0.provider) }
         try saveProfiles(asrs, active: selection.activeASR, kind: .asr)

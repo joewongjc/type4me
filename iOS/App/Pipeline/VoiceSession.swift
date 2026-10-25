@@ -309,7 +309,8 @@ final class VoiceSession: ObservableObject {
 
         let variant = entry.variant(for: config)
         let client = variant.createClient()
-        let options = PhoneASR.requestOptions(for: endpoint)
+        var options = PhoneASR.requestOptions(for: endpoint)
+        options.hotwords = VocabularyStore.shared.hotwords
         run.client = client
         run.isStreaming = variant.isStreaming
         if !variant.isStreaming {
@@ -414,17 +415,20 @@ final class VoiceSession: ObservableObject {
             return
         }
 
-        var output = raw
+        // Snippets run before the mode, as on the Mac, so a model sees the
+        // corrected words.
+        let input = VocabularyStore.shared.apply(to: raw)
+        var output = input
         var note: String?
         if run.mode.usesLLM {
             if let endpoint = ConfigStore.llm, let config = LLMEndpointConfig(endpoint: endpoint),
-               let request = ModePrompts.request(for: run.mode, text: raw) {
+               let request = ModePrompts.request(for: run.mode, text: input) {
                 let started = Date()
                 do {
                     let client = ChatClient(config: config)
                     output = try await client.complete(system: request.system, user: request.user)
                     if run.mode.kind == .translation {
-                        let checked = try await checkTranslation(output, raw: raw, mode: run.mode, client: client)
+                        let checked = try await checkTranslation(output, raw: input, mode: run.mode, client: client)
                         output = checked.text
                         note = checked.note
                     }

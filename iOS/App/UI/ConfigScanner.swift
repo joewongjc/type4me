@@ -2,7 +2,7 @@ import AVFoundation
 import SwiftUI
 import Type4MeTransferCore
 
-/// Scans the codes the Mac shows under「设置 › 模型 › 同步到 iPhone」.
+/// Scans the codes the Mac shows on its Mobile page (「手机版」).
 ///
 /// A large sync is split into several codes that the Mac cycles through. The
 /// scanner keeps what it already has, shows how many are in, and hands over
@@ -97,7 +97,7 @@ struct ConfigScannerSheet: View {
                     .multilineTextAlignment(.center)
                     .monospacedDigit()
             } else {
-                Text(L("对准 Mac 上「同步到 iPhone」的二维码", "Point at the Sync to iPhone code on your Mac"))
+                Text(L("对准 Mac 上「手机版」页面的二维码", "Point at the code on the Mobile page on your Mac"))
                     .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(.white)
                     .multilineTextAlignment(.center)

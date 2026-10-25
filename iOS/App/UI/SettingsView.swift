@@ -3,13 +3,15 @@ import Type4MeTransferCore
 
 /// Pages under Settings. Value based, so Home can open one directly.
 enum SettingsRoute: Hashable {
-    case asr, llm, modes, diagnostics
+    case asr, llm, modes, hotwords, snippets, diagnostics
 
     @MainActor @ViewBuilder var destination: some View {
         switch self {
         case .asr: ASRSettingsView()
         case .llm: LLMSettingsView()
         case .modes: ModeSettingsView()
+        case .hotwords: HotwordSettingsView()
+        case .snippets: SnippetSettingsView()
         case .diagnostics: DiagnosticsView()
         }
     }
@@ -21,6 +23,7 @@ struct SettingsView: View {
     @EnvironmentObject private var log: DiagnosticsLog
     @EnvironmentObject private var history: HistoryStore
     @ObservedObject private var modes = ModeStore.shared
+    @ObservedObject private var vocabulary = VocabularyStore.shared
 
     @State private var timeout = AppSettings.sessionTimeoutMinutes
     @State private var confirmClear = false
@@ -58,8 +61,8 @@ struct SettingsView: View {
                         symbol: "qrcode.viewfinder",
                         title: L("扫码同步", "Scan to Sync"),
                         detail: L(
-                            "在 Mac 版 Type4Me 打开「设置 › 模型 › 同步到 iPhone」，对准二维码",
-                            "In Type4Me on your Mac, open Settings › Models › Sync to iPhone and point at the code"
+                            "在 Mac 版 Type4Me 的侧边栏打开「手机版」，对准二维码",
+                            "In Type4Me on your Mac, open Mobile in the sidebar and point at the code"
                         )
                     )
                 }
@@ -82,6 +85,26 @@ struct SettingsView: View {
                 Text(L("模式", "Modes"))
             } footer: {
                 Text(L("新建、改名、调整顺序，并选择最多 \(ModeLibrary.keyboardLimit) 个放到键盘上。", "Add, rename and reorder modes, and pick up to \(ModeLibrary.keyboardLimit) for the keyboard."))
+            }
+
+            Section {
+                NavigationLink(value: SettingsRoute.hotwords) {
+                    LabeledContent(L("热词", "Hotwords")) {
+                        Text(L("\(vocabulary.hotwords.count) 个", "\(vocabulary.hotwords.count)"))
+                    }
+                }
+                NavigationLink(value: SettingsRoute.snippets) {
+                    LabeledContent(L("片段替换", "Snippets")) {
+                        Text(L("\(vocabulary.snippets.count) 条", "\(vocabulary.snippets.count)"))
+                    }
+                }
+            } header: {
+                Text(L("词汇", "Vocabulary"))
+            } footer: {
+                Text(L(
+                    "热词帮识别服务认准专有名词，片段替换把说出的触发词换成固定内容。都可以从 Mac 同步。",
+                    "Hotwords help the speech service get names and terms right; snippets swap a spoken trigger for fixed text. Both can sync from your Mac."
+                ))
             }
 
             Section {

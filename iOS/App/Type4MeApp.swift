@@ -116,12 +116,17 @@ final class AppModel: ObservableObject {
         try ConfigStore.save(payload, selection: selection)
         let modes = (payload.modes ?? []).filter { selection.modes.contains($0.id) }
         if !modes.isEmpty { ModeStore.shared.applySync(modes) }
+        let hotwords = selection.hotwords ? payload.hotwords ?? [] : []
+        let snippets = selection.snippets ? payload.snippets ?? [] : []
+        if !hotwords.isEmpty || !snippets.isEmpty {
+            VocabularyStore.shared.applySync(hotwords: hotwords, snippets: snippets)
+        }
         configVersion += 1
         let asrCount = payload.allASRs.filter { selection.asrs.contains($0.provider) }.count
         let llmCount = payload.allLLMs.filter { selection.llms.contains($0.provider) }.count
         log.add(L(
-            "已从 \(payload.sourceName ?? "Mac") 同步：识别服务 \(asrCount) 个，处理模型 \(llmCount) 个，模式 \(modes.count) 个",
-            "Synced from \(payload.sourceName ?? "Mac"): \(asrCount) speech services, \(llmCount) text models, \(modes.count) modes"
+            "已从 \(payload.sourceName ?? "Mac") 同步：识别服务 \(asrCount) 个，处理模型 \(llmCount) 个，模式 \(modes.count) 个，热词 \(hotwords.count) 个，片段替换 \(snippets.count) 条",
+            "Synced from \(payload.sourceName ?? "Mac"): \(asrCount) speech services, \(llmCount) text models, \(modes.count) modes, \(hotwords.count) hotwords, \(snippets.count) snippets"
         ))
         if onboardingCompleted { didBecomeActive() }
     }

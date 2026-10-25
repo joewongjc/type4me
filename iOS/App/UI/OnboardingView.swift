@@ -156,7 +156,7 @@ struct OnboardingView: View {
             )
 
             VStack(alignment: .leading, spacing: 0) {
-                numbered(1, L("在 Mac 版 Type4Me 打开「设置 › 模型 › 同步到 iPhone」", "In Type4Me on your Mac, open Settings › Models › Sync to iPhone"))
+                numbered(1, L("在 Mac 版 Type4Me 的侧边栏打开「手机版」", "In Type4Me on your Mac, open Mobile in the sidebar"))
                 Divider().overlay(T4.separator)
                 numbered(2, L("点下面的「扫码同步」，对准 Mac 上的二维码", "Tap Scan to Sync below and point it at the code on your Mac"))
                 Divider().overlay(T4.separator)

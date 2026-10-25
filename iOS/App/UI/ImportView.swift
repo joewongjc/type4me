@@ -2,7 +2,8 @@ import SwiftUI
 import Type4MeTransferCore
 
 /// Shows what a sync from the Mac contains and lets the user pick what to
-/// take: any of the speech services and text models (one of each active) and modes.
+/// take: any of the speech services and text models (one of each active),
+/// modes, hotwords and snippets.
 struct ImportView: View {
     let payload: Type4MeTransferPayload
     @EnvironmentObject private var model: AppModel
@@ -120,7 +121,50 @@ struct ImportView: View {
                     }
                 }
             }
+
+            let hotwords = payload.hotwords ?? []
+            let snippets = payload.snippets ?? []
+            if !hotwords.isEmpty || !snippets.isEmpty {
+                group(
+                    L("词汇", "Vocabulary"),
+                    note: L("和这台 iPhone 上已有的合并，不会删除你在手机上加的词。", "Merged with what's on this iPhone; nothing you added here is removed.")
+                ) {
+                    if !hotwords.isEmpty {
+                        checkRow(
+                            title: L("热词", "Hotwords"),
+                            detail: hotwordDetail(hotwords),
+                            isOn: selection.hotwords,
+                            warning: nil
+                        )
+                    }
+                    if !hotwords.isEmpty && !snippets.isEmpty { Divider().overlay(T4.border) }
+                    if !snippets.isEmpty {
+                        checkRow(
+                            title: L("片段替换", "Snippets"),
+                            detail: snippetDetail(snippets),
+                            isOn: selection.snippets,
+                            warning: nil
+                        )
+                    }
+                }
+            }
         }
+    }
+
+    private func hotwordDetail(_ words: [String]) -> String {
+        let added = VocabularyStore.shared.preview(hotwords: words).added
+        return L("\(words.count) 个，新增 \(added) 个", "\(words.count) · \(added) new")
+    }
+
+    private func snippetDetail(_ snippets: [Type4MeTransferPayload.Snippet]) -> String {
+        let count = VocabularyStore.shared.preview(snippets: snippets)
+        if count.updated > 0 {
+            return L(
+                "\(snippets.count) 条，新增 \(count.added) 条，更新 \(count.updated) 条",
+                "\(snippets.count) · \(count.added) new · \(count.updated) updated"
+            )
+        }
+        return L("\(snippets.count) 条，新增 \(count.added) 条", "\(snippets.count) · \(count.added) new")
     }
 
     /// Checkable services with one chosen row marked Default.

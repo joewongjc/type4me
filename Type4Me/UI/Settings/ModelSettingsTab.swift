@@ -15,7 +15,6 @@ struct ModelSettingsTab: View, SettingsCardHelpers {
     @AppStorage("tf_qwen3FinalEnabled") private var qwen3FinalEnabled = true
     @State private var latencyToast: SettingsLatencyToast?
     @State private var latencyToastDismissTask: Task<Void, Never>?
-    @State private var showsIPhoneExport = false
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if showsHeader {
@@ -27,17 +26,8 @@ struct ModelSettingsTab: View, SettingsCardHelpers {
             }
 
             // Top Liquid Glass Capsule Picker
-            HStack {
-                categoryPicker
-                Spacer()
-                Button {
-                    showsIPhoneExport = true
-                } label: {
-                    Label(L("同步到 iPhone", "Sync to iPhone"), systemImage: "iphone")
-                }
-                .buttonStyle(.tf(.ghost, size: .small))
-            }
-            .padding(.bottom, 16)
+            categoryPicker
+                .padding(.bottom, 16)
 
             // Master-Detail Split Layout
             HStack(alignment: .top, spacing: 0) {
@@ -101,9 +91,6 @@ struct ModelSettingsTab: View, SettingsCardHelpers {
                 .animation(.spring(duration: 0.3, bounce: 0.15), value: latencyToast)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .sheet(isPresented: $showsIPhoneExport) {
-            IPhoneExportSheet()
         }
         .onDisappear {
             latencyToastDismissTask?.cancel()

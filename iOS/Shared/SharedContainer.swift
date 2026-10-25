@@ -5,7 +5,10 @@ import Foundation
 /// The keyboard reaches all of this only with Full Access turned on; without
 /// it the App Group container is not visible to the extension at all.
 enum SharedContainer {
-    static let appGroupID = "group.com.type4me.ios"
+    /// `group.<bundle ID prefix>.ios`, written into each target's Info.plist
+    /// from Signing.xcconfig so a self-built copy uses its own App Group.
+    static let appGroupID = Bundle.main.object(forInfoDictionaryKey: "T4MAppGroup") as? String
+        ?? "group.com.type4me.ios"
     static let urlScheme = "type4me"
 
     static var url: URL? {

@@ -3,22 +3,24 @@ import CoreImage.CIFilterBuiltins
 import SwiftUI
 import Type4MeTransferCore
 
-/// Syncs a chosen set of models and modes to Type4Me on iPhone.
+/// Syncs a chosen set of models, modes and vocabulary to Type4Me on iPhone.
 ///
 /// Small selections fit one QR code, which the iPhone camera opens directly.
 /// Larger ones are split into numbered codes that cycle here until the
 /// iPhone has scanned every one.
-struct IPhoneExportSheet: View {
-    @Environment(\.dismiss) private var dismiss
-
+struct MobileSyncPanel: View {
     @State private var asrCandidates: [IPhoneConfigExporter.Candidate] = []
     @State private var llmCandidates: [IPhoneConfigExporter.Candidate] = []
     @State private var modeCandidates: [IPhoneConfigExporter.Candidate] = []
+    @State private var hotwords: [String] = []
+    @State private var snippets: [Type4MeTransferPayload.Snippet] = []
     @State private var selectedASRs: Set<String> = []
     @State private var defaultASR = ""
     @State private var selectedLLMs: Set<String> = []
     @State private var defaultLLM = ""
     @State private var selectedModes: Set<String> = []
+    @State private var includesHotwords = true
+    @State private var includesSnippets = true
     @State private var isRevealed = false
     @State private var frames: [NSImage] = []
 
@@ -33,7 +35,9 @@ struct IPhoneExportSheet: View {
             defaultASR: defaultASR,
             llms: llmCandidates.map(\.id).filter(selectedLLMs.contains),
             defaultLLM: defaultLLM,
-            modes: modeCandidates.map(\.id).filter(selectedModes.contains)
+            modes: modeCandidates.map(\.id).filter(selectedModes.contains),
+            hotwords: includesHotwords ? hotwords : [],
+            snippets: includesSnippets ? snippets : []
         )
     }
 
@@ -43,32 +47,19 @@ struct IPhoneExportSheet: View {
             defaultASR, selectedASRs.sorted().joined(separator: ","),
             defaultLLM, selectedLLMs.sorted().joined(separator: ","),
             selectedModes.sorted().joined(separator: ","),
+            "\(includesHotwords)", "\(includesSnippets)",
         ]
             .joined(separator: "|")
     }
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(L("同步到 iPhone", "Sync to iPhone"))
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(TF.settingsText)
-                    Text(L(
-                        "选好要同步的模型和模式，在 iPhone 版 Type4Me 里点「扫码同步」对准这里。内容多时会拆成几张码自动轮播，iPhone 扫齐所有码才算完成。",
-                        "Pick the models and modes to sync, then tap Scan to Sync in Type4Me on iPhone and point it here. Larger selections are split into several codes that cycle automatically; the iPhone finishes once it has scanned them all."
-                    ))
-                    .font(.system(size: 12))
-                    .foregroundStyle(TF.settingsTextSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer()
-                TFCloseButton { dismiss() }
-            }
+    private var hasCandidates: Bool {
+        !asrCandidates.isEmpty || !llmCandidates.isEmpty || !modeCandidates.isEmpty
+            || !hotwords.isEmpty || !snippets.isEmpty
+    }
 
-            if asrCandidates.isEmpty && llmCandidates.isEmpty && modeCandidates.isEmpty {
-                emptyState
-            } else {
+    var body: some View {
+        Group {
+            if hasCandidates {
                 HStack(alignment: .top, spacing: 22) {
                     VStack(alignment: .leading, spacing: 12) {
                         qrPanel
@@ -76,21 +67,18 @@ struct IPhoneExportSheet: View {
                     }
                     .frame(width: Self.qrSide)
 
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 18) {
-                            asrSection
-                            llmSection
-                            modeSection
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 18) {
+                        asrSection
+                        llmSection
+                        modeSection
+                        vocabularySection
                     }
-                    .frame(maxHeight: 460)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
+            } else {
+                emptyState
             }
         }
-        .padding(24)
-        .frame(width: 700)
-        .background(TF.settingsBg)
         .onAppear(perform: load)
         .onChange(of: selectedASRs) { _, _ in fixDefaults() }
         .onChange(of: selectedLLMs) { _, _ in fixDefaults() }
@@ -117,6 +105,7 @@ struct IPhoneExportSheet: View {
                             .scaledToFit()
                             .padding(10)
                             .blur(radius: isRevealed ? 0 : 9)
+                            .accessibilityLabel(L("同步二维码", "Sync QR code"))
                     }
                     if !isRevealed {
                         Button(L("显示二维码", "Show QR code")) { isRevealed = true }
@@ -147,7 +136,7 @@ struct IPhoneExportSheet: View {
                     }
                 }
             } else {
-                Text(L("用 Type4Me 扫码，或 iPhone 相机扫码直接打开", "Scan in Type4Me, or with the iPhone camera"))
+                Text(L("在手机版里扫码，或用 iPhone 相机扫码直接打开", "Scan in the mobile app, or with the iPhone camera"))
                     .font(.system(size: 10))
                     .foregroundStyle(TF.settingsTextTertiary)
             }
@@ -165,8 +154,8 @@ struct IPhoneExportSheet: View {
         section(
             L("语音识别", "Speech recognition"),
             note: asrCandidates.isEmpty
-                ? L("iPhone 版支持所有云端识别服务，本地识别只能在 Mac 上用", "iPhone supports every cloud speech service; on-device engines stay on the Mac")
-                : L("可以多选，在 iPhone 上切换。带「默认」的是 iPhone 上默认使用的。", "Pick several and switch on the iPhone. The one marked Default is used first.")
+                ? L("手机版支持所有云端识别服务，本地识别只能在 Mac 上用", "The mobile app supports every cloud speech service; on-device engines stay on the Mac")
+                : L("可以多选，在手机上切换。带「默认」的是手机上默认使用的。", "Pick several and switch on the phone. The one marked Default is used first.")
         ) {
             providerList(asrCandidates, selected: $selectedASRs, defaultID: $defaultASR)
         }
@@ -176,8 +165,8 @@ struct IPhoneExportSheet: View {
         section(
             L("文本处理模型", "Text models"),
             note: llmCandidates.isEmpty
-                ? L("iPhone 版支持所有云端文本模型，本机模型网关只能在 Mac 上用", "iPhone supports every cloud text model; local gateways stay on the Mac")
-                : L("可以多选，在 iPhone 上切换。带「默认」的是 iPhone 上默认使用的。", "Pick several and switch on the iPhone. The one marked Default is used first.")
+                ? L("手机版支持所有云端文本模型，本机模型网关只能在 Mac 上用", "The mobile app supports every cloud text model; local gateways stay on the Mac")
+                : L("可以多选，在手机上切换。带「默认」的是手机上默认使用的。", "Pick several and switch on the phone. The one marked Default is used first.")
         ) {
             providerList(llmCandidates, selected: $selectedLLMs, defaultID: $defaultLLM)
         }
@@ -231,6 +220,45 @@ struct IPhoneExportSheet: View {
         }
     }
 
+    private var vocabularySection: some View {
+        section(
+            L("词汇", "Vocabulary"),
+            note: L(
+                "和手机上已有的合并：重复的热词只留一个，触发词相同的片段以 Mac 为准。应用专属片段只在 Mac 上用。",
+                "Merged with what's already on the phone: repeated hotwords are kept once, and a snippet with the same trigger takes the Mac's version. App-specific snippets stay on the Mac."
+            )
+        ) {
+            vocabularyToggle(
+                L("热词", "Hotwords"),
+                count: L("\(hotwords.count) 个", "\(hotwords.count)"),
+                isOn: $includesHotwords,
+                isEmpty: hotwords.isEmpty
+            )
+            vocabularyToggle(
+                L("片段替换", "Snippets"),
+                count: L("\(snippets.count) 条", "\(snippets.count)"),
+                isOn: $includesSnippets,
+                isEmpty: snippets.isEmpty
+            )
+        }
+    }
+
+    private func vocabularyToggle(_ title: String, count: String, isOn: Binding<Bool>, isEmpty: Bool) -> some View {
+        Toggle(isOn: isOn) {
+            HStack(spacing: 6) {
+                Text(title)
+                    .font(.system(size: 12))
+                    .foregroundStyle(TF.settingsText)
+                Text(isEmpty ? L("还没有", "None yet") : count)
+                    .font(.system(size: 11))
+                    .foregroundStyle(TF.settingsTextTertiary)
+                    .monospacedDigit()
+            }
+        }
+        .toggleStyle(.checkbox)
+        .disabled(isEmpty)
+    }
+
     private func section<Content: View>(_ title: String, note: String?, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 7) {
             Text(title)
@@ -272,8 +300,8 @@ struct IPhoneExportSheet: View {
                 .foregroundStyle(TF.settingsTextSecondary)
                 .padding(.top, 1)
             Text(L(
-                "二维码里有你的 API Key，没有加密。只给自己的 iPhone 扫，不要截图分享。",
-                "The QR codes contain your API keys unencrypted. Scan them only with your own iPhone; don't share screenshots."
+                "二维码里有你的 API Key，没有加密。只给自己的手机扫，不要截图分享。",
+                "The QR codes contain your API keys unencrypted. Scan them only with your own phone; don't share screenshots."
             ))
             .font(.system(size: 11))
             .foregroundStyle(TF.settingsTextSecondary)
@@ -283,8 +311,8 @@ struct IPhoneExportSheet: View {
 
     private var emptyState: some View {
         Text(L(
-            "还没有可以同步的配置。iPhone 版支持所有云端语音识别和文本处理服务，本地模型只能在 Mac 上用。先在「模型」里配置好一个云端服务。",
-            "Nothing to sync yet. iPhone supports every cloud speech and text service; local models stay on the Mac. Configure a cloud service under Models first."
+            "还没有可以同步的配置。手机版支持所有云端语音识别和文本处理服务，本地模型只能在 Mac 上用。先在「设置 › 模型」里配置好一个云端服务。",
+            "Nothing to sync yet. The mobile app supports every cloud speech and text service; local models stay on the Mac. Configure a cloud service under Settings › Models first."
         ))
         .font(.system(size: 12))
         .foregroundStyle(TF.settingsTextSecondary)
@@ -297,6 +325,8 @@ struct IPhoneExportSheet: View {
         asrCandidates = IPhoneConfigExporter.asrCandidates()
         llmCandidates = IPhoneConfigExporter.llmCandidates()
         modeCandidates = IPhoneConfigExporter.modeCandidates()
+        hotwords = IPhoneConfigExporter.hotwords()
+        snippets = IPhoneConfigExporter.snippets()
         defaultASR = IPhoneConfigExporter.preferredASR(in: asrCandidates) ?? ""
         selectedASRs = defaultASR.isEmpty ? [] : [defaultASR]
         defaultLLM = IPhoneConfigExporter.preferredLLM(in: llmCandidates) ?? ""

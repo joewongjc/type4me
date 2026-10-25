@@ -123,8 +123,8 @@ struct ImportCard: View {
     private var detail: String {
         guard model.hasConfig, let meta = ConfigStore.meta else {
             return L(
-                "在 Mac 版 Type4Me 打开「设置 › 模型 › 同步到 iPhone」，用下面的按钮扫码。密钥只存在这台 iPhone 的钥匙串里。",
-                "In Type4Me on your Mac, open Settings › Models › Sync to iPhone, then scan the code with the button below. Keys stay in this iPhone's Keychain."
+                "在 Mac 版 Type4Me 的侧边栏打开「手机版」，用下面的按钮扫码。密钥只存在这台 iPhone 的钥匙串里。",
+                "In Type4Me on your Mac, open Mobile in the sidebar, then scan the code with the button below. Keys stay in this iPhone's Keychain."
             )
         }
         let services = [

@@ -5,7 +5,9 @@ import Foundation
 /// There is no server in between, so the payload travels as text: copied
 /// through Universal Clipboard, or shown as one or more QR codes that the
 /// iPhone scans. Version 2 carries any number of speech services and text
-/// models (one of each marked active) and the modes the user chose to sync.
+/// models (one of each marked active), the modes the user chose to sync, and
+/// optionally the user's hotwords and snippets. Receivers that predate a
+/// field ignore it.
 public struct Type4MeTransferPayload: Codable, Equatable, Sendable {
     public static let currentVersion = 2
 
@@ -71,6 +73,23 @@ public struct Type4MeTransferPayload: Codable, Equatable, Sendable {
         }
     }
 
+    /// A snippet rule: speech matching `trigger` (ignoring case and spaces)
+    /// becomes `replacement`. See `SnippetPattern`.
+    public struct Snippet: Codable, Equatable, Hashable, Sendable {
+        public var trigger: String
+        public var replacement: String
+
+        public init(trigger: String, replacement: String) {
+            self.trigger = trigger
+            self.replacement = replacement
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case trigger = "t"
+            case replacement = "r"
+        }
+    }
+
     public var version: Int
     /// The speech service the Mac uses by default; becomes the iPhone's active one.
     public var asr: Endpoint?
@@ -81,6 +100,11 @@ public struct Type4MeTransferPayload: Codable, Equatable, Sendable {
     /// Further text models to keep on the iPhone, switchable there.
     public var llmProfiles: [Endpoint]?
     public var modes: [Mode]?
+    /// The user's hotwords, passed to the speech service as recognition hints.
+    public var hotwords: [String]?
+    /// The user's global snippets. Per-app snippets stay on the Mac: an iPhone
+    /// keyboard can't tell which app it is typing into.
+    public var snippets: [Snippet]?
     /// Name of the Mac that produced the payload, shown on the import screen.
     public var sourceName: String?
     /// Seconds since 1970 when the payload was produced.
@@ -93,6 +117,8 @@ public struct Type4MeTransferPayload: Codable, Equatable, Sendable {
         llm: Endpoint?,
         llmProfiles: [Endpoint]? = nil,
         modes: [Mode]? = nil,
+        hotwords: [String]? = nil,
+        snippets: [Snippet]? = nil,
         sourceName: String? = nil,
         createdAt: Int? = nil
     ) {
@@ -102,6 +128,8 @@ public struct Type4MeTransferPayload: Codable, Equatable, Sendable {
         self.llm = llm
         self.llmProfiles = llmProfiles
         self.modes = modes
+        self.hotwords = hotwords
+        self.snippets = snippets
         self.sourceName = sourceName
         self.createdAt = createdAt
     }
@@ -123,6 +151,7 @@ public struct Type4MeTransferPayload: Codable, Equatable, Sendable {
 
     public var isEmpty: Bool {
         allASRs.isEmpty && allLLMs.isEmpty && (modes ?? []).isEmpty
+            && (hotwords ?? []).isEmpty && (snippets ?? []).isEmpty
     }
 
     enum CodingKeys: String, CodingKey {
@@ -132,6 +161,8 @@ public struct Type4MeTransferPayload: Codable, Equatable, Sendable {
         case llm = "l"
         case llmProfiles = "ls"
         case modes = "m"
+        case hotwords = "h"
+        case snippets = "s"
         case sourceName = "d"
         case createdAt = "t"
     }

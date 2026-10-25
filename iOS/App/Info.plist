@@ -22,7 +22,7 @@
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>com.type4me.ios</string>
+			<string>$(T4M_BUNDLE_ID_PREFIX).ios</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>type4me</string>
@@ -35,6 +35,8 @@
 	<string>Scans the QR code shown by Type4Me on your Mac to import your speech and text model setup.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Records only while you hold the mic on the keyboard, to turn your speech into text. The mic is off the rest of the time.</string>
+	<key>T4MAppGroup</key>
+	<string>group.$(T4M_BUNDLE_ID_PREFIX).ios</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UIBackgroundModes</key>

@@ -25,5 +25,7 @@
 		<key>NSExtensionPointIdentifier</key>
 		<string>com.apple.widgetkit-extension</string>
 	</dict>
+	<key>T4MAppGroup</key>
+	<string>group.$(T4M_BUNDLE_ID_PREFIX).ios</string>
 </dict>
 </plist>

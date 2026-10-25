@@ -27,6 +27,8 @@ Type4Me 是一款免费开源的 macOS 语音输入法。按下快捷键说话�
 
 需要 macOS 14 (Sonoma) 及以上。两个版本共用一份配置，可以随时互相替换。安装包已通过 Apple 公证，首次打开按引导授予**麦克风**和**辅助功能**权限就能用。
 
+**手机版（测试中）**：iPhone 上的 Type4Me 语音键盘还没有上架 App Store，可以用 Xcode 自己装，步骤见 [iOS/README.md](iOS/README.md)。识别服务、模型、模式和词汇可以在 Mac 版侧边栏的「手机版」里扫码同步过去。
+
 ## 演示
 
 <video src="https://github.com/user-attachments/assets/d5ad6da9-b924-4fd6-9812-d0d9868563a4" width="720" controls>Type4Me 演示视频</video>
