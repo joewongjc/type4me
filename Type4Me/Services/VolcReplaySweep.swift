@@ -150,7 +150,7 @@ enum VolcReplaySweep {
     }
 
     /// Reads the PCM payload of a 16 kHz mono Int16 WAV written by the archive.
-    private static func readPCM(_ url: URL) throws -> Data {
+    static func readPCM(_ url: URL) throws -> Data {
         guard let data = try? Data(contentsOf: url), data.count > 44 else { throw SweepError.unreadableAudio }
         // Walk the RIFF chunks to find "data".
         var offset = 12
@@ -312,7 +312,7 @@ enum VolcReplaySweep {
 }
 
 /// Minimal lock-protected box for a value shared with a child task.
-private final class LockedBox<Value>: @unchecked Sendable {
+final class LockedBox<Value>: @unchecked Sendable {
     private let lock = NSLock()
     private var stored: Value
     init(_ value: Value) { stored = value }

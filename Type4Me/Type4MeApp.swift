@@ -1887,6 +1887,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         DebugFileLogger.log("asr-sweep failed: \(error)")
                     }
                 }
+            case "asr-bench":
+                Task.detached {
+                    do {
+                        _ = try await VolcBench.run()
+                    } catch {
+                        DebugFileLogger.log("asr-bench failed: \(error)")
+                    }
+                }
             case "auth":
                 NSLog("[Type4Me] URL command: auth (no-op, code-based auth now)")
             case "settings", "preferences":
