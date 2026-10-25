@@ -12,9 +12,8 @@ struct VolcRecognitionSettingsSection: View, SettingsCardHelpers {
         VStack(alignment: .leading, spacing: 14) {
             presetCard
             if profile.preset == .custom {
-                segmentationCard
-                textCard
-                releaseCard
+                requestCard
+                clientCard
             }
         }
         .animation(.easeInOut(duration: 0.2), value: profile.preset)
@@ -83,19 +82,16 @@ struct VolcRecognitionSettingsSection: View, SettingsCardHelpers {
         switch preset {
         case .accurate:
             return L(
-                "停顿约 3 秒才断句，整句一起加标点。说话常停顿时标点更准，松手后约 0.7 秒出字。",
-                "Waits for about 3 s of silence before ending a sentence, so pauses don't break punctuation. Text appears about 0.7 s after release."
+                "end_window_size 3000 ms，force_to_speech_time 0。松手后最多等 2000 ms，超时继续等待。2026-10 评测中松手到出字的中位数约 690 ms。",
+                "end_window_size 3000 ms, force_to_speech_time 0. Waits up to 2000 ms after release, then keeps waiting. Median release-to-text in the 2026-10 benchmark: about 690 ms."
             )
         case .fast:
             return L(
-                "停顿约 0.8 秒就断句，松手后约 0.5 秒出字。停顿多时，句子中间可能多出句号。",
-                "Ends a sentence after about 0.8 s of silence. Text appears about 0.5 s after release, but pauses may add stray full stops."
+                "不发送 end_window_size，由服务端按约 800 ms 静音判停。松手后最多等 3000 ms，超时直接使用当前文本。评测中位数约 520 ms，停顿处出现句号的情况多于「准确」。",
+                "end_window_size not sent, so the server ends sentences after about 800 ms of silence. Waits up to 3000 ms after release, then uses the current text. Benchmark median about 520 ms, with more full stops at pauses than Accurate."
             )
         case .custom:
-            return L(
-                "按下面的设置识别。",
-                "Uses the settings below."
-            )
+            return L("使用下方参数。", "Uses the parameters below.")
         }
     }
 
@@ -129,7 +125,7 @@ struct VolcRecognitionSettingsSection: View, SettingsCardHelpers {
         }
     }
 
-    // MARK: - Custom: segmentation
+    // MARK: - Custom
 
     private var custom: VolcTuningSettings { profile.custom ?? .accurate }
 
@@ -144,131 +140,107 @@ struct VolcRecognitionSettingsSection: View, SettingsCardHelpers {
         )
     }
 
-    private var segmentationCard: some View {
-        settingsGroupCard(L("断句", "Sentence Breaks"), icon: "text.line.first.and.arrowtriangle.forward") {
-            settingsToggleRow(
-                L("逐句精修", "Refine Each Sentence"),
+    /// Volcano request fields, labelled with their API names.
+    private var requestCard: some View {
+        settingsGroupCard(L("请求参数", "Request Parameters"), icon: "curlybraces") {
+            fieldToggleRow(
+                "enable_nonstream",
                 subtitle: L(
-                    "每句话结束后，用更准确的模型把这句再识别一遍。关闭后出字略快，但准确率会下降。",
-                    "After each sentence, recognize it again with a more accurate model. Turning this off is slightly faster but less accurate."
+                    "二遍识别。每句判停后，服务端用非流式模型重新识别该句音频；只有重新识别的结果带 definite 标记。关闭后只返回流式识别结果。",
+                    "Two-pass recognition. After each sentence ends, the server re-recognizes its audio with the non-streaming model; only that result is marked definite. When off, only streaming results are returned."
                 ),
                 isOn: customBinding(\.enableNonstream)
             )
-
             SettingsDivider()
-
-            settingsOptionRow(
-                L("断句方式", "How Sentences End"),
-                subtitle: custom.sendEndWindowSize
-                    ? L("停顿超过设定时长就结束这一句。", "A sentence ends once you pause longer than the set time.")
-                    : (custom.enableNonstream
-                        ? L("由火山决定，停顿约 0.8 秒就结束这一句。", "Volcano decides, ending a sentence after about 0.8 s of silence.")
-                        : L("由火山按语义判断一句话是否结束。", "Volcano decides from the meaning whether a sentence has ended.")),
-                controlWidth: SettingsControlWidth.standard
-            ) {
-                settingsDropdown(
-                    selection: Binding(
-                        get: { custom.sendEndWindowSize ? "pause" : "auto" },
-                        set: { value in
-                            var settings = custom
-                            settings.sendEndWindowSize = value == "pause"
-                            // The opening grace only works together with a pause threshold.
-                            settings.sendForceToSpeechTime = settings.sendEndWindowSize
-                            profile.custom = settings
-                        }
-                    ),
-                    options: [
-                        ("auto", L("由火山决定", "Let Volcano Decide")),
-                        ("pause", L("按停顿时长", "By Pause Length")),
-                    ]
+            fieldToggleRow(
+                "end_window_size",
+                subtitle: L(
+                    "判停所需的静音时长，文档默认 800 ms、最小 200 ms。发送后按静音时长分句，不再使用语义分句。不发送时：开启 enable_nonstream 则服务端约 800 ms 判停，否则使用语义分句。",
+                    "Silence needed to end a sentence; documented default 800 ms, minimum 200 ms. When sent, sentences split by silence instead of meaning. When not sent: about 800 ms with enable_nonstream on, otherwise meaning-based splitting."
+                ),
+                isOn: Binding(
+                    get: { custom.sendEndWindowSize },
+                    set: { on in
+                        var settings = custom
+                        settings.sendEndWindowSize = on
+                        if !on { settings.sendForceToSpeechTime = false }
+                        profile.custom = settings
+                    }
                 )
-            }
-
+            )
             if custom.sendEndWindowSize {
                 SettingsDivider()
-                secondsSliderRow(
-                    L("停顿多久算一句结束", "Pause That Ends a Sentence"),
-                    subtitle: L(
-                        "越短出字越快，但思考时的停顿也会被断开，句中容易多出句号。说话常停顿建议 2.5–3 秒。",
-                        "Shorter is faster but also breaks at thinking pauses, adding stray full stops. If you pause often, try 2.5–3 s."
-                    ),
+                millisecondsSliderRow(
+                    L("取值", "Value"),
                     milliseconds: customBinding(\.endWindowSizeMs),
                     range: VolcTuningSettings.endWindowRange
                 )
-
+            }
+            SettingsDivider()
+            fieldToggleRow(
+                "force_to_speech_time",
+                subtitle: L(
+                    "音频时长超过该值后才会判停，之前的静音不会结束句子。需要同时发送 end_window_size。文档最小值 1 ms、推荐 1000 ms，并提示可能影响准确率。",
+                    "No sentence ends until the audio is longer than this. Requires end_window_size. Documented minimum 1 ms, recommended 1000 ms, noted as possibly affecting accuracy."
+                ),
+                isOn: customBinding(\.sendForceToSpeechTime),
+                isEnabled: custom.sendEndWindowSize
+            )
+            if custom.sendEndWindowSize && custom.sendForceToSpeechTime {
                 SettingsDivider()
-                secondsSliderRow(
-                    L("开口保护", "Opening Grace"),
-                    subtitle: L(
-                        "刚开口的这段时间里不断句，避免开头被切碎。0 表示不保护，火山建议 1 秒。",
-                        "No sentence breaks during this first stretch of speech, so the opening isn't chopped up. 0 turns it off; Volcano suggests 1 s."
-                    ),
+                millisecondsSliderRow(
+                    L("取值", "Value"),
                     milliseconds: customBinding(\.forceToSpeechTimeMs),
                     range: VolcTuningSettings.forceToSpeechRange
                 )
             }
-
-            if !custom.enableNonstream && !custom.sendEndWindowSize {
-                SettingsDivider()
-                settingsToggleRow(
-                    L("限制最长停顿", "Limit Pause Length"),
-                    subtitle: L(
-                        "按语义断句时，停顿超过设定时长也一定会断开。不开启时火山按 3 秒处理。",
-                        "With meaning-based breaks, a pause longer than this always ends the sentence. Volcano uses 3 s when this is off."
-                    ),
-                    isOn: customBinding(\.sendVadSegmentDuration)
-                )
-                if custom.sendVadSegmentDuration {
-                    SettingsDivider()
-                    secondsSliderRow(
-                        L("最长停顿", "Longest Pause"),
-                        subtitle: L("停顿超过这个时长就断开。", "Pauses longer than this always end the sentence."),
-                        milliseconds: customBinding(\.vadSegmentDurationMs),
-                        range: VolcTuningSettings.vadSegmentRange
-                    )
-                }
-            }
-        }
-    }
-
-    // MARK: - Custom: text
-
-    private var textCard: some View {
-        settingsGroupCard(L("文字", "Text"), icon: "textformat") {
-            settingsToggleRow(
-                L("中文句子之间不加空格", "No Spaces Between Chinese Sentences"),
-                subtitle: L(
-                    "火山会在两句话之间插入空格。开启后中文直接相连，英文单词之间仍保留空格。",
-                    "Volcano inserts a space between sentences. When on, Chinese sentences join directly while English words keep their spaces."
-                ),
-                isOn: customBinding(\.cjkAwareJoin)
-            )
             SettingsDivider()
-            settingsToggleRow(
-                L("自动加标点", "Automatic Punctuation"),
+            fieldToggleRow(
+                "vad_segment_duration",
+                subtitle: L(
+                    "语义分句的最大静音阈值，文档默认 3000 ms：静音超过该值即分句，但不改变 definite 出现的时机。发送 end_window_size 时失效。2026-10 实测中，把它从 3000 调到 4000 没有改变分句结果。",
+                    "Maximum silence for meaning-based splitting; documented default 3000 ms. Longer silence always splits, without changing when definite appears. Ignored when end_window_size is sent. In 2026-10 tests, raising it from 3000 to 4000 did not change the splits."
+                ),
+                isOn: customBinding(\.sendVadSegmentDuration)
+            )
+            if custom.sendVadSegmentDuration {
+                SettingsDivider()
+                millisecondsSliderRow(
+                    L("取值", "Value"),
+                    milliseconds: customBinding(\.vadSegmentDurationMs),
+                    range: VolcTuningSettings.vadSegmentRange
+                )
+            }
+            SettingsDivider()
+            fieldToggleRow(
+                "enable_punc",
+                subtitle: L("在识别结果中加入标点。文档默认开启。", "Adds punctuation to results. Documented default: on."),
                 isOn: customBinding(\.enablePunc)
             )
             SettingsDivider()
-            settingsToggleRow(
-                L("数字写成阿拉伯数字", "Write Numbers as Digits"),
-                subtitle: L("例如“一九七零年”写成“1970年”。", "For example, “nineteen seventy” becomes “1970”."),
+            fieldToggleRow(
+                "enable_itn",
+                subtitle: L(
+                    "文本规范化，把数字、日期等转成书面形式，例如“一九七零年”→“1970年”。文档默认开启。",
+                    "Inverse text normalization: numbers, dates and similar become written form, e.g. “nineteen seventy” → “1970”. Documented default: on."
+                ),
                 isOn: customBinding(\.enableITN)
             )
             SettingsDivider()
-            settingsToggleRow(
-                L("去掉口头禅和重复", "Remove Fillers and Repeats"),
+            fieldToggleRow(
+                "enable_ddc",
                 subtitle: L(
-                    "删除“嗯”“那个”等语气词和无意义的重复。",
-                    "Removes fillers such as “um” and unintended repetitions."
+                    "语义顺滑，删除语气词、停顿词和语义重复的词。文档默认关闭。",
+                    "Disfluency removal: deletes fillers, hesitation words and repeated words. Documented default: off."
                 ),
                 isOn: customBinding(\.enableDDC)
             )
             SettingsDivider()
-            settingsToggleRow(
-                L("开头几个字更快出现", "Show First Words Sooner"),
+            fieldToggleRow(
+                "enable_accelerate_text",
                 subtitle: L(
-                    "说话时开头的字出现得更早，但这几个字可能不太准。",
-                    "The first words appear sooner while you speak, but may be less accurate."
+                    "加快首字返回，文档说明会降低首字准确率。文档默认关闭。",
+                    "Returns the first characters sooner; documented to lower their accuracy. Documented default: off."
                 ),
                 isOn: Binding(
                     get: { custom.enableAccelerateText },
@@ -283,36 +255,56 @@ struct VolcRecognitionSettingsSection: View, SettingsCardHelpers {
             if custom.enableAccelerateText {
                 SettingsDivider()
                 sliderRow(
-                    L("加速程度", "Speed-up Level"),
-                    subtitle: L("数值越大越快，准确率下降也越多。", "Higher is faster, with a larger accuracy cost."),
+                    "accelerate_score",
+                    subtitle: L("首字加速率，取值 0–20，越大首字返回越快。", "First-character speed-up, 0–20; higher returns sooner."),
                     value: customBinding(\.accelerateScore),
-                    range: 1...VolcTuningSettings.accelerateScoreRange.upperBound,
+                    range: VolcTuningSettings.accelerateScoreRange,
                     step: 1,
                     format: { "\($0)" }
                 )
             }
+            SettingsDivider()
+            sliderRow(
+                "context_history_length",
+                subtitle: L(
+                    "火山文档中没有找到这个字段的说明。取值 0 时不发送。「准确」为 20，「快速」为 50。",
+                    "No description of this field was found in the Volcano docs. 0 omits it. Accurate uses 20, Fast uses 50."
+                ),
+                value: customBinding(\.contextHistoryLength),
+                range: VolcTuningSettings.contextHistoryRange,
+                step: 1,
+                format: { "\($0)" }
+            )
         }
     }
 
-    // MARK: - Custom: release
-
-    private var releaseCard: some View {
-        settingsGroupCard(L("松手后", "After Release"), icon: "hand.raised") {
-            secondsSliderRow(
-                L("最长等待", "Maximum Wait"),
+    /// Handling done by Type4Me itself; no Volcano field behind these.
+    private var clientCard: some View {
+        settingsGroupCard(L("客户端处理", "Client Handling"), icon: "laptopcomputer") {
+            settingsToggleRow(
+                L("分句拼接", "Sentence Joining"),
                 subtitle: L(
-                    "松手后最多等火山多久返回最终结果。大多数情况 1 秒内就会返回。",
-                    "How long to wait for Volcano's final result after release. It usually arrives within 1 s."
+                    "开启：把各句文本直接相连，相邻任一侧是中文或全角标点时不加空格，英文之间加一个空格。关闭：使用服务端的 result.text，句与句之间有一个 ASCII 空格。",
+                    "On: joins sentence texts directly, with no space when either side is Chinese or full-width punctuation and one space between English words. Off: uses the server's result.text, which has an ASCII space between sentences."
+                ),
+                isOn: customBinding(\.cjkAwareJoin)
+            )
+            SettingsDivider()
+            millisecondsSliderRow(
+                L("松手后最长等待", "Maximum Wait After Release"),
+                subtitle: L(
+                    "停止录音后，等待服务端最终结果的上限。不足 5 秒的录音另取 1000 ms 与此值中较小的一个。",
+                    "Upper limit for waiting on the server's final result after recording stops. Recordings under 5 s use the smaller of this and 1000 ms."
                 ),
                 milliseconds: customBinding(\.finalWaitMs),
                 range: VolcTuningSettings.finalWaitRange
             )
             SettingsDivider()
             settingsOptionRow(
-                L("等不到时", "If It Takes Longer"),
+                L("超时处理", "On Timeout"),
                 subtitle: L(
-                    "直接输入更快，但可能少最后几个字。",
-                    "Typing right away is faster but may miss the last few words."
+                    "超过等待上限后的做法。直接使用当前文本时，服务端尚未返回的末尾文字不会出现在结果里。",
+                    "What happens after the wait limit. With the current text, any ending the server has not returned yet is missing."
                 ),
                 controlWidth: SettingsControlWidth.standard
             ) {
@@ -326,27 +318,27 @@ struct VolcRecognitionSettingsSection: View, SettingsCardHelpers {
                         }
                     ),
                     options: [
-                        ("commit", L("输入已识别的文字", "Type What's Recognized")),
-                        ("wait", L("再多等最多 5 秒", "Wait Up to 5 s More")),
+                        ("commit", L("使用当前文本", "Use Current Text")),
+                        ("wait", L("继续等待，最多 5000 ms", "Keep Waiting, Up to 5000 ms")),
                     ]
                 )
             }
             SettingsDivider()
-            secondsSliderRow(
-                L("短录音的等待", "Short Recording Wait"),
+            millisecondsSliderRow(
+                L("短录音首字等待", "Short Recording First-Text Wait"),
                 subtitle: L(
-                    "录音不足 5 秒且还没出字时，最多等这么久；仍没有文字就当作没说话。",
-                    "For recordings under 5 s with no text yet, wait this long before treating it as silence."
+                    "录音不足 5 秒且还没有任何识别文本时的等待上限，超时后视为没有语音。",
+                    "For recordings under 5 s with no text yet, the wait limit before treating the recording as silent."
                 ),
                 milliseconds: customBinding(\.shortRecordingFirstTextWaitMs),
                 range: VolcTuningSettings.shortRecordingWaitRange
             )
             SettingsDivider()
             settingsOptionRow(
-                L("音频发送间隔", "Audio Send Interval"),
+                L("音频分包时长", "Audio Packet Length"),
                 subtitle: L(
-                    "录音时每隔多久把声音发给火山一次。间隔越短，文字出现得越及时，网络请求也越多。",
-                    "How often audio is sent to Volcano while recording. Shorter intervals show text sooner but make more requests."
+                    "录音时每个音频包包含的时长。火山建议 100–200 ms。",
+                    "Duration of audio in each packet sent while recording. Volcano suggests 100–200 ms."
                 ),
                 controlWidth: SettingsControlWidth.standard
             ) {
@@ -359,19 +351,35 @@ struct VolcRecognitionSettingsSection: View, SettingsCardHelpers {
                             profile.custom = settings
                         }
                     ),
-                    options: VolcTuningSettings.audioChunkOptions.map {
-                        (String($0), L("\($0) 毫秒", "\($0) ms"))
-                    }
+                    options: VolcTuningSettings.audioChunkOptions.map { (String($0), "\($0) ms") }
                 )
             }
         }
     }
 
+    private func fieldToggleRow(
+        _ field: String,
+        subtitle: String,
+        isOn: Binding<Bool>,
+        isEnabled: Bool = true
+    ) -> some View {
+        settingsOptionRow(field, subtitle: subtitle, controlWidth: SettingsControlWidth.toggle) {
+            Toggle("", isOn: isOn)
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .tint(TF.settingsInk)
+                .disabled(!isEnabled)
+                .accessibilityLabel(field)
+        }
+        .opacity(isEnabled ? 1.0 : 0.45)
+    }
+
     // MARK: - Controls
 
-    private func secondsSliderRow(
+    private func millisecondsSliderRow(
         _ label: String,
-        subtitle: String,
+        subtitle: String? = nil,
         milliseconds: Binding<Int>,
         range: ClosedRange<Int>
     ) -> some View {
@@ -381,22 +389,19 @@ struct VolcRecognitionSettingsSection: View, SettingsCardHelpers {
             value: milliseconds,
             range: range,
             step: 100,
-            format: { ms in
-                let seconds = String(format: "%.1f", Double(ms) / 1000)
-                return L("\(seconds) 秒", "\(seconds) s")
-            }
+            format: { "\($0) ms" }
         )
     }
 
     private func sliderRow(
         _ label: String,
-        subtitle: String,
+        subtitle: String?,
         value: Binding<Int>,
         range: ClosedRange<Int>,
         step: Int,
         format: @escaping (Int) -> String
     ) -> some View {
-        settingsOptionRow(label, subtitle: subtitle, controlWidth: sliderWidth, isIndented: true) {
+        settingsOptionRow(label, subtitle: subtitle, controlWidth: sliderWidth, isIndented: subtitle == nil) {
             HStack(spacing: 10) {
                 Slider(
                     value: Binding(
@@ -414,7 +419,7 @@ struct VolcRecognitionSettingsSection: View, SettingsCardHelpers {
                 Text(format(value.wrappedValue))
                     .font(.system(size: 12, weight: .medium).monospacedDigit())
                     .foregroundStyle(TF.settingsText)
-                    .frame(width: 64, alignment: .trailing)
+                    .frame(width: 72, alignment: .trailing)
                     .accessibilityHidden(true)
             }
         }
