@@ -84,6 +84,8 @@ targets:
       path: App/Info.plist
       properties:
         CFBundleDisplayName: Type4Me
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         T4MAppGroup: group.$(T4M_BUNDLE_ID_PREFIX).ios
         ITSAppUsesNonExemptEncryption: false
         LSApplicationCategoryType: public.app-category.productivity
@@ -132,6 +134,8 @@ targets:
       path: Keyboard/Info.plist
       properties:
         CFBundleDisplayName: Type4Me
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         T4MAppGroup: group.$(T4M_BUNDLE_ID_PREFIX).ios
         NSExtension:
           NSExtensionPointIdentifier: com.apple.keyboard-service
@@ -158,6 +162,8 @@ targets:
       path: Widgets/Info.plist
       properties:
         CFBundleDisplayName: Type4Me
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         T4MAppGroup: group.$(T4M_BUNDLE_ID_PREFIX).ios
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
