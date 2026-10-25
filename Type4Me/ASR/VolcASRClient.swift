@@ -230,11 +230,12 @@ actor VolcASRClient: SpeechRecognizer {
         }
 
         // Send full_client_request (no compression, plain JSON)
-        let tuning = VolcTuningStorage.load()
+        let profile = VolcRecognitionProfileStore.load()
+        let tuning = profile.effectiveSettings
         var options = options
         options.contextHistoryLength = tuning.contextHistoryLength
         let payload = VolcProtocol.buildClientRequest(uid: volcConfig.uid, options: options, tuning: tuning)
-        DebugFileLogger.log("volc tuning \(tuning.logSummary)")
+        DebugFileLogger.log("volc recognition preset=\(profile.preset.rawValue) \(tuning.logSummary)")
         let hasBoostingTable = !(options.boostingTableID ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         let inlineHotwordCount = hasBoostingTable ? 0 : VolcProtocol.inlineHotwords(options.hotwords).count
