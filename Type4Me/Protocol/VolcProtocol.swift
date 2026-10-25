@@ -57,18 +57,15 @@ enum VolcProtocol: Sendable {
         channel: Int = 1,
         showUtterances: Bool = true,
         resultType: String = "full",
-        options: ASRRequestOptions = ASRRequestOptions()
+        options: ASRRequestOptions = ASRRequestOptions(),
+        tuning: VolcTuningSettings = VolcTuningSettings()
     ) -> Data {
         var requestDict: [String: Any] = [
             "model_name": "bigmodel",
-            "enable_punc": options.enablePunc,
-            "enable_ddc": true,
-            "enable_nonstream": true,
             "show_utterances": showUtterances,
             "result_type": resultType,
-            "end_window_size": 3000,
-            "force_to_speech_time": 0,
         ]
+        requestDict.merge(tuning.requestFields(enablePunc: options.enablePunc)) { _, tuned in tuned }
 
         var corpus: [String: Any] = [:]
         if let boostingTableID = sanitized(options.boostingTableID) {

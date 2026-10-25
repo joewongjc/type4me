@@ -121,6 +121,8 @@ final class AudioCaptureEngine: NSObject, @unchecked Sendable, AVCaptureAudioDat
     private let stateLock = NSLock()
     private let bufferLock = NSLock()
     private var buffer = Data()
+    /// Packet size for the current recording; guarded by `bufferLock`.
+    private var activeChunkByteSize = AudioCaptureEngine.chunkByteSize
     private var accumulatedAudio = Data()
     private var converter: AVAudioConverter?
     private let outputQueue = DispatchQueue(label: "com.type4me.audiocapture")
@@ -324,9 +326,11 @@ final class AudioCaptureEngine: NSObject, @unchecked Sendable, AVCaptureAudioDat
         }
 
         // Reset state
+        let chunkByteSize = VolcTuningStorage.effective(for: KeychainService.selectedASRProvider).audioChunkByteSize
         bufferLock.lock()
         buffer = Data()
         accumulatedAudio = Data()
+        activeChunkByteSize = chunkByteSize
         bufferLock.unlock()
         converter = nil
         firstSampleLock.withLock {
@@ -626,9 +630,9 @@ final class AudioCaptureEngine: NSObject, @unchecked Sendable, AVCaptureAudioDat
 
     /// Emit all complete chunks from the buffer. Must be called with bufferLock held.
     private func emitFullChunks() {
-        while buffer.count >= Self.chunkByteSize {
-            let chunk = buffer.prefix(Self.chunkByteSize)
-            buffer.removeFirst(Self.chunkByteSize)
+        while buffer.count >= activeChunkByteSize {
+            let chunk = buffer.prefix(activeChunkByteSize)
+            buffer.removeFirst(activeChunkByteSize)
             onAudioChunk?(Data(chunk))
         }
     }

@@ -40,11 +40,19 @@ struct VolcTranscriptAccumulation: Equatable {
 /// Server revisions replace the previous hypothesis instead of being appended
 /// as locally confirmed text.
 struct VolcTranscriptAccumulator {
+    /// Rebuild the text from utterances with `CJKAwareJoiner` instead of using
+    /// `result.text`, whose utterance boundaries carry an ASCII space even
+    /// between two Chinese sentences.
+    var cjkAwareJoin = false
     private var lastCanonicalText = ""
     private var lastTranscript: RecognitionTranscript = .empty
 
+    init(cjkAwareJoin: Bool = false) {
+        self.cjkAwareJoin = cjkAwareJoin
+    }
+
     mutating func reset() {
-        self = VolcTranscriptAccumulator()
+        self = VolcTranscriptAccumulator(cjkAwareJoin: cjkAwareJoin)
     }
 
     mutating func apply(
@@ -52,12 +60,19 @@ struct VolcTranscriptAccumulator {
         isFinal: Bool
     ) -> VolcTranscriptAccumulation {
         let resultText = nonBlank(result.text) ? result.text : ""
-        let utteranceText = result.utterances
+        let utterancePieces = result.utterances
             .map(\.text)
             .filter { !$0.isEmpty }
-            .joined()
+        let utteranceText = cjkAwareJoin
+            ? CJKAwareJoiner.join(utterancePieces)
+            : utterancePieces.joined()
 
-        let incomingText = !resultText.isEmpty ? resultText : utteranceText
+        let incomingText: String
+        if cjkAwareJoin, nonBlank(utteranceText) {
+            incomingText = utteranceText
+        } else {
+            incomingText = !resultText.isEmpty ? resultText : utteranceText
+        }
         if incomingText.isEmpty, !isFinal, !lastCanonicalText.isEmpty {
             return VolcTranscriptAccumulation(
                 transcript: lastTranscript,
@@ -112,12 +127,14 @@ struct VolcTranscriptAccumulator {
             .filter(\.definite)
             .map(\.text)
             .filter { !$0.isEmpty }
-        let confirmedText = serverConfirmed.joined()
+        let confirmedText = cjkAwareJoin
+            ? CJKAwareJoiner.join(serverConfirmed)
+            : serverConfirmed.joined()
 
         let confirmedSegments: [String]
         let partialText: String
         if !confirmedText.isEmpty, canonicalText.hasPrefix(confirmedText) {
-            confirmedSegments = serverConfirmed
+            confirmedSegments = cjkAwareJoin ? [confirmedText] : serverConfirmed
             partialText = String(canonicalText.dropFirst(confirmedText.count))
         } else {
             confirmedSegments = []
@@ -213,7 +230,11 @@ actor VolcASRClient: SpeechRecognizer {
         }
 
         // Send full_client_request (no compression, plain JSON)
-        let payload = VolcProtocol.buildClientRequest(uid: volcConfig.uid, options: options)
+        let tuning = VolcTuningStorage.load()
+        var options = options
+        options.contextHistoryLength = tuning.contextHistoryLength
+        let payload = VolcProtocol.buildClientRequest(uid: volcConfig.uid, options: options, tuning: tuning)
+        DebugFileLogger.log("volc tuning \(tuning.logSummary)")
         let hasBoostingTable = !(options.boostingTableID ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         let inlineHotwordCount = hasBoostingTable ? 0 : VolcProtocol.inlineHotwords(options.hotwords).count
@@ -239,7 +260,7 @@ actor VolcASRClient: SpeechRecognizer {
         didRequestEnd = false
         sessionStartTime = ContinuousClock.now
         lastTranscriptTime = nil
-        transcriptAccumulator.reset()
+        transcriptAccumulator = VolcTranscriptAccumulator(cjkAwareJoin: tuning.cjkAwareJoin)
         NSLog("[ASR] Sending full_client_request (%d bytes), connectId=%@", message.count, connectId)
         do {
             try await task.send(.data(message))
