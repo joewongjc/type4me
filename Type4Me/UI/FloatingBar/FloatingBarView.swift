@@ -308,6 +308,14 @@ struct FloatingBarView<S: FloatingBarState>: View {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(RecordingTheme.storageKey) private var theme = RecordingTheme.defaultValue
+    @AppStorage(RecordingGlassStyle.storageKey) private var glassStyle = RecordingGlassStyle.defaultValue
+    @AppStorage(RecordingGlassTuning.StorageKey.floorOpacity) private var customGlassFloor = RecordingGlassTuning.customDefault.floorOpacity
+    @AppStorage(RecordingGlassTuning.StorageKey.edgeFade) private var customGlassEdgeFade = RecordingGlassTuning.customDefault.edgeFade
+    @AppStorage(RecordingGlassTuning.StorageKey.rimStrength) private var customGlassRim = RecordingGlassTuning.customDefault.rimStrength
+    @AppStorage(RecordingGlassTuning.StorageKey.glassTint) private var customGlassTint = RecordingGlassTuning.customDefault.glassTint
+    @AppStorage(RecordingGlassTuning.StorageKey.usesClearGlass) private var customGlassUsesClear = RecordingGlassTuning.customDefault.usesClearGlass
+    @AppStorage(RecordingGlassTuning.StorageKey.shadowStrength) private var customGlassShadow = RecordingGlassTuning.customDefault.shadowStrength
+    @AppStorage(RecordingGlassTuning.StorageKey.keepsActiveAppearance) private var customGlassKeepsActive = RecordingGlassTuning.customDefault.keepsActiveAppearance
     @AppStorage(RecordingIndicatorStyle.storageKey) private var indicatorStyle = RecordingIndicatorStyle.defaultValue
     @AppStorage(LiveTranscriptDisplayPreference.storageKey) private var showLiveTranscript = LiveTranscriptDisplayPreference.defaultValue
     @AppStorage("tf_hoverTranscriptPreview") private var hoverTranscriptPreview = true
@@ -351,6 +359,23 @@ struct FloatingBarView<S: FloatingBarState>: View {
 
     private var effectiveTheme: RecordingTheme {
         resolvedPresentation.theme
+    }
+
+    /// `nil` keeps the original native glass surface (`.standard`).
+    private var glassTuning: RecordingGlassTuning? {
+        RecordingGlassTuning.resolved(
+            style: glassStyle,
+            theme: effectiveTheme,
+            custom: RecordingGlassTuning(
+                floorOpacity: customGlassFloor,
+                edgeFade: customGlassEdgeFade,
+                rimStrength: customGlassRim,
+                glassTint: customGlassTint,
+                usesClearGlass: customGlassUsesClear,
+                shadowStrength: customGlassShadow,
+                keepsActiveAppearance: customGlassKeepsActive
+            )
+        )
     }
 
     private var effectiveIndicatorStyle: RecordingIndicatorStyle {
@@ -841,6 +866,14 @@ struct FloatingBarView<S: FloatingBarState>: View {
                     // Native glass is already shaped and lit; an extra clip trims
                     // its edge refraction and a manual shadow flattens it.
                     capsuleBackground
+                        .background {
+                            if let glassTuning, glassTuning.shadowStrength > 0 {
+                                GlassOuterShadow(
+                                    cornerRadius: barCornerRadius,
+                                    strength: glassTuning.shadowStrength
+                                )
+                            }
+                        }
                 } else {
                     capsuleBackground
                         .clipShape(barShape)
@@ -850,6 +883,23 @@ struct FloatingBarView<S: FloatingBarState>: View {
                             x: 0,
                             y: 1
                         )
+                }
+            }
+            .overlay {
+                if let glassTuning, glassTuning.rimStrength > 0,
+                   usesNativeLiquidGlass(reduceTransparency: reduceTransparency) {
+                    // Constant across phases so the lit edge doesn't blink when
+                    // the feedback border fades in on top of it.
+                    barShape
+                        .strokeBorder(
+                            TF.recordingNativeGlassRim(
+                                theme: effectiveTheme,
+                                strength: glassTuning.rimStrength
+                            ),
+                            lineWidth: 1
+                        )
+                        .blendMode(.plusLighter)
+                        .allowsHitTesting(false)
                 }
             }
             .overlay {
@@ -1403,7 +1453,8 @@ struct FloatingBarView<S: FloatingBarState>: View {
         RecordingGlassSurface(
             cornerRadius: barCornerRadius,
             theme: effectiveTheme,
-            tintOpacity: effectiveTheme == .light ? 0.68 : 0.32
+            tintOpacity: effectiveTheme == .light ? 0.68 : 0.32,
+            tuning: glassTuning
         )
         .overlay {
             if presentedPhase == .error {
@@ -1422,8 +1473,8 @@ struct FloatingBarView<S: FloatingBarState>: View {
         switch presentedPhase {
         case .preparing, .recording, .finishing, .processing, .recovering:
             if usesNativeLiquidGlass(reduceTransparency: reduceTransparency) {
-                // Native Liquid Glass draws its own boundary refraction and rim
-                // lighting; a manual stroke on top of it reads as a hard outline.
+                // Native glass draws its own boundary (plus the enhanced soft
+                // rim in `capsuleBar`); an opaque stroke here reads as a hard outline.
                 EmptyView()
             } else {
                 barShape.strokeBorder(
@@ -1800,6 +1851,8 @@ struct RecordingGlassSurface: View {
     /// Only consumed by the macOS 14/15 fallback; the native glass path uses
     /// `TF.glassDarkContrastFloor` / `TF.glassLightContrastFloor` instead.
     let tintOpacity: Double
+    /// Native path only; `nil` keeps the original floor and plain glass.
+    var tuning: RecordingGlassTuning? = nil
 
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
@@ -1807,19 +1860,47 @@ struct RecordingGlassSurface: View {
         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
     }
 
+    private var themeColor: Color {
+        theme == .dark ? .black : .white
+    }
+
+    private var contrastFloorOpacity: Double {
+        tuning?.floorOpacity
+            ?? (theme == .dark ? TF.glassDarkContrastFloor : TF.glassLightContrastFloor)
+    }
+
+    /// Capped by the corner radius so the compact 24pt indicator keeps part of
+    /// its floor while the full bar opens a wider refracting rim.
+    private var contrastFloorEdgeFade: CGFloat {
+        min(CGFloat(tuning?.edgeFade ?? 0), cornerRadius * 0.5)
+    }
+
+    @available(macOS 26.0, *)
+    private var glass: Glass {
+        guard let tuning else { return .regular }
+        let base: Glass = tuning.usesClearGlass ? .clear : .regular
+        return tuning.glassTint > 0 ? base.tint(themeColor.opacity(tuning.glassTint)) : base
+    }
+
     var body: some View {
         if reduceTransparency {
             shape.fill(theme == .light ? TF.floatingBackgroundLight : TF.floatingBackground)
         } else if #available(macOS 26.0, *) {
             ZStack {
-                shape.fill(
-                    theme == .dark
-                        ? Color.black.opacity(TF.glassDarkContrastFloor)
-                        : Color.white.opacity(TF.glassLightContrastFloor)
-                )
-                Color.clear.glassEffect(.regular, in: shape)
+                shape.fill(themeColor.opacity(contrastFloorOpacity))
+                    .mask {
+                        if contrastFloorEdgeFade > 0 {
+                            shape
+                                .inset(by: contrastFloorEdgeFade)
+                                .blur(radius: contrastFloorEdgeFade * 0.85)
+                        } else {
+                            Rectangle()
+                        }
+                    }
+                Color.clear.glassEffect(glass, in: shape)
             }
-            .id(theme)
+            // Rebuild on theme / material change so the glass resamples cleanly.
+            .id("\(theme.rawValue)-\(tuning?.usesClearGlass == true)")
         } else {
             ZStack {
                 VisualEffectBlur(
@@ -1875,6 +1956,40 @@ private struct FrostedGlassBubbleBackground: View {
     }
 }
 
+/// Drop shadow for the tuned glass bar, drawn only outside the shape. A plain
+/// `.shadow` (or anything dark behind the glass) would be sampled by the glass
+/// and flatten it, so the interior is cut out. Kept within
+/// `TF.floatingPanelShadowInset` so the panel edge doesn't clip it.
+private struct GlassOuterShadow: View {
+    let cornerRadius: CGFloat
+    let strength: Double
+
+    var body: some View {
+        GeometryReader { proxy in
+            let size = proxy.size
+            let bleed = TF.floatingPanelShadowInset
+            let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            shape
+                .fill(Color.black.opacity(0.32 * strength))
+                .frame(width: max(0, size.width - 8), height: size.height)
+                .blur(radius: 4)
+                .offset(y: 2)
+                .frame(width: size.width + bleed * 2, height: size.height + bleed * 2)
+                .mask {
+                    Rectangle()
+                        .overlay {
+                            shape
+                                .frame(width: size.width, height: size.height)
+                                .blendMode(.destinationOut)
+                        }
+                        .compositingGroup()
+                }
+                .position(x: size.width / 2, y: size.height / 2)
+        }
+        .allowsHitTesting(false)
+    }
+}
+
 private struct TranscriptPopup: View {
     let text: String
     let height: CGFloat
@@ -1894,7 +2009,9 @@ private struct TranscriptPopup: View {
                     .frame(height: 1)
                     .id("transcript-end")
             }
-            .scrollIndicators(.hidden)
+            // `.hidden` still shows a scroller on macOS whenever a mouse is
+            // attached; `.never` hides it while keeping wheel/trackpad scrolling.
+            .scrollIndicators(.never)
             .frame(width: TF.transcriptPopupWidth, height: height)
             .background(FrostedGlassBubbleBackground(theme: theme))
             .overlay {

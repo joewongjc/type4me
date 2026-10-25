@@ -14,6 +14,30 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
     @AppStorage(RecordingTheme.storageKey)
     private var theme = RecordingTheme.defaultValue.rawValue
 
+    @AppStorage(RecordingGlassStyle.storageKey)
+    private var glassStyle = RecordingGlassStyle.defaultValue.rawValue
+
+    @AppStorage(RecordingGlassTuning.StorageKey.floorOpacity)
+    private var customGlassFloor = RecordingGlassTuning.customDefault.floorOpacity
+
+    @AppStorage(RecordingGlassTuning.StorageKey.edgeFade)
+    private var customGlassEdgeFade = RecordingGlassTuning.customDefault.edgeFade
+
+    @AppStorage(RecordingGlassTuning.StorageKey.rimStrength)
+    private var customGlassRim = RecordingGlassTuning.customDefault.rimStrength
+
+    @AppStorage(RecordingGlassTuning.StorageKey.glassTint)
+    private var customGlassTint = RecordingGlassTuning.customDefault.glassTint
+
+    @AppStorage(RecordingGlassTuning.StorageKey.usesClearGlass)
+    private var customGlassUsesClear = RecordingGlassTuning.customDefault.usesClearGlass
+
+    @AppStorage(RecordingGlassTuning.StorageKey.shadowStrength)
+    private var customGlassShadow = RecordingGlassTuning.customDefault.shadowStrength
+
+    @AppStorage(RecordingGlassTuning.StorageKey.keepsActiveAppearance)
+    private var customGlassKeepsActive = RecordingGlassTuning.customDefault.keepsActiveAppearance
+
     @AppStorage(RecordingIndicatorStyle.storageKey)
     private var indicatorStyle = RecordingIndicatorStyle.defaultValue
 
@@ -171,6 +195,15 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            // Preview first so glass tuning below is visible while adjusting.
+            AppearancePreviewStage(
+                presentation: presentation,
+                formattingOptions: formattingOptions,
+                mode: previewMode
+            )
+
+            Spacer().frame(height: 16)
+
             settingsGroupCard(L("窗口外观", "Window Appearance"), icon: "paintpalette") {
                 settingsOptionRow(
                     L("窗口主题", "Window Theme"),
@@ -189,15 +222,17 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
                     )
                     .accessibilityLabel(L("窗口主题", "Window Theme"))
                 }
+
+                // The finish only changes native Liquid Glass (macOS 26+).
+                if #available(macOS 26.0, *) {
+                    SettingsDivider()
+                    glassStyleRow
+
+                    if glassStyle == RecordingGlassStyle.custom.rawValue {
+                        customGlassRows
+                    }
+                }
             }
-
-            Spacer().frame(height: 16)
-
-            AppearancePreviewStage(
-                presentation: presentation,
-                formattingOptions: formattingOptions,
-                mode: previewMode
-            )
 
             Spacer().frame(height: 16)
 
@@ -322,6 +357,154 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
         )
     }
 
+
+    private var glassStyleRow: some View {
+        settingsOptionRow(
+            L("浮条玻璃质感", "Bar Glass Finish"),
+            subtitle: L(
+                "增强（默认）：去掉底色，保持清透、带折射的玻璃，并用外投影显出厚度。标准：原来的样式。自定义：自己调整各项参数。",
+                "Enhanced (default) drops the backing for clear, refractive glass with a drop shadow for depth. Standard is the original look. Custom lets you tune each parameter."
+            ),
+            controlWidth: SettingsControlWidth.standard
+        ) {
+            settingsInlineSegmentedPicker(
+                selection: $glassStyle,
+                options: RecordingGlassStyle.allCases.map { ($0.rawValue, $0.displayName) }
+            )
+            .accessibilityLabel(L("浮条玻璃质感", "Bar Glass Finish"))
+        }
+    }
+
+    private var isCustomGlassDefault: Bool {
+        RecordingGlassTuning(
+            floorOpacity: customGlassFloor,
+            edgeFade: customGlassEdgeFade,
+            rimStrength: customGlassRim,
+            glassTint: customGlassTint,
+            usesClearGlass: customGlassUsesClear,
+            shadowStrength: customGlassShadow,
+            keepsActiveAppearance: customGlassKeepsActive
+        ) == RecordingGlassTuning.customDefault
+    }
+
+    @ViewBuilder
+    private var customGlassRows: some View {
+        SettingsDivider()
+        settingsToggleRow(
+            L("清透模式", "Clear Glass"),
+            subtitle: L(
+                "浮条不会抢焦点，系统默认把它渲染成更磨砂的“非活动”玻璃；开启后保持活动窗口那种清透、带折射的玻璃。下次录音时生效。",
+                "The bar never takes focus, so macOS draws it as frostier “inactive” glass. On keeps the clear, refractive glass of a focused window. Applies from the next recording."
+            ),
+            isOn: $customGlassKeepsActive,
+            isIndented: true
+        )
+        SettingsDivider()
+        glassSliderRow(
+            L("底色浓度", "Backing Opacity"),
+            subtitle: L("玻璃下面的主题色底板。越低越通透，越高文字越清楚。", "Theme-coloured backing under the glass. Lower is clearer; higher keeps text legible."),
+            value: $customGlassFloor,
+            range: RecordingGlassTuning.floorRange,
+            display: percent
+        )
+        SettingsDivider()
+        glassSliderRow(
+            L("边缘透光", "Edge Clearance"),
+            subtitle: L("底板从边缘往里淡出的宽度，边缘会折射背后的内容。", "How far the backing fades in from the rim, letting the edge refract what's behind."),
+            value: $customGlassEdgeFade,
+            range: RecordingGlassTuning.edgeFadeRange,
+            display: { "\(Int($0.rounded())) pt" }
+        )
+        SettingsDivider()
+        glassSliderRow(
+            L("高光强度", "Rim Highlight"),
+            value: $customGlassRim,
+            range: RecordingGlassTuning.rimStrengthRange,
+            display: percent
+        )
+        SettingsDivider()
+        glassSliderRow(
+            L("外投影", "Drop Shadow"),
+            subtitle: L("在白色等纯色背景上，主要靠投影显出玻璃的厚度。", "On plain light pages the shadow is what gives the glass its depth."),
+            value: $customGlassShadow,
+            range: RecordingGlassTuning.shadowStrengthRange,
+            display: percent
+        )
+        SettingsDivider()
+        glassSliderRow(
+            L("玻璃着色", "Glass Tint"),
+            subtitle: L("给玻璃材质本身染上主题色。", "Tints the glass material itself with the theme colour."),
+            value: $customGlassTint,
+            range: RecordingGlassTuning.glassTintRange,
+            display: percent
+        )
+        SettingsDivider()
+        settingsOptionRow(
+            L("玻璃类型", "Glass Type"),
+            subtitle: L("通透：磨砂更少，更能看清背后。", "Clear: less frost, more of the background shows through."),
+            controlWidth: SettingsControlWidth.inlineSegmented,
+            isIndented: true
+        ) {
+            settingsInlineSegmentedPicker(
+                selection: Binding(
+                    get: { customGlassUsesClear ? "clear" : "regular" },
+                    set: { customGlassUsesClear = $0 == "clear" }
+                ),
+                options: [("regular", L("常规", "Regular")), ("clear", L("通透", "Clear"))]
+            )
+            .accessibilityLabel(L("玻璃类型", "Glass Type"))
+        }
+        SettingsDivider()
+        settingsOptionRow(
+            L("自定义参数", "Custom Parameters"),
+            isIndented: true
+        ) {
+            Button(L("恢复默认", "Reset to Default")) {
+                let defaults = RecordingGlassTuning.customDefault
+                customGlassFloor = defaults.floorOpacity
+                customGlassEdgeFade = defaults.edgeFade
+                customGlassRim = defaults.rimStrength
+                customGlassTint = defaults.glassTint
+                customGlassUsesClear = defaults.usesClearGlass
+                customGlassShadow = defaults.shadowStrength
+                customGlassKeepsActive = defaults.keepsActiveAppearance
+            }
+            .buttonStyle(.tf(.secondary, size: .small))
+            .disabled(isCustomGlassDefault)
+        }
+    }
+
+    private func percent(_ value: Double) -> String {
+        "\(Int((value * 100).rounded()))%"
+    }
+
+    private func glassSliderRow(
+        _ label: String,
+        subtitle: String? = nil,
+        value: Binding<Double>,
+        range: ClosedRange<Double>,
+        display: @escaping (Double) -> String
+    ) -> some View {
+        settingsOptionRow(
+            label,
+            subtitle: subtitle,
+            controlWidth: SettingsControlWidth.standard,
+            isIndented: true
+        ) {
+            HStack(spacing: 8) {
+                Slider(value: value, in: range)
+                    .controlSize(.small)
+                    .tint(TF.settingsInk)
+                    .accessibilityLabel(label)
+                    .accessibilityValue(display(value.wrappedValue))
+                Text(display(value.wrappedValue))
+                    .font(.system(size: 12).monospacedDigit())
+                    .foregroundStyle(TF.settingsTextSecondary)
+                    .frame(width: 44, alignment: .trailing)
+                    .accessibilityHidden(true)
+            }
+        }
+    }
 
     private var themeRow: some View {
         settingsOptionRow(

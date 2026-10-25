@@ -98,6 +98,16 @@ final class FloatingBarPanel: NSPanel {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 
+    /// Private AppKit hook (verified on macOS 26/27). Liquid Glass switches to a
+    /// heavily frosted variant in windows without an active appearance, and
+    /// this panel must never take key focus from the target app. Reporting an
+    /// active appearance keeps the clear, refractive glass without becoming
+    /// key. If AppKit renames the selector this override is simply never
+    /// called and the panel falls back to the stock look.
+    @objc func _hasActiveAppearance() -> Bool {
+        isKeyWindow || RecordingGlassTuning.panelKeepsActiveAppearance()
+    }
+
     static func screenUnderMouse() -> NSScreen? {
         let mouseLocation = NSEvent.mouseLocation
         return NSScreen.screens.first(where: { $0.frame.contains(mouseLocation) })

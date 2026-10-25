@@ -16,6 +16,37 @@ enum PreviewPhase: String, CaseIterable {
     }
 }
 
+/// What sits behind the preview bar. Glass only shows its translucency and
+/// refraction against real content; on the flat stage every glass setting
+/// looks the same, so the other backdrops stand in for typical host apps.
+enum PreviewBackdrop: String, CaseIterable {
+    case plain
+    case document
+    case colorful
+    case dark
+
+    static let storageKey = "tf_appearancePreviewBackdrop"
+    static let defaultValue = PreviewBackdrop.colorful
+
+    var iconName: String {
+        switch self {
+        case .plain: "square"
+        case .document: "doc.text"
+        case .colorful: "paintpalette"
+        case .dark: "moon"
+        }
+    }
+
+    var displayName: String {
+        switch self {
+        case .plain: L("纯色背景", "Plain Background")
+        case .document: L("文档背景", "Document Background")
+        case .colorful: L("彩色背景", "Colorful Background")
+        case .dark: L("深色背景", "Dark Background")
+        }
+    }
+}
+
 struct AppearancePreviewStage: View {
 
     let presentation: FloatingBarPresentation
@@ -24,6 +55,7 @@ struct AppearancePreviewStage: View {
 
     @State private var demoState = DemoState()
     @State private var previewPhase: PreviewPhase = .recording
+    @AppStorage(PreviewBackdrop.storageKey) private var backdrop = PreviewBackdrop.defaultValue
     @AppStorage("tf_language") private var language = AppLanguage.systemDefault
 
     static let formattingSamples = [
@@ -67,6 +99,16 @@ struct AppearancePreviewStage: View {
 
                 Spacer()
 
+                SettingsInlineSegmentedPicker(
+                    selection: Binding(
+                        get: { backdrop.rawValue },
+                        set: { backdrop = PreviewBackdrop(rawValue: $0) ?? .defaultValue }
+                    ),
+                    iconOptions: PreviewBackdrop.allCases.map { ($0.rawValue, $0.iconName, $0.displayName) },
+                    segmentWidth: 30
+                )
+                .accessibilityLabel(L("预览背景", "Preview Background"))
+
                 // Phase Switcher
                 SettingsInlineSegmentedPicker(
                     selection: Binding(
@@ -86,8 +128,7 @@ struct AppearancePreviewStage: View {
             VStack(spacing: 0) {
                 // Recording Canvas
                 ZStack {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(TF.settingsCardAlt.opacity(0.6))
+                    PreviewBackdropView(backdrop: backdrop)
 
                     if presentation.showsRecordingIndicator {
                         FloatingBarView(
@@ -173,5 +214,74 @@ struct AppearancePreviewStage: View {
         case .processing:
             demoState.startProcessingPreview()
         }
+    }
+}
+
+private struct PreviewBackdropView: View {
+    let backdrop: PreviewBackdrop
+
+    private var documentLines: [String] {
+        [
+            L("液态玻璃预览 · 这段文字位于录音条后方", "Liquid Glass preview · this text sits behind the bar"),
+            L("调整底色浓度、边缘透光和高光，观察背后内容如何透出与折射。", "Adjust backing, edge clearance and highlight to see the content refract."),
+            "func recognize(_ audio: Buffer) async throws -> String {",
+            L("    let text = try await asr.stream(audio) // 中文与 English", "    let text = try await asr.stream(audio) // live transcript"),
+            "    return llm.polish(text, mode: .smart)",
+            "}",
+            L("The quick brown fox jumps over the lazy dog. 敏捷的狐狸跳过懒狗。", "The quick brown fox jumps over the lazy dog."),
+            L("液态玻璃预览 · 这段文字位于录音条后方", "Liquid Glass preview · this text sits behind the bar"),
+            "let session = RecognitionSession(mode: .smart)",
+        ]
+    }
+
+    var body: some View {
+        switch backdrop {
+        case .plain:
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(TF.settingsCardAlt.opacity(0.6))
+        case .document:
+            ZStack(alignment: .topLeading) {
+                Color.white
+                lines(primary: Color(white: 0.12), accent: Color(red: 0.55, green: 0.25, blue: 0.75))
+            }
+        case .colorful:
+            ZStack(alignment: .topLeading) {
+                LinearGradient(
+                    colors: [Color(red: 1.0, green: 0.97, blue: 0.92), Color(red: 0.90, green: 0.95, blue: 1.0)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                GeometryReader { proxy in
+                    let w = proxy.size.width
+                    Circle().fill(Color.orange)
+                        .frame(width: 150).position(x: w * 0.22, y: 70)
+                    RoundedRectangle(cornerRadius: 14).fill(Color.green)
+                        .frame(width: 70, height: 260).position(x: w * 0.5, y: 105)
+                    Circle().fill(Color.blue)
+                        .frame(width: 130).position(x: w * 0.78, y: 150)
+                    Capsule().fill(Color.pink)
+                        .frame(width: 180, height: 26).position(x: w * 0.68, y: 40)
+                }
+                lines(primary: Color(white: 0.10), accent: Color.purple)
+            }
+        case .dark:
+            ZStack(alignment: .topLeading) {
+                Color(red: 0.11, green: 0.11, blue: 0.13)
+                lines(primary: Color(white: 0.86), accent: Color.cyan)
+            }
+        }
+    }
+
+    private func lines(primary: Color, accent: Color) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            ForEach(Array(documentLines.enumerated()), id: \.offset) { index, line in
+                Text(line)
+                    .font(.system(size: 12, design: index % 3 == 2 ? .monospaced : .default))
+                    .foregroundStyle(index % 3 == 0 ? accent : primary)
+                    .lineLimit(1)
+            }
+        }
+        .padding(12)
+        .accessibilityHidden(true)
     }
 }
