@@ -89,8 +89,8 @@ struct OnboardingView: View {
                         numbered(3, L("打开「允许完全访问」", "Turn on Allow Full Access"))
                     }
                     Text(L(
-                        "键盘自己不能用麦克风，要通过完全访问和 Type4Me App 通信。我们不记录你的键入；只有按住说话时，才会参考光标附近的文字调整措辞，可以在设置里关闭。",
-                        "Keyboards can't use the microphone themselves, so Full Access lets the keyboard talk to the Type4Me app. We don't log what you type. It only looks at the text near the cursor while you hold to talk, and you can turn that off in Settings."
+                        "键盘自己不能用麦克风，要通过完全访问和 Type4Me App 通信。我们不记录你的键入。",
+                        "Keyboards can't use the microphone themselves, so Full Access lets the keyboard talk to the Type4Me app. We don't log what you type."
                     ))
                     .font(.system(size: 13))
                     .foregroundStyle(T4.tertiary)
@@ -124,7 +124,9 @@ struct OnboardingView: View {
                         Button(L("前往设置", "Go to Settings")) { openSettings() }
                             .buttonStyle(SecondaryButtonStyle())
                     default:
-                        Button(L("允许麦克风", "Allow Microphone")) {
+                        // App Review 5.1.1(iv): the button ahead of the
+                        // system prompt says Continue, not Allow.
+                        Button(L("继续", "Continue")) {
                             AVAudioApplication.requestRecordPermission { _ in
                                 Task { @MainActor in micStatus = AVAudioApplication.shared.recordPermission }
                             }
@@ -255,7 +257,7 @@ struct OnboardingView: View {
     /// once onboarding is finished.
     private func startSessionForTrial() {
         guard model.hasConfig, micStatus == .granted, !model.session.isActive else { return }
-        model.session.startSession(trigger: L("引导试用", "onboarding try-it"))
+        model.startSession(trigger: L("引导试用", "onboarding try-it"))
     }
 
     // MARK: Pieces

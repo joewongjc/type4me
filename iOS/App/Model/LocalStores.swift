@@ -100,6 +100,13 @@ enum AppSettings {
         static let timeout = "sessionTimeoutMinutes"
         static let importCardDismissed = "importCardDismissed"
         static let onboarded = "onboardingCompleted"
+        static let aiConsent = "aiSharingConsent"
+    }
+
+    /// Services the user agreed to send speech and text to (`AIConsent`).
+    static var aiConsentKeys: Set<String> {
+        get { Set(UserDefaults.standard.stringArray(forKey: Key.aiConsent) ?? []) }
+        set { UserDefaults.standard.set(newValue.sorted(), forKey: Key.aiConsent) }
     }
 
     /// 0 means never close automatically.

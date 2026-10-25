@@ -33,6 +33,9 @@ final class AppModel: ObservableObject {
     /// A scanned sync waiting for the user to pick what to import.
     @Published var pendingImport: PendingImport?
     @Published var showsSessionStarted = false
+    /// Asking to send speech and text to the configured services (`AIConsent`).
+    @Published var showsAIConsent = false
+    private var pendingSessionStart: (trigger: String, confirm: Bool)?
     @Published var configVersion = 0
     @Published var tab: AppTab = .home
     /// Pages pushed on the Settings tab, so other tabs can open one directly.
@@ -72,8 +75,7 @@ final class AppModel: ObservableObject {
                 showsScanner = true
             }
         case "session":
-            session.startSession(trigger: L("从键盘跳转", "opened from the keyboard"))
-            if session.isActive { showsSessionStarted = true }
+            startSession(trigger: L("从键盘跳转", "opened from the keyboard"), confirm: true)
         default:
             break
         }
@@ -93,7 +95,41 @@ final class AppModel: ObservableObject {
         keyboardSeen = SharedSettings.keyboardLastSeen != nil
         session.appDidBecomeActive()
         guard onboardingCompleted, hasConfig, micGranted, !session.isActive else { return }
-        session.startSession(trigger: L("打开 App", "app opened"))
+        startSession(trigger: L("打开 App", "app opened"))
+    }
+
+    /// Starts the voice session once the user has agreed to send speech and
+    /// text to the configured services; otherwise asks first and starts it
+    /// from the answer. `confirm` shows the "session on" page afterwards.
+    func startSession(trigger: String, confirm: Bool = false) {
+        guard AIConsent.isGranted else {
+            pendingSessionStart = (trigger, confirm)
+            showsAIConsent = true
+            return
+        }
+        session.startSession(trigger: trigger)
+        if confirm, session.isActive { showsSessionStarted = true }
+    }
+
+    func answerAIConsent(agreed: Bool) {
+        showsAIConsent = false
+        let pending = pendingSessionStart
+        pendingSessionStart = nil
+        guard agreed else { return }
+        AIConsent.grant()
+        log.add(L(
+            "已同意向 \(AIConsent.recipients.map(\.name).joined(separator: "、")) 发送语音和文字",
+            "Agreed to send speech and text to \(AIConsent.recipients.map(\.name).joined(separator: ", "))"
+        ))
+        if let pending, micGranted, !session.isActive {
+            startSession(trigger: pending.trigger, confirm: pending.confirm)
+        }
+    }
+
+    func revokeAIConsent() {
+        AIConsent.revokeAll()
+        session.endSession(reason: L("撤回第三方 AI 服务授权", "third-party AI permission withdrawn"))
+        configVersion += 1
     }
 
     func completeOnboarding() {
@@ -175,6 +211,10 @@ struct RootView: View {
         }
         .fullScreenCover(isPresented: $model.showsSessionStarted) {
             SessionStartedView()
+        }
+        .sheet(isPresented: $model.showsAIConsent) {
+            AIConsentView()
+                .interactiveDismissDisabled()
         }
         .sheet(isPresented: $model.showsScanner, onDismiss: { model.scannerSeed = nil }) {
             ConfigScannerSheet(seed: model.scannerSeed) { payload in
