@@ -114,4 +114,77 @@ final class VolcTuningSettingsTests: XCTestCase {
     func testOtherProvidersIgnoreSavedTuning() {
         XCTAssertEqual(VolcTuningStorage.effective(for: .soniox), VolcTuningSettings())
     }
+
+    // MARK: - Presets
+
+    func testAccuratePresetSendsShippedEndpointing() throws {
+        let request = try request(.accurate)
+        XCTAssertEqual(request["end_window_size"] as? Int, 3000)
+        XCTAssertEqual(request["force_to_speech_time"] as? Int, 0)
+        XCTAssertEqual(request["enable_nonstream"] as? Bool, true)
+        XCTAssertTrue(VolcTuningSettings.accurate.cjkAwareJoin)
+        XCTAssertEqual(VolcTuningSettings.accurate.finalWaitMs, 2000)
+        XCTAssertFalse(VolcTuningSettings.accurate.commitOnFinalTimeout)
+    }
+
+    func testFastPresetLetsServerEndpoint() throws {
+        let request = try request(.fast)
+        XCTAssertNil(request["end_window_size"])
+        XCTAssertNil(request["force_to_speech_time"])
+        XCTAssertEqual(request["enable_nonstream"] as? Bool, true)
+        XCTAssertTrue(VolcTuningSettings.fast.cjkAwareJoin)
+        XCTAssertEqual(VolcTuningSettings.fast.finalWaitMs, 3000)
+        XCTAssertTrue(VolcTuningSettings.fast.commitOnFinalTimeout)
+    }
+
+    func testProfileEffectiveSettings() {
+        var custom = VolcTuningSettings.fast
+        custom.endWindowSizeMs = 2500
+        XCTAssertEqual(VolcRecognitionProfile().effectiveSettings, .accurate)
+        XCTAssertEqual(VolcRecognitionProfile(preset: .fast, custom: custom).effectiveSettings, .fast)
+        XCTAssertEqual(VolcRecognitionProfile(preset: .custom, custom: custom).effectiveSettings.endWindowSizeMs, 2500)
+        XCTAssertEqual(VolcRecognitionProfile(preset: .custom, custom: nil).effectiveSettings, .accurate)
+    }
+
+    private func isolatedDefaults() throws -> UserDefaults {
+        let name = "VolcRecognitionProfileTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
+        addTeardownBlock { defaults.removePersistentDomain(forName: name) }
+        return defaults
+    }
+
+    func testProfileRoundTripsAndKeepsCustomWhileOnPreset() throws {
+        let defaults = try isolatedDefaults()
+        var custom = VolcTuningSettings.accurate
+        custom.endWindowSizeMs = 1500
+        VolcRecognitionProfileStore.save(VolcRecognitionProfile(preset: .fast, custom: custom), userDefaults: defaults)
+        let loaded = VolcRecognitionProfileStore.load(userDefaults: defaults)
+        XCTAssertEqual(loaded.preset, .fast)
+        XCTAssertEqual(loaded.custom?.endWindowSizeMs, 1500)
+    }
+
+    func testLegacyTuningMigratesToMatchingPresetOrCustom() throws {
+        func migrate(_ settings: VolcTuningSettings) throws -> (VolcRecognitionProfile, UserDefaults) {
+            let defaults = try isolatedDefaults()
+            defaults.set(try JSONEncoder().encode(settings), forKey: VolcRecognitionProfileStore.legacyTuningKey)
+            return (VolcRecognitionProfileStore.load(userDefaults: defaults), defaults)
+        }
+        let (fast, fastDefaults) = try migrate(.fast)
+        XCTAssertEqual(fast.preset, .fast)
+        XCTAssertNil(fastDefaults.data(forKey: VolcRecognitionProfileStore.legacyTuningKey))
+        XCTAssertEqual(VolcRecognitionProfileStore.load(userDefaults: fastDefaults).preset, .fast)
+
+        var tweaked = VolcTuningSettings.fast
+        tweaked.finalWaitMs = 1200
+        let (custom, _) = try migrate(tweaked)
+        XCTAssertEqual(custom.preset, .custom)
+        XCTAssertEqual(custom.custom?.finalWaitMs, 1200)
+    }
+
+    func testCJKJoinDropsBoundaryWhitespaceNextToCJK() {
+        XCTAssertEqual(CJKAwareJoiner.join(["我刚刚提了一个 PR。", " 然后跑了测试"]), "我刚刚提了一个 PR。然后跑了测试")
+        XCTAssertEqual(CJKAwareJoiner.join(["但是 ", "我现在"]), "但是我现在")
+        XCTAssertEqual(CJKAwareJoiner.join(["open ", " GitHub"]), "open GitHub")
+        XCTAssertEqual(CJKAwareJoiner.join(["用 GitHub", "提交"]), "用 GitHub提交")
+    }
 }

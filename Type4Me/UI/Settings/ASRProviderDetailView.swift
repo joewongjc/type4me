@@ -542,7 +542,7 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
             .animation(.spring(response: 0.28, dampingFraction: 0.86), value: asrTestStatus)
 
             if provider == .volcano {
-                VolcTuningSection()
+                VolcRecognitionSettingsSection()
                     .padding(.top, 10)
             }
         }

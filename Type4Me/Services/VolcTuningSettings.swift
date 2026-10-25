@@ -1,9 +1,9 @@
 import Foundation
 
-/// Experimental, user-adjustable knobs for the Volcano streaming session.
+/// Request parameters and stop-flow handling for one Volcano streaming session.
 ///
-/// Every default reproduces the shipped behavior, so an untouched (or reset)
-/// panel sends exactly the same request and waits exactly as long as before.
+/// The defaults are the "accurate" preset: the endpointing that shipped before
+/// presets existed, plus CJK-aware sentence joining.
 struct VolcTuningSettings: Codable, Sendable, Equatable {
 
     // MARK: Server request (sent in full_client_request)
@@ -40,8 +40,9 @@ struct VolcTuningSettings: Codable, Sendable, Equatable {
     // MARK: Client handling
 
     /// Join utterances without a space when either side of the boundary is
-    /// CJK (same rule as the Claude composer) instead of using `result.text`.
-    var cjkAwareJoin: Bool = false
+    /// CJK (same rule as the Claude composer) instead of using `result.text`,
+    /// which separates every pair of sentences with an ASCII space.
+    var cjkAwareJoin: Bool = true
     /// How long stop waits for the server's final result before giving up.
     var finalWaitMs: Int = 2000
     /// When the final wait times out: `true` commits the current text at once,
@@ -53,7 +54,30 @@ struct VolcTuningSettings: Codable, Sendable, Equatable {
     /// Size of each audio packet sent while recording.
     var audioChunkMs: Int = 200
 
-    static let defaults = VolcTuningSettings()
+    /// Waits for about 3 s of silence before closing a sentence, so a thinking
+    /// pause stays inside one sentence and is punctuated as a whole.
+    static let accurate = VolcTuningSettings()
+
+    /// Lets the server close sentences after its default 0.8 s of silence and
+    /// commits the current text if the final result is slow, for a faster
+    /// release at the cost of extra full stops at pauses.
+    static let fast: VolcTuningSettings = {
+        var settings = VolcTuningSettings()
+        settings.sendEndWindowSize = false
+        settings.endWindowSizeMs = 800
+        settings.sendForceToSpeechTime = false
+        settings.forceToSpeechTimeMs = 1000
+        settings.sendVadSegmentDuration = true
+        settings.vadSegmentDurationMs = 6000
+        settings.contextHistoryLength = 50
+        settings.finalWaitMs = 3000
+        settings.commitOnFinalTimeout = true
+        return settings
+    }()
+
+    /// The server's own silence threshold when `end_window_size` is omitted
+    /// while two-pass recognition is on.
+    static let serverDefaultEndWindowMs = 800
 
     static let endWindowRange = 200...6000
     static let forceToSpeechRange = 0...5000
@@ -148,39 +172,100 @@ struct VolcTuningSettings: Codable, Sendable, Equatable {
     }
 }
 
-enum VolcTuningStorage {
+/// The preset a user picks for Volcano recognition.
+enum VolcRecognitionPreset: String, Codable, CaseIterable, Sendable {
+    case accurate
+    case fast
+    case custom
 
-    static let key = "tf_volcTuning"
-
-    static func load() -> VolcTuningSettings {
-        guard let data = UserDefaults.standard.data(forKey: key),
-              let settings = try? JSONDecoder().decode(VolcTuningSettings.self, from: data)
-        else {
-            return VolcTuningSettings()
+    var displayName: String {
+        switch self {
+        case .accurate: return L("准确", "Accurate")
+        case .fast: return L("快速", "Fast")
+        case .custom: return L("自定义", "Custom")
         }
-        return settings.clamped
-    }
-
-    static func save(_ settings: VolcTuningSettings) {
-        guard let data = try? JSONEncoder().encode(settings.clamped) else { return }
-        UserDefaults.standard.set(data, forKey: key)
-    }
-
-    static func reset() {
-        UserDefaults.standard.removeObject(forKey: key)
-    }
-
-    /// Settings that apply to the session about to start: the saved knobs for
-    /// Volcano, shipped defaults for every other provider.
-    static func effective(for provider: ASRProvider) -> VolcTuningSettings {
-        provider == .volcano ? load() : VolcTuningSettings()
     }
 }
 
-/// CJK-aware text join, mirroring the Claude composer's rule: insert a single
-/// space only when neither side already has one, neither boundary character
-/// is CJK (or full-width punctuation), and the next piece doesn't start with
-/// sentence punctuation.
+/// Saved choice plus the user's own parameters, kept even while a fixed
+/// preset is selected so switching back to custom restores them.
+struct VolcRecognitionProfile: Codable, Sendable, Equatable {
+    var preset: VolcRecognitionPreset = .accurate
+    var custom: VolcTuningSettings?
+
+    var effectiveSettings: VolcTuningSettings {
+        switch preset {
+        case .accurate: return .accurate
+        case .fast: return .fast
+        case .custom: return (custom ?? .accurate).clamped
+        }
+    }
+}
+
+enum VolcRecognitionProfileStore {
+
+    static let key = "tf_volcRecognitionProfile"
+    /// Written by the experimental tuning panel used during local testing.
+    static let legacyTuningKey = "tf_volcTuning"
+
+    static func load(userDefaults: UserDefaults = .standard) -> VolcRecognitionProfile {
+        if let data = userDefaults.data(forKey: key),
+           let profile = try? JSONDecoder().decode(VolcRecognitionProfile.self, from: data) {
+            return profile
+        }
+        if let migrated = migrateLegacyTuning(userDefaults: userDefaults) {
+            return migrated
+        }
+        return VolcRecognitionProfile()
+    }
+
+    static func save(_ profile: VolcRecognitionProfile, userDefaults: UserDefaults = .standard) {
+        var profile = profile
+        profile.custom = profile.custom?.clamped
+        guard let data = try? JSONEncoder().encode(profile) else { return }
+        userDefaults.set(data, forKey: key)
+    }
+
+    /// One-time conversion of the experimental panel's saved parameters:
+    /// values matching a preset select it, anything else becomes custom.
+    private static func migrateLegacyTuning(userDefaults: UserDefaults) -> VolcRecognitionProfile? {
+        guard let data = userDefaults.data(forKey: legacyTuningKey),
+              let legacy = try? JSONDecoder().decode(VolcTuningSettings.self, from: data)
+        else { return nil }
+        let settings = legacy.clamped
+        let profile: VolcRecognitionProfile
+        if settings == .fast {
+            profile = VolcRecognitionProfile(preset: .fast, custom: nil)
+        } else if settings == .accurate {
+            profile = VolcRecognitionProfile(preset: .accurate, custom: nil)
+        } else {
+            profile = VolcRecognitionProfile(preset: .custom, custom: settings)
+        }
+        save(profile, userDefaults: userDefaults)
+        userDefaults.removeObject(forKey: legacyTuningKey)
+        return profile
+    }
+}
+
+enum VolcTuningStorage {
+
+    /// Parameters for the Volcano session about to start.
+    static func load() -> VolcTuningSettings {
+        VolcRecognitionProfileStore.load().effectiveSettings
+    }
+
+    /// Settings that apply to the session about to start: the selected preset
+    /// for Volcano, the accurate defaults for every other provider.
+    static func effective(for provider: ASRProvider) -> VolcTuningSettings {
+        provider == .volcano ? load() : .accurate
+    }
+}
+
+/// CJK-aware text join, mirroring the Claude composer's rule: pieces meet with
+/// a single space only when neither boundary character is CJK (or full-width
+/// punctuation) and the next piece doesn't start with sentence punctuation.
+/// Whitespace the server leaves at a boundary is dropped next to CJK text, so
+/// "PR。" + " 然后" becomes "PR。然后".
 enum CJKAwareJoiner {
 
     static func join(_ pieces: [String]) -> String {
@@ -190,13 +275,27 @@ enum CJKAwareJoiner {
     static func join(_ lhs: String, _ rhs: String) -> String {
         guard !lhs.isEmpty else { return rhs }
         guard !rhs.isEmpty else { return lhs }
-        guard let last = lhs.unicodeScalars.last, let first = rhs.unicodeScalars.first else {
-            return lhs + rhs
+        let left = trimmingTrailingWhitespace(lhs)
+        let right = trimmingLeadingWhitespace(rhs)
+        guard let last = left.unicodeScalars.last, let first = right.unicodeScalars.first else {
+            // One side was only whitespace; keep the other side as it was.
+            return left.isEmpty ? lhs + right : left + rhs
         }
-        if last.properties.isWhitespace || first.properties.isWhitespace { return lhs + rhs }
-        if isCJK(last) || isCJK(first) { return lhs + rhs }
-        if startsWithSentencePunctuation(rhs) { return lhs + rhs }
-        return lhs + " " + rhs
+        if isCJK(last) || isCJK(first) { return left + right }
+        if startsWithSentencePunctuation(right) { return left + right }
+        return left + " " + right
+    }
+
+    private static func trimmingTrailingWhitespace(_ text: String) -> String {
+        var scalars = Substring(text).unicodeScalars
+        while let last = scalars.last, last.properties.isWhitespace { scalars.removeLast() }
+        return String(scalars)
+    }
+
+    private static func trimmingLeadingWhitespace(_ text: String) -> String {
+        var scalars = Substring(text).unicodeScalars
+        while let first = scalars.first, first.properties.isWhitespace { scalars.removeFirst() }
+        return String(scalars)
     }
 
     static func isCJK(_ scalar: Unicode.Scalar) -> Bool {
