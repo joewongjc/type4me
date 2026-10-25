@@ -152,7 +152,11 @@ final class HistorySnippetProvenanceTests: XCTestCase {
         makePreviousSchemaDatabase(at: migratedPath)
         _ = HistoryStore(path: migratedPath)
 
-        let expected = previousColumns + ["post_snippet_text", "applied_snippets"]
+        // Provenance columns, then the mode and target app columns added after them.
+        let expected = previousColumns + [
+            "post_snippet_text", "applied_snippets",
+            "processing_mode_id", "target_bundle_id", "target_app_name",
+        ]
         XCTAssertEqual(columnNames(at: freshPath), expected)
         XCTAssertEqual(columnNames(at: migratedPath), expected, "migration must append in the same order as a fresh schema")
     }
