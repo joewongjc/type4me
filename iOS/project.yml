@@ -64,6 +64,8 @@ targets:
         excludes:
           - BaiduProtocol.swift
       - path: ../Type4Me/Audio/WAVEncoder.swift
+      # Volcano recognition profile and tuning the shared Volcano client reads.
+      - path: ../Type4Me/Services/VolcTuningSettings.swift
       # Text model providers: base URLs, model lists, thinking switches.
       - path: ../Type4Me/LLM/LLMProvider.swift
       # Translation mode: target languages, prompt and output check.
