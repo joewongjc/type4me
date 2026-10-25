@@ -1,0 +1,15 @@
+{
+  "testflight": {
+    "version": "1.0.0",
+    "build": 2,
+    "url": "https://testflight.apple.com/join/57f5897s",
+    "notesZh": "第一个测试版。",
+    "notesEn": "First beta."
+  },
+  "appStore": {
+    "version": "1.0.0",
+    "url": "https://apps.apple.com/app/id6826932024",
+    "notesZh": "首次发布。",
+    "notesEn": "First release."
+  }
+}

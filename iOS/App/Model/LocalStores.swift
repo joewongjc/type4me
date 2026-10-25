@@ -100,6 +100,20 @@ enum AppSettings {
         static let timeout = "sessionTimeoutMinutes"
         static let importCardDismissed = "importCardDismissed"
         static let onboarded = "onboardingCompleted"
+        static let aiConsent = "aiSharingConsent"
+        static let dismissedUpdate = "dismissedUpdateBuild"
+    }
+
+    /// The update the user closed on Home, as `version(build)`.
+    static var dismissedUpdateBuild: String? {
+        get { UserDefaults.standard.string(forKey: Key.dismissedUpdate) }
+        set { UserDefaults.standard.set(newValue, forKey: Key.dismissedUpdate) }
+    }
+
+    /// Services the user agreed to send speech and text to (`AIConsent`).
+    static var aiConsentKeys: Set<String> {
+        get { Set(UserDefaults.standard.stringArray(forKey: Key.aiConsent) ?? []) }
+        set { UserDefaults.standard.set(newValue.sorted(), forKey: Key.aiConsent) }
     }
 
     /// 0 means never close automatically.

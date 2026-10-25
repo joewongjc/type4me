@@ -39,6 +39,7 @@ enum DemoSeed {
                 sourceName: "Mac Studio"
             ))
         }
+        AIConsent.grant()
         if let raw = ProcessInfo.processInfo.environment["T4M_LANG"] {
             model.setLanguage(raw == "system" ? nil : AppLanguage(rawValue: raw))
         }

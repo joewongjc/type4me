@@ -123,6 +123,23 @@ struct SettingsView: View {
                 ))
             }
 
+            Section {
+                Link(L("隐私政策", "Privacy Policy"), destination: AppLinks.privacyPolicy)
+                Link(L("帮助与反馈", "Help & Feedback"), destination: AppLinks.support)
+                if !AppSettings.aiConsentKeys.isEmpty {
+                    Button(L("撤回第三方 AI 服务授权", "Withdraw Third-Party AI Permission"), role: .destructive) {
+                        model.revokeAIConsent()
+                    }
+                }
+            } header: {
+                Text(L("隐私", "Privacy"))
+            } footer: {
+                Text(L(
+                    "撤回后会关闭语音会话，下次听写前重新询问。",
+                    "Ends the voice session; you'll be asked again before the next dictation."
+                ))
+            }
+
             Section(L("通用", "General")) {
                 Picker(L("语言", "Language"), selection: $language) {
                     Text(L("跟随系统", "System")).tag("system")

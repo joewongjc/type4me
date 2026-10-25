@@ -16,8 +16,8 @@ settings:
   base:
     CODE_SIGN_STYLE: Automatic
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "0.1.0"
-    CURRENT_PROJECT_VERSION: "1"
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "2"
     TARGETED_DEVICE_FAMILY: "1"
     ENABLE_USER_SCRIPT_SANDBOXING: YES
 targets:
@@ -84,7 +84,11 @@ targets:
       path: App/Info.plist
       properties:
         CFBundleDisplayName: Type4Me
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         T4MAppGroup: group.$(T4M_BUNDLE_ID_PREFIX).ios
+        ITSAppUsesNonExemptEncryption: false
+        LSApplicationCategoryType: public.app-category.productivity
         UILaunchScreen: {}
         UIApplicationSupportsIndirectInputEvents: true
         UISupportedInterfaceOrientations:
@@ -102,6 +106,7 @@ targets:
               - type4me
     settings:
       base:
+        TARGETED_DEVICE_FAMILY: "1"
         PRODUCT_BUNDLE_IDENTIFIER: $(T4M_BUNDLE_ID_PREFIX).ios
         INFOPLIST_KEY_CFBundleDisplayName: Type4Me
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -129,6 +134,8 @@ targets:
       path: Keyboard/Info.plist
       properties:
         CFBundleDisplayName: Type4Me
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         T4MAppGroup: group.$(T4M_BUNDLE_ID_PREFIX).ios
         NSExtension:
           NSExtensionPointIdentifier: com.apple.keyboard-service
@@ -140,6 +147,7 @@ targets:
             RequestsOpenAccess: true
     settings:
       base:
+        TARGETED_DEVICE_FAMILY: "1"
         PRODUCT_BUNDLE_IDENTIFIER: $(T4M_BUNDLE_ID_PREFIX).ios.keyboard
         APPLICATION_EXTENSION_API_ONLY: YES
   Type4MeWidgets:
@@ -154,11 +162,14 @@ targets:
       path: Widgets/Info.plist
       properties:
         CFBundleDisplayName: Type4Me
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         T4MAppGroup: group.$(T4M_BUNDLE_ID_PREFIX).ios
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:
       base:
+        TARGETED_DEVICE_FAMILY: "1"
         PRODUCT_BUNDLE_IDENTIFIER: $(T4M_BUNDLE_ID_PREFIX).ios.widgets
         APPLICATION_EXTENSION_API_ONLY: YES
   Type4MeUITests:
@@ -170,6 +181,7 @@ targets:
       - target: Type4MeiOS
     settings:
       base:
+        TARGETED_DEVICE_FAMILY: "1"
         PRODUCT_BUNDLE_IDENTIFIER: $(T4M_BUNDLE_ID_PREFIX).ios.uitests
         GENERATE_INFOPLIST_FILE: YES
 schemes:

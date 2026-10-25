@@ -7,6 +7,7 @@ struct HomeView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var history: HistoryStore
     @State private var importDismissed = AppSettings.importCardDismissed
+    @ObservedObject private var updates = UpdateCheck.shared
 
     var body: some View {
         ScrollView {
@@ -22,6 +23,9 @@ struct HomeView: View {
                 .accessibilityElement(children: .combine)
                 .accessibilityAddTraits(.isHeader)
 
+                if let update = updates.available {
+                    UpdateCard(update: update) { updates.dismiss() }
+                }
                 if !importDismissed {
                     ImportCard {
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { importDismissed = true }
@@ -534,5 +538,53 @@ struct SessionStartedView: View {
         }
         .padding(20)
         .background(DottedCanvas())
+    }
+}
+
+/// A newer build is out (`UpdateCheck`): open TestFlight or the App Store.
+struct UpdateCard: View {
+    let update: UpdateCheck.Available
+    let onDismiss: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "arrow.down.circle")
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundStyle(T4.ink)
+                    .frame(width: 44, height: 44)
+                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(L("新版本 \(update.version) 可以更新", "Version \(update.version) Is Available"))
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundStyle(T4.ink)
+                    if let notes = update.notes {
+                        Text(notes)
+                            .font(.system(size: 13))
+                            .foregroundStyle(T4.tertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                Spacer(minLength: 0)
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(T4.secondary)
+                        .frame(width: 28, height: 28)
+                        .glassEffect(.regular.interactive(), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(L("关闭", "Close"))
+            }
+            Link(destination: update.url) {
+                Label(L("去更新", "Update"), systemImage: "arrow.up.forward.app")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(T4.background)
+                    .frame(maxWidth: .infinity, minHeight: 38)
+            }
+            .buttonStyle(.glassProminent)
+            .tint(T4.ink)
+        }
+        .t4Card(padding: 18)
     }
 }
