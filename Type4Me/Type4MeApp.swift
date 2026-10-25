@@ -1875,6 +1875,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 NotificationCenter.default.post(name: SnippetStorage.didChangeNotification, object: nil)
                 NotificationCenter.default.post(name: HotwordStorage.didChangeNotification, object: nil)
                 SenseVoiceServerManager.syncHotwordsAndRestart()
+            case "asr-sweep":
+                guard let sampleID = VolcReplaySweep.sampleID(from: url) else {
+                    DebugFileLogger.log("asr-sweep rejected: expected ?sample=<id prefix>")
+                    continue
+                }
+                Task.detached {
+                    do {
+                        _ = try await VolcReplaySweep.run(sampleIDPrefix: sampleID)
+                    } catch {
+                        DebugFileLogger.log("asr-sweep failed: \(error)")
+                    }
+                }
             case "auth":
                 NSLog("[Type4Me] URL command: auth (no-op, code-based auth now)")
             case "settings", "preferences":
