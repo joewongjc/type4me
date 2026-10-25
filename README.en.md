@@ -27,7 +27,26 @@ Type4Me is a free, open-source voice input app for macOS. Hold a hotkey and talk
 
 Requires macOS 14 (Sonoma) or later. Both editions share the same settings, so you can switch anytime. The app is notarized by Apple; on first launch, grant **Microphone** and **Accessibility** access as prompted.
 
-**Mobile (beta):** the Type4Me voice keyboard for iPhone isn't on the App Store yet. You can build and install it yourself with Xcode; see [iOS/README.md](iOS/README.md). Speech services, models, modes and vocabulary sync over by scanning a QR code on the Mobile page in the Mac app's sidebar.
+## Mobile (beta)
+
+Type4Me on iPhone is a voice keyboard: switch to it in any text field, hold to talk and let go to type. Modes such as Voice Polish, Translation and Handle It work there too, along with hotwords and snippets. Speech services, models, modes and vocabulary sync over by scanning a QR code on the Mobile page in the Mac app's sidebar, so there are no API keys to retype.
+
+The mobile app isn't on the App Store yet. Build and install it yourself with Xcode; see [iOS/README.md](iOS/README.md) (in Chinese).
+
+<table>
+  <tr>
+    <td width="25%"><img src="docs/screenshots/ios-keyboard.png" alt="Keyboard: hold to talk, release to type" /></td>
+    <td width="25%"><img src="docs/screenshots/ios-home.png" alt="Home: usage and your modes" /></td>
+    <td width="25%"><img src="docs/screenshots/ios-settings.png" alt="Settings: speech, models and vocabulary" /></td>
+    <td width="25%"><img src="docs/screenshots/ios-scan-sync.jpg" alt="Scan to sync your Mac setup" /></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Keyboard: hold to talk, release to type</sub></td>
+    <td align="center"><sub>Home: usage and your modes</sub></td>
+    <td align="center"><sub>Settings: speech, models and vocabulary</sub></td>
+    <td align="center"><sub>Scan to sync your Mac setup</sub></td>
+  </tr>
+</table>
 
 ## Demo
 

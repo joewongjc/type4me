@@ -27,7 +27,26 @@ Type4Me 是一款免费开源的 macOS 语音输入法。按下快捷键说话�
 
 需要 macOS 14 (Sonoma) 及以上。两个版本共用一份配置，可以随时互相替换。安装包已通过 Apple 公证，首次打开按引导授予**麦克风**和**辅助功能**权限就能用。
 
-**手机版（测试中）**：iPhone 上的 Type4Me 语音键盘还没有上架 App Store，可以用 Xcode 自己装，步骤见 [iOS/README.md](iOS/README.md)。识别服务、模型、模式和词汇可以在 Mac 版侧边栏的「手机版」里扫码同步过去。
+## 手机版（测试中）
+
+iPhone 上的 Type4Me 是一个语音键盘：任何输入框切到 Type4Me，按住说话，松手出字，同样支持润色、翻译、代办等模式和热词、片段替换。识别服务、模型、模式和词汇可以在 Mac 版侧边栏的「手机版」里扫码同步过去，不用在手机上重新填 API Key。
+
+手机版还没有上架 App Store，目前用 Xcode 自己安装，步骤见 [iOS/README.md](iOS/README.md)。
+
+<table>
+  <tr>
+    <td width="25%"><img src="docs/screenshots/ios-keyboard.png" alt="键盘：按住说话，松手出字" /></td>
+    <td width="25%"><img src="docs/screenshots/ios-home.png" alt="首页：用量与我的模式" /></td>
+    <td width="25%"><img src="docs/screenshots/ios-settings.png" alt="设置：识别、模型与词汇" /></td>
+    <td width="25%"><img src="docs/screenshots/ios-scan-sync.jpg" alt="扫码同步 Mac 上的配置" /></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>键盘：按住说话，松手出字</sub></td>
+    <td align="center"><sub>首页：用量与我的模式</sub></td>
+    <td align="center"><sub>设置：识别、模型与词汇</sub></td>
+    <td align="center"><sub>扫码同步 Mac 上的配置</sub></td>
+  </tr>
+</table>
 
 ## 演示
 
