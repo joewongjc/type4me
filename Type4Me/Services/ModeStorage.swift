@@ -114,6 +114,13 @@ struct ModeStorage {
                     ?? TranslationLanguage.english.rawValue
                 return canonical
             }
+            if mode.id == ProcessingMode.agentModeId {
+                // Handle It became a built-in after it shipped as a deletable
+                // default; keep the user's prompt, name and bindings.
+                var d = mode
+                d.isBuiltin = true
+                return d
+            }
             if mode.id == ProcessingMode.promptOptimize.id {
                 // Detect any previous version by unique substrings
                 let isLegacy = mode.prompt.contains("将口语化原始Prompt改写为结构清晰")  // V0 original

@@ -1,0 +1,174 @@
+name: Type4MeiOS
+options:
+  bundleIdPrefix: com.type4me
+  developmentLanguage: en
+  deploymentTarget:
+    iOS: "26.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+settings:
+  base:
+    DEVELOPMENT_TEAM: T98LK79X2K
+    CODE_SIGN_STYLE: Automatic
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    TARGETED_DEVICE_FAMILY: "1"
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+targets:
+  Type4MeTransferCore:
+    type: library.static
+    platform: iOS
+    sources:
+      - path: ../Type4MeTransferCore
+  Type4MeiOS:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+      - path: Shared
+      - path: ../Type4Me/Models/TranslationLanguage.swift
+      - path: SharedActivity
+      - path: SharedUI
+      # Liquid Glass orb shared verbatim with the Mac floating bar.
+      - path: ../Type4Me/UI/FloatingBar/LiquidGlass/OrbMetalSource.swift
+        group: SharedUI/Mac
+      - path: ../Type4Me/UI/FloatingBar/LiquidGlass/OrbPreset.swift
+        group: SharedUI/Mac
+      - path: ../Type4Me/UI/FloatingBar/LiquidGlass/LiquidGlassMotion.swift
+        group: SharedUI/Mac
+      # Cloud speech clients, wire protocols and provider configs shared
+      # verbatim with the Mac app. On-device engines and the deprecated
+      # Baidu client stay on the Mac; App/ASR/PhoneASR.swift lists the rest.
+      - path: ../Type4Me/ASR
+        excludes:
+          - ASRProviderRegistry.swift
+          - SpeechRecognizer.swift
+          - AppleASRClient.swift
+          - SenseVoice*.swift
+          - Sherpa*.swift
+          - BaiduASRClient.swift
+          - Providers/AppleASRConfig.swift
+          - Providers/SherpaASRConfig.swift
+          - Providers/BaiduASRConfig.swift
+          - Providers/GoogleASRConfig.swift
+          - Providers/AWSASRConfig.swift
+          - Providers/AliyunASRConfig.swift
+          - Providers/IflytekASRConfig.swift
+      - path: ../Type4Me/Protocol
+        excludes:
+          - BaiduProtocol.swift
+      - path: ../Type4Me/Audio/WAVEncoder.swift
+      # Text model providers: base URLs, model lists, thinking switches.
+      - path: ../Type4Me/LLM/LLMProvider.swift
+      # Translation mode: target languages, prompt and output check.
+      - path: ../Type4Me/Services/TranslationPromptBuilder.swift
+      - path: ../Type4Me/Services/TranslationOutputValidator.swift
+    dependencies:
+      - target: Type4MeTransferCore
+      - target: Type4MeKeyboard
+      - target: Type4MeWidgets
+    entitlements:
+      path: App/Type4MeiOS.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.type4me.ios
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: Type4Me
+        UILaunchScreen: {}
+        UIApplicationSupportsIndirectInputEvents: true
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UIBackgroundModes:
+          - audio
+        # English base; Chinese in App/zh-Hans.lproj/InfoPlist.strings.
+        NSCameraUsageDescription: Scans the QR code shown by Type4Me on your Mac to import your speech and text model setup.
+        NSMicrophoneUsageDescription: Records only while you hold the mic on the keyboard, to turn your speech into text. The mic is off the rest of the time.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.type4me.ios
+            CFBundleURLSchemes:
+              - type4me
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.type4me.ios
+        INFOPLIST_KEY_CFBundleDisplayName: Type4Me
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+  Type4MeKeyboard:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Keyboard
+      - path: Shared
+      - path: ../Type4Me/Models/TranslationLanguage.swift
+      - path: SharedUI
+      # Liquid Glass orb shared verbatim with the Mac floating bar.
+      - path: ../Type4Me/UI/FloatingBar/LiquidGlass/OrbMetalSource.swift
+        group: SharedUI/Mac
+      - path: ../Type4Me/UI/FloatingBar/LiquidGlass/OrbPreset.swift
+        group: SharedUI/Mac
+      - path: ../Type4Me/UI/FloatingBar/LiquidGlass/LiquidGlassMotion.swift
+        group: SharedUI/Mac
+    entitlements:
+      path: Keyboard/Type4MeKeyboard.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.type4me.ios
+    info:
+      path: Keyboard/Info.plist
+      properties:
+        CFBundleDisplayName: Type4Me
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.keyboard-service
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).KeyboardViewController
+          NSExtensionAttributes:
+            IsASCIICapable: false
+            PrefersRightToLeft: false
+            PrimaryLanguage: zh-Hans
+            RequestsOpenAccess: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.type4me.ios.keyboard
+        APPLICATION_EXTENSION_API_ONLY: YES
+  Type4MeWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Widgets
+      - path: SharedActivity
+      - path: Shared
+      - path: ../Type4Me/Models/TranslationLanguage.swift
+    info:
+      path: Widgets/Info.plist
+      properties:
+        CFBundleDisplayName: Type4Me
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.type4me.ios.widgets
+        APPLICATION_EXTENSION_API_ONLY: YES
+  Type4MeUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+    dependencies:
+      - target: Type4MeiOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.type4me.ios.uitests
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  Type4MeiOS:
+    build:
+      targets:
+        Type4MeiOS: all
+    test:
+      targets:
+        - Type4MeUITests
+    run:
+      config: Debug
