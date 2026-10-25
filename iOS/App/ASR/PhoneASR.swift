@@ -3,7 +3,8 @@ import Type4MeTransferCore
 
 /// The cloud speech services the iPhone runs: the cloud part of the Mac's
 /// `ASRProviderRegistry`, with the same configs and clients. On-device
-/// engines (Apple Speech, SenseVoice) stay on the Mac.
+/// engines stay on the Mac, except Apple Speech (`AppleSpeechClient`), which
+/// needs no key.
 enum PhoneASR {
     typealias Validator = @Sendable (any ASRProviderConfig, ASRRequestOptions) async throws -> Void
 
@@ -47,6 +48,10 @@ enum PhoneASR {
             (provider, Entry(provider: provider, configType: type, main: main, batch: batch))
         }
         return Dictionary(uniqueKeysWithValues: [
+            // No account or key: iOS's own recognizer.
+            entry(.apple, AppleASRConfig.self, .streaming({ AppleSpeechClient() }, validate: { config, _ in
+                try await AppleSpeechClient.validate(config)
+            })),
             entry(.volcano, VolcanoASRConfig.self, .streaming({ VolcASRClient() }, validate: { config, options in
                 try await VolcASRClient.validateCredentials(config: config, options: options)
             })),
@@ -87,8 +92,8 @@ enum PhoneASR {
 
     /// Recommended first, in the Mac's order, then the rest by name with Custom last.
     static let providers: [ASRProvider] = {
-        let all = Type4MeTransferSupport.asrProviders.compactMap(ASRProvider.init(rawValue:)).filter { table[$0] != nil }
-        let recommended: [ASRProvider] = [.volcano, .mimo, .bailian, .soniox]
+        let all = ([.apple] + Type4MeTransferSupport.asrProviders.compactMap(ASRProvider.init(rawValue:))).filter { table[$0] != nil }
+        let recommended: [ASRProvider] = [.apple, .volcano, .mimo, .bailian, .soniox]
         let rest = all.filter { !recommended.contains($0) && $0 != .custom }
             .sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }
         return recommended.filter(all.contains) + rest + (all.contains(.custom) ? [.custom] : [])

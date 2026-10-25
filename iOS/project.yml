@@ -17,7 +17,7 @@ settings:
     CODE_SIGN_STYLE: Automatic
     SWIFT_VERSION: "5.0"
     MARKETING_VERSION: "1.0.0"
-    CURRENT_PROJECT_VERSION: "1"
+    CURRENT_PROJECT_VERSION: "2"
     TARGETED_DEVICE_FAMILY: "1"
     ENABLE_USER_SCRIPT_SANDBOXING: YES
 targets:
@@ -53,7 +53,6 @@ targets:
           - SenseVoice*.swift
           - Sherpa*.swift
           - BaiduASRClient.swift
-          - Providers/AppleASRConfig.swift
           - Providers/SherpaASRConfig.swift
           - Providers/BaiduASRConfig.swift
           - Providers/GoogleASRConfig.swift
@@ -97,6 +96,7 @@ targets:
           - audio
         # English base; Chinese in App/zh-Hans.lproj/InfoPlist.strings.
         NSCameraUsageDescription: Scans the QR code shown by Type4Me on your Mac to import your speech and text model setup.
+        NSSpeechRecognitionUsageDescription: Turns your speech into text with Apple Speech when you choose it as the speech service. When your language supports it, recognition stays on this iPhone.
         NSMicrophoneUsageDescription: Records only while you hold the mic on the keyboard, to turn your speech into text. The mic is off the rest of the time.
         CFBundleURLTypes:
           - CFBundleURLName: $(T4M_BUNDLE_ID_PREFIX).ios

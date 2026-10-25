@@ -23,6 +23,7 @@ enum DemoSeed {
     static var isOn: Bool { ProcessInfo.processInfo.environment["T4M_DEMO"] == "1" }
 
     static func apply(to model: AppModel) {
+        BuiltInSelfTest.runIfRequested()
         if ProcessInfo.processInfo.environment["T4M_STEP"] != nil {
             AppSettings.onboardingCompleted = false
             model.onboardingCompleted = false

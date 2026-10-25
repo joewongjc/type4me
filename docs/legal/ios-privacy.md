@@ -10,7 +10,12 @@ Type4Me for iPhone is a voice keyboard. You hold the mic on the keyboard, Type4M
 
 ### What leaves your iPhone
 
-Type4Me sends data only to the third-party services you set up yourself, with your own account and API key, and only after you agree in the app:
+Type4Me sends data only to the services you choose, and only after you agree in the app:
+
+- **Apple Speech** (built into iOS, no account needed). Recognition runs on this iPhone when your language supports it; otherwise iOS sends the audio to Apple to recognize, under Apple's privacy policy.
+- **Apple on-device model** (Apple Intelligence, no account needed). Text is processed on this iPhone and does not leave it.
+
+Or third-party services you set up yourself, with your own account and API key:
 
 - **Speech recognition service** (for example Volcano Engine, Soniox, Deepgram or OpenAI). It receives the audio recorded while you hold to talk, and your hotwords if you use them.
 - **Text model service** (for example DeepSeek, OpenAI, Anthropic Claude or Google Gemini), only when you use a mode that processes text, such as Voice Polish or Translate. It receives the recognized text.
@@ -28,6 +33,10 @@ These services handle the data under their own privacy policies and your agreeme
 - It does not log what you type with other keyboards or record anything when you are not holding the mic.
 - It does not use analytics, advertising or tracking, and it does not sell or share data with data brokers.
 - It has no accounts.
+
+### Update check
+
+To tell you when a newer version is out, Type4Me reads a small public file (`updates-ios.json`) from GitHub. The request carries no personal data, but GitHub sees your IP address, as with any web request.
 
 ### Permissions
 
@@ -53,7 +62,12 @@ Type4Me iPhone 版是一个语音键盘：你按住键盘上的麦克风，Type4
 
 ### 哪些数据会离开你的 iPhone
 
-Type4Me 只把数据发给你自己配置的第三方服务（使用你自己的账号和 API Key），并且要先在 App 里征得你的同意：
+Type4Me 只把数据发给你选择的服务，并且要先在 App 里征得你的同意：
+
+- **Apple 语音识别**（iOS 自带，不需要账号）：所选语言支持时在这台 iPhone 上识别；否则由 iOS 把声音交给 Apple 识别，按 Apple 的隐私政策处理。
+- **Apple 设备端模型**（Apple 智能，不需要账号）：文字在这台 iPhone 上处理，不会离开设备。
+
+或者你自己配置的第三方服务（使用你自己的账号和 API Key）：
 
 - **语音识别服务**（例如火山引擎、Soniox、Deepgram、OpenAI）：接收你按住说话期间录下的声音，以及你设置的热词。
 - **文本模型服务**（例如 DeepSeek、OpenAI、Anthropic Claude、Google Gemini）：只在你使用需要处理文字的模式（如语音润色、翻译）时，接收识别出的文字。
@@ -71,6 +85,10 @@ Type4Me 只把数据发给你自己配置的第三方服务（使用你自己的
 - 不记录你用其他键盘输入的内容，不按住麦克风时不录音。
 - 不使用任何统计、广告或追踪，不出售数据，也不与数据经纪商共享。
 - 没有账号体系。
+
+### 检查更新
+
+为了在有新版本时提醒你，Type4Me 会从 GitHub 读取一个公开的小文件（`updates-ios.json`）。请求里不带任何个人信息，但和所有网络请求一样，GitHub 能看到你的 IP 地址。
 
 ### 权限
 

@@ -94,6 +94,7 @@ final class AppModel: ObservableObject {
         if language != AppLanguage.current { language = AppLanguage.current }
         keyboardSeen = SharedSettings.keyboardLastSeen != nil
         session.appDidBecomeActive()
+        UpdateCheck.shared.checkIfDue()
         guard onboardingCompleted, hasConfig, micGranted, !session.isActive else { return }
         startSession(trigger: L("打开 App", "app opened"))
     }
@@ -124,6 +125,24 @@ final class AppModel: ObservableObject {
         if let pending, micGranted, !session.isActive {
             startSession(trigger: pending.trigger, confirm: pending.confirm)
         }
+    }
+
+    /// Apple Speech plus, on iPhones with Apple Intelligence, the on-device
+    /// model: dictation with no account or API key.
+    func useBuiltInServices() async {
+        _ = await AppleSpeechClient.requestAuthorization()
+        let asr = Type4MeTransferPayload.Endpoint(
+            provider: ASRProvider.apple.rawValue,
+            fields: ["localeIdentifier": AppleSpeechClient.defaultLocaleIdentifier]
+        )
+        try? ConfigStore.save(asr, as: .asr)
+        let withModel = ConfigStore.llm == nil && OnDeviceModel.isAvailable
+        if withModel { try? ConfigStore.save(OnDeviceModel.endpoint, as: .llm) }
+        configVersion += 1
+        log.add(withModel
+            ? L("已启用免密钥服务：Apple 语音识别 + Apple 设备端模型", "Using the built-in services: Apple Speech + Apple on-device model")
+            : L("已启用免密钥服务：Apple 语音识别", "Using the built-in service: Apple Speech"))
+        if onboardingCompleted { didBecomeActive() }
     }
 
     func revokeAIConsent() {

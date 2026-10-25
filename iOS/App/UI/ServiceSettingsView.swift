@@ -312,8 +312,27 @@ struct LLMSettingsView: View {
             && ["apiKey", "model", "baseURL"].allSatisfy { saved.fields[$0] == endpoint.fields[$0] }
     }
 
+    private var usesOnDevice: Bool { ConfigStore.llm?.provider == OnDeviceModel.providerID }
+
     var body: some View {
         Form {
+            Section {
+                if usesOnDevice {
+                    Label(L("正在使用 Apple 设备端模型", "Using the Apple On-Device Model"), systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(T4.success)
+                } else {
+                    Button(L("改用 Apple 设备端模型", "Use the Apple On-Device Model")) { useOnDevice() }
+                        .disabled(!OnDeviceModel.isAvailable)
+                }
+            } header: {
+                Text(L("免密钥", "No API Key"))
+            } footer: {
+                Text(OnDeviceModel.unavailableReason ?? L(
+                    "用 Apple 智能在这台 iPhone 上处理文字，不需要账号和密钥，文字不离开设备。效果不如大模型服务，可以随时换成下面的服务。",
+                    "Processes text with Apple Intelligence on this iPhone. No account or key, and your text stays on the device. Results are simpler than a large model service; switch to one below anytime."
+                ))
+            }
+
             Section {
                 Picker(L("服务商", "Provider"), selection: $providerID) {
                     ForEach(LLMProviderPreset.all) { Text($0.name).tag($0.id) }
@@ -419,6 +438,17 @@ struct LLMSettingsView: View {
             }
         } message: {
             Text(L("密钥会从这台 iPhone 上删除，需要处理模型的模式会改用原文。", "The key will be removed from this iPhone. Modes that need a text model will use your original words."))
+        }
+    }
+
+    private func useOnDevice() {
+        do {
+            try ConfigStore.save(OnDeviceModel.endpoint, as: .llm)
+            model.configVersion += 1
+            model.log.add(L("已改用 Apple 设备端模型", "Switched to the Apple on-device model"))
+            dismiss()
+        } catch {
+            saveError = error.localizedDescription
         }
     }
 

@@ -16,14 +16,24 @@ enum AIConsent {
     /// The services dictation would send data to right now.
     static var recipients: [Recipient] {
         var result: [Recipient] = []
-        if let asr = ConfigStore.asr {
+        if let asr = ConfigStore.asr, asr.provider == ASRProvider.apple.rawValue {
+            result.append(Recipient(
+                key: "asr:\(asr.provider)",
+                name: ProviderNames.asr(asr.provider),
+                receives: L(
+                    "你按住说话时录下的声音。所选语言支持时只在这台 iPhone 上识别，否则由 Apple 的服务器识别",
+                    "The audio recorded while you hold to talk. It stays on this iPhone when the language supports on-device recognition; otherwise Apple's servers recognize it"
+                )
+            ))
+        } else if let asr = ConfigStore.asr {
             result.append(Recipient(
                 key: "asr:\(asr.provider)",
                 name: ProviderNames.asr(asr.provider),
                 receives: L("你按住说话时录下的声音和你设置的热词", "The audio recorded while you hold to talk, plus your hotwords")
             ))
         }
-        if let llm = ConfigStore.llm {
+        // The on-device model keeps text on this iPhone, so there is nothing to agree to.
+        if let llm = ConfigStore.llm, llm.provider != OnDeviceModel.providerID {
             result.append(Recipient(
                 key: "llm:\(llm.provider)",
                 name: ProviderNames.llm(llm.provider),
