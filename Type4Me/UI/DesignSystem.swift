@@ -71,8 +71,25 @@ enum TF {
     /// The same placement rule as the dark floor applies: keep it beneath the
     /// glass rather than above it or inside `Glass.tint`.
     static let glassLightContrastFloor: Double = 0.45
+    /// Soft specular rim over native Liquid Glass. macOS draws a much fainter
+    /// glass edge than iOS, which made the bar read as a flat plate. Blend it
+    /// with `.plusLighter` so it brightens the refraction instead of painting
+    /// an opaque outline over it. `strength` scales every stop (1 = tuned look).
+    static func recordingNativeGlassRim(theme: RecordingTheme, strength: Double) -> LinearGradient {
+        let top = theme == .light ? 0.55 : 0.34
+        let bottom = theme == .light ? 0.25 : 0.14
+        return LinearGradient(
+            stops: [
+                .init(color: .white.opacity(min(1, top * strength)), location: 0),
+                .init(color: .white.opacity(min(1, 0.06 * strength)), location: 0.5),
+                .init(color: .white.opacity(min(1, bottom * strength)), location: 1),
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+    }
     /// A translucent highlight that takes on the material beneath it instead of reading as a flat white rule.
-    /// Only used by the macOS 14/15 fallback; native Liquid Glass draws its own rim.
+    /// Only used by the macOS 14/15 fallback; native glass uses `recordingNativeGlassRim(theme:strength:)`.
     static let recordingGlassRim = LinearGradient(
         colors: [
             .white.opacity(0.80),
@@ -83,7 +100,7 @@ enum TF {
         endPoint: .bottom
     )
     /// A translucent highlight for the light frosted glass theme.
-    /// Only used by the macOS 14/15 fallback; native Liquid Glass draws its own rim.
+    /// Only used by the macOS 14/15 fallback; native glass uses `recordingNativeGlassRim(theme:strength:)`.
     static let recordingLightGlassRim = LinearGradient(
         colors: [
             .white.opacity(0.95),
