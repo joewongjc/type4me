@@ -4,6 +4,21 @@ iPhone 上的 Type4Me 是一个语音键盘：在任何输入框切到 Type4Me �
 
 手机版还没有上架 App Store，目前需要用 Xcode 自己装到 iPhone 上。
 
+<table>
+  <tr>
+    <td width="25%"><img src="../docs/screenshots/ios-keyboard.png" alt="键盘：按住说话，松手出字" /></td>
+    <td width="25%"><img src="../docs/screenshots/ios-home.png" alt="首页：用量与我的模式" /></td>
+    <td width="25%"><img src="../docs/screenshots/ios-settings.png" alt="设置：识别、模型与词汇" /></td>
+    <td width="25%"><img src="../docs/screenshots/ios-scan-sync.jpg" alt="扫码同步 Mac 上的配置" /></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>键盘：按住说话，松手出字</sub></td>
+    <td align="center"><sub>首页：用量与我的模式</sub></td>
+    <td align="center"><sub>设置：识别、模型与词汇</sub></td>
+    <td align="center"><sub>扫码同步 Mac 上的配置</sub></td>
+  </tr>
+</table>
+
 ## 需要准备
 
 - iPhone，iOS 26 或更新版本。
