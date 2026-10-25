@@ -22,7 +22,7 @@ enum SharedLog {
 
     static func add(_ text: String) {
         guard let fileURL else { return }
-        let process = Bundle.main.bundleIdentifier?.replacingOccurrences(of: "com.type4me.ios", with: "app") ?? "?"
+        let process = Bundle.main.bundleIdentifier?.hasSuffix(".keyboard") == true ? "keyboard" : "app"
         let line = Data("\(stamp.string(from: Date())) [\(process)] \(text)\n".utf8)
         lock.lock()
         defer { lock.unlock() }

@@ -8,7 +8,7 @@ import Type4MeTransferCore
 /// in use, the thinking switch, translation targets). Speech services travel
 /// as their config's own credentials, which the iPhone reads with the same
 /// provider configs compiled from the Mac sources.
-enum IPhoneConfigExporter {
+enum MobileConfigExporter {
 
     struct Candidate: Identifiable, Hashable {
         let id: String

@@ -1876,6 +1876,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 NotificationCenter.default.post(name: HotwordStorage.didChangeNotification, object: nil)
                 SenseVoiceServerManager.syncHotwordsAndRestart()
             case "asr-sweep":
+                // Evaluation tools send the archived audio to Volcano with the
+                // user's own keys, so a link only runs them once the user has
+                // opted into keeping raw recordings.
+                guard ASRSampleArchive.isEnabled else {
+                    DebugFileLogger.log("asr-sweep rejected: raw recording archive is off")
+                    continue
+                }
                 guard let sampleID = VolcReplaySweep.sampleID(from: url) else {
                     DebugFileLogger.log("asr-sweep rejected: expected ?sample=<id prefix>")
                     continue
@@ -1888,6 +1895,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     }
                 }
             case "asr-bench":
+                guard ASRSampleArchive.isEnabled else {
+                    DebugFileLogger.log("asr-bench rejected: raw recording archive is off")
+                    continue
+                }
                 Task.detached {
                     do {
                         _ = try await VolcBench.run()
