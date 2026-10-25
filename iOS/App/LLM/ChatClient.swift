@@ -55,9 +55,6 @@ struct ChatClient: Sendable {
     }
 
     func complete(system: String?, user: String, timeout: TimeInterval = 20) async throws -> String {
-        if config.provider == OnDeviceModel.providerID {
-            return try await OnDeviceModel.complete(system: system, user: user, timeout: timeout)
-        }
         if LLMProvider(rawValue: config.provider) == .claude {
             return try await completeMessages(system: system, user: user, timeout: timeout)
         }

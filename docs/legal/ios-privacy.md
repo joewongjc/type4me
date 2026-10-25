@@ -10,12 +10,7 @@ Type4Me for iPhone is a voice keyboard. You hold the mic on the keyboard, Type4M
 
 ### What leaves your iPhone
 
-Type4Me sends data only to the services you choose, and only after you agree in the app:
-
-- **Apple Speech** (built into iOS, no account needed). Recognition runs on this iPhone when your language supports it; otherwise iOS sends the audio to Apple to recognize, under Apple's privacy policy.
-- **Apple on-device model** (Apple Intelligence, no account needed). Text is processed on this iPhone and does not leave it.
-
-Or third-party services you set up yourself, with your own account and API key:
+Type4Me sends data only to the third-party services you set up yourself, with your own account and API key, and only after you agree in the app:
 
 - **Speech recognition service** (for example Volcano Engine, Soniox, Deepgram or OpenAI). It receives the audio recorded while you hold to talk, and your hotwords if you use them.
 - **Text model service** (for example DeepSeek, OpenAI, Anthropic Claude or Google Gemini), only when you use a mode that processes text, such as Voice Polish or Translate. It receives the recognized text.
@@ -62,12 +57,7 @@ Type4Me iPhone 版是一个语音键盘：你按住键盘上的麦克风，Type4
 
 ### 哪些数据会离开你的 iPhone
 
-Type4Me 只把数据发给你选择的服务，并且要先在 App 里征得你的同意：
-
-- **Apple 语音识别**（iOS 自带，不需要账号）：所选语言支持时在这台 iPhone 上识别；否则由 iOS 把声音交给 Apple 识别，按 Apple 的隐私政策处理。
-- **Apple 设备端模型**（Apple 智能，不需要账号）：文字在这台 iPhone 上处理，不会离开设备。
-
-或者你自己配置的第三方服务（使用你自己的账号和 API Key）：
+Type4Me 只把数据发给你自己配置的第三方服务（使用你自己的账号和 API Key），并且要先在 App 里征得你的同意：
 
 - **语音识别服务**（例如火山引擎、Soniox、Deepgram、OpenAI）：接收你按住说话期间录下的声音，以及你设置的热词。
 - **文本模型服务**（例如 DeepSeek、OpenAI、Anthropic Claude、Google Gemini）：只在你使用需要处理文字的模式（如语音润色、翻译）时，接收识别出的文字。

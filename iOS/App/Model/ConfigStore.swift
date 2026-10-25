@@ -147,9 +147,7 @@ enum ConfigStore {
     /// can grey out modes that need the text model.
     static func refreshSharedFlags() {
         SharedSettings.asrConfigured = asr.flatMap(PhoneASR.config(for:)) != nil
-        SharedSettings.llmConfigured = llm.flatMap(LLMEndpointConfig.init(endpoint:)).map {
-            $0.provider != OnDeviceModel.providerID || OnDeviceModel.isAvailable
-        } ?? false
+        SharedSettings.llmConfigured = llm.flatMap(LLMEndpointConfig.init(endpoint:)) != nil
     }
 
     // MARK: - Keychain
@@ -197,7 +195,6 @@ enum ProviderNames {
     static func asr(_ id: String) -> String { PhoneASR.name(id) }
 
     static func llm(_ id: String) -> String {
-        if id == OnDeviceModel.providerID { return OnDeviceModel.displayName }
-        return LLMProvider(rawValue: id)?.displayName ?? id
+        LLMProvider(rawValue: id)?.displayName ?? id
     }
 }

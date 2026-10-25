@@ -1,7 +1,7 @@
 {
   "testflight": {
     "version": "1.0.0",
-    "build": 1,
+    "build": 2,
     "url": "https://testflight.apple.com/join/57f5897s",
     "notesZh": "第一个测试版。",
     "notesEn": "First beta."

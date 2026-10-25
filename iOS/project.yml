@@ -53,6 +53,7 @@ targets:
           - SenseVoice*.swift
           - Sherpa*.swift
           - BaiduASRClient.swift
+          - Providers/AppleASRConfig.swift
           - Providers/SherpaASRConfig.swift
           - Providers/BaiduASRConfig.swift
           - Providers/GoogleASRConfig.swift
@@ -96,7 +97,6 @@ targets:
           - audio
         # English base; Chinese in App/zh-Hans.lproj/InfoPlist.strings.
         NSCameraUsageDescription: Scans the QR code shown by Type4Me on your Mac to import your speech and text model setup.
-        NSSpeechRecognitionUsageDescription: Turns your speech into text with Apple Speech when you choose it as the speech service. When your language supports it, recognition stays on this iPhone.
         NSMicrophoneUsageDescription: Records only while you hold the mic on the keyboard, to turn your speech into text. The mic is off the rest of the time.
         CFBundleURLTypes:
           - CFBundleURLName: $(T4M_BUNDLE_ID_PREFIX).ios

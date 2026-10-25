@@ -183,17 +183,6 @@ struct OnboardingView: View {
                         Label(L("扫码同步", "Scan to Sync"), systemImage: "qrcode.viewfinder")
                     }
                     .buttonStyle(PrimaryButtonStyle())
-                    Button(L("不用密钥，直接开始", "Start Without API Keys")) {
-                        Task { await model.useBuiltInServices() }
-                    }
-                    .buttonStyle(SecondaryButtonStyle())
-                    Text(L(
-                        "使用 iPhone 自带的 Apple 语音识别；支持 Apple 智能的机型还会用 Apple 设备端模型润色和翻译。之后随时可以在设置里换成自己的服务。",
-                        "Uses Apple Speech built into iOS, plus the Apple on-device model for polishing and translation on iPhones with Apple Intelligence. You can switch to your own services in Settings anytime."
-                    ))
-                    .font(.system(size: 13))
-                    .foregroundStyle(T4.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
                 }
                 Button(model.hasConfig ? L("下一步", "Next") : L("稍后再导入", "Import Later")) { step = .tryIt }
                     .buttonStyle(model.hasConfig ? AnyButtonStyle(PrimaryButtonStyle()) : AnyButtonStyle(SecondaryButtonStyle()))

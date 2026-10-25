@@ -1,3 +1,2 @@
 "NSCameraUsageDescription" = "Scans the QR code shown by Type4Me on your Mac to import your speech and text model setup.";
 "NSMicrophoneUsageDescription" = "Records only while you hold the mic on the keyboard, to turn your speech into text. The mic is off the rest of the time.";
-"NSSpeechRecognitionUsageDescription" = "Turns your speech into text with Apple Speech when you choose it as the speech service. When your language supports it, recognition stays on this iPhone.";
