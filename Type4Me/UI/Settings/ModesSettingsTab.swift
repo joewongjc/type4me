@@ -423,7 +423,9 @@ struct ModesSettingsTab: View, SettingsCardHelpers {
                 )
                 PunctuationModeSection(selection: punctuationModeBinding(for: mode.id))
             }
-        } else if mode.isBuiltin && mode.id != ProcessingMode.formalWritingId {
+        } else if mode.isBuiltin
+                    && mode.id != ProcessingMode.formalWritingId
+                    && mode.id != ProcessingMode.agentModeId {
             VStack(alignment: .leading, spacing: 18) {
                 builtinModeDetail(mode)
                 if mode.supportsOutputFormatting {
@@ -522,6 +524,8 @@ struct ModesSettingsTab: View, SettingsCardHelpers {
         case ProcessingMode.intelliSenseId: return "sparkles"
         case ProcessingMode.macActionId: return "command.circle.fill"
         case ProcessingMode.selectionAskId: return "sparkle.magnifyingglass"
+        case ProcessingMode.agentModeId: return "paperplane.fill"
+        case ProcessingMode.promptOptimizeId: return "text.quote"
         default: return "slider.horizontal.3"
         }
     }

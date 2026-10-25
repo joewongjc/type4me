@@ -9,6 +9,7 @@ enum SettingsTab: String, CaseIterable, Identifiable, Hashable {
     case vocabulary
     case modes
     case history
+    case mobile
     case preferences
     case appearance
     case about
@@ -23,9 +24,9 @@ enum SettingsTab: String, CaseIterable, Identifiable, Hashable {
     static func tabs(for edition: AppEdition?) -> [SettingsTab] {
         switch edition {
         case .member:
-            return [.general, .askAnything, .modes, .vocabulary, .history, .preferences, .about]
+            return [.general, .askAnything, .modes, .vocabulary, .history, .mobile, .preferences, .about]
         case .byoKey, .none:
-            return [.general, .askAnything, .models, .vocabulary, .modes, .history, .preferences, .about]
+            return [.general, .askAnything, .models, .vocabulary, .modes, .history, .mobile, .preferences, .about]
         }
     }
     #endif
@@ -38,6 +39,7 @@ enum SettingsTab: String, CaseIterable, Identifiable, Hashable {
         case .vocabulary:  return L("词汇", "Vocabulary")
         case .modes:       return L("模式", "Modes")
         case .history:     return L("历史", "History")
+        case .mobile:      return L("手机版", "Mobile")
         case .preferences: return L("设置", "Settings")
         case .appearance:  return L("外观", "Appearance")
         case .about:       return L("关于", "About")
@@ -56,6 +58,7 @@ enum SettingsTab: String, CaseIterable, Identifiable, Hashable {
         case .vocabulary:  return L("热词与片段替换", "Hotwords & snippets")
         case .modes:       return L("推理与默认行为", "Processing & defaults")
         case .history:     return L("会话与日志保留", "Sessions & logs")
+        case .mobile:      return L("下载手机版与同步配置", "Get the mobile app & sync setup")
         case .preferences: return L("偏好与系统权限", "Preferences & permissions")
         case .appearance:  return L("录音显示与文本输出", "Recording display & text output")
         case .about:       return L("版本、许可证与支持", "Version, license & support")
@@ -74,6 +77,7 @@ enum SettingsTab: String, CaseIterable, Identifiable, Hashable {
         case .vocabulary:  return "book.closed"
         case .modes:       return "slider.horizontal.3"
         case .history:     return "clock.arrow.circlepath"
+        case .mobile:      return "iphone"
         case .preferences: return "gearshape"
         case .appearance:  return "paintbrush"
         case .about:       return "questionmark.circle"
@@ -248,9 +252,12 @@ struct SettingsView: View {
                 .padding(.bottom, 12)
             #endif
 
-            navItem(.preferences)
-                .padding(.horizontal, 12)
-                .padding(.bottom, 12)
+            VStack(spacing: 4) {
+                navItem(.mobile)
+                navItem(.preferences)
+            }
+            .padding(.horizontal, 12)
+            .padding(.bottom, 12)
         }
         .frame(width: 224)
         .background(
@@ -383,6 +390,8 @@ struct SettingsView: View {
             fixedPage { VocabularyTab() }
         case .history:
             fixedPage { HistoryTab(isActive: selectedTab == .history) }
+        case .mobile:
+            tabPage { MobileAppPage() }
         case .preferences, .appearance, .models, .modes, .about:
             settingsHubPage
         case .debug:

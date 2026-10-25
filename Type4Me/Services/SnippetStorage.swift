@@ -1,5 +1,6 @@
 import Foundation
 import os
+import Type4MeTransferCore
 #if canImport(AppKit)
 import AppKit
 #endif
@@ -483,15 +484,9 @@ enum SnippetStorage {
 
     // MARK: - Pattern building
 
-    /// Builds a regex that matches the trigger case-insensitively and space-insensitively.
-    /// Strips all whitespace from trigger, then inserts `\s*` between each character.
-    /// Uses ASCII-only word boundaries (not `\b`) so CJK/Latin boundaries work correctly.
+    /// Shared with the iPhone app so synced rules match the same text.
     private static func buildFlexPattern(_ trigger: String) -> String {
-        let chars = trigger.filter { !$0.isWhitespace }
-        guard !chars.isEmpty else { return NSRegularExpression.escapedPattern(for: trigger) }
-        let core = chars.map { NSRegularExpression.escapedPattern(for: String($0)) }
-            .joined(separator: "\\s*")
-        return "(?<![a-zA-Z0-9])" + core + "(?![a-zA-Z0-9])"
+        SnippetPattern.flexPattern(for: trigger)
     }
 
     // MARK: - File I/O helpers

@@ -1392,14 +1392,14 @@ struct ProcessingMode: Codable, Identifiable, Equatable, Hashable {
             name: L("代办模式", "Handle It"),
             description: defaultDescription(for: agentModeId),
             prompt: agentModePromptTemplate,
-            isBuiltin: false,
+            isBuiltin: true,
             processingLabel: L("处理中", "Handling"),
             hotkeyBindings: []
         )
     }
 
     static var builtins: [ProcessingMode] {
-        [.direct, .intelliSense, .translation(), .selectionAsk, .macAction, .formalWriting]
+        [.direct, .intelliSense, .translation(), .selectionAsk, .macAction, .formalWriting, .agentMode]
     }
     static var defaults: [ProcessingMode] {
         [

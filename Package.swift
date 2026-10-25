@@ -35,13 +35,18 @@ var targets: [Target] = [
         swiftSettings: swiftDefines
     ),
     .target(
+        name: "Type4MeTransferCore",
+        path: "Type4MeTransferCore",
+        swiftSettings: swiftDefines
+    ),
+    .target(
         name: "Type4MeUI",
         path: "Type4MeUI",
         swiftSettings: swiftDefines
     ),
     .executableTarget(
         name: "Type4Me",
-        dependencies: ["Type4MeIntelliSenseCore", "Type4MeReviseCore"]
+        dependencies: ["Type4MeIntelliSenseCore", "Type4MeReviseCore", "Type4MeTransferCore"]
             + (hasSherpaFramework ? ["SherpaOnnxLib"] : [])
             + (hasCppJiebaBridge ? ["CppJiebaBridge"] : []),
         path: "Type4Me",
@@ -59,7 +64,7 @@ var targets: [Target] = [
     ),
     .testTarget(
         name: "Type4MeTests",
-        dependencies: ["Type4Me", "Type4MeIntelliSenseCore", "Type4MeReviseCore"],
+        dependencies: ["Type4Me", "Type4MeIntelliSenseCore", "Type4MeReviseCore", "Type4MeTransferCore"],
         path: "Type4MeTests",
         swiftSettings: swiftDefines
     ),
@@ -93,6 +98,7 @@ let package = Package(
         .library(name: "Type4MeUI", targets: ["Type4MeUI"]),
         .library(name: "Type4MeIntelliSenseCore", targets: ["Type4MeIntelliSenseCore"]),
         .library(name: "Type4MeReviseCore", targets: ["Type4MeReviseCore"]),
+        .library(name: "Type4MeTransferCore", targets: ["Type4MeTransferCore"]),
     ],
     dependencies: [],
     targets: targets

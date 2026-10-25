@@ -27,6 +27,8 @@ Type4Me is a free, open-source voice input app for macOS. Hold a hotkey and talk
 
 Requires macOS 14 (Sonoma) or later. Both editions share the same settings, so you can switch anytime. The app is notarized by Apple; on first launch, grant **Microphone** and **Accessibility** access as prompted.
 
+**Mobile (beta):** the Type4Me voice keyboard for iPhone isn't on the App Store yet. You can build and install it yourself with Xcode; see [iOS/README.md](iOS/README.md). Speech services, models, modes and vocabulary sync over by scanning a QR code on the Mobile page in the Mac app's sidebar.
+
 ## Demo
 
 <video src="https://github.com/user-attachments/assets/d5ad6da9-b924-4fd6-9812-d0d9868563a4" width="720" controls>Type4Me demo video</video>

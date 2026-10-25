@@ -1,0 +1,17 @@
+// Signing for Type4Me on iPhone.
+//
+// Don't edit this file. Create Signing.local.xcconfig next to it (Git ignores
+// it) with your own values, then run `xcodegen generate` again:
+//
+//   DEVELOPMENT_TEAM = ABCDE12345
+//   T4M_BUNDLE_ID_PREFIX = com.yourname.type4me
+//
+// DEVELOPMENT_TEAM is the Team ID shown under Xcode › Settings › Accounts.
+// The bundle ID prefix must be unique to you: Apple only lets one team
+// register each bundle ID and App Group. The app, keyboard and App Group
+// become <prefix>.ios, <prefix>.ios.keyboard and group.<prefix>.ios.
+
+DEVELOPMENT_TEAM =
+T4M_BUNDLE_ID_PREFIX = com.type4me
+
+#include? "Signing.local.xcconfig"

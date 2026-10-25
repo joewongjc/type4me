@@ -1,0 +1,2 @@
+"NSCameraUsageDescription" = "扫描 Mac 版 Type4Me 显示的二维码，导入识别和处理模型配置。";
+"NSMicrophoneUsageDescription" = "只在你按住键盘上的麦克风说话时录音，把声音转成文字。其他时候不开麦克风。";

@@ -99,6 +99,7 @@ final class ModeStorageTests: XCTestCase {
             .removeAll,
             .preserve,
             .stripTrailing,
+            .questionsAndExclamationsOnly,
         ]
         var modes = ProcessingMode.builtins
         for index in modes.indices {
@@ -125,6 +126,41 @@ final class ModeStorageTests: XCTestCase {
             )
         }
         XCTAssertEqual(loaded.first(where: { $0.id == custom.id })?.punctuationMode, .removeAll)
+    }
+
+    func testHandleItLoadsAsBuiltinKeepingUserEdits() throws {
+        let suite = "ModeStorageTests.HandleIt.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(true, forKey: "tf_agentModeSeeded")
+        defaults.set(true, forKey: "tf_shortTextExemptionMigrated")
+
+        // Saved while Handle It was still a deletable default.
+        var stored = ProcessingMode.agentMode
+        stored.isBuiltin = false
+        stored.prompt = "Just do it: {text}"
+        stored.hotkeyBindings = [HotkeyBinding(keyCode: 40, modifiers: 0, style: .hold)]
+        let storage = ModeStorage(fileURL: testURL, userDefaults: defaults)
+        try storage.save(ProcessingMode.builtins.filter { $0.id != ProcessingMode.agentModeId } + [stored])
+
+        let loaded = try XCTUnwrap(storage.load().first { $0.id == ProcessingMode.agentModeId })
+        XCTAssertTrue(loaded.isBuiltin)
+        XCTAssertEqual(loaded.prompt, stored.prompt)
+        XCTAssertEqual(loaded.hotkeyBindings, stored.hotkeyBindings)
+    }
+
+    func testDeletedHandleItComesBackAsBuiltin() throws {
+        let suite = "ModeStorageTests.HandleItMissing.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(true, forKey: "tf_agentModeSeeded")
+        defaults.set(true, forKey: "tf_shortTextExemptionMigrated")
+        let storage = ModeStorage(fileURL: testURL, userDefaults: defaults)
+        try storage.save(ProcessingMode.builtins.filter { $0.id != ProcessingMode.agentModeId })
+
+        let loaded = storage.load()
+        XCTAssertEqual(loaded.last?.id, ProcessingMode.agentModeId)
+        XCTAssertTrue(loaded.last?.isBuiltin ?? false)
     }
 
     func testOutputFormattingCapabilityMatchesModeBehavior() {
