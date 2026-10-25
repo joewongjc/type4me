@@ -10,13 +10,6 @@ final class KeyboardDriverTests: XCTestCase {
         continueAfterFailure = true
     }
 
-    func testDumpNotes() throws {
-        notes.activate()
-        sleep(2)
-        snap("notes")
-        print("NOTES TREE\n\(notes.debugDescription)")
-    }
-
     func testDictation() throws {
         let app = XCUIApplication()
         // Recorded speech replaces the mic samples, so nothing plays aloud.

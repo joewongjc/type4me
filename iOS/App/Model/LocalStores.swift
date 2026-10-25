@@ -95,24 +95,6 @@ final class DiagnosticsLog: ObservableObject {
     }
 }
 
-enum MicrophoneStrategy: String, CaseIterable, Identifiable {
-    /// Microphone turns on only while the user is dictating and off right
-    /// after; the app stays silent in the background otherwise. Depends on
-    /// iOS letting an active session open input from the background.
-    case onDemand
-    /// Input runs for the whole session; buffers are dropped while idle.
-    case alwaysOn
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .onDemand: return L("说话时才开麦克风", "Only while talking")
-        case .alwaysOn: return L("会话期间保持麦克风", "On for the whole session")
-        }
-    }
-}
-
 enum AppSettings {
     private enum Key {
         static let timeout = "sessionTimeoutMinutes"
@@ -125,10 +107,6 @@ enum AppSettings {
         get { UserDefaults.standard.object(forKey: Key.timeout) as? Int ?? 60 }
         set { UserDefaults.standard.set(newValue, forKey: Key.timeout) }
     }
-
-    /// Always on demand: the mic opens only while dictating. The always-on
-    /// choice was removed from Settings, so an old saved value is ignored.
-    static var microphoneStrategy: MicrophoneStrategy { .onDemand }
 
     /// The Home "Import from Mac" card was swiped away or closed.
     static var importCardDismissed: Bool {

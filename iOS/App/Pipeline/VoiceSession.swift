@@ -19,7 +19,6 @@ final class VoiceSession: ObservableObject {
     @Published private(set) var expiresAt: Date?
     @Published private(set) var liveText = ""
     @Published private(set) var lastError: String?
-    @Published private(set) var activeStrategy: MicrophoneStrategy = AppSettings.microphoneStrategy
 
     let history: HistoryStore
     let log: DiagnosticsLog
@@ -84,47 +83,10 @@ final class VoiceSession: ObservableObject {
                 : L("打断结束，会话没能恢复，需要重新开启", "Interruption ended, but the session couldn't resume and needs to be restarted"))
             if !resumed { self.endSession(reason: L("音频会话被系统收回", "The system took back the audio session")) }
         }
-        #if DEBUG
-        if ProcessInfo.processInfo.environment["PIP_MIC_PROBE"] == "1" {
-            DarwinNotifier.shared.observe("com.type4me.ios.pipProbe") { [weak self] in self?.probeBackgroundMicrophone() }
-        }
-        #endif
         // Commands sent while the app was not running are stale.
         _ = DictationChannel.drainCommands()
         publishState()
     }
-
-    #if DEBUG
-    /// Explicit, opt-in physical-device verification. No observer is registered
-    /// on a normal launch; Release builds contain neither observer nor probe.
-    /// Counts PCM without saving or uploading it, then closes the input.
-    private func probeBackgroundMicrophone() {
-        guard !microphone.isRunning, current == nil else { log.add("PIPEXP probe skipped: already recording"); return }
-        let background = UIApplication.shared.applicationState == .background
-        log.add("PIPEXP probe received background=\(background) pip=\(pip.isActive) \(keeper.diagnostics)")
-        var byteCount = 0
-        let started = Date()
-        do {
-            try microphone.startEngine()
-            log.add(L(
-                "PIPEXP \(background ? "后台" : "前台")开启麦克风成功（\(microphone.lastStartNotes)，画中画\(pip.isActive ? "开着" : "没开")），用时 \(Int(Date().timeIntervalSince(started) * 1000)) ms",
-                "PIPEXP mic started in the \(background ? "background" : "foreground") (\(microphone.lastStartNotes), PiP \(pip.isActive ? "on" : "off")) in \(Int(Date().timeIntervalSince(started) * 1000)) ms"
-            ))
-            microphone.beginForwarding(onChunk: { data in
-                Task { @MainActor in byteCount += data.count }
-            }, onLevel: { _ in })
-            Task { @MainActor [weak self] in
-                try? await Task.sleep(for: .milliseconds(1500))
-                guard let self else { return }
-                _ = self.microphone.endForwarding()
-                self.microphone.stopEngine()
-                self.log.add("PIPEXP mic closed PCM bytes=\(byteCount) background=\(UIApplication.shared.applicationState == .background)")
-            }
-        } catch {
-            log.add(L("PIPEXP 后台开启麦克风失败：\(microphone.lastStartNotes)", "PIPEXP background mic start failed: \(microphone.lastStartNotes)"))
-        }
-    }
-    #endif
 
     var isActive: Bool { status != .off }
 
@@ -147,17 +109,13 @@ final class VoiceSession: ObservableObject {
         }
         do {
             if !keeper.isActive { try keeper.activate() }
-            activeStrategy = AppSettings.microphoneStrategy
-            if activeStrategy == .alwaysOn, !microphone.isRunning {
-                try microphone.startEngine()
-            }
             if status == .off { status = .idle }
             // Active PiP supplies background microphone eligibility;
             // the keeper does not capture audio between dictations.
             pip.prepare()
             lastError = nil
             touch()
-            log.add(L("会话开启（\(trigger)，\(activeStrategy.title)）", "Session started (\(trigger), mic: \(activeStrategy.title))"))
+            log.add(L("会话开启（\(trigger)）", "Session started (\(trigger))"))
             publishState()
         } catch {
             lastError = L("开启语音会话失败：\(error.localizedDescription)", "Couldn't start the voice session: \(error.localizedDescription)")
@@ -179,16 +137,9 @@ final class VoiceSession: ObservableObject {
         publishState()
     }
 
-    private var effectiveTimeoutMinutes: Int {
-        let setting = AppSettings.sessionTimeoutMinutes
-        // A microphone that stays on must not stay on forever.
-        if activeStrategy == .alwaysOn, setting == 0 { return 15 }
-        return setting
-    }
-
     private func touch() {
         lastActivity = Date()
-        let minutes = effectiveTimeoutMinutes
+        let minutes = AppSettings.sessionTimeoutMinutes
         expiresAt = minutes > 0 ? lastActivity.addingTimeInterval(TimeInterval(minutes * 60)) : nil
         if timeoutTimer == nil {
             timeoutTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
@@ -204,7 +155,7 @@ final class VoiceSession: ObservableObject {
 
     /// Dictation is over: give the microphone back so the indicator goes off.
     private func releaseMicrophoneIfUnneeded() {
-        guard activeStrategy == .onDemand, current == nil, microphone.isRunning else { return }
+        guard current == nil, microphone.isRunning else { return }
         microphone.stopEngine()
         log.add(L("麦克风已关闭", "Microphone closed"))
     }

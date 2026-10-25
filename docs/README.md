@@ -1,7 +1,7 @@
 # Type4Me 文档中心
 
 > 文档状态：当前有效
-> 最后整理：2026-10-14
+> 最后整理：2026-10-25
 
 这里是仓库文档的唯一入口。功能设计、开发设计和历史材料不再平铺在 `docs/` 根目录。
 
@@ -21,7 +21,8 @@
 
 | 功能 | 文档 | 类型 | 状态 | 设计日期 | 实现基线 |
 |---|---|---|---|---:|---|
-| 火山识别方案 | [准确 / 快速 / 自定义](features/volc-recognition-presets/design.md) | 产品与开发设计 | 已实现，待用户验收 | 2026-10-24 | 分支 `feat/volc-recognition-presets` |
+| 手机版 | [iPhone 语音键盘与 Mac 配置同步](features/mobile-app/design.md) | 产品与开发设计 | 已实现，测试中 | 2026-10-25 | `9334f5d1`（PR #372） |
+| 火山识别方案 | [准确 / 快速 / 自定义](features/volc-recognition-presets/design.md) | 产品与开发设计 | 已实现，待用户验收 | 2026-10-24 | main |
 | 录音结束节奏 | [松手出字：录音结束后的浮动条节奏](features/release-to-text/design.md) | 产品与开发设计 | 设计完成，待实现 | 2026-10-22 | `4422e95d`（main） |
 | 运行时性能 | [录音启动延迟优化与蓝牙开始提示音](features/runtime/recording-start-latency-design.md) | 专项开发设计 | 设计完成，待实现 | 2026-10-21 | `0d33f5b4`（分支 `fix/356-recording-start-audio`） |
 | 腾讯云 ASR（中英大模型 2.0） | [产品设计](features/tencent-asr/product-design.md) / [开发设计](features/tencent-asr/development-design.md) | 产品与开发设计 | 已实现，持续验证 | 2026-10-17 | 工作树 |

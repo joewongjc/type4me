@@ -4,17 +4,17 @@ import Type4MeTransferCore
 @testable import Type4Me
 
 /// Which Mac modes travel to the iPhone, and as what.
-final class IPhoneConfigExporterTests: XCTestCase {
+final class MobileConfigExporterTests: XCTestCase {
     private typealias Kind = Type4MeTransferPayload.Mode.Kind
 
     func testBuiltInModesMapToIPhoneKinds() {
-        XCTAssertEqual(IPhoneConfigExporter.transferMode(for: .direct)?.kind, Kind.quick)
-        XCTAssertEqual(IPhoneConfigExporter.transferMode(for: .direct)?.id, Kind.quick)
+        XCTAssertEqual(MobileConfigExporter.transferMode(for: .direct)?.kind, Kind.quick)
+        XCTAssertEqual(MobileConfigExporter.transferMode(for: .direct)?.id, Kind.quick)
         for (mode, kind) in [
             (ProcessingMode.formalWriting, Kind.formalWriting),
             (.agentMode, Kind.agentMode),
         ] {
-            let transfer = IPhoneConfigExporter.transferMode(for: mode)
+            let transfer = MobileConfigExporter.transferMode(for: mode)
             XCTAssertEqual(transfer?.kind, kind)
             XCTAssertEqual(transfer?.id, kind)
             XCTAssertNil(transfer?.prompt, "an unedited prompt keeps the iPhone's own default")
@@ -24,18 +24,18 @@ final class IPhoneConfigExporterTests: XCTestCase {
     func testEditedBuiltInPromptTravels() {
         var mode = ProcessingMode.formalWriting
         mode.prompt = "  只改错别字：{text}  "
-        let transfer = IPhoneConfigExporter.transferMode(for: mode)
+        let transfer = MobileConfigExporter.transferMode(for: mode)
         XCTAssertEqual(transfer?.kind, Kind.formalWriting)
         XCTAssertEqual(transfer?.prompt, "只改错别字：{text}")
     }
 
     func testMacOnlyModesStayOnTheMac() {
-        XCTAssertNil(IPhoneConfigExporter.transferMode(for: .macAction))
-        XCTAssertNil(IPhoneConfigExporter.transferMode(for: .selectionAsk))
-        XCTAssertNil(IPhoneConfigExporter.transferMode(for: .commandMode))
-        XCTAssertNil(IPhoneConfigExporter.transferMode(for: .intelliSense))
-        XCTAssertNil(IPhoneConfigExporter.transferMode(for: .promptOptimize))
-        XCTAssertNil(IPhoneConfigExporter.transferMode(for: .smartDirect))
+        XCTAssertNil(MobileConfigExporter.transferMode(for: .macAction))
+        XCTAssertNil(MobileConfigExporter.transferMode(for: .selectionAsk))
+        XCTAssertNil(MobileConfigExporter.transferMode(for: .commandMode))
+        XCTAssertNil(MobileConfigExporter.transferMode(for: .intelliSense))
+        XCTAssertNil(MobileConfigExporter.transferMode(for: .promptOptimize))
+        XCTAssertNil(MobileConfigExporter.transferMode(for: .smartDirect))
     }
 
     /// A mode the user made on the Mac, with a long prompt.
@@ -45,7 +45,7 @@ final class IPhoneConfigExporterTests: XCTestCase {
 
     func testUserPromptModesTravelAsCustomWithStableIDs() throws {
         let source = userMode()
-        let mode = try XCTUnwrap(IPhoneConfigExporter.transferMode(for: source))
+        let mode = try XCTUnwrap(MobileConfigExporter.transferMode(for: source))
         XCTAssertEqual(mode.kind, Kind.custom)
         XCTAssertEqual(mode.id, "mac-" + source.id.uuidString.lowercased())
         XCTAssertEqual(mode.prompt, source.prompt.trimmingCharacters(in: .whitespacesAndNewlines))
@@ -53,28 +53,28 @@ final class IPhoneConfigExporterTests: XCTestCase {
     }
 
     func testOnlyPhoneSuitedShippedModesTravel() {
-        let kinds = ProcessingMode.defaults.compactMap(IPhoneConfigExporter.transferMode(for:)).map(\.kind)
+        let kinds = ProcessingMode.defaults.compactMap(MobileConfigExporter.transferMode(for:)).map(\.kind)
         XCTAssertEqual(kinds.sorted(), [Kind.agentMode, Kind.formalWriting, Kind.quick, Kind.translation].sorted())
-        XCTAssertNil(IPhoneConfigExporter.transferMode(for: .translateToChinese), "legacy translation records duplicate Translation")
+        XCTAssertNil(MobileConfigExporter.transferMode(for: .translateToChinese), "legacy translation records duplicate Translation")
     }
 
     func testTranslationCarriesTheMacTarget() throws {
-        let japanese = try XCTUnwrap(IPhoneConfigExporter.transferMode(for: .translation(target: .japanese)))
+        let japanese = try XCTUnwrap(MobileConfigExporter.transferMode(for: .translation(target: .japanese)))
         XCTAssertEqual(japanese.kind, Kind.translation)
         XCTAssertEqual(japanese.id, Kind.translation, "one translation mode, updated in place by later syncs")
         XCTAssertEqual(japanese.targetLanguage, "ja")
         XCTAssertNil(japanese.prompt, "the iPhone builds the prompt from the same template")
-        XCTAssertEqual(IPhoneConfigExporter.transferMode(for: .translation())?.targetLanguage, "en")
+        XCTAssertEqual(MobileConfigExporter.transferMode(for: .translation())?.targetLanguage, "en")
     }
 
     func testCustomModeWithoutPromptIsSkipped() {
-        XCTAssertNil(IPhoneConfigExporter.transferMode(for: userMode(prompt: "   ")))
+        XCTAssertNil(MobileConfigExporter.transferMode(for: userMode(prompt: "   ")))
     }
 
     /// Every default mode the iPhone can use, prompts included, stays within
     /// a dozen codes (about six seconds per round on the Mac).
     func testDefaultModesFitAHandfulOfCodes() throws {
-        let modes = (ProcessingMode.defaults + [userMode()]).compactMap(IPhoneConfigExporter.transferMode(for:))
+        let modes = (ProcessingMode.defaults + [userMode()]).compactMap(MobileConfigExporter.transferMode(for:))
         XCTAssertFalse(modes.isEmpty)
         let payload = Type4MeTransferPayload(asr: nil, llm: nil, modes: modes)
         let frames = try Type4MeTransferCodec.encodeFrames(payload)
@@ -90,7 +90,7 @@ final class IPhoneConfigExporterTests: XCTestCase {
     /// The codes the export sheet draws decode back to the same text, at the
     /// size used for the largest parts.
     func testRenderedCodesDecode() throws {
-        let modes = (ProcessingMode.defaults + [userMode()]).compactMap(IPhoneConfigExporter.transferMode(for:))
+        let modes = (ProcessingMode.defaults + [userMode()]).compactMap(MobileConfigExporter.transferMode(for:))
         let frames = try Type4MeTransferCodec.encodeFrames(Type4MeTransferPayload(asr: nil, llm: nil, modes: modes))
         let detector = try XCTUnwrap(CIDetector(ofType: CIDetectorTypeQRCode, context: nil, options: [CIDetectorAccuracy: CIDetectorAccuracyHigh]))
         for frame in frames {
@@ -103,13 +103,13 @@ final class IPhoneConfigExporterTests: XCTestCase {
 
     func testHotwordsDropBlanksAndRepeats() {
         XCTAssertEqual(
-            IPhoneConfigExporter.hotwords(from: [" Claude ", "", "claude", "Type4Me", "  "]),
+            MobileConfigExporter.hotwords(from: [" Claude ", "", "claude", "Type4Me", "  "]),
             ["Claude", "Type4Me"]
         )
     }
 
     func testSnippetsKeepOrderAndDropBlankTriggers() {
-        let snippets = IPhoneConfigExporter.snippets(from: [
+        let snippets = MobileConfigExporter.snippets(from: [
             (trigger: " cloud code ", value: "Claude Code"),
             (trigger: " ", value: "ignored"),
             (trigger: "jason", value: "JSON"),
@@ -121,12 +121,12 @@ final class IPhoneConfigExporterTests: XCTestCase {
     }
 
     func testVocabularyOnlyPayload() throws {
-        let payload = try XCTUnwrap(IPhoneConfigExporter.makePayload(
+        let payload = try XCTUnwrap(MobileConfigExporter.makePayload(
             asrs: [], defaultASR: nil, llms: [], defaultLLM: nil, modes: [],
             hotwords: ["Type4Me"], snippets: []
         ))
         XCTAssertEqual(payload.hotwords, ["Type4Me"])
         XCTAssertNil(payload.snippets)
-        XCTAssertNil(IPhoneConfigExporter.makePayload(asrs: [], defaultASR: nil, llms: [], defaultLLM: nil, modes: []))
+        XCTAssertNil(MobileConfigExporter.makePayload(asrs: [], defaultASR: nil, llms: [], defaultLLM: nil, modes: []))
     }
 }

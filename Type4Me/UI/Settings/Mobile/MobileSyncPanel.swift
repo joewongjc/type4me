@@ -9,9 +9,9 @@ import Type4MeTransferCore
 /// Larger ones are split into numbered codes that cycle here until the
 /// iPhone has scanned every one.
 struct MobileSyncPanel: View {
-    @State private var asrCandidates: [IPhoneConfigExporter.Candidate] = []
-    @State private var llmCandidates: [IPhoneConfigExporter.Candidate] = []
-    @State private var modeCandidates: [IPhoneConfigExporter.Candidate] = []
+    @State private var asrCandidates: [MobileConfigExporter.Candidate] = []
+    @State private var llmCandidates: [MobileConfigExporter.Candidate] = []
+    @State private var modeCandidates: [MobileConfigExporter.Candidate] = []
     @State private var hotwords: [String] = []
     @State private var snippets: [Type4MeTransferPayload.Snippet] = []
     @State private var selectedASRs: Set<String> = []
@@ -30,7 +30,7 @@ struct MobileSyncPanel: View {
     private static let frameInterval: TimeInterval = 0.5
 
     private var payload: Type4MeTransferPayload? {
-        IPhoneConfigExporter.makePayload(
+        MobileConfigExporter.makePayload(
             asrs: asrCandidates.map(\.id).filter(selectedASRs.contains),
             defaultASR: defaultASR,
             llms: llmCandidates.map(\.id).filter(selectedLLMs.contains),
@@ -174,7 +174,7 @@ struct MobileSyncPanel: View {
 
     /// Checkboxes with one selected row marked Default.
     private func providerList(
-        _ candidates: [IPhoneConfigExporter.Candidate],
+        _ candidates: [MobileConfigExporter.Candidate],
         selected: Binding<Set<String>>,
         defaultID: Binding<String>
     ) -> some View {
@@ -322,14 +322,14 @@ struct MobileSyncPanel: View {
     // MARK: - Actions
 
     private func load() {
-        asrCandidates = IPhoneConfigExporter.asrCandidates()
-        llmCandidates = IPhoneConfigExporter.llmCandidates()
-        modeCandidates = IPhoneConfigExporter.modeCandidates()
-        hotwords = IPhoneConfigExporter.hotwords()
-        snippets = IPhoneConfigExporter.snippets()
-        defaultASR = IPhoneConfigExporter.preferredASR(in: asrCandidates) ?? ""
+        asrCandidates = MobileConfigExporter.asrCandidates()
+        llmCandidates = MobileConfigExporter.llmCandidates()
+        modeCandidates = MobileConfigExporter.modeCandidates()
+        hotwords = MobileConfigExporter.hotwords()
+        snippets = MobileConfigExporter.snippets()
+        defaultASR = MobileConfigExporter.preferredASR(in: asrCandidates) ?? ""
         selectedASRs = defaultASR.isEmpty ? [] : [defaultASR]
-        defaultLLM = IPhoneConfigExporter.preferredLLM(in: llmCandidates) ?? ""
+        defaultLLM = MobileConfigExporter.preferredLLM(in: llmCandidates) ?? ""
         selectedLLMs = defaultLLM.isEmpty ? [] : [defaultLLM]
         selectedModes = Set(modeCandidates.map(\.id))
         render()
