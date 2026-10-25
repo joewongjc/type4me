@@ -22,8 +22,8 @@ Type4Me 是一款免费开源的 macOS 语音输入法。按下快捷键说话�
 
 | 版本 | 说明 | 大小 |
 | --- | --- | --- |
-| ✨ **[云端版（推荐）](https://github.com/joewongjc/type4me/releases/download/v2.14.0/Type4Me-v2.14.0-cloud.dmg)** | Intel 与 Apple Silicon 通用。需要自备语音识别和大模型的 API Key，识别推荐火山引擎（豆包）或 Soniox。[配置指引](https://my.feishu.cn/wiki/QdEnwBMfUi0mN4k3ucMcNYhUnXr) | ~16 MB |
-| **[本地版](https://github.com/joewongjc/type4me/releases/download/v2.14.0/Type4Me-v2.14.0-local-apple-silicon.dmg)** | 仅支持 Apple Silicon。内置 SenseVoice + Qwen3-ASR 离线识别，约占 8 GB 内存，建议 32 GB 以上的机器使用；文本处理仍需 API Key 或本地 Ollama | ~720 MB |
+| ✨ **[云端版（推荐）](https://github.com/joewongjc/type4me/releases/download/v3.0.0/Type4Me-v3.0.0-cloud.dmg)** | Intel 与 Apple Silicon 通用。需要自备语音识别和大模型的 API Key，识别推荐火山引擎（豆包）或 Soniox。[配置指引](https://my.feishu.cn/wiki/QdEnwBMfUi0mN4k3ucMcNYhUnXr) | ~18 MB |
+| **[本地版](https://github.com/joewongjc/type4me/releases/download/v3.0.0/Type4Me-v3.0.0-local-apple-silicon.dmg)** | 仅支持 Apple Silicon。内置 SenseVoice + Qwen3-ASR 离线识别，约占 8 GB 内存，建议 32 GB 以上的机器使用；文本处理仍需 API Key 或本地 Ollama | ~720 MB |
 
 需要 macOS 14 (Sonoma) 及以上。两个版本共用一份配置，可以随时互相替换。安装包已通过 Apple 公证，首次打开按引导授予**麦克风**和**辅助功能**权限就能用。
 

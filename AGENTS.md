@@ -83,6 +83,7 @@ swift build -c release
 The built binary is at `.build/release/Type4Me`.
 
 - “本地部署”“装一下”“给我体验”等请求默认授权按正式应用流程打包，备份后替换 `/Applications/Type4Me.app`。保留 `com.type4me.app`、登录钥匙串中的 Developer ID Application 签名（Team `T98LK79X2K`）及 designated requirement，完成构建、签名与安装完整性检查后交给用户体验。仅在用户明确要求 Dev 版时使用独立 Dev app。
+- 公证只用登录钥匙串里的 notarytool profile `selectx-notary`（Team `T98LK79X2K` 共用，`scripts/setup-notary-profile.sh` 写入、`scripts/build-dmg.sh` 读取）。代理不得创建、覆盖、改名或删除任何公证 profile；凭据失效时停下，请用户自己运行 setup 脚本。
 - 本地 UI 迭代的测试和实际体验默认交给用户。除非用户明确要求，不自行运行测试套件、操作界面测试、切换设置或启动录音；仅完成必要的编译、签名、备份和安装完整性检查。用户提供的截图和体验反馈是下一轮调整依据。
 - Use `$type4me-deploy` and the current production packaging flow; default to `pure` + universal. Explicit Dev-only requests use `scripts/dev-run.sh`.
 - Local deployment does not authorize GitHub publication or the archived `official` subscription variant.

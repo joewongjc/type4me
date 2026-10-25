@@ -3,12 +3,12 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && /bin/pwd -P)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && /bin/pwd -P)"
-APP_VERSION="${APP_VERSION:-2.14.0}"
+APP_VERSION="${APP_VERSION:-3.0.0}"
 APP_FLAVOR="${APP_FLAVOR:-public}"  # public or personal
 VARIANT="${VARIANT:-pure}"          # pure, official, local, or cloud(alias pure)
 ARCH="${ARCH:-}"                    # arm64 or universal (default: universal for pure/official, arm64 for local)
 DIST_DIR="${DIST_DIR:-$PROJECT_DIR/dist}"
-NOTARY_PROFILE="${NOTARY_PROFILE:-type4me-notary}"
+NOTARY_PROFILE="${NOTARY_PROFILE:-selectx-notary}"
 NOTARY_KEYCHAIN="${NOTARY_KEYCHAIN:-}"
 TIMESTAMP_URL="${TIMESTAMP_URL:-http://timestamp.apple.com/ts01}"
 SKIP_NOTARIZE="${SKIP_NOTARIZE:-0}"
