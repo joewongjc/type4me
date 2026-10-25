@@ -144,6 +144,9 @@ private final class LiquidOrbRenderer: NSObject, MTKViewDelegate {
 
     private let audioLevelMeter: AudioLevelMeter
     private(set) var isAnimated: Bool
+    /// Recording has ended: keep rendering, but feed silence so the liquid
+    /// settles into its resting motion instead of stopping on the last frame.
+    var isInputMuted = false
 
     init?(view: MTKView, preset: OrbPreset, audioLevelMeter: AudioLevelMeter) {
         guard let device = LiquidOrbPipelineManager.shared.device,
@@ -208,7 +211,7 @@ private final class LiquidOrbRenderer: NSObject, MTKViewDelegate {
             // SwiftUI only ever produced an occasional snapshot, because the
             // meter is deliberately not observable at audio-callback rate.
             envelope.advance(
-                rawLevel: audioLevelMeter.current,
+                rawLevel: isInputMuted ? 0 : audioLevelMeter.current,
                 deltaTime: dt,
                 motionScale: motionScale
             )
@@ -242,6 +245,7 @@ private struct LiquidOrbMetalSurface: NSViewRepresentable {
     let preset: OrbPreset
     let audioLevelMeter: AudioLevelMeter
     let isAnimated: Bool
+    var isInputMuted = false
     let size: CGFloat
 
     func makeCoordinator() -> Coordinator {
@@ -275,6 +279,7 @@ private struct LiquidOrbMetalSurface: NSViewRepresentable {
             preset,
             isAnimated: isAnimated
         )
+        context.coordinator.renderer?.isInputMuted = isInputMuted
         if !isAnimated {
             view.setNeedsDisplay(view.bounds)
         }
@@ -293,7 +298,9 @@ struct LiquidGlassOrb: View {
     let audioLevelMeter: AudioLevelMeter
     var isHovered: Bool = false
     var isPressed: Bool = false
-    var isFrozen: Bool = false
+    /// Recording has ended and the result is on its way. The orb keeps moving
+    /// but stops reacting to the microphone, so it calms down smoothly.
+    var isSettling: Bool = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -307,7 +314,8 @@ struct LiquidGlassOrb: View {
             LiquidOrbMetalSurface(
                 preset: style.preset,
                 audioLevelMeter: audioLevelMeter,
-                isAnimated: style.isAnimated && !reduceMotion && !isFrozen,
+                isAnimated: style.isAnimated && !reduceMotion,
+                isInputMuted: isSettling,
                 size: orbSize
             )
             .frame(width: orbSize, height: orbSize)
@@ -317,7 +325,7 @@ struct LiquidGlassOrb: View {
                 .fill(Color.white.opacity(isPressed ? 0.75 : 0.95))
                 .frame(width: 10, height: 10)
                 .shadow(color: Color.black.opacity(0.6), radius: 2, x: 0, y: 1)
-                .opacity((isHovered || isPressed) && !isFrozen ? 1.0 : 0.0)
+                .opacity((isHovered || isPressed) && !isSettling ? 1.0 : 0.0)
                 .animation(.easeInOut(duration: 0.15), value: isHovered)
                 .animation(.easeInOut(duration: 0.15), value: isPressed)
         }

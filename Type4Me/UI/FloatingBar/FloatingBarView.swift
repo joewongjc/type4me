@@ -298,6 +298,10 @@ struct FloatingBarView<S: FloatingBarState>: View {
     @State private var showsModeHint = false
     @State private var modeHintTask: Task<Void, Never>?
     @State private var recordingActionLocked = false
+    /// The button the user actually clicked to end the recording. Only that
+    /// button keeps its pressed look while the controls are locked; ending by
+    /// hotkey locks the controls without making either button pop.
+    @State private var committedRecordingAction: RecordingControlAction?
     @State private var hoveredHandle = false
     @State private var hintedHandle = false
     @State private var handleHintTask: Task<Void, Never>?
@@ -947,7 +951,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
                 Spacer().frame(width: TF.recordingEdgeInset)
             }
 
-            CompactAudioIndicator(meter: state.audioLevel, theme: effectiveTheme, isFrozen: isFinishing)
+            CompactAudioIndicator(meter: state.audioLevel, theme: effectiveTheme, isSettling: isFinishing)
                 .frame(maxWidth: .infinity, maxHeight: TF.compactIndicatorHeight)
 
             if effectiveShowsCancelButton {
@@ -1217,15 +1221,15 @@ struct FloatingBarView<S: FloatingBarState>: View {
                     style: recordingVisualStyle,
                     audioLevelMeter: state.audioLevel,
                     isHovered: isFinishing ? false : (hoveredAction == .finish),
-                    isPressed: (isFinishing ? false : (pressedAction == .finish)) || recordingActionLocked,
-                    isFrozen: isFinishing
+                    isPressed: isRecordingButtonPressed(.finish),
+                    isSettling: isFinishing
                 )
                 .id("recording_orb_button")
             } else {
                 LiquidGlassCancelButton(
                     theme: effectiveTheme,
                     isHovered: isFinishing ? false : (hoveredAction == .cancel),
-                    isPressed: (isFinishing ? false : (pressedAction == .cancel)) || recordingActionLocked,
+                    isPressed: isRecordingButtonPressed(.cancel),
                     dragOffset: (pressedAction == .cancel && !isFinishing) ? cancelDragOffset : .zero
                 )
                 .id("recording_cancel_button")
@@ -1262,10 +1266,17 @@ struct FloatingBarView<S: FloatingBarState>: View {
         }
     }
 
+    private func isRecordingButtonPressed(_ action: RecordingControlAction) -> Bool {
+        if committedRecordingAction == action { return true }
+        guard !isFinishing, !recordingActionLocked else { return false }
+        return pressedAction == action
+    }
+
     private func triggerRecordingAction(_ action: RecordingControlAction) {
         guard presentationOverride == nil else { return }
         guard !recordingActionLocked else { return }
         recordingActionLocked = true
+        committedRecordingAction = action
         pressedAction = nil
         cancelDragOffset = .zero
         hoveredAction = nil
@@ -1468,6 +1479,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
             processingStartDate = nil
             doneStartDate = nil
             recordingActionLocked = false
+            committedRecordingAction = nil
             if effectiveShowsTooltips {
                 showModeHint()
             }
@@ -1478,6 +1490,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
             }
             updateRecordingPeakWidthIfNeeded()
             recordingActionLocked = false
+            committedRecordingAction = nil
         case .finishing:
             dismissModeHint()
             recordingActionLocked = true
