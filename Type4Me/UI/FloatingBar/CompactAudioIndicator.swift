@@ -67,15 +67,17 @@ struct CompactAudioIndicator: View {
 
     let meter: AudioLevelMeter
     var theme: RecordingTheme = .dark
-    var isFrozen: Bool = false
+    /// Recording has ended: keep the track scrolling but record silence, so
+    /// the waveform drains away instead of stopping mid-frame.
+    var isSettling: Bool = false
 
     @State private var history = CompactAudioHistoryModel()
 
     var body: some View {
-        TimelineView(.animation(paused: isFrozen)) { timeline in
+        TimelineView(.animation) { timeline in
             Canvas { context, size in
                 let time = timeline.date.timeIntervalSinceReferenceDate
-                let fraction = isFrozen ? 0 : history.update(currentTime: time, level: meter.current)
+                let fraction = history.update(currentTime: time, level: isSettling ? 0 : meter.current)
 
                 let barWidth = TF.compactIndicatorWaveBarWidth
                 let minHeight = TF.compactIndicatorWaveMinHeight

@@ -1673,7 +1673,7 @@ final class AppState {
             cancel()
         case .recording:
             stopRecordingInstant = ContinuousClock.now
-            stopRecordingPath = (reason == .maxDuration || !expectsQuickFinish) ? "processing" : "finishing"
+            stopRecordingPath = "processing"
             finishingWasRevealed = false
             recordingReadyGeneration = nil
             processingFinishTime = nil
@@ -1684,12 +1684,13 @@ final class AppState {
                 usesFinishingLabel = false
                 barPhase = .processing
             } else if expectsQuickFinish {
+                // Switch to the processing state the moment recording ends,
+                // even when the result is expected right away: the state then
+                // simply passes quickly instead of holding a frozen frame.
                 processingLabelOverride = nil
-                usesFinishingLabel = false
+                usesFinishingLabel = true
                 finishingLabel = (recordingFinishHint?.performsCalibration ?? false) ? .calibrating : .recognizing
-                finishingSnapshotSegments = segments
-                barPhase = .finishing
-                scheduleFinishingReveal()
+                barPhase = .processing
             } else {
                 processingLabelOverride = nil
                 if let hint = recordingFinishHint, hint.waitsForFullAudioRecognition, !hint.runsLLM {
@@ -1706,19 +1707,6 @@ final class AppState {
             onShowPanel?()
         default:
             break
-        }
-    }
-
-    private func scheduleFinishingReveal() {
-        finishingGeneration += 1
-        let myGeneration = finishingGeneration
-        Task { @MainActor in
-            try? await Task.sleep(for: finishingRevealDelay)
-            guard barPhase == .finishing, finishingGeneration == myGeneration else { return }
-            DebugFileLogger.log("finishing: revealed processing after \(finishingRevealDelay)")
-            finishingWasRevealed = true
-            usesFinishingLabel = true
-            barPhase = .processing
         }
     }
 

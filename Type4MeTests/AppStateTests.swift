@@ -92,7 +92,7 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(appState.effectiveProcessingLabel, appState.currentMode.processingLabel)
     }
 
-    func testStopRecordingEntersFinishingWhenQuickFinishExpected() {
+    func testStopRecordingEntersProcessingImmediatelyWhenQuickFinishExpected() {
         let appState = AppState()
         appState.currentMode = .direct
         appState.startRecording()
@@ -100,8 +100,10 @@ final class AppStateTests: XCTestCase {
 
         appState.stopRecording()
 
-        XCTAssertEqual(appState.barPhase, .finishing)
+        XCTAssertEqual(appState.barPhase, .processing)
         XCTAssertNil(appState.processingLabelOverride)
+        XCTAssertTrue(appState.usesFinishingLabel)
+        XCTAssertEqual(appState.effectiveProcessingLabel, L("识别中", "Recognizing"))
     }
 
     func testStopRecordingBatchRecognitionEntersProcessingDirectly() {
@@ -123,7 +125,7 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(appState.effectiveProcessingLabel, L("识别中", "Recognizing"))
     }
 
-    func testStopRecordingShortTextExemptionEntersFinishing() {
+    func testStopRecordingShortTextExemptionShowsRecognizing() {
         let appState = AppState()
         appState.currentMode = .smartDirect
         appState.startRecording()
@@ -138,11 +140,12 @@ final class AppStateTests: XCTestCase {
 
         appState.stopRecording()
 
-        XCTAssertEqual(appState.barPhase, .finishing)
+        XCTAssertEqual(appState.barPhase, .processing)
+        XCTAssertTrue(appState.usesFinishingLabel)
     }
 
-    func testFinishingRevealTimeoutUpgradesToProcessing() async throws {
-        let appState = AppState(finishingRevealDelay: .milliseconds(20))
+    func testQuickFinishWithCalibrationShowsCalibratingImmediately() {
+        let appState = AppState()
         appState.currentMode = .direct
         appState.startRecording()
         appState.recordingFinishHint = RecordingFinishHint(
@@ -154,39 +157,18 @@ final class AppStateTests: XCTestCase {
         appState.markRecordingReady()
         appState.stopRecording()
 
-        XCTAssertEqual(appState.barPhase, .finishing)
-
-        try await Task.sleep(for: .milliseconds(50))
-
         XCTAssertEqual(appState.barPhase, .processing)
         XCTAssertTrue(appState.usesFinishingLabel)
         XCTAssertEqual(appState.effectiveProcessingLabel, L("校准中", "Calibrating"))
     }
 
-    func testOldFinishingTimerDoesNotUpgradeNewSession() async throws {
-        let appState = AppState(finishingRevealDelay: .milliseconds(30))
-        appState.currentMode = .direct
-        appState.startRecording()
-        appState.markRecordingReady()
-        appState.stopRecording()
-
-        XCTAssertEqual(appState.barPhase, .finishing)
-
-        appState.finalize(text: "出字", outcome: .inserted)
-        XCTAssertEqual(appState.barPhase, .hidden)
-
-        try await Task.sleep(for: .milliseconds(60))
-
-        XCTAssertEqual(appState.barPhase, .hidden)
-    }
-
-    func testFinishingDismissesImmediatelyAfterOutput() {
+    func testQuickProcessingDismissesImmediatelyAfterOutput() {
         let appState = AppState()
         appState.currentMode = .direct
         appState.startRecording()
         appState.markRecordingReady()
         appState.stopRecording()
-        XCTAssertEqual(appState.barPhase, .finishing)
+        XCTAssertEqual(appState.barPhase, .processing)
 
         var hideStyle: FloatingBarHideStyle?
         appState.onHidePanel = { style in hideStyle = style }
@@ -318,25 +300,6 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(appState.effectiveProcessingLabel, appState.currentMode.processingLabel)
     }
 
-    func testFinishingFreezesSegmentsSnapshotWhileStateSegmentsUpdates() {
-        let appState = AppState()
-        appState.currentMode = .direct
-        appState.startRecording()
-        appState.appendSegment("正在说话", isConfirmed: true)
-        appState.markRecordingReady()
-
-        appState.stopRecording()
-
-        XCTAssertEqual(appState.barPhase, .finishing)
-        XCTAssertEqual(appState.finishingSnapshotSegments?.map(\.text).joined(), "正在说话")
-
-        // Later arrival of ASR text does not mutate the frozen snapshot
-        appState.appendSegment("，最终识别完整文本", isConfirmed: true)
-
-        XCTAssertEqual(appState.transcriptionText, "正在说话，最终识别完整文本")
-        XCTAssertEqual(appState.finishingSnapshotSegments?.map(\.text).joined(), "正在说话")
-    }
-
     func testShowRecoveryDisplaysPartialTextAndStatus() {
         let appState = AppState()
 
@@ -403,7 +366,7 @@ final class AppStateTests: XCTestCase {
 
         appState.stopRecording()
 
-        XCTAssertEqual(appState.barPhase, .finishing)
+        XCTAssertEqual(appState.barPhase, .processing)
         XCTAssertEqual(showCount, 2)
         XCTAssertEqual(hideCount, 0)
     }
@@ -1070,6 +1033,26 @@ final class AppStateTests: XCTestCase {
         controller.finishHide(generation: controller.panelGeneration)
         XCTAssertNil(controller.chrome.exitSnapshot)
         XCTAssertFalse(controller.panel.isVisible)
+    }
+
+    func testFloatingBarControllerExitCollapsesContentLayerUntilOffscreen() throws {
+        let appState = AppState()
+        let controller = FloatingBarController(state: appState)
+        appState.barPhase = .finishing
+        controller.panel.alphaValue = 1
+        controller.panel.orderFrontRegardless()
+        defer { controller.panel.orderOut(nil) }
+        controller.panel.contentView?.wantsLayer = true
+        let layer = try XCTUnwrap(controller.panel.contentView?.layer)
+
+        controller.hide(style: .output)
+
+        XCTAssertEqual(controller.panel.alphaValue, 1, accuracy: 0.01, "The collapse animates the content layer, not the window alpha")
+        XCTAssertEqual(layer.animationKeys()?.contains("type4me.exitCollapse"), true)
+
+        controller.finishHide(generation: controller.panelGeneration)
+        XCTAssertFalse(controller.panel.isVisible)
+        XCTAssertNil(layer.animation(forKey: "type4me.exitCollapse"))
     }
 
     func testFloatingBarControllerShowClearsExitSnapshotImmediately() {

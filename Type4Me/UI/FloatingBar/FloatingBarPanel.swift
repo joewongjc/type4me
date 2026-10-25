@@ -251,6 +251,9 @@ final class FloatingBarController {
         chrome.resetHover()
         panelGeneration &+= 1
         chrome.setExitSnapshot(nil)
+        if wasHiding {
+            restoreFromExitCollapse()
+        }
         panel.updateAppearance(theme: currentDisplayOverride()?.theme)
 
         if drag == nil && (anchorDisplayID == nil || state.barPhase == .preparing) {
@@ -314,16 +317,20 @@ final class FloatingBarController {
         isHiding = true
 
         let expectedGeneration = panelGeneration
+        let finish: () -> Void = { [weak self] in
+            MainActor.assumeIsolated {
+                self?.finishHide(generation: expectedGeneration)
+            }
+        }
+        if runExitCollapse(style: style, completion: finish) {
+            return
+        }
         let panelRef = panel
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = style == .output ? 0.15 : 0.25
             ctx.timingFunction = CAMediaTimingFunction(name: style == .output ? .easeOut : .easeIn)
             panelRef.animator().alphaValue = 0
-        }, completionHandler: { [weak self] in
-            MainActor.assumeIsolated {
-                self?.finishHide(generation: expectedGeneration)
-            }
-        })
+        }, completionHandler: finish)
     }
 
     /// Internal so tests can complete the exit without waiting for AppKit.
@@ -331,8 +338,100 @@ final class FloatingBarController {
         guard panelGeneration == generation else { return }
         isHiding = false
         panel.orderOut(nil)
+        // Clear the collapse only once the window is off screen, so the
+        // content never flashes back at full size before disappearing.
+        panel.contentView?.layer?.removeAnimation(forKey: Self.exitCollapseKey)
         anchorDisplayID = nil
         chrome.setExitSnapshot(nil)
+    }
+
+    // MARK: - Exit Collapse
+
+    private static let exitCollapseKey = "type4me.exitCollapse"
+    private static let exitRestoreKey = "type4me.exitRestore"
+
+    /// Shrinks and fades the bar as one Core Animation group on the content
+    /// layer. The render server drives it, so the exit stays smooth while the
+    /// main thread is busy injecting text — the window-alpha animation it
+    /// replaces was stepped by AppKit on the main thread and dropped frames
+    /// exactly then.
+    ///
+    /// Returns false when there is no layer to animate; the caller then falls
+    /// back to fading the window.
+    private func runExitCollapse(style: FloatingBarHideStyle, completion: @escaping () -> Void) -> Bool {
+        guard let view = panel.contentView else { return false }
+        view.wantsLayer = true
+        guard let layer = view.layer else { return false }
+        // A repeated hide during the same exit keeps the running collapse;
+        // its completion still belongs to this generation.
+        if layer.animation(forKey: Self.exitCollapseKey) != nil { return true }
+
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        let duration: CFTimeInterval = style == .output ? 0.30 : 0.32
+        let endScale: CGFloat = reduceMotion ? 1 : (style == .output ? 0.78 : 0.84)
+
+        layer.removeAnimation(forKey: Self.exitRestoreKey)
+        let scale = CABasicAnimation(keyPath: "transform")
+        scale.fromValue = NSValue(caTransform3D: CATransform3DIdentity)
+        scale.toValue = NSValue(caTransform3D: Self.centeredScale(endScale, in: layer))
+        // Starts gently and picks up speed, like the bar being tucked away.
+        scale.timingFunction = CAMediaTimingFunction(controlPoints: 0.45, 0.0, 0.75, 0.6)
+
+        // Stay mostly opaque for the first half so the shrink is actually
+        // seen, then fade out as it gets small.
+        let fade = CAKeyframeAnimation(keyPath: "opacity")
+        fade.values = [1.0, 0.9, 0.0]
+        fade.keyTimes = [0, 0.45, 1]
+        fade.timingFunctions = [
+            CAMediaTimingFunction(name: .easeOut),
+            CAMediaTimingFunction(name: .easeIn),
+        ]
+
+        let group = CAAnimationGroup()
+        group.animations = [scale, fade]
+        group.duration = duration
+        group.fillMode = .forwards
+        group.isRemovedOnCompletion = false
+
+        panel.alphaValue = 1
+        CATransaction.begin()
+        CATransaction.setCompletionBlock(completion)
+        layer.add(group, forKey: Self.exitCollapseKey)
+        CATransaction.commit()
+        return true
+    }
+
+    /// A new session took over mid-exit: grow back from wherever the collapse
+    /// currently is instead of popping to full size.
+    private func restoreFromExitCollapse() {
+        guard let layer = panel.contentView?.layer,
+              layer.animation(forKey: Self.exitCollapseKey) != nil else { return }
+        let presentation = layer.presentation()
+        let currentOpacity = presentation?.opacity ?? 0
+        let currentTransform = presentation?.transform ?? CATransform3DIdentity
+        layer.removeAnimation(forKey: Self.exitCollapseKey)
+
+        let scale = CABasicAnimation(keyPath: "transform")
+        scale.fromValue = NSValue(caTransform3D: currentTransform)
+        scale.toValue = NSValue(caTransform3D: CATransform3DIdentity)
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = currentOpacity
+        fade.toValue = 1
+        let group = CAAnimationGroup()
+        group.animations = [scale, fade]
+        group.duration = 0.18
+        group.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        layer.add(group, forKey: Self.exitRestoreKey)
+    }
+
+    /// Scale about the layer's centre whatever its anchor point is.
+    private static func centeredScale(_ scale: CGFloat, in layer: CALayer) -> CATransform3D {
+        let size = layer.bounds.size
+        let dx = size.width * (0.5 - layer.anchorPoint.x)
+        let dy = size.height * (0.5 - layer.anchorPoint.y)
+        var transform = CATransform3DMakeTranslation(dx, dy, 0)
+        transform = CATransform3DScale(transform, scale, scale, 1)
+        return CATransform3DTranslate(transform, -dx, -dy, 0)
     }
 
     private func layoutForShow() -> FloatingBarPanelLayout {
