@@ -38,6 +38,7 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
                  "Last backup \(formatted), \(snapshots.count) kept")
     }
     @AppStorage("tf_micKeepAlive") private var micKeepAlive = false
+    @AppStorage(ASRSampleArchive.enabledKey) private var saveASRSamples = false
     @AppStorage(CrossModeFinishPreference.storageKey) private var allowCrossModeFinish = CrossModeFinishPreference.defaultValue
     @AppStorage(AudioInputDevicePreferenceStore.modeKey) private var microphonePreferenceMode = AudioInputDevicePreferenceMode.systemDefault.rawValue
     @AppStorage(AudioInputDevicePreferenceStore.priorityEntriesKey) private var microphonePriorityEntriesStorage = ""
@@ -85,6 +86,8 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
                 micKeepAliveRow
                 SettingsDivider()
                 crossModeFinishRow
+                SettingsDivider()
+                asrSampleArchiveRow
             }
 
             Spacer().frame(height: 16)
@@ -468,6 +471,34 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
             subtitle: L("开启后防止蓝牙麦克风断开", "Prevent Bluetooth microphones from disconnecting"),
             isOn: $micKeepAlive
         )
+    }
+
+    private var asrSampleArchiveRow: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            settingsToggleRow(
+                L("保存原始录音样本", "Save Raw Recording Samples"),
+                subtitle: L(
+                    "保存每次录音的音频和语音识别原始文本，用于对比评估不同识别服务。音频只存在本机，约 2 MB/分钟。",
+                    "Keep each recording's audio and raw ASR text for comparing recognition services. Stored on this Mac only, about 2 MB per minute."
+                ),
+                isOn: $saveASRSamples
+            )
+            .accessibilityLabel(L("保存原始录音样本", "Save Raw Recording Samples"))
+            if saveASRSamples {
+                settingsOptionRow(
+                    L("样本文件夹", "Sample Folder"),
+                    subtitle: L("每条录音一个 WAV，文本与元数据在 manifest.jsonl",
+                                "One WAV per recording; text and metadata in manifest.jsonl"),
+                    isIndented: true
+                ) {
+                    Button(L("在 Finder 中显示", "Show in Finder")) {
+                        ASRSampleArchive.revealInFinder()
+                    }
+                    .buttonStyle(.tf(.secondary, size: .small))
+                    .accessibilityLabel(L("在 Finder 中显示录音样本文件夹", "Show recording sample folder in Finder"))
+                }
+            }
+        }
     }
 
     // MARK: - Revise Settings Rows

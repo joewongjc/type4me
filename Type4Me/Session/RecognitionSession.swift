@@ -2153,6 +2153,14 @@ actor RecognitionSession {
 
         // Combine confirmed segments + any trailing unconfirmed partial.
         let effectiveText = currentTranscript.displayText
+        archiveASRSampleIfEnabled(
+            rawText: effectiveText,
+            provider: provider,
+            isStreaming: providerIsStreaming,
+            status: completionIntent == .cancelled
+                ? "cancelled"
+                : (needsBatchFallback ? "batch_fallback" : "completed")
+        )
         currentConfig = nil
 
         // The final transcript is available after teardown and any batch fallback.
@@ -2966,6 +2974,13 @@ actor RecognitionSession {
                 config: config,
                 provider: provider
             )
+            self.archiveASRSampleIfEnabled(
+                pcm: fullAudio,
+                rawText: recovered ?? rawPartialText,
+                provider: provider,
+                isStreaming: ASRProviderRegistry.capabilities(for: provider, config: config).isStreaming,
+                status: "stream_recovery"
+            )
             await self.finishRecovery(
                 recoveredText: recovered,
                 generation: myGeneration,
@@ -3233,6 +3248,44 @@ actor RecognitionSession {
     }
 
     // MARK: - Internal helpers
+
+    /// Saves the full recording and the untouched ASR text for offline ASR
+    /// evaluation when the user enabled it in General settings. The disk write
+    /// runs off the session actor so finishing the dictation never waits on it.
+    private func archiveASRSampleIfEnabled(
+        pcm: Data? = nil,
+        rawText: String,
+        provider: ASRProvider,
+        isStreaming: Bool,
+        status: String
+    ) {
+        guard ASRSampleArchive.isEnabled, !isManualInput else { return }
+        let audio = pcm ?? audioEngine.getRecordedAudio()
+        guard !audio.isEmpty else { return }
+
+        let purpose: String
+        if case .revise = recordingPurpose {
+            purpose = "revise"
+        } else if currentMode.executionKind == .selectionAsk {
+            purpose = "selection_ask"
+        } else {
+            purpose = "input"
+        }
+        let sample = ASRSampleArchive.Sample(
+            pcm: audio,
+            rawText: rawText,
+            provider: provider,
+            asrModel: currentASRModelLabel(for: provider),
+            isStreaming: isStreaming,
+            status: status,
+            purpose: purpose,
+            processingModeId: currentMode.id.uuidString,
+            processingModeName: currentMode.name
+        )
+        Task.detached(priority: .utility) {
+            await ASRSampleArchive.shared.save(sample)
+        }
+    }
 
     private func setupAudioChunkPipeline() -> AsyncStream<Data>.Continuation {
         audioChunkContinuation?.finish()
