@@ -41,6 +41,8 @@ final class KeyboardModel: ObservableObject {
     /// next time the keyboard opens.
     @Published var language = AppLanguage.current
     @Published var canUndo = false
+    /// Set right after an undo, until anything else changes the text.
+    @Published var canRedo = false
     /// Where a held finger currently is, for the caption under the orb.
     @Published var holdZone: HoldZone = .none
 
@@ -51,6 +53,16 @@ final class KeyboardModel: ObservableObject {
     private var requestID: UUID?
     private var startDocumentID: UUID?
     private var lastInsertion: String?
+    private var redo: Redo?
+
+    /// What an undo took out, and where, so redo puts it back only in the
+    /// same place.
+    private struct Redo {
+        let text: String
+        let documentID: UUID
+        /// The end of the text before the cursor once the undo is done.
+        let anchor: String
+    }
     private var watchdog: Task<Void, Never>?
     private var noticeTask: Task<Void, Never>?
     private var observing = false
@@ -66,6 +78,7 @@ final class KeyboardModel: ObservableObject {
         hasFullAccess = controller?.hasFullAccess ?? false
         refreshReturnKey()
         guard hasFullAccess else { return }
+        KeyFeedback.reload()
         LiquidOrbPipeline.shared.warmUp()
         mode = SharedSettings.selectedMode
         llmConfigured = SharedSettings.llmConfigured
@@ -137,6 +150,9 @@ final class KeyboardModel: ObservableObject {
         switch phase {
         case .idle:
             if liveness == .ready {
+                // A new dictation replaces whatever an undo took out.
+                redo = nil
+                canRedo = false
                 startRecording()
             } else {
                 openApp()
@@ -203,8 +219,7 @@ final class KeyboardModel: ObservableObject {
             if !text.isEmpty {
                 let ending = L("。", ".")
                 controller?.proxy.insertText(text + ending)
-                lastInsertion = text + ending
-                canUndo = true
+                recordInsertion(text + ending)
                 show(L("已完成", "Done"), kind: .success, duration: 1.1)
             }
             resetToIdle()
@@ -330,8 +345,7 @@ final class KeyboardModel: ObservableObject {
         let sameField = controller.proxy.documentIdentifier == startDocumentID
         if sameField {
             controller.proxy.insertText(text)
-            lastInsertion = text
-            canUndo = true
+            recordInsertion(text)
             DictationChannel.send(KeyboardCommand(kind: .delivered, requestID: requestID, mode: mode, delivery: .inserted))
             if let note { show(note) } else { show(L("已完成", "Done"), kind: .success, duration: 1.1) }
         } else {
@@ -351,19 +365,52 @@ final class KeyboardModel: ObservableObject {
         let before = controller.proxy.documentContextBeforeInput ?? ""
         guard before.hasSuffix(text) else {
             show(L("光标位置变了，没法撤销", "The cursor moved, so this can't be undone"), kind: .error)
-            lastInsertion = nil
-            canUndo = false
+            invalidateUndo()
             return
         }
         for _ in 0..<text.count { controller.proxy.deleteBackward() }
         lastInsertion = nil
         canUndo = false
-        show(L("已撤销", "Undone"))
+        // The proxy's context updates after the deletes land, so the anchor
+        // comes from the text read before them.
+        redo = Redo(
+            text: text,
+            documentID: controller.proxy.documentIdentifier,
+            anchor: String(before.dropLast(text.count).suffix(Self.anchorLength))
+        )
+        canRedo = true
+        show(L("已撤销 · 可重做", "Undone · Redo available"))
+    }
+
+    func redoUndoneInsertion() {
+        guard let controller, let redo else { return }
+        let before = controller.proxy.documentContextBeforeInput ?? ""
+        guard controller.proxy.documentIdentifier == redo.documentID,
+              String(before.suffix(Self.anchorLength)) == redo.anchor
+        else {
+            show(L("光标位置变了，没法重做", "The cursor moved, so this can't be redone"), kind: .error)
+            invalidateUndo()
+            return
+        }
+        controller.proxy.insertText(redo.text)
+        recordInsertion(redo.text)
+        show(L("已重做", "Redone"))
+    }
+
+    /// Enough of the text before the cursor to tell that it hasn't moved;
+    /// the proxy only ever shows a window of it anyway.
+    private static let anchorLength = 24
+
+    /// Dictated text that the undo key can take back out.
+    private func recordInsertion(_ text: String) {
+        lastInsertion = text
+        canUndo = true
+        redo = nil
+        canRedo = false
     }
 
     func insert(_ text: String) {
         controller?.proxy.insertText(text)
-        UIDevice.current.playInputClick()
         invalidateUndo()
     }
 
@@ -375,6 +422,11 @@ final class KeyboardModel: ObservableObject {
     func returnKey() {
         controller?.proxy.insertText("\n")
         invalidateUndo()
+    }
+
+    /// The "4" button next to the modes: more settings live in the app.
+    func openSettings() {
+        controller?.openContainingApp(SharedContainer.Link.settings)
     }
 
     func dismissKeyboard() {
@@ -390,6 +442,8 @@ final class KeyboardModel: ObservableObject {
     private func invalidateUndo() {
         lastInsertion = nil
         canUndo = false
+        redo = nil
+        canRedo = false
     }
 
     private func show(_ message: String, kind: KeyboardNotice.Kind = .info, duration: Double = 2.5) {

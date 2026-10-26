@@ -28,6 +28,8 @@ struct SettingsView: View {
     @ObservedObject private var appIcon = AppIconStore.shared
 
     @State private var timeout = AppSettings.sessionTimeoutMinutes
+    @State private var keyHaptics = SharedSettings.keyHaptics
+    @State private var keySounds = SharedSettings.keySounds
     @State private var confirmClear = false
     @State private var confirmClearHistory = false
     @State private var language = AppLanguage.override?.rawValue ?? "system"
@@ -122,6 +124,20 @@ struct SettingsView: View {
                 Text(L(
                     "只在按住说话时打开麦克风，松开就关，其他时候状态栏没有麦克风提示，也不用跳回 App。",
                     "The mic opens only while you hold to talk and closes when you let go. No mic indicator the rest of the time, and no trip back to the app."
+                ))
+            }
+
+            Section {
+                Toggle(L("按键震动", "Key Haptics"), isOn: $keyHaptics)
+                    .onChange(of: keyHaptics) { _, on in SharedSettings.keyHaptics = on }
+                Toggle(L("按键音", "Key Sounds"), isOn: $keySounds)
+                    .onChange(of: keySounds) { _, on in SharedSettings.keySounds = on }
+            } header: {
+                Text(L("键盘", "Keyboard"))
+            } footer: {
+                Text(L(
+                    "iOS 不向第三方键盘提供系统的键盘反馈设置，所以在这里单独开关。按键音和系统键盘一样，静音模式下不响。",
+                    "iOS doesn't share its keyboard feedback settings with third-party keyboards, so they're set here. Like the system keyboard, key sounds stay quiet in silent mode."
                 ))
             }
 

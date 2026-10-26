@@ -76,6 +76,9 @@ final class AppModel: ObservableObject {
             }
         case "session":
             startSession(trigger: L("从键盘跳转", "opened from the keyboard"), confirm: true)
+        case "settings":
+            tab = .settings
+            settingsPath = []
         default:
             break
         }

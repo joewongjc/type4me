@@ -68,8 +68,12 @@ struct KeyboardRootView: View {
                 .frame(maxWidth: .infinity)
                 .transition(.opacity)
         } else {
-            ModePicker(model: model)
-                .transition(.opacity)
+            HStack(spacing: 8) {
+                ModePicker(model: model)
+                OpenAppButton { model.openSettings() }
+            }
+            .padding(.horizontal, 4)
+            .transition(.opacity)
         }
     }
 
@@ -103,6 +107,11 @@ struct KeyboardRootView: View {
                         model.cancelFromKey()
                     }
                     .transition(.blurReplace)
+                } else if model.canRedo {
+                    SideKey(systemImage: "arrow.uturn.forward", title: L("重做", "Redo"), enabled: model.phase == .idle) {
+                        model.redoUndoneInsertion()
+                    }
+                    .transition(.blurReplace)
                 } else {
                     SideKey(systemImage: "arrow.uturn.backward", title: L("撤销", "Undo"), enabled: model.canUndo && model.phase == .idle) {
                         model.undoLastInsertion()
@@ -111,6 +120,7 @@ struct KeyboardRootView: View {
                 }
             }
             .animation(.easeInOut(duration: 0.18), value: model.phase)
+            .animation(.easeInOut(duration: 0.18), value: model.canRedo)
             Spacer()
             VStack(spacing: 4) {
                 MicButton(model: model)
@@ -163,9 +173,9 @@ struct KeyboardRootView: View {
                 .accessibilityIdentifier("keyboard.hide")
             // Chinese full-width punctuation, or ASCII in English.
             ForEach([L("，", ","), L("。", "."), L("？", "?")], id: \.self) { mark in
-                KeyCap(title: mark, width: 40) { model.insert(mark) }
+                KeyCap(title: mark, width: 40, repeats: true) { model.insert(mark) }
             }
-            KeyCap(title: L("空格", "space")) { model.insert(" ") }
+            KeyCap(title: L("空格", "space"), repeats: true) { model.insert(" ") }
             KeyCap(title: model.returnKeyTitle, function: true, width: 72) { model.returnKey() }
         }
         .frame(height: 44)
@@ -206,48 +216,109 @@ enum KB {
     static let keyTint = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(white: 1, alpha: 0.10) : UIColor(white: 1, alpha: 0.55) })
     static let functionTint = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(white: 0, alpha: 0.10) : UIColor(white: 1, alpha: 0.12) })
     static let halo = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(white: 1, alpha: 0.10) : UIColor(white: 0, alpha: 0.07) })
-    static let track = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(white: 1, alpha: 0.10) : UIColor(white: 0, alpha: 0.07) })
-    static let segment = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(white: 0.42, alpha: 1) : .white })
 }
 
-/// Segmented mode switcher in the Mac settings style: a recessed track with
-/// a raised selected segment that slides between modes.
+/// The system segmented control, so it keeps the iOS 26 Liquid Glass thumb
+/// that swells under a finger and can be dragged between modes, restyled to
+/// read like the tab bar: glass behind it and a faint selected pill. A mode
+/// that needs a text model can't be disabled on its own here; picking it
+/// without one is refused by the model, which shows why, and the control
+/// springs back to the mode in use.
 struct ModePicker: View {
     @ObservedObject var model: KeyboardModel
-    @Namespace private var selection
 
     var body: some View {
-        HStack(spacing: 2) {
-            ForEach(DictationMode.keyboardOrder) { mode in
-                let selected = model.mode == mode
-                let enabled = !mode.usesLLM || model.llmConfigured
-                Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) { model.select(mode) }
-                } label: {
-                    Text(mode.title)
-                        .font(.system(size: 14, weight: selected ? .semibold : .medium))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                        .foregroundStyle(KB.ink.opacity(selected ? 1 : (enabled ? 0.62 : 0.3)))
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 34)
-                        .background {
-                            if selected {
-                                Capsule()
-                                    .fill(KB.segment)
-                                    .shadow(color: .black.opacity(0.10), radius: 1.5, y: 1)
-                                    .matchedGeometryEffect(id: "segment", in: selection)
-                            }
-                        }
-                        .contentShape(Capsule())
-                }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(selected ? .isSelected : [])
-            }
-        }
+        ModeSegments(
+            modes: DictationMode.keyboardOrder,
+            selected: model.mode,
+            select: { model.select($0) }
+        )
+        .frame(height: 38)
         .padding(3)
         .glassEffect(.regular.tint(KB.functionTint), in: Capsule())
-        .padding(.horizontal, 4)
+        .accessibilityLabel(L("模式", "Mode"))
+    }
+}
+
+private struct ModeSegments: UIViewRepresentable {
+    let modes: [DictationMode]
+    let selected: DictationMode
+    let select: (DictationMode) -> Void
+
+    func makeUIView(context: Context) -> TracklessSegmentedControl {
+        let control = TracklessSegmentedControl()
+        control.selectedSegmentTintColor = UIColor { traits in
+            traits.userInterfaceStyle == .dark ? UIColor(white: 1, alpha: 0.14) : UIColor(white: 0, alpha: 0.07)
+        }
+        control.addTarget(context.coordinator, action: #selector(Coordinator.changed(_:)), for: .valueChanged)
+        control.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        control.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return control
+    }
+
+    func updateUIView(_ control: TracklessSegmentedControl, context: Context) {
+        context.coordinator.parent = self
+        let titles = modes.map(\.title)
+        if (0..<control.numberOfSegments).map({ control.titleForSegment(at: $0) ?? "" }) != titles {
+            control.removeAllSegments()
+            for (index, title) in titles.enumerated() {
+                control.insertSegment(withTitle: title, at: index, animated: false)
+            }
+        }
+        // Also puts the control back after the model refuses a mode.
+        let index = modes.firstIndex(of: selected) ?? UISegmentedControl.noSegment
+        if control.selectedSegmentIndex != index { control.selectedSegmentIndex = index }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
+
+    @MainActor
+    final class Coordinator: NSObject {
+        var parent: ModeSegments
+
+        init(parent: ModeSegments) { self.parent = parent }
+
+        @objc func changed(_ control: UISegmentedControl) {
+            guard parent.modes.indices.contains(control.selectedSegmentIndex) else { return }
+            parent.select(parent.modes[control.selectedSegmentIndex])
+        }
+    }
+}
+
+/// UISegmentedControl without its grey track, so the glass behind it shows
+/// through and matches the keys around it. The track is drawn by the
+/// control's direct image-view children (one per segment); the selected
+/// pill and the drag thumb live in other views and are left alone. If a
+/// future iOS draws the track some other way, the grey simply comes back.
+final class TracklessSegmentedControl: UISegmentedControl {
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        for view in subviews where view is UIImageView { view.isHidden = true }
+    }
+}
+
+/// Opens Type4Me on its Settings tab. Carries the brand mark: the "4" in the
+/// ink colour (black, or white on a dark keyboard) and the red dot.
+struct OpenAppButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                Image("MarkGlyph")
+                    .resizable()
+                    .renderingMode(.template)
+                    .foregroundStyle(KB.ink)
+                Image("MarkDot")
+                    .resizable()
+            }
+            .frame(width: 26, height: 26)
+            .frame(width: 44, height: 44)
+            .contentShape(Circle())
+        }
+        .buttonStyle(KeyPressStyle(feedback: .modifier))
+        .glassEffect(.regular.tint(KB.functionTint).interactive(), in: Circle())
+        .accessibilityLabel(L("打开 Type4Me 设置", "Open Type4Me Settings"))
     }
 }
 
@@ -398,18 +469,17 @@ struct SideKey: View {
             .frame(width: 64, height: 56)
             .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(KeyPressStyle(feedback: .modifier))
         .glassEffect(.regular.tint(KB.functionTint).interactive(enabled), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .disabled(!enabled)
     }
 }
 
-/// Delete key that repeats while held.
+/// Delete key that repeats while held, speeding up after a while.
 struct RepeatingKey: View {
     let systemImage: String
     let title: String
     let action: () -> Void
-    @State private var timer: Timer?
 
     var body: some View {
         VStack(spacing: 4) {
@@ -420,50 +490,50 @@ struct RepeatingKey: View {
         .frame(width: 64, height: 56)
         .glassEffect(.regular.tint(KB.functionTint).interactive(), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .contentShape(Rectangle())
-        .gesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { _ in
-                    guard timer == nil else { return }
-                    action()
-                    timer = Timer.scheduledTimer(withTimeInterval: 0.45, repeats: false) { _ in
-                        timer = Timer.scheduledTimer(withTimeInterval: 0.08, repeats: true) { _ in action() }
-                    }
-                }
-                .onEnded { _ in
-                    timer?.invalidate()
-                    timer = nil
-                }
-        )
+        .modifier(KeyRepeat(feedback: .delete, accelerates: true, action: action))
         .accessibilityLabel(title)
         .accessibilityAddTraits(.isButton)
+        .accessibilityAction { action() }
     }
 }
 
+/// A key on the bottom row. Character keys can repeat while held; the rest
+/// act once on release, like the system keyboard's return and globe keys.
 struct KeyCap: View {
     var title: String? = nil
     var systemImage: String? = nil
     var function = false
     var width: CGFloat? = nil
+    var repeats = false
     let action: () -> Void
 
+    private var shape: RoundedRectangle { RoundedRectangle(cornerRadius: 12, style: .continuous) }
+
     var body: some View {
-        Button(action: action) {
-            Group {
-                if let systemImage {
-                    Image(systemName: systemImage).font(.system(size: 18))
-                } else if let title {
-                    Text(title).font(.system(size: 16))
-                }
-            }
-            .foregroundStyle(KB.ink)
-            .frame(maxWidth: width == nil ? .infinity : width, maxHeight: .infinity)
-            .frame(width: width)
-            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        if repeats {
+            face
+                .glassEffect(.regular.tint(function ? KB.functionTint : KB.keyTint).interactive(), in: shape)
+                .modifier(KeyRepeat(feedback: function ? .modifier : .character, action: action))
+                .accessibilityAddTraits(.isButton)
+                .accessibilityAction { action() }
+        } else {
+            Button(action: action) { face }
+                .buttonStyle(KeyPressStyle(feedback: function ? .modifier : .character))
+                .glassEffect(.regular.tint(function ? KB.functionTint : KB.keyTint).interactive(), in: shape)
         }
-        .buttonStyle(.plain)
-        .glassEffect(
-            .regular.tint(function ? KB.functionTint : KB.keyTint).interactive(),
-            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
-        )
+    }
+
+    private var face: some View {
+        Group {
+            if let systemImage {
+                Image(systemName: systemImage).font(.system(size: 18))
+            } else if let title {
+                Text(title).font(.system(size: 16))
+            }
+        }
+        .foregroundStyle(KB.ink)
+        .frame(maxWidth: width == nil ? .infinity : width, maxHeight: .infinity)
+        .frame(width: width)
+        .contentShape(shape)
     }
 }

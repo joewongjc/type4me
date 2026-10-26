@@ -40,6 +40,8 @@ enum SharedContainer {
     enum Link {
         /// Start the voice session and show the "go back" screen.
         static let startSession = URL(string: "\(urlScheme)://session?start=1")!
+        /// Open the app on its Settings tab.
+        static let settings = URL(string: "\(urlScheme)://settings")!
     }
 }
 
@@ -53,6 +55,21 @@ enum SharedSettings {
         static let keyboardLastSeen = "keyboardLastSeen"
         static let keyboardHostIsSelf = "keyboardHostIsSelf"
         static let keyboardDemo = "keyboardDemo"
+        static let keyHaptics = "keyHaptics"
+        static let keySounds = "keySounds"
+    }
+
+    /// Key presses on the keyboard buzz and click. iOS doesn't tell
+    /// third-party keyboards about the system keyboard-feedback switches, so
+    /// the app keeps its own; both default to on.
+    static var keyHaptics: Bool {
+        get { SharedContainer.defaults?.object(forKey: Key.keyHaptics) as? Bool ?? true }
+        set { SharedContainer.defaults?.set(newValue, forKey: Key.keyHaptics) }
+    }
+
+    static var keySounds: Bool {
+        get { SharedContainer.defaults?.object(forKey: Key.keySounds) as? Bool ?? true }
+        set { SharedContainer.defaults?.set(newValue, forKey: Key.keySounds) }
     }
 
     /// DEBUG simulator screenshots: the keyboard plays a scripted dictation
