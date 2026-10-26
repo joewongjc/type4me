@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Type4Me</string>
+	<string>$(T4M_DISPLAY_NAME)</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -40,5 +40,7 @@
 	</dict>
 	<key>T4MAppGroup</key>
 	<string>group.$(T4M_BUNDLE_ID_PREFIX).ios</string>
+	<key>T4MURLScheme</key>
+	<string>$(T4M_URL_SCHEME)</string>
 </dict>
 </plist>

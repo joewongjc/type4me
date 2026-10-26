@@ -45,6 +45,14 @@ iPhone 上的 Type4Me 是一个语音键盘：在任何输入框切到 Type4Me �
 
    - `DEVELOPMENT_TEAM`：先在 Xcode › Settings › Accounts 登录 Apple 账号，选中账号下面的团队就能看到 Team ID。
    - `T4M_BUNDLE_ID_PREFIX`：起一个只属于你的前缀，比如 `com.你的名字.type4me`。默认的 `com.type4me` 已经被注册，不能用。
+   - 想和 TestFlight 版同时装在一台手机上，再加两行，给自己编译的这份换个名字和链接前缀：
+
+     ```
+     T4M_DISPLAY_NAME = Type4Me Dev
+     T4M_URL_SCHEME = type4me-dev
+     ```
+
+     这样桌面和键盘列表里能分清两个，键盘跳回 App 也不会跳错。Mac 上的二维码固定是 `type4me://`，用 iPhone 相机扫会打开 TestFlight 版；给这份导入配置时，在它自己的「设置 › 扫码同步」里扫。
 
 3. 生成工程并用 Xcode 打开：
 
@@ -87,7 +95,7 @@ iPhone 上的 Type4Me 是一个语音键盘：在任何输入框切到 Type4Me �
 | 路径 | 内容 |
 |---|---|
 | `project.yml` | XcodeGen 工程描述，改完运行 `xcodegen generate` |
-| `Signing.xcconfig` | 默认签名设置；自己的值写在 `Signing.local.xcconfig`（Git 忽略） |
+| `Signing.xcconfig` | 默认签名、显示名和 URL scheme；自己的值写在 `Signing.local.xcconfig`（Git 忽略） |
 | `App/` | 主 App：语音会话、云端识别（`ASR/PhoneASR.swift` 列出支持的服务商）、文本模型调用（OpenAI 兼容和 Claude）、热词和片段替换、引导、扫码导入、首页、历史、设置 |
 | `Keyboard/` | 键盘扩展：模式切换、按住说话、出字到光标、撤销 |
 | `Shared/` | 两边共用：App Group 路径、键盘与 App 之间的指令和状态格式 |

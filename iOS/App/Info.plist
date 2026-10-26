@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Type4Me</string>
+	<string>$(T4M_DISPLAY_NAME)</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -25,7 +25,7 @@
 			<string>$(T4M_BUNDLE_ID_PREFIX).ios</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>type4me</string>
+				<string>$(T4M_URL_SCHEME)</string>
 			</array>
 		</dict>
 	</array>
@@ -41,6 +41,8 @@
 	<string>Records only while you hold the mic on the keyboard, to turn your speech into text. The mic is off the rest of the time.</string>
 	<key>T4MAppGroup</key>
 	<string>group.$(T4M_BUNDLE_ID_PREFIX).ios</string>
+	<key>T4MURLScheme</key>
+	<string>$(T4M_URL_SCHEME)</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UIBackgroundModes</key>

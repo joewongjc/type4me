@@ -83,10 +83,11 @@ targets:
     info:
       path: App/Info.plist
       properties:
-        CFBundleDisplayName: Type4Me
+        CFBundleDisplayName: $(T4M_DISPLAY_NAME)
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         T4MAppGroup: group.$(T4M_BUNDLE_ID_PREFIX).ios
+        T4MURLScheme: $(T4M_URL_SCHEME)
         ITSAppUsesNonExemptEncryption: false
         LSApplicationCategoryType: public.app-category.productivity
         UILaunchScreen: {}
@@ -103,12 +104,12 @@ targets:
         CFBundleURLTypes:
           - CFBundleURLName: $(T4M_BUNDLE_ID_PREFIX).ios
             CFBundleURLSchemes:
-              - type4me
+              - $(T4M_URL_SCHEME)
     settings:
       base:
         TARGETED_DEVICE_FAMILY: "1"
         PRODUCT_BUNDLE_IDENTIFIER: $(T4M_BUNDLE_ID_PREFIX).ios
-        INFOPLIST_KEY_CFBundleDisplayName: Type4Me
+        INFOPLIST_KEY_CFBundleDisplayName: $(T4M_DISPLAY_NAME)
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
   Type4MeKeyboard:
     type: app-extension
@@ -133,10 +134,11 @@ targets:
     info:
       path: Keyboard/Info.plist
       properties:
-        CFBundleDisplayName: Type4Me
+        CFBundleDisplayName: $(T4M_DISPLAY_NAME)
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         T4MAppGroup: group.$(T4M_BUNDLE_ID_PREFIX).ios
+        T4MURLScheme: $(T4M_URL_SCHEME)
         NSExtension:
           NSExtensionPointIdentifier: com.apple.keyboard-service
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).KeyboardViewController
@@ -161,10 +163,11 @@ targets:
     info:
       path: Widgets/Info.plist
       properties:
-        CFBundleDisplayName: Type4Me
+        CFBundleDisplayName: $(T4M_DISPLAY_NAME)
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         T4MAppGroup: group.$(T4M_BUNDLE_ID_PREFIX).ios
+        T4MURLScheme: $(T4M_URL_SCHEME)
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:
