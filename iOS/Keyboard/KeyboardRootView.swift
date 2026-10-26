@@ -54,6 +54,11 @@ struct KeyboardRootView: View {
         .frame(height: KeyboardMetrics.height)
         // Recording or any notice replaces the bar; it comes back folded.
         .onChange(of: model.phase) { _, _ in modeBarOpen = false }
+        // A notice takes the bar's place too, and the dial's own fold task
+        // ends with it, so the fold has to happen here.
+        .onChange(of: model.notice) { _, notice in
+            if notice != nil { modeBarOpen = false }
+        }
         .id(model.language)
         // Transparent on purpose: iOS 26 draws the keyboard plate (with its
         // rounded top) behind the extension, and painting our own grey on
