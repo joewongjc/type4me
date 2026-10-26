@@ -31,7 +31,7 @@ Type4Me 是一款免费开源的 macOS 语音输入法。按下快捷键说话�
 
 iPhone 上的 Type4Me 是一个语音键盘：任何输入框切到 Type4Me，按住说话，松手出字，同样支持润色、翻译、代办等模式和热词、片段替换。识别服务、模型、模式和词汇可以在 Mac 版侧边栏的「手机版」里扫码同步过去，不用在手机上重新填 API Key。
 
-手机版正在 TestFlight 公开测试：在 iPhone 上打开 [https://testflight.apple.com/join/57f5897s](https://testflight.apple.com/join/57f5897s)，按提示装好 TestFlight 后就能安装（需要 iOS 26）。也可以用 Xcode 自己编译安装，步骤见 [iOS/README.md](iOS/README.md)。
+手机版还没有上架 App Store，目前用 Xcode 自己安装，步骤见 [iOS/README.md](iOS/README.md)。
 
 <table>
   <tr>
