@@ -31,7 +31,7 @@ Requires macOS 14 (Sonoma) or later. Both editions share the same settings, so y
 
 Type4Me on iPhone is a voice keyboard: switch to it in any text field, hold to talk and let go to type. Modes such as Voice Polish, Translation and Handle It work there too, along with hotwords and snippets. Speech services, models, modes and vocabulary sync over by scanning a QR code on the Mobile page in the Mac app's sidebar, so there are no API keys to retype.
 
-The mobile app isn't on the App Store yet. Build and install it yourself with Xcode; see [iOS/README.md](iOS/README.md) (in Chinese).
+The mobile app has been submitted to the App Store and to a public TestFlight beta. Both are in review, and TestFlight will likely be approved first. Until then, build and install it yourself with Xcode; see [iOS/README.md](iOS/README.md) (in Chinese).
 
 <table>
   <tr>
