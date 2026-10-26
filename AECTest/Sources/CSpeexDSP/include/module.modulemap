@@ -1,7 +1,0 @@
-module CSpeexDSP {
-    header "speex/speex_echo.h"
-    header "speex/speex_preprocess.h"
-    header "speex/speexdsp_types.h"
-    link "m"
-    export *
-}

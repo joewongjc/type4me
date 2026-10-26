@@ -694,7 +694,7 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
 
     private var hasQwen3ASR: Bool {
         let home = NSHomeDirectory()
-        let devQwen3 = (home as NSString).appendingPathComponent("projects/type4me/qwen3-asr-server/server.py")
+        let devQwen3 = (home as NSString).appendingPathComponent("projects/type4me/Modules/qwen3-asr-server/server.py")
         if FileManager.default.fileExists(atPath: devQwen3) { return true }
         if let bundled = Bundle.main.executableURL?
             .deletingLastPathComponent()

@@ -2,7 +2,7 @@
 
 > Type: user guide · Status: current · Last verified: 2026-10-06 · Version: v2.10.0
 
-[中文](url-scheme.md) · [Back to README](../../README.en.md)
+[中文](url-scheme.md) · [Back to README](../../README.md#english)
 
 Type4Me exposes a URL Scheme for browsers, Terminal, macOS Shortcuts, Raycast, Alfred, scripts, and AI agents.
 

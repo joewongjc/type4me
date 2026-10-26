@@ -101,7 +101,7 @@ iPhone 上的 Type4Me 是一个语音键盘：在任何输入框切到 Type4Me �
 | `Shared/` | 两边共用：App Group 路径、键盘与 App 之间的指令和状态格式 |
 | `SharedActivity/` | “开启语音会话” App Intent，控制中心按钮和操作按钮共用 |
 | `Widgets/` | 控制中心按钮 |
-| `../Type4MeTransferCore/` | Mac 和 iPhone 共用的同步格式（`T4M2.` 开头）和片段替换的匹配规则 |
+| `../Modules/Type4MeTransferCore/` | Mac 和 iPhone 共用的同步格式（`T4M2.` 开头）和片段替换的匹配规则 |
 | `../Type4Me/ASR`、`../Type4Me/Protocol` | 所有云端识别服务的客户端、协议和配置，直接复用 Mac 版源码（本地引擎和弃用的百度除外） |
 | `../Type4Me/LLM/LLMProvider.swift` | 文本模型服务商的地址、模型列表和思考开关，直接复用 Mac 版 |
 

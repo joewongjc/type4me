@@ -72,7 +72,7 @@
 - [模式与功能详解](usage/modes.md) / [Modes & Features](usage/modes.en.md)：八种默认模式的示例、选择建议、自定义模式、词汇管理与语音改口。
 - [URL Scheme 命令参考](usage/url-scheme.md) / [URL Scheme reference](usage/url-scheme.en.md)：录音控制、设置与词汇命令及参数限制。
 
-从源码构建、签名和架构概览见仓库根目录的 [CONTRIBUTING.md](../CONTRIBUTING.md)。README 头图由 `scripts/readme/gen_header.py` 生成。
+从源码构建、签名和架构概览见 [.github/CONTRIBUTING.md](../.github/CONTRIBUTING.md)。README 头图由 `scripts/readme/gen_header.py` 生成。
 
 ## 4. 当前维护指南
 
@@ -117,11 +117,11 @@ docs/
 
 以下文档与产物按代码职责留在原目录，不搬入 `docs/`：
 
-- `README.md`、`README.en.md`、`CONTRIBUTING.md`、`CHANGELOG.md`、`AGENTS.md`（及其 `CLAUDE.md` 符号链接）：仓库入口、版本记录和代理说明；
-- `Evaluation/IntelliSenseEval/README.md`：独立评测包使用说明；
+- `README.md`（中英双语同页）、`CHANGELOG.md`、`AGENTS.md`（及其 `CLAUDE.md` 符号链接）：仓库入口、版本记录和代理说明；
+- `.github/CONTRIBUTING.md`：从源码构建、签名和架构概览；
+- `tools/IntelliSenseEval/README.md`：独立评测包使用说明；
 - `tests/*.md`、`tests/*.html`：Prompt 实验和测试报告；
-- `scripts/*.html`：脚本生成的本地质量报告；
-- `website-demos/*.html`：网站视觉实验，不是产品规范。
+- `scripts/*.html`：脚本生成的本地质量报告。
 
 ## 7. 命名规范
 

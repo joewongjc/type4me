@@ -10,7 +10,7 @@ let hasCloudSubscription = FileManager.default.fileExists(
     atPath: packageDir + "/Type4Me/CloudSubscription/marker"
 )
 let hasCppJiebaBridge = FileManager.default.fileExists(
-    atPath: packageDir + "/CppJiebaBridge/marker"
+    atPath: packageDir + "/Modules/CppJiebaBridge/marker"
 )
 let isDevBuild = ProcessInfo.processInfo.environment["TYPE4ME_DEV_BUILD"] == "1"
 
@@ -26,22 +26,22 @@ if !hasCloudSubscription { excludes.append("CloudSubscription") }
 var targets: [Target] = [
     .target(
         name: "Type4MeIntelliSenseCore",
-        path: "Type4MeIntelliSenseCore",
+        path: "Modules/Type4MeIntelliSenseCore",
         swiftSettings: swiftDefines
     ),
     .target(
         name: "Type4MeReviseCore",
-        path: "Type4MeReviseCore",
+        path: "Modules/Type4MeReviseCore",
         swiftSettings: swiftDefines
     ),
     .target(
         name: "Type4MeTransferCore",
-        path: "Type4MeTransferCore",
+        path: "Modules/Type4MeTransferCore",
         swiftSettings: swiftDefines
     ),
     .target(
         name: "Type4MeUI",
-        path: "Type4MeUI",
+        path: "Modules/Type4MeUI",
         swiftSettings: swiftDefines
     ),
     .executableTarget(
@@ -74,7 +74,7 @@ if hasCppJiebaBridge {
     targets.insert(
         .target(
             name: "CppJiebaBridge",
-            path: "CppJiebaBridge",
+            path: "Modules/CppJiebaBridge",
             exclude: ["CPPJIEBA_LICENSE", "JIEBA_LICENSE", "PROVENANCE.md", "marker"],
             publicHeadersPath: "include",
             cxxSettings: [.headerSearchPath("vendor")]

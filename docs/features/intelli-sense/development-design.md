@@ -1211,7 +1211,7 @@ Type4MeTests/ExpressionProfileStoreTests.swift
 
 ### 20.5 独立语义评测包
 
-`Evaluation/IntelliSenseEval` 是手动运行的独立 Swift Package，通过本地 package dependency 直接依赖生产 `Type4MeIntelliSenseCore`，不复制 Prompt。它不加入根目录 `swift test`、Dev/Release 构建、PR CI 或定时任务。
+`tools/IntelliSenseEval` 是手动运行的独立 Swift Package，通过本地 package dependency 直接依赖生产 `Type4MeIntelliSenseCore`，不复制 Prompt。它不加入根目录 `swift test`、Dev/Release 构建、PR CI 或定时任务。
 
 - 当前 126 条人工策划 JSONL：`core-polish` 44、`boundary-fidelity` 20、`application` 20、`context` 20、`expression` 14、`privacy-fallback` 8；
 - `smoke` 是其中 28 条子集，16 条最高风险案例可用 `--repeat 3` 检查稳定性；

@@ -27,7 +27,7 @@ CppJieba 使用 `dict.txt.small`、HMM 和持久化用户 overlay。仓库资源
 
 编译、打包和运行时开关分别是：
 
-- `CppJiebaBridge/marker`：启用 Swift Package C++ target 和 `HAS_CPPJIEBA`；
+- `Modules/CppJiebaBridge/marker`：启用 Swift Package C++ target 和 `HAS_CPPJIEBA`；
 - `ENABLE_CPPJIEBA=1`：发布脚本包含桥接与词典资源；
 - `tf_cppJiebaExperimentEnabled`：运行时是否创建 handle，默认开启。
 

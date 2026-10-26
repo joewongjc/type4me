@@ -72,7 +72,7 @@ explicitly retired; do not rename them merely to satisfy this convention.
 
 ```bash
 # Qwen3-ASR server setup (optional, Apple Silicon only)
-cd qwen3-asr-server && python3.12 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && cd ..
+cd Modules/qwen3-asr-server && python3.12 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && cd ../..
 
 # Optional: local SenseVoice, Silero VAD, and punctuation module (~5 min, requires cmake)
 bash scripts/build-sherpa.sh
@@ -98,7 +98,7 @@ Two supported product variants are built from the same codebase via conditional 
 | **official** | no | yes | universal | Archived subscription edition; the build script intentionally rejects it. |
 | **local** | yes | no | arm64 | Open-source local edition (bundled SenseVoice + Qwen3-ASR) |
 
-`ENABLE_CPPJIEBA=1` keeps `CppJiebaBridge/marker` visible while running `build-dmg.sh`, which adds the C++ bridge and compact dictionary resources. It defaults to `0`, so normal release packages do not pay the binary/resource cost until the experiment is explicitly enabled. A compiled build also has the local `tf_cppJiebaExperimentEnabled` runtime switch; disabling it falls back to `NLTokenizer` without rebuilding.
+`ENABLE_CPPJIEBA=1` keeps `Modules/CppJiebaBridge/marker` visible while running `build-dmg.sh`, which adds the C++ bridge and compact dictionary resources. It defaults to `0`, so normal release packages do not pay the binary/resource cost until the experiment is explicitly enabled. A compiled build also has the local `tf_cppJiebaExperimentEnabled` runtime switch; disabling it falls back to `NLTokenizer` without rebuilding.
 
 ### Subscription paused (2026-04)
 
@@ -175,7 +175,7 @@ Multi-provider ASR support via `ASRProvider` enum + `ASRProviderConfig` protocol
 
 ### Dual-Engine Design
 - **SenseVoice**: Native sherpa-onnx integration (Swift), provides real-time streaming recognition (partial results as you speak). No Python dependency.
-- **Qwen3-ASR** (`qwen3-asr-server/`): Python WebSocket service using MLX (Metal GPU), provides final calibration on complete audio for higher accuracy. Apple Silicon only.
+- **Qwen3-ASR** (`Modules/qwen3-asr-server/`): Python WebSocket service using MLX (Metal GPU), provides final calibration on complete audio for higher accuracy. Apple Silicon only.
 - `SenseVoiceServerManager`: manages the Qwen3-ASR Python server process, auto-detects Apple Silicon vs Intel, assigns dynamic ports, saves PIDs for graceful shutdown
 
 ### Recognition Pipeline
@@ -277,13 +277,13 @@ API keys and other secure values are stored in Keychain, not in this file.
 | `Type4Me/Services/KeychainService.swift` | Credential read/write (provider groups + migration) |
 | `Type4Me/Services/HotwordStorage.swift` | ASR hotword storage (UserDefaults) |
 | `Type4Me/Database/HistoryStore.swift` | Persistent transcription and processing history |
-| `Type4MeIntelliSenseCore/` | Intelli Sense context, guard, and preference-learning core |
-| `Type4MeReviseCore/` | Voice Revise tracking, slot targeting, and replacement core |
+| `Modules/Type4MeIntelliSenseCore/` | Intelli Sense context, guard, and preference-learning core |
+| `Modules/Type4MeReviseCore/` | Voice Revise tracking, slot targeting, and replacement core |
 | `Type4Me/LLM/Magpie/` | Magpie local gateway discovery, agent file parsing, model catalog, and reconciliation |
 | `Type4Me/LLM/LLMProvider.swift` | 16 LLM providers, including Xiaomi MiMo, Codex CLI, local Ollama, and Magpie |
 | `Type4Me/LLM/LLMProviderRegistry.swift` | LLM provider → config + client factory |
 | `Type4Me/Session/SoundFeedback.swift` | Start/stop/error sounds, multiple sound styles |
-| `qwen3-asr-server/server.py` | Qwen3-ASR calibration engine (MLX/Metal, Apple Silicon) |
+| `Modules/qwen3-asr-server/server.py` | Qwen3-ASR calibration engine (MLX/Metal, Apple Silicon) |
 | `scripts/dev-run.sh` | Signed Dev App build, install, and launch |
 | `scripts/deploy.sh` | Build + deploy + launch |
 | `scripts/build-sherpa.sh` | Build sherpa-onnx.xcframework for optional local ASR features |

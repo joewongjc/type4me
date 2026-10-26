@@ -43,7 +43,7 @@ ZH_HANS_SPEECH_RECOGNITION_USAGE_DESCRIPTION="${ZH_HANS_SPEECH_RECOGNITION_USAGE
 ZH_HANS_APPLE_EVENTS_USAGE_DESCRIPTION="${ZH_HANS_APPLE_EVENTS_USAGE_DESCRIPTION:-${APPLE_EVENTS_USAGE_DESCRIPTION_ZH_HANS:-Type4Me 需要控制其他应用程序以执行系统自动化操作。}}"
 INFO_PLIST="$APP_PATH/Contents/Info.plist"
 
-ENTITLEMENTS="$PROJECT_DIR/entitlements.plist"
+ENTITLEMENTS="$PROJECT_DIR/scripts/entitlements.plist"
 
 codesign_file() {
     local target="$1"
@@ -149,13 +149,13 @@ cp "$PROJECT_DIR/Type4Me/Resources/Assets/"*.svg "$APP_PATH/Contents/Resources/A
 BINARY_DIR="$(dirname "$BINARY")"
 find "$BINARY_DIR" -maxdepth 1 -name "*.bundle" -exec cp -R {} "$APP_PATH/Contents/Resources/" \; 2>/dev/null || true
 
-if [ -f "$PROJECT_DIR/CppJiebaBridge/marker" ]; then
+if [ -f "$PROJECT_DIR/Modules/CppJiebaBridge/marker" ]; then
     mkdir -p "$APP_PATH/Contents/Resources/Jieba"
     cp "$PROJECT_DIR/Type4Me/Resources/Jieba/dict.txt.small" "$APP_PATH/Contents/Resources/Jieba/"
     cp "$PROJECT_DIR/Type4Me/Resources/Jieba/hmm_model.utf8" "$APP_PATH/Contents/Resources/Jieba/"
     cp "$PROJECT_DIR/Type4Me/Resources/Jieba/user.dict.utf8" "$APP_PATH/Contents/Resources/Jieba/"
-    cp "$PROJECT_DIR/CppJiebaBridge/CPPJIEBA_LICENSE" "$APP_PATH/Contents/Resources/Jieba/"
-    cp "$PROJECT_DIR/CppJiebaBridge/JIEBA_LICENSE" "$APP_PATH/Contents/Resources/Jieba/"
+    cp "$PROJECT_DIR/Modules/CppJiebaBridge/CPPJIEBA_LICENSE" "$APP_PATH/Contents/Resources/Jieba/"
+    cp "$PROJECT_DIR/Modules/CppJiebaBridge/JIEBA_LICENSE" "$APP_PATH/Contents/Resources/Jieba/"
 fi
 
 cat >"$INFO_PLIST" <<EOF
@@ -300,10 +300,10 @@ if [ "$VARIANT" = "local" ]; then
     # Build automatically with MLX_METAL_JIT=ON for macOS 14+ compatibility.
     # Placed in Contents/Resources/ (not MacOS/) to avoid codesign treating
     # PyInstaller internals (.dist-info, python3.x dirs) as nested bundles.
-    QWEN3_DIST="$PROJECT_DIR/qwen3-asr-server/dist/qwen3-asr-server"
-    if [ "${SKIP_QWEN3_BUILD:-0}" != "1" ] && [ -f "$PROJECT_DIR/qwen3-asr-server/build.sh" ]; then
+    QWEN3_DIST="$PROJECT_DIR/Modules/qwen3-asr-server/dist/qwen3-asr-server"
+    if [ "${SKIP_QWEN3_BUILD:-0}" != "1" ] && [ -f "$PROJECT_DIR/Modules/qwen3-asr-server/build.sh" ]; then
         echo "Building qwen3-asr-server (MLX JIT mode for macOS 14+ compat)..."
-        bash "$PROJECT_DIR/qwen3-asr-server/build.sh"
+        bash "$PROJECT_DIR/Modules/qwen3-asr-server/build.sh"
     fi
     if [ -d "$QWEN3_DIST" ]; then
         echo "Bundling qwen3-asr-server..."

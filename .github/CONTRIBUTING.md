@@ -4,9 +4,9 @@ English · [中文](#中文说明)
 
 PRs and Issues are welcome. The whole project was built with Claude Code, and the one rule for reviewing PRs is: **never drop anyone's contribution** — even with rough edges, merge first and polish afterwards.
 
-- Docs index (current specs vs. archive): [`docs/README.md`](docs/README.md)
-- Architecture & development guide: [`AGENTS.md`](AGENTS.md)
-- User guides: [`docs/usage/`](docs/usage/)
+- Docs index (current specs vs. archive): [`docs/README.md`](../docs/README.md)
+- Architecture & development guide: [`AGENTS.md`](../AGENTS.md)
+- User guides: [`docs/usage/`](../docs/usage/)
 
 If you're an AI agent (Claude Code, Codex, Cursor, …) asked to build, deploy or contribute to Type4Me, everything you need is below.
 
@@ -33,7 +33,7 @@ git clone https://github.com/joewongjc/type4me.git && cd type4me
 bash scripts/build-sherpa.sh
 
 # 3. (Optional) Setup Qwen3-ASR server (needs python3.12, Apple Silicon only)
-cd qwen3-asr-server && python3.12 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && cd ..
+cd Modules/qwen3-asr-server && python3.12 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && cd ../..
 
 # 4. Dev deploy (builds, signs, installs /Applications/Type4Me Dev.app, launches)
 # Complete the one-time Xcode signing setup below before the first run.
@@ -126,9 +126,14 @@ For non-Dev packaging, a signing identity can be supplied explicitly with
 | `Type4Me/Injection/` | Text injection (clipboard Cmd+V) |
 | `Type4Me/Bridge/` | SherpaOnnx C API Swift bridge (optional) |
 | `Type4Me/UI/` | SwiftUI interface: floating window + settings |
-| `Type4MeIntelliSenseCore/` | Intelli Sense context awareness and preference learning core |
-| `Type4MeReviseCore/` | Voice Revise tracking, slot targeting, and replacement core |
-| `qwen3-asr-server/` | Python Qwen3-ASR calibration service (Apple Silicon, MLX) |
+| `Modules/Type4MeIntelliSenseCore/` | Intelli Sense context awareness and preference learning core |
+| `Modules/Type4MeReviseCore/` | Voice Revise tracking, slot targeting, and replacement core |
+| `Modules/qwen3-asr-server/` | Python Qwen3-ASR calibration service (Apple Silicon, MLX) |
+| `Modules/Type4MeTransferCore/` | Mac ↔ iPhone sync format and snippet matching shared with `iOS/` |
+| `Modules/Type4MeUI/` | Shared SwiftUI components |
+| `Modules/CppJiebaBridge/` | Optional pinned CppJieba C++ bridge (`marker` enables it) |
+| `iOS/` | iPhone voice keyboard app (XcodeGen project) |
+| `tools/IntelliSenseEval/` | Standalone Intelli Sense evaluation package (manual, real models) |
 
 The ASR provider architecture is fully pluggable: implement `ASRProviderConfig` (define credential fields) and `SpeechRecognizer` (implement recognition logic), register with `ASRProviderRegistry`, and you have a new engine.
 
@@ -138,6 +143,6 @@ The ASR provider architecture is fully pluggable: implement `ASRProviderConfig` 
 
 欢迎提交 Issue 和 PR。项目全部由作者用 Claude Code 写成；对于 PR，哪怕有 bug 或代码质量不够好，原则都是**不要漏掉任何人的贡献**，合并之后再改。
 
-- 文档入口：[`docs/README.md`](docs/README.md)（区分当前有效文档与历史归档）
+- 文档入口：[`docs/README.md`](../docs/README.md)（区分当前有效文档与历史归档）
 - 从源码运行：按上方 *Build & deploy* 执行 `bash scripts/dev-run.sh`；首次需要在 Xcode 中登录 Apple 账号，获得稳定的开发签名，权限才不会在每次重新构建后丢失
 - 想让 AI Agent 帮你部署：把仓库链接和本文件交给它即可

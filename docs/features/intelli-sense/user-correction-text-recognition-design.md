@@ -597,7 +597,7 @@ CppJieba bridge 必须返回 UTF-8 byte offset；Swift 适配层统一转换为 
 
 ### 10.9 精简词典开关、生命周期与退出条件
 
-CppJieba 同时具有编译期、打包期和运行时三层开关：仓库存在 `CppJiebaBridge/marker` 时，`Package.swift` 加入 C++ target 并定义 `HAS_CPPJIEBA`；发布脚本仅在 `ENABLE_CPPJIEBA=1` 时打包桥接能力和精简资源；已编译构建由 `tf_cppJiebaExperimentEnabled` 控制运行时加载，默认开启。关闭后在下一次分词入口释放已有 handle；若没有后续调用，既有空闲计时仍保证 10 分钟内释放。之后使用 `NLTokenizer`、硬边界和已确认热词精确匹配。运行期间记录以下无正文指标：
+CppJieba 同时具有编译期、打包期和运行时三层开关：仓库存在 `Modules/CppJiebaBridge/marker` 时，`Package.swift` 加入 C++ target 并定义 `HAS_CPPJIEBA`；发布脚本仅在 `ENABLE_CPPJIEBA=1` 时打包桥接能力和精简资源；已编译构建由 `tf_cppJiebaExperimentEnabled` 控制运行时加载，默认开启。关闭后在下一次分词入口释放已有 handle；若没有后续调用，既有空闲计时仍保证 10 分钟内释放。之后使用 `NLTokenizer`、硬边界和已确认热词精确匹配。运行期间记录以下无正文指标：
 
 - 精简词典成功加载率与降级率；
 - CppJieba 和 `NLTokenizer` 的边界一致率；
@@ -1018,7 +1018,7 @@ Release 日志不得包含原文、修改后正文、错误词、正确词或原
 | `Type4Me/Services/TechnicalTokenBoundaryResolver.swift` | 英文和技术 token 边界 |
 | `Type4Me/Services/ChineseWordSegmenter.swift` | Swift 协议、token span 与混合边界决策 |
 | `Type4Me/Services/JiebaChineseWordSegmenter.swift` | actor 封装、词典 snapshot 和 UTF-8 offset 转换 |
-| `CppJiebaBridge/` | 固定版本的 CppJieba、窄 C bridge 与模块头 |
+| `Modules/CppJiebaBridge/` | 固定版本的 CppJieba、窄 C bridge 与模块头 |
 | `Type4Me/Resources/Jieba/` | 精简主词典、必要 HMM 资源和空的用户词典 overlay 基线；不包含标准大词典 |
 | `Type4Me/Services/BatchCorrectionInference.swift` | 历史证据聚合与建议状态 |
 | `Type4MeTests/InjectedTextResolverTests.swift` | 注入范围解析测试 |

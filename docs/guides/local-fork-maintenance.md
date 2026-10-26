@@ -15,7 +15,7 @@ upstream. The goals are:
 
 ### Qwen3-ASR memory control
 
-Source: `qwen3-asr-server/server.py`
+Source: `Modules/qwen3-asr-server/server.py`
 
 This patch is based on upstream PR #157 and addresses memory growth during
 long SenseVoice + Qwen3 sessions:

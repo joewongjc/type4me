@@ -65,7 +65,7 @@ final class ChineseWordSegmenterTests: XCTestCase {
         let licenses = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-            .appendingPathComponent("CppJiebaBridge")
+            .appendingPathComponent("Modules/CppJiebaBridge")
         XCTAssertTrue(FileManager.default.fileExists(
             atPath: licenses.appendingPathComponent("CPPJIEBA_LICENSE").path
         ))
