@@ -57,6 +57,7 @@ enum SharedSettings {
         static let keyboardDemo = "keyboardDemo"
         static let keyHaptics = "keyHaptics"
         static let keySounds = "keySounds"
+        static let fullWidthPunctuation = "fullWidthPunctuation"
         static let intelliSenseContext = "intelliSenseContext"
     }
 
@@ -79,6 +80,13 @@ enum SharedSettings {
     static var keySounds: Bool {
         get { SharedContainer.defaults?.object(forKey: Key.keySounds) as? Bool ?? true }
         set { SharedContainer.defaults?.set(newValue, forKey: Key.keySounds) }
+    }
+
+    /// The punctuation key types full-width marks. Unset until the user
+    /// switches it from the key's menu; until then it follows the language.
+    static var fullWidthPunctuation: Bool? {
+        get { SharedContainer.defaults?.object(forKey: Key.fullWidthPunctuation) as? Bool }
+        set { SharedContainer.defaults?.set(newValue, forKey: Key.fullWidthPunctuation) }
     }
 
     /// DEBUG simulator screenshots: the keyboard plays a scripted dictation

@@ -50,6 +50,16 @@ enum KeyFeedback {
         crossing.prepare()
     }
 
+    private static let selection = UISelectionFeedbackGenerator()
+
+    /// A detent: the cursor stepping along the space bar, the punctuation
+    /// menu moving to another mark. Haptic only; a click per step is noise.
+    static func playTick() {
+        guard haptics else { return }
+        selection.selectionChanged()
+        selection.prepare()
+    }
+
     static func play(_ kind: Kind) {
         if haptics {
             // Character keys tap lighter than the keys around them.

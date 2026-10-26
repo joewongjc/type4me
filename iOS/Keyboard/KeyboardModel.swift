@@ -40,6 +40,8 @@ final class KeyboardModel: ObservableObject {
     /// Read on every appearance so a change made in the app shows up the
     /// next time the keyboard opens.
     @Published var language = AppLanguage.current
+    /// Full-width marks (，。) rather than ASCII (,.) on the punctuation key.
+    @Published private(set) var fullWidthPunctuation = true
     @Published var canUndo = false
     /// Set right after an undo, until anything else changes the text.
     @Published var canRedo = false
@@ -79,6 +81,7 @@ final class KeyboardModel: ObservableObject {
 
     func appeared() {
         language = AppLanguage.current
+        fullWidthPunctuation = SharedSettings.fullWidthPunctuation ?? (language == .zh)
         hasFullAccess = controller?.hasFullAccess ?? false
         refreshReturnKey()
         guard hasFullAccess else { return }
@@ -460,6 +463,22 @@ final class KeyboardModel: ObservableObject {
     func insert(_ text: String) {
         controller?.proxy.insertText(text)
         invalidateUndo()
+    }
+
+    /// The punctuation key's mark, then what a long press offers.
+    var punctuation: (main: String, more: [String]) {
+        fullWidthPunctuation ? ("，", ["。", "？", "！", "、"]) : (",", [".", "?", "!", "'"])
+    }
+
+    func togglePunctuationWidth() {
+        fullWidthPunctuation.toggle()
+        SharedSettings.fullWidthPunctuation = fullWidthPunctuation
+    }
+
+    /// The space-bar trackpad. Undo checks the text before the cursor
+    /// itself, so moving away and back keeps it.
+    func moveCursor(by offset: Int) {
+        controller?.proxy.adjustTextPosition(byCharacterOffset: offset)
     }
 
     func deleteBackward() {

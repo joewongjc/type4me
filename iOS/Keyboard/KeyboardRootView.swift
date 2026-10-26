@@ -41,9 +41,15 @@ struct KeyboardRootView: View {
                 fullAccessNotice
                     .frame(maxHeight: .infinity)
             }
+            // Recording and processing leave only the orb and the two
+            // targets beside it; the row keeps its room so nothing shifts.
+            // Edges line up with the hide and "4" buttons above (8 + 4).
             keyRow
-                .padding(.horizontal, 4)
+                .padding(.horizontal, 12)
                 .padding(.bottom, 4)
+                .opacity(model.phase == .idle ? 1 : 0)
+                .allowsHitTesting(model.phase == .idle)
+                .animation(.easeInOut(duration: 0.2), value: model.phase == .idle)
         }
         .frame(height: KeyboardMetrics.height)
         // Recording or any notice replaces the bar; it comes back folded.
@@ -73,13 +79,20 @@ struct KeyboardRootView: View {
                 .transition(.opacity)
         } else {
             // The dial spans the row; at rest it shows only its middle, and
-            // while it turns it widens over the "4", which keeps its place.
-            ZStack(alignment: .trailing) {
+            // while it turns it widens over the buttons either side, which
+            // keep their places.
+            ZStack {
                 ModePicker(model: model, expanded: $modeBarOpen)
-                OpenAppButton { model.openSettings() }
-                    .opacity(modeBarOpen ? 0 : 1)
-                    .scaleEffect(modeBarOpen ? 0.8 : 1)
-                    .allowsHitTesting(!modeBarOpen)
+                HStack {
+                    // Face ID iPhones give third-party keyboards no way to
+                    // close, so the keyboard carries its own.
+                    HideKeyboardButton { model.dismissKeyboard() }
+                    Spacer()
+                    OpenAppButton { model.openSettings() }
+                }
+                .opacity(modeBarOpen ? 0 : 1)
+                .scaleEffect(modeBarOpen ? 0.8 : 1)
+                .allowsHitTesting(!modeBarOpen)
             }
             .animation(ModePicker.widen, value: modeBarOpen)
             .padding(.horizontal, 4)
@@ -206,16 +219,8 @@ struct KeyboardRootView: View {
             if model.needsGlobeKey {
                 KeyCap(systemImage: "globe", function: true, width: 44) { model.nextKeyboard() }
             }
-            // Face ID iPhones give third-party keyboards no way to close, so
-            // the keyboard carries its own.
-            KeyCap(systemImage: "keyboard.chevron.compact.down", function: true, width: 44) { model.dismissKeyboard() }
-                .accessibilityLabel(L("收起键盘", "Hide keyboard"))
-                .accessibilityIdentifier("keyboard.hide")
-            // Chinese full-width punctuation, or ASCII in English.
-            ForEach([L("，", ","), L("。", "."), L("？", "?")], id: \.self) { mark in
-                KeyCap(title: mark, width: 40, repeats: true) { model.insert(mark) }
-            }
-            KeyCap(title: L("空格", "space"), repeats: true) { model.insert(" ") }
+            PunctuationKey(model: model)
+            SpaceKey(model: model)
             KeyCap(title: model.returnKeyTitle, function: true, width: 72) { model.returnKey() }
         }
         .frame(height: 44)
@@ -434,6 +439,24 @@ struct OpenAppButton: View {
         .buttonStyle(KeyPressStyle(feedback: .modifier))
         .glassEffect(.regular.tint(KB.functionTint).interactive(), in: Circle())
         .accessibilityLabel(L("打开 Type4Me 设置", "Open Type4Me Settings"))
+    }
+}
+
+struct HideKeyboardButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "keyboard.chevron.compact.down")
+                .font(.system(size: 17))
+                .foregroundStyle(KB.ink)
+                .frame(width: 44, height: 44)
+                .contentShape(Circle())
+        }
+        .buttonStyle(KeyPressStyle(feedback: .modifier))
+        .glassEffect(.regular.tint(KB.functionTint).interactive(), in: Circle())
+        .accessibilityLabel(L("收起键盘", "Hide keyboard"))
+        .accessibilityIdentifier("keyboard.hide")
     }
 }
 
