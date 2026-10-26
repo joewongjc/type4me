@@ -9,7 +9,10 @@ enum SharedContainer {
     /// from Signing.xcconfig so a self-built copy uses its own App Group.
     static let appGroupID = Bundle.main.object(forInfoDictionaryKey: "T4MAppGroup") as? String
         ?? "group.com.type4me.ios"
-    static let urlScheme = "type4me"
+    /// From Signing.xcconfig too, so a development copy can sit next to the
+    /// TestFlight one without both claiming `type4me://`.
+    static let urlScheme = Bundle.main.object(forInfoDictionaryKey: "T4MURLScheme") as? String
+        ?? "type4me"
 
     static var url: URL? {
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID)

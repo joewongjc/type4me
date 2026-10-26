@@ -10,8 +10,20 @@
 // The bundle ID prefix must be unique to you: Apple only lets one team
 // register each bundle ID and App Group. The app, keyboard and App Group
 // become <prefix>.ios, <prefix>.ios.keyboard and group.<prefix>.ios.
+//
+// To keep a development copy next to the TestFlight one, also give it its
+// own name and URL scheme, so the two are told apart on the home screen and
+// in the keyboard list, and links from the keyboard open the right app:
+//
+//   T4M_DISPLAY_NAME = Type4Me Dev
+//   T4M_URL_SCHEME = type4me-dev
+//
+// The Mac's QR codes always use type4me://, so the iPhone Camera opens them
+// in the copy that keeps that scheme; scan from inside the app instead.
 
 DEVELOPMENT_TEAM =
 T4M_BUNDLE_ID_PREFIX = com.type4me
+T4M_DISPLAY_NAME = Type4Me
+T4M_URL_SCHEME = type4me
 
 #include? "Signing.local.xcconfig"
