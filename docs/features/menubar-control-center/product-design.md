@@ -266,7 +266,7 @@ pure variant 只显示可用云 ASR 与 Apple Speech；local variant 在本地�
 
 ## 9. P0 实现记录
 
-- 菜单入口已替换为运行控制中心，代码位于 `Type4Me/UI/MenuBar/MenuBarControlCenter.swift`；它只显示状态、设备名、Provider、语言和可用性，不缓存或预览任何口述正文。
+- 菜单入口已替换为运行控制中心，代码位于 `Sources/Type4Me/UI/MenuBar/MenuBarControlCenter.swift`；它只显示状态、设备名、Provider、语言和可用性，不缓存或预览任何口述正文。
 - 录音启动、完成、取消、改口和撤销均委托给 `AppDelegate` 与既有 `RecordingControlCoordinator`/`RecognitionSession`，没有新增独立录音状态机或伪造热键 binding。
 - 本期落实 P0；录音反馈、LLM 模型切换及本地双引擎细项仍按 §8.2 留在 P1。
 

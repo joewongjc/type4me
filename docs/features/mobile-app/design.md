@@ -32,7 +32,7 @@ iPhone 上的 Type4Me 是一个语音键盘：在任何输入框切到 Type4Me �
 
 - **键盘不录音**：iOS 不允许键盘扩展使用麦克风。键盘通过 App Group 里的指令文件和 Darwin 通知（`Shared/DictationIPC.swift`）让主 App 录音、识别、调用模型，再把结果写回给键盘插入。
 - **后台开麦**：主 App 在前台开启会话时激活 `playAndRecord` 音频会话并输出静音，同时保持一个不可见的画中画会话（`PiPKeeper`），之后只在按住说话时打开麦克风，松开就关。
-- **复用 Mac 源码**：`iOS/project.yml` 直接编译 `Type4Me/ASR`、`Type4Me/Protocol`、`LLMProvider.swift`、翻译提示词与校验等文件，识别协议和服务商表只维护一份。
+- **复用 Mac 源码**：`iOS/project.yml` 直接编译 `Sources/Type4Me/ASR`、`Sources/Type4Me/Protocol`、`LLMProvider.swift`、翻译提示词与校验等文件，识别协议和服务商表只维护一份。
 - **共用模块** `Type4MeTransferCore`：同步格式和片段替换的匹配规则（`SnippetPattern`），Mac 和 iPhone 都链接它。
 
 ## 3. 同步格式

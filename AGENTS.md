@@ -72,7 +72,7 @@ explicitly retired; do not rename them merely to satisfy this convention.
 
 ```bash
 # Qwen3-ASR server setup (optional, Apple Silicon only)
-cd Modules/qwen3-asr-server && python3.12 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && cd ../..
+cd Sources/qwen3-asr-server && python3.12 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && cd ../..
 
 # Optional: local SenseVoice, Silero VAD, and punctuation module (~5 min, requires cmake)
 bash scripts/build-sherpa.sh
@@ -98,22 +98,22 @@ Two supported product variants are built from the same codebase via conditional 
 | **official** | no | yes | universal | Archived subscription edition; the build script intentionally rejects it. |
 | **local** | yes | no | arm64 | Open-source local edition (bundled SenseVoice + Qwen3-ASR) |
 
-`ENABLE_CPPJIEBA=1` keeps `Modules/CppJiebaBridge/marker` visible while running `build-dmg.sh`, which adds the C++ bridge and compact dictionary resources. It defaults to `0`, so normal release packages do not pay the binary/resource cost until the experiment is explicitly enabled. A compiled build also has the local `tf_cppJiebaExperimentEnabled` runtime switch; disabling it falls back to `NLTokenizer` without rebuilding.
+`ENABLE_CPPJIEBA=1` keeps `Sources/CppJiebaBridge/marker` visible while running `build-dmg.sh`, which adds the C++ bridge and compact dictionary resources. It defaults to `0`, so normal release packages do not pay the binary/resource cost until the experiment is explicitly enabled. A compiled build also has the local `tf_cppJiebaExperimentEnabled` runtime switch; disabling it falls back to `NLTokenizer` without rebuilding.
 
 ### Subscription paused (2026-04)
 
 We are not developing the subscription feature for the foreseeable future. The
-`Type4Me/CloudSubscription/marker` file has been renamed to
+`Sources/Type4Me/CloudSubscription/marker` file has been renamed to
 `marker.archived-no-subscription`, so `swift build`, `deploy.sh`, and
 `build-dmg.sh VARIANT=pure|local` all default to the no-subscription path.
 `build-dmg.sh VARIANT=official` now fails fast with re-enable instructions.
 
-The `Type4Me/CloudSubscription/` source directory is preserved as-is for
+The `Sources/Type4Me/CloudSubscription/` source directory is preserved as-is for
 future reactivation. To re-enable:
 
 ```bash
-mv Type4Me/CloudSubscription/marker.archived-no-subscription \
-   Type4Me/CloudSubscription/marker
+mv Sources/Type4Me/CloudSubscription/marker.archived-no-subscription \
+   Sources/Type4Me/CloudSubscription/marker
 swift package clean
 ```
 
@@ -122,7 +122,7 @@ Public GitHub Releases ship only `pure` (universal) and `local` (arm64).
 ### How it works
 
 - `HAS_SHERPA_ONNX`: controlled by `Frameworks/sherpa-onnx.xcframework/Info.plist` presence (existing pattern)
-- `HAS_CLOUD_SUBSCRIPTION`: controlled by `Type4Me/CloudSubscription/marker` file presence
+- `HAS_CLOUD_SUBSCRIPTION`: controlled by `Sources/Type4Me/CloudSubscription/marker` file presence
 - `Package.swift` detects these files at manifest evaluation time and sets compiler defines + source excludes
 - `build-dmg.sh` temporarily hides marker files to build each variant
 
@@ -144,7 +144,7 @@ VARIANT=local bash scripts/build-dmg.sh
 
 ### Subscription code location
 
-All subscription/cloud-proxy code lives in `Type4Me/CloudSubscription/`. Main code uses `#if HAS_CLOUD_SUBSCRIPTION` guards; when the marker is absent, the directory is excluded from compilation entirely.
+All subscription/cloud-proxy code lives in `Sources/Type4Me/CloudSubscription/`. Main code uses `#if HAS_CLOUD_SUBSCRIPTION` guards; when the marker is absent, the directory is excluded from compilation entirely.
 
 **Important**: SPM caches manifest evaluation in `~/Library/Caches/org.swift.swiftpm`. When switching variants manually (not via build-dmg.sh), clear this cache: `rm -rf .build ~/Library/Caches/org.swift.swiftpm`
 
@@ -155,14 +155,14 @@ Multi-provider ASR support via `ASRProvider` enum + `ASRProviderConfig` protocol
 - `ASRProvider` enum: 25 standard cases (`sherpa`, `apple`, international and China cloud providers, and `custom`), plus conditional `cloud` when `HAS_CLOUD_SUBSCRIPTION` is enabled.
 - Each provider has its own Config type (e.g., `SherpaASRConfig`, `VolcanoASRConfig`, `MetaMuseASRConfig`) defining `credentialFields` for dynamic UI rendering
 - `ASRProviderRegistry`: maps provider to config type + client factory; `capabilities` indicates availability and streaming support
-- **Recognition mode**: a provider entry with a `batch` variant exposes a `recognitionMode` credential (`streaming` / `batch`, default `streaming`). Its config adopts `ASRRecognitionModeConfigurable`; use `createClient(for:config:)` and `capabilities(for:config:)` inside a session so the mode captured at start is used. Fields can be scoped with `CredentialField.visibleModes`. Synchronous batch uploads share `BufferedBatchASRClient` + a `BatchASRTranscriber` (`Type4Me/Protocol/BatchASRTranscribers.swift`).
+- **Recognition mode**: a provider entry with a `batch` variant exposes a `recognitionMode` credential (`streaming` / `batch`, default `streaming`). Its config adopts `ASRRecognitionModeConfigurable`; use `createClient(for:config:)` and `capabilities(for:config:)` inside a session so the mode captured at start is used. Fields can be scoped with `CredentialField.visibleModes`. Synchronous batch uploads share `BufferedBatchASRClient` + a `BatchASRTranscriber` (`Sources/Type4Me/Protocol/BatchASRTranscribers.swift`).
 - **Fully implemented**: Apple Speech (streaming); Volcano, StepFun, Deepgram, Cartesia, AssemblyAI, ElevenLabs, Gemini, Grok, Soniox, Bailian, Baidu, Meta Muse, Microsoft Azure MAI-Transcribe-2-Streaming, and Tencent Cloud (streaming); StepFun, Bailian, Gemini, ElevenLabs, Grok, Microsoft Azure MAI-Transcribe-2, and Tencent Cloud (selectable batch mode); MiMo, OpenAI, Groq, Mistral AI, and Custom (batch only); and Sherpa/SenseVoice when `HAS_SHERPA_ONNX` is enabled.
 - **Config only (no client)**: google, aws, aliyun, iflytek
-- **Custom**: user-described HTTP batch endpoint (`CustomASRConfig` + `CustomHTTPBatchTranscriber` in `Type4Me/Protocol/CustomHTTPASRProtocol.swift`). Headers and a JSON object template use `{{api_key}}`, `{{audio_base64}}` (JSON upload) or `{{audio_file}}` (multipart file part); `resultPath` locates the transcript, e.g. `results[0].transcript`.
+- **Custom**: user-described HTTP batch endpoint (`CustomASRConfig` + `CustomHTTPBatchTranscriber` in `Sources/Type4Me/Protocol/CustomHTTPASRProtocol.swift`). Headers and a JSON object template use `{{api_key}}`, `{{audio_base64}}` (JSON upload) or `{{audio_file}}` (multipart file part); `resultPath` locates the transcript, e.g. `results[0].transcript`.
 
 ### Adding a New Provider
 
-1. Create a Config file in `Type4Me/ASR/Providers/`, implementing `ASRProviderConfig`
+1. Create a Config file in `Sources/Type4Me/ASR/Providers/`, implementing `ASRProviderConfig`
 2. Write the client (implementing `SpeechRecognizer` protocol)
 3. Register `createClient` in `ASRProviderRegistry.all`
 
@@ -175,7 +175,7 @@ Multi-provider ASR support via `ASRProvider` enum + `ASRProviderConfig` protocol
 
 ### Dual-Engine Design
 - **SenseVoice**: Native sherpa-onnx integration (Swift), provides real-time streaming recognition (partial results as you speak). No Python dependency.
-- **Qwen3-ASR** (`Modules/qwen3-asr-server/`): Python WebSocket service using MLX (Metal GPU), provides final calibration on complete audio for higher accuracy. Apple Silicon only.
+- **Qwen3-ASR** (`Sources/qwen3-asr-server/`): Python WebSocket service using MLX (Metal GPU), provides final calibration on complete audio for higher accuracy. Apple Silicon only.
 - `SenseVoiceServerManager`: manages the Qwen3-ASR Python server process, auto-detects Apple Silicon vs Intel, assigns dynamic ports, saves PIDs for graceful shutdown
 
 ### Recognition Pipeline
@@ -237,53 +237,53 @@ API keys and other secure values are stored in Keychain, not in this file.
 
 | Path | Responsibility |
 |---|---|
-| `Type4Me/ASR/ASRProvider.swift` | Provider enum + protocol + CredentialField |
-| `Type4Me/ASR/ASRProviderRegistry.swift` | Registry: provider → config + client factory + capabilities |
-| `Type4Me/ASR/Providers/*.swift` | Per-vendor Config implementations |
-| `Type4Me/ASR/SpeechRecognizer.swift` | SpeechRecognizer protocol + LLMConfig + event types |
-| `Type4Me/ASR/SenseVoiceASRClient.swift` | Native Sherpa/Silero streaming local ASR |
-| `Type4Me/ASR/SenseVoiceWSClient.swift` | Qwen3-ASR speculative and final-calibration client |
-| `Type4Me/ASR/VolcASRClient.swift` | Cloud streaming ASR (Volcano, WebSocket) |
-| `Type4Me/ASR/DeepgramASRClient.swift` | Cloud streaming ASR (Deepgram, WebSocket) |
-| `Type4Me/ASR/ElevenLabsASRClient.swift` | Cloud streaming ASR (ElevenLabs Scribe v2, WebSocket) |
-| `Type4Me/ASR/StepFunASRClient.swift` | Cloud streaming ASR (StepFun, WebSocket) |
-| `Type4Me/Protocol/StepFunASRProtocol.swift` | StepFun realtime wire format and response parsing |
-| `Type4Me/ASR/GeminiASRClient.swift` | Cloud streaming ASR (Gemini Live API, model selectable) |
-| `Type4Me/Protocol/GeminiTranscribeProtocol.swift` | Gemini Live wire format: setup/audio messages, response parsing |
-| `Type4Me/ASR/GeminiConnectionGate.swift` | Gemini connection gate, close tracker, WebSocket delegate |
-| `Type4Me/ASR/AzureMAIASRClient.swift` | Cloud streaming ASR (Microsoft Foundry Realtime API, MAI-Transcribe-2-Streaming) |
-| `Type4Me/Protocol/AzureMAIProtocol.swift` | MAI Realtime wire format: session.update, append/commit, delta/intermediate/completed parsing |
-| `Type4Me/ASR/OpenAIASRClient.swift` | Cloud batch ASR (OpenAI, REST) |
-| `Type4Me/ASR/MiMoASRClient.swift` | Cloud batch ASR (Xiaomi MiMo, REST/SSE) |
-| `Type4Me/ASR/TencentASRClient.swift` | Cloud streaming ASR (Tencent Cloud, WebSocket) |
-| `Type4Me/Protocol/TencentASRProtocol.swift` | Tencent Cloud realtime wire format and response parsing |
-| `Type4Me/Protocol/TencentRecTaskProtocol.swift` | Tencent Cloud batch task creation and polling |
-| `Type4Me/Protocol/TencentCloudSigner.swift` | Tencent Cloud HMAC-SHA1 and TC3-HMAC-SHA256 signing |
-| `Type4Me/Protocol/MistralASRProtocol.swift` | Mistral AI Voxtral batch transcriber (transcriptions + chat completions) |
-| `Type4Me/ASR/GroqHallucinationPhrases.swift` | Groq Whisper hallucination phrase filtering |
-| `Type4Me/ASR/PCMSilenceDetector.swift` | Pre-upload PCM silence and audible energy detection |
-| `Type4Me/ASR/SherpaPunctuationProcessor.swift` | Optional punctuation restoration (SherpaOnnx) |
-| `Type4Me/Bridge/SherpaOnnxBridge.swift` | SherpaOnnx C API Swift bridge (conditional) |
-| `Type4Me/Services/SenseVoiceServerManager.swift` | Local Qwen3-ASR Python server lifecycle |
-| `Type4Me/Session/RecognitionSession.swift` | Core state machine: record → ASR → inject |
-| `Type4Me/Audio/AudioCaptureEngine.swift` | Audio capture, `getRecordedAudio()` returns full recording |
-| `Type4Me/UI/AppState.swift` | `ProcessingMode` definition, built-in mode list |
-| `Type4Me/Services/ModeStorage.swift` | Persistent processing-mode configuration and migration |
-| `Type4Me/Services/RecordingDisplayProfileStore.swift` | Per-mode recording-display overrides: Follow Global uses live Global Configuration values and disables controls; off copies globals, on removes the override. Preview labels show the selected mode. |
-| `Type4Me/UI/FloatingBar/FloatingBarView.swift` | Mode/action/transcript bubbles use active frosted blur with a fixed theme tint for contrast across focus changes; the main recording capsule retains native Liquid Glass. |
-| `Type4Me/UI/TFButtonStyles.swift` | Settings/setup button system: `.tf(role, size:)` text buttons, `.tfIcon(kind)` icon buttons, `TFCloseButton`, `TFSpinner` (foreground-colored loading arc) |
-| `Type4Me/Services/TextOutputFormatter.swift` | Shared final-output formatting, including punctuation policies |
-| `Type4Me/Services/ModelManager.swift` | SenseVoice model download, validation, selection |
-| `Type4Me/Services/KeychainService.swift` | Credential read/write (provider groups + migration) |
-| `Type4Me/Services/HotwordStorage.swift` | ASR hotword storage (UserDefaults) |
-| `Type4Me/Database/HistoryStore.swift` | Persistent transcription and processing history |
-| `Modules/Type4MeIntelliSenseCore/` | Intelli Sense context, guard, and preference-learning core |
-| `Modules/Type4MeReviseCore/` | Voice Revise tracking, slot targeting, and replacement core |
-| `Type4Me/LLM/Magpie/` | Magpie local gateway discovery, agent file parsing, model catalog, and reconciliation |
-| `Type4Me/LLM/LLMProvider.swift` | 16 LLM providers, including Xiaomi MiMo, Codex CLI, local Ollama, and Magpie |
-| `Type4Me/LLM/LLMProviderRegistry.swift` | LLM provider → config + client factory |
-| `Type4Me/Session/SoundFeedback.swift` | Start/stop/error sounds, multiple sound styles |
-| `Modules/qwen3-asr-server/server.py` | Qwen3-ASR calibration engine (MLX/Metal, Apple Silicon) |
+| `Sources/Type4Me/ASR/ASRProvider.swift` | Provider enum + protocol + CredentialField |
+| `Sources/Type4Me/ASR/ASRProviderRegistry.swift` | Registry: provider → config + client factory + capabilities |
+| `Sources/Type4Me/ASR/Providers/*.swift` | Per-vendor Config implementations |
+| `Sources/Type4Me/ASR/SpeechRecognizer.swift` | SpeechRecognizer protocol + LLMConfig + event types |
+| `Sources/Type4Me/ASR/SenseVoiceASRClient.swift` | Native Sherpa/Silero streaming local ASR |
+| `Sources/Type4Me/ASR/SenseVoiceWSClient.swift` | Qwen3-ASR speculative and final-calibration client |
+| `Sources/Type4Me/ASR/VolcASRClient.swift` | Cloud streaming ASR (Volcano, WebSocket) |
+| `Sources/Type4Me/ASR/DeepgramASRClient.swift` | Cloud streaming ASR (Deepgram, WebSocket) |
+| `Sources/Type4Me/ASR/ElevenLabsASRClient.swift` | Cloud streaming ASR (ElevenLabs Scribe v2, WebSocket) |
+| `Sources/Type4Me/ASR/StepFunASRClient.swift` | Cloud streaming ASR (StepFun, WebSocket) |
+| `Sources/Type4Me/Protocol/StepFunASRProtocol.swift` | StepFun realtime wire format and response parsing |
+| `Sources/Type4Me/ASR/GeminiASRClient.swift` | Cloud streaming ASR (Gemini Live API, model selectable) |
+| `Sources/Type4Me/Protocol/GeminiTranscribeProtocol.swift` | Gemini Live wire format: setup/audio messages, response parsing |
+| `Sources/Type4Me/ASR/GeminiConnectionGate.swift` | Gemini connection gate, close tracker, WebSocket delegate |
+| `Sources/Type4Me/ASR/AzureMAIASRClient.swift` | Cloud streaming ASR (Microsoft Foundry Realtime API, MAI-Transcribe-2-Streaming) |
+| `Sources/Type4Me/Protocol/AzureMAIProtocol.swift` | MAI Realtime wire format: session.update, append/commit, delta/intermediate/completed parsing |
+| `Sources/Type4Me/ASR/OpenAIASRClient.swift` | Cloud batch ASR (OpenAI, REST) |
+| `Sources/Type4Me/ASR/MiMoASRClient.swift` | Cloud batch ASR (Xiaomi MiMo, REST/SSE) |
+| `Sources/Type4Me/ASR/TencentASRClient.swift` | Cloud streaming ASR (Tencent Cloud, WebSocket) |
+| `Sources/Type4Me/Protocol/TencentASRProtocol.swift` | Tencent Cloud realtime wire format and response parsing |
+| `Sources/Type4Me/Protocol/TencentRecTaskProtocol.swift` | Tencent Cloud batch task creation and polling |
+| `Sources/Type4Me/Protocol/TencentCloudSigner.swift` | Tencent Cloud HMAC-SHA1 and TC3-HMAC-SHA256 signing |
+| `Sources/Type4Me/Protocol/MistralASRProtocol.swift` | Mistral AI Voxtral batch transcriber (transcriptions + chat completions) |
+| `Sources/Type4Me/ASR/GroqHallucinationPhrases.swift` | Groq Whisper hallucination phrase filtering |
+| `Sources/Type4Me/ASR/PCMSilenceDetector.swift` | Pre-upload PCM silence and audible energy detection |
+| `Sources/Type4Me/ASR/SherpaPunctuationProcessor.swift` | Optional punctuation restoration (SherpaOnnx) |
+| `Sources/Type4Me/Bridge/SherpaOnnxBridge.swift` | SherpaOnnx C API Swift bridge (conditional) |
+| `Sources/Type4Me/Services/SenseVoiceServerManager.swift` | Local Qwen3-ASR Python server lifecycle |
+| `Sources/Type4Me/Session/RecognitionSession.swift` | Core state machine: record → ASR → inject |
+| `Sources/Type4Me/Audio/AudioCaptureEngine.swift` | Audio capture, `getRecordedAudio()` returns full recording |
+| `Sources/Type4Me/UI/AppState.swift` | `ProcessingMode` definition, built-in mode list |
+| `Sources/Type4Me/Services/ModeStorage.swift` | Persistent processing-mode configuration and migration |
+| `Sources/Type4Me/Services/RecordingDisplayProfileStore.swift` | Per-mode recording-display overrides: Follow Global uses live Global Configuration values and disables controls; off copies globals, on removes the override. Preview labels show the selected mode. |
+| `Sources/Type4Me/UI/FloatingBar/FloatingBarView.swift` | Mode/action/transcript bubbles use active frosted blur with a fixed theme tint for contrast across focus changes; the main recording capsule retains native Liquid Glass. |
+| `Sources/Type4Me/UI/TFButtonStyles.swift` | Settings/setup button system: `.tf(role, size:)` text buttons, `.tfIcon(kind)` icon buttons, `TFCloseButton`, `TFSpinner` (foreground-colored loading arc) |
+| `Sources/Type4Me/Services/TextOutputFormatter.swift` | Shared final-output formatting, including punctuation policies |
+| `Sources/Type4Me/Services/ModelManager.swift` | SenseVoice model download, validation, selection |
+| `Sources/Type4Me/Services/KeychainService.swift` | Credential read/write (provider groups + migration) |
+| `Sources/Type4Me/Services/HotwordStorage.swift` | ASR hotword storage (UserDefaults) |
+| `Sources/Type4Me/Database/HistoryStore.swift` | Persistent transcription and processing history |
+| `Sources/Type4MeIntelliSenseCore/` | Intelli Sense context, guard, and preference-learning core |
+| `Sources/Type4MeReviseCore/` | Voice Revise tracking, slot targeting, and replacement core |
+| `Sources/Type4Me/LLM/Magpie/` | Magpie local gateway discovery, agent file parsing, model catalog, and reconciliation |
+| `Sources/Type4Me/LLM/LLMProvider.swift` | 16 LLM providers, including Xiaomi MiMo, Codex CLI, local Ollama, and Magpie |
+| `Sources/Type4Me/LLM/LLMProviderRegistry.swift` | LLM provider → config + client factory |
+| `Sources/Type4Me/Session/SoundFeedback.swift` | Start/stop/error sounds, multiple sound styles |
+| `Sources/qwen3-asr-server/server.py` | Qwen3-ASR calibration engine (MLX/Metal, Apple Silicon) |
 | `scripts/dev-run.sh` | Signed Dev App build, install, and launch |
 | `scripts/deploy.sh` | Build + deploy + launch |
 | `scripts/build-sherpa.sh` | Build sherpa-onnx.xcframework for optional local ASR features |
@@ -344,6 +344,6 @@ This allows the project to build even without the framework (graceful degradatio
 
 ### Sound Feedback
 - `StartSoundStyle` enum: off, chime, keyboard, waterDrop1, waterDrop2
-- Bundled WAV files in `Type4Me/Resources/Sounds/`, copied to app bundle by deploy.sh
+- Bundled WAV files in `Sources/Type4Me/Resources/Sounds/`, copied to app bundle by deploy.sh
 - Use cached `AVAudioPlayer` instances for playback
 - Sound selection persisted via UserDefaults key `tf_startSound`

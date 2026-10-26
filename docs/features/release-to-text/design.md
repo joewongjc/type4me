@@ -46,7 +46,7 @@ recording ──松手──▶ processing ──finalized──▶ done ──0
 
 | 位置 | 行为 |
 |---|---|
-| `AppState.stopRecording()`（`Type4Me/UI/AppState.swift:1558`） | `.recording` 一律切到 `.processing`；快速模式（`ProcessingMode.directId`）无条件写入 `processingLabelOverride = 「校准中」` |
+| `AppState.stopRecording()`（`Sources/Type4Me/UI/AppState.swift:1558`） | `.recording` 一律切到 `.processing`；快速模式（`ProcessingMode.directId`）无条件写入 `processingLabelOverride = 「校准中」` |
 | `AppState.finalize(...)`（`AppState.swift:1649`） | 成功写入时调用 `showDone(message: 「已完成」)`，默认停留 0.5 s |
 | `AppState.showDone` / `scheduleAutoHide`（`AppState.swift:1891`） | 到时切 `.hidden` 并调用 `onHidePanel` |
 | `FloatingBarController.hide()`（`FloatingBarPanel.swift:295`） | 面板 alpha 0.25 s `easeIn` 淡出；`updatePanelLayout`（`FloatingBarPanel.swift:222`）在淡出期间保留面板 frame |
@@ -532,7 +532,7 @@ floating bar: release → hidden 1430ms (path=processing, revealed=n/a, outcome=
 
 ## 8. 测试计划
 
-`Type4MeTests/AppStateTests.swift`：
+`Tests/Type4MeTests/AppStateTests.swift`：
 
 | 用例 | 断言 |
 |---|---|
@@ -573,16 +573,16 @@ floating bar: release → hidden 1430ms (path=processing, revealed=n/a, outcome=
 
 | 文件 | 改动 |
 |---|---|
-| `Type4Me/UI/AppState.swift` | `FloatingBarPhase.finishing`；`RecordingFinishHint` 存储与判定；`stopRecording` 改造；升级定时器；`finalize` / `dismissAfterOutput`；`FinishingLabel`；统一隐藏入口 `hidePanel(style:then:)`，所有隐藏路径改走它；`onHidePanel` 接收 `FloatingBarHideStyle` |
-| `Type4Me/ASR/SpeechRecognizer.swift` | `RecognitionEvent.finishHint`、`.useFinishingLabel`；`InjectionOutcome.completionHoldDuration` |
-| `Type4Me/Session/RecognitionSession.swift` | 会话开始时发出 `finishHint`；三处「校准中」改写 |
-| `Type4Me/Type4MeApp.swift` | 处理新事件；最大时长停止改用 `stopRecording(reason:)`；`MenuBarIcon` 等对相位的判断 |
-| `Type4Me/UI/FloatingBar/FloatingBarView.swift` | `.finishing` 的内容、宽高、边框、悬停、冻结标记；展示相关读取改走 `presented*`，退场期间按快照渲染 |
-| `Type4Me/UI/FloatingBar/FloatingBarPanel.swift` | `hide(style:)` 截取退场快照；`finishHide(generation:)`；`show()` 清除快照 |
-| `Type4Me/UI/FloatingBar/FloatingBarChromeModel.swift` | `FloatingBarExitSnapshot` 与 `exitSnapshot` |
-| `Type4Me/UI/FloatingBar/AudioVisualizer.swift`、`CompactAudioIndicator.swift`、`LiquidGlass/*` | 支持冻结 |
-| `Type4Me/UI/Setup/DemoState.swift` | 演示循环更新 |
-| `Type4MeTests/AppStateTests.swift` | 见第 8 节（含 `FloatingBarController` 退场用例） |
+| `Sources/Type4Me/UI/AppState.swift` | `FloatingBarPhase.finishing`；`RecordingFinishHint` 存储与判定；`stopRecording` 改造；升级定时器；`finalize` / `dismissAfterOutput`；`FinishingLabel`；统一隐藏入口 `hidePanel(style:then:)`，所有隐藏路径改走它；`onHidePanel` 接收 `FloatingBarHideStyle` |
+| `Sources/Type4Me/ASR/SpeechRecognizer.swift` | `RecognitionEvent.finishHint`、`.useFinishingLabel`；`InjectionOutcome.completionHoldDuration` |
+| `Sources/Type4Me/Session/RecognitionSession.swift` | 会话开始时发出 `finishHint`；三处「校准中」改写 |
+| `Sources/Type4Me/Type4MeApp.swift` | 处理新事件；最大时长停止改用 `stopRecording(reason:)`；`MenuBarIcon` 等对相位的判断 |
+| `Sources/Type4Me/UI/FloatingBar/FloatingBarView.swift` | `.finishing` 的内容、宽高、边框、悬停、冻结标记；展示相关读取改走 `presented*`，退场期间按快照渲染 |
+| `Sources/Type4Me/UI/FloatingBar/FloatingBarPanel.swift` | `hide(style:)` 截取退场快照；`finishHide(generation:)`；`show()` 清除快照 |
+| `Sources/Type4Me/UI/FloatingBar/FloatingBarChromeModel.swift` | `FloatingBarExitSnapshot` 与 `exitSnapshot` |
+| `Sources/Type4Me/UI/FloatingBar/AudioVisualizer.swift`、`CompactAudioIndicator.swift`、`LiquidGlass/*` | 支持冻结 |
+| `Sources/Type4Me/UI/Setup/DemoState.swift` | 演示循环更新 |
+| `Tests/Type4MeTests/AppStateTests.swift` | 见第 8 节（含 `FloatingBarController` 退场用例） |
 
 ## 10. 不在本文范围
 

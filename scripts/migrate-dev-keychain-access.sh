@@ -48,9 +48,9 @@ fi
 DECLARED_ACCOUNTS=$(
     {
         sed -n 's/^[[:space:]]*case \([A-Za-z0-9_]*\)$/tf_asr_\1/p' \
-            "$PROJECT_DIR/Type4Me/ASR/ASRProvider.swift"
+            "$PROJECT_DIR/Sources/Type4Me/ASR/ASRProvider.swift"
         sed -n 's/^[[:space:]]*case \([A-Za-z0-9_]*\)$/tf_llm_\1/p' \
-            "$PROJECT_DIR/Type4Me/LLM/LLMProvider.swift"
+            "$PROJECT_DIR/Sources/Type4Me/LLM/LLMProvider.swift"
     } 2>/dev/null || true
 )
 

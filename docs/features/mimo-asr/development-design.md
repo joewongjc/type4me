@@ -86,20 +86,20 @@ capabilities: .streaming()
 ### 5.1 新增文件
 
 ```text
-Type4Me/ASR/MiMoASRClient.swift
-Type4Me/ASR/Providers/MiMoASRConfig.swift
-Type4Me/Protocol/MiMoASRProtocol.swift
-Type4MeTests/MiMoASRConfigTests.swift
-Type4MeTests/MiMoASRProtocolTests.swift
+Sources/Type4Me/ASR/MiMoASRClient.swift
+Sources/Type4Me/ASR/Providers/MiMoASRConfig.swift
+Sources/Type4Me/Protocol/MiMoASRProtocol.swift
+Tests/Type4MeTests/MiMoASRConfigTests.swift
+Tests/Type4MeTests/MiMoASRProtocolTests.swift
 ```
 
 ### 5.2 修改文件
 
 ```text
-Type4Me/ASR/ASRProvider.swift
-Type4Me/ASR/ASRProviderRegistry.swift
-Type4Me/UI/Settings/ASRSettingsCard.swift
-Type4MeTests/ASRProviderRegistryTests.swift
+Sources/Type4Me/ASR/ASRProvider.swift
+Sources/Type4Me/ASR/ASRProviderRegistry.swift
+Sources/Type4Me/UI/Settings/ASRSettingsCard.swift
+Tests/Type4MeTests/ASRProviderRegistryTests.swift
 AGENTS.md
 README.md
 CHANGELOG.md            # 仅在版本发布流程要求时
@@ -305,7 +305,7 @@ Type4Me 当前 Batch ASR 已经存在 PCM → WAV 逻辑。MiMo 需要的音频�
 优先考虑把 OpenAIASRClient 内部的 WAV helper 提取成共享的内部工具，例如：
 
 ```text
-Type4Me/Audio/WAVEncoder.swift
+Sources/Type4Me/Audio/WAVEncoder.swift
 ```
 
 如果本 PR 希望严格控制范围，也可以先在 `MiMoASRProtocol` 内实现等价 helper，但长期不建议复制 RIFF header 逻辑。

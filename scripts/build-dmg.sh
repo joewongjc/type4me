@@ -32,9 +32,9 @@ esac
 case "$VARIANT" in
     pure|local) ;;
     official)
-        if [ ! -f "$PROJECT_DIR/Type4Me/CloudSubscription/marker" ]; then
+        if [ ! -f "$PROJECT_DIR/Sources/Type4Me/CloudSubscription/marker" ]; then
             echo "ERROR: official variant is archived (subscription paused)."
-            echo "       To re-enable, restore Type4Me/CloudSubscription/marker first."
+            echo "       To re-enable, restore Sources/Type4Me/CloudSubscription/marker first."
             exit 1
         fi
         ;;
@@ -112,13 +112,13 @@ cleanup() {
         mv "$PROJECT_DIR/Frameworks/sherpa-onnx.xcframework/Info.plist.cloud-hidden" \
            "$PROJECT_DIR/Frameworks/sherpa-onnx.xcframework/Info.plist"
     fi
-    if [ -f "$PROJECT_DIR/Type4Me/CloudSubscription/marker.hidden" ]; then
-        mv "$PROJECT_DIR/Type4Me/CloudSubscription/marker.hidden" \
-           "$PROJECT_DIR/Type4Me/CloudSubscription/marker"
+    if [ -f "$PROJECT_DIR/Sources/Type4Me/CloudSubscription/marker.hidden" ]; then
+        mv "$PROJECT_DIR/Sources/Type4Me/CloudSubscription/marker.hidden" \
+           "$PROJECT_DIR/Sources/Type4Me/CloudSubscription/marker"
     fi
-    if [ -f "$PROJECT_DIR/Modules/CppJiebaBridge/marker.hidden" ]; then
-        mv "$PROJECT_DIR/Modules/CppJiebaBridge/marker.hidden" \
-           "$PROJECT_DIR/Modules/CppJiebaBridge/marker"
+    if [ -f "$PROJECT_DIR/Sources/CppJiebaBridge/marker.hidden" ]; then
+        mv "$PROJECT_DIR/Sources/CppJiebaBridge/marker.hidden" \
+           "$PROJECT_DIR/Sources/CppJiebaBridge/marker"
     fi
 }
 trap cleanup EXIT
@@ -133,9 +133,9 @@ NEEDS_SUBSCRIPTION=0
 SHERPA_AVAILABLE="no"
 [ -f "$PROJECT_DIR/Frameworks/sherpa-onnx.xcframework/Info.plist" ] && SHERPA_AVAILABLE="yes"
 SUB_AVAILABLE="no"
-[ -f "$PROJECT_DIR/Type4Me/CloudSubscription/marker" ] && SUB_AVAILABLE="yes"
+[ -f "$PROJECT_DIR/Sources/Type4Me/CloudSubscription/marker" ] && SUB_AVAILABLE="yes"
 JIEBA_AVAILABLE="no"
-[ "$ENABLE_CPPJIEBA" = "1" ] && [ -f "$PROJECT_DIR/Modules/CppJiebaBridge/marker" ] && JIEBA_AVAILABLE="yes"
+[ "$ENABLE_CPPJIEBA" = "1" ] && [ -f "$PROJECT_DIR/Sources/CppJiebaBridge/marker" ] && JIEBA_AVAILABLE="yes"
 BUILD_STATE="${VARIANT}-sherpa:${SHERPA_AVAILABLE}-sub:${SUB_AVAILABLE}-jieba:${JIEBA_AVAILABLE}"
 LAST_STATE_FILE="$PROJECT_DIR/.build/.variant-state"
 if [ -f "$LAST_STATE_FILE" ] && [ "$(cat "$LAST_STATE_FILE")" != "$BUILD_STATE" ]; then
@@ -149,16 +149,16 @@ if [ "$NEEDS_SHERPA" = "0" ] && [ -f "$PROJECT_DIR/Frameworks/sherpa-onnx.xcfram
        "$PROJECT_DIR/Frameworks/sherpa-onnx.xcframework/Info.plist.cloud-hidden"
 fi
 
-if [ "$NEEDS_SUBSCRIPTION" = "0" ] && [ -f "$PROJECT_DIR/Type4Me/CloudSubscription/marker" ]; then
+if [ "$NEEDS_SUBSCRIPTION" = "0" ] && [ -f "$PROJECT_DIR/Sources/Type4Me/CloudSubscription/marker" ]; then
     echo "Hiding CloudSubscription for ${VARIANT} build..."
-    mv "$PROJECT_DIR/Type4Me/CloudSubscription/marker" \
-       "$PROJECT_DIR/Type4Me/CloudSubscription/marker.hidden"
+    mv "$PROJECT_DIR/Sources/Type4Me/CloudSubscription/marker" \
+       "$PROJECT_DIR/Sources/Type4Me/CloudSubscription/marker.hidden"
 fi
 
-if [ "$ENABLE_CPPJIEBA" != "1" ] && [ -f "$PROJECT_DIR/Modules/CppJiebaBridge/marker" ]; then
+if [ "$ENABLE_CPPJIEBA" != "1" ] && [ -f "$PROJECT_DIR/Sources/CppJiebaBridge/marker" ]; then
     echo "Hiding optional CppJieba bridge for ${VARIANT} build..."
-    mv "$PROJECT_DIR/Modules/CppJiebaBridge/marker" \
-       "$PROJECT_DIR/Modules/CppJiebaBridge/marker.hidden"
+    mv "$PROJECT_DIR/Sources/CppJiebaBridge/marker" \
+       "$PROJECT_DIR/Sources/CppJiebaBridge/marker.hidden"
 fi
 
 cat > "$OUT_DIR/build-info.txt" <<INFO

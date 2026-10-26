@@ -143,19 +143,19 @@ fi
 echo "Packaging app bundle at $APP_PATH..."
 mkdir -p "$APP_PATH/Contents/MacOS" "$APP_PATH/Contents/Resources"
 cp "$BINARY" "$APP_PATH/Contents/MacOS/$APP_EXECUTABLE"
-cp "$PROJECT_DIR/Type4Me/Resources/${APP_ICON_NAME}.icns" "$APP_PATH/Contents/Resources/${APP_ICON_NAME}.icns" 2>/dev/null || true
+cp "$PROJECT_DIR/Sources/Type4Me/Resources/${APP_ICON_NAME}.icns" "$APP_PATH/Contents/Resources/${APP_ICON_NAME}.icns" 2>/dev/null || true
 mkdir -p "$APP_PATH/Contents/Resources/Assets"
-cp "$PROJECT_DIR/Type4Me/Resources/Assets/"*.svg "$APP_PATH/Contents/Resources/Assets/"
+cp "$PROJECT_DIR/Sources/Type4Me/Resources/Assets/"*.svg "$APP_PATH/Contents/Resources/Assets/"
 BINARY_DIR="$(dirname "$BINARY")"
 find "$BINARY_DIR" -maxdepth 1 -name "*.bundle" -exec cp -R {} "$APP_PATH/Contents/Resources/" \; 2>/dev/null || true
 
-if [ -f "$PROJECT_DIR/Modules/CppJiebaBridge/marker" ]; then
+if [ -f "$PROJECT_DIR/Sources/CppJiebaBridge/marker" ]; then
     mkdir -p "$APP_PATH/Contents/Resources/Jieba"
-    cp "$PROJECT_DIR/Type4Me/Resources/Jieba/dict.txt.small" "$APP_PATH/Contents/Resources/Jieba/"
-    cp "$PROJECT_DIR/Type4Me/Resources/Jieba/hmm_model.utf8" "$APP_PATH/Contents/Resources/Jieba/"
-    cp "$PROJECT_DIR/Type4Me/Resources/Jieba/user.dict.utf8" "$APP_PATH/Contents/Resources/Jieba/"
-    cp "$PROJECT_DIR/Modules/CppJiebaBridge/CPPJIEBA_LICENSE" "$APP_PATH/Contents/Resources/Jieba/"
-    cp "$PROJECT_DIR/Modules/CppJiebaBridge/JIEBA_LICENSE" "$APP_PATH/Contents/Resources/Jieba/"
+    cp "$PROJECT_DIR/Sources/Type4Me/Resources/Jieba/dict.txt.small" "$APP_PATH/Contents/Resources/Jieba/"
+    cp "$PROJECT_DIR/Sources/Type4Me/Resources/Jieba/hmm_model.utf8" "$APP_PATH/Contents/Resources/Jieba/"
+    cp "$PROJECT_DIR/Sources/Type4Me/Resources/Jieba/user.dict.utf8" "$APP_PATH/Contents/Resources/Jieba/"
+    cp "$PROJECT_DIR/Sources/CppJiebaBridge/CPPJIEBA_LICENSE" "$APP_PATH/Contents/Resources/Jieba/"
+    cp "$PROJECT_DIR/Sources/CppJiebaBridge/JIEBA_LICENSE" "$APP_PATH/Contents/Resources/Jieba/"
 fi
 
 cat >"$INFO_PLIST" <<EOF
@@ -218,10 +218,10 @@ cat >"$INFO_PLIST" <<EOF
 EOF
 
 mkdir -p "$APP_PATH/Contents/Resources/Sounds"
-cp "$PROJECT_DIR/Type4Me/Resources/Sounds/"*.wav "$APP_PATH/Contents/Resources/Sounds/" 2>/dev/null || true
+cp "$PROJECT_DIR/Sources/Type4Me/Resources/Sounds/"*.wav "$APP_PATH/Contents/Resources/Sounds/" 2>/dev/null || true
 
 mkdir -p "$APP_PATH/Contents/Resources/Icons"
-cp "$PROJECT_DIR/Type4Me/Resources/Icons/"*.png "$APP_PATH/Contents/Resources/Icons/" 2>/dev/null || true
+cp "$PROJECT_DIR/Sources/Type4Me/Resources/Icons/"*.png "$APP_PATH/Contents/Resources/Icons/" 2>/dev/null || true
 
 # Localized resources (.lproj directories).
 # Note: en.lproj is intentionally omitted because CFBundleDevelopmentRegion is "en"
@@ -229,7 +229,7 @@ cp "$PROJECT_DIR/Type4Me/Resources/Icons/"*.png "$APP_PATH/Contents/Resources/Ic
 # Remove existing en.lproj if present from prior builds to prevent masking Info.plist.
 rm -rf "$APP_PATH/Contents/Resources/en.lproj"
 
-for lproj_dir in "$PROJECT_DIR/Type4Me/Resources/"*.lproj; do
+for lproj_dir in "$PROJECT_DIR/Sources/Type4Me/Resources/"*.lproj; do
     [ -d "$lproj_dir" ] || continue
     lproj_name="$(basename "$lproj_dir")"
     [ "$lproj_name" != "en.lproj" ] || continue
@@ -300,10 +300,10 @@ if [ "$VARIANT" = "local" ]; then
     # Build automatically with MLX_METAL_JIT=ON for macOS 14+ compatibility.
     # Placed in Contents/Resources/ (not MacOS/) to avoid codesign treating
     # PyInstaller internals (.dist-info, python3.x dirs) as nested bundles.
-    QWEN3_DIST="$PROJECT_DIR/Modules/qwen3-asr-server/dist/qwen3-asr-server"
-    if [ "${SKIP_QWEN3_BUILD:-0}" != "1" ] && [ -f "$PROJECT_DIR/Modules/qwen3-asr-server/build.sh" ]; then
+    QWEN3_DIST="$PROJECT_DIR/Sources/qwen3-asr-server/dist/qwen3-asr-server"
+    if [ "${SKIP_QWEN3_BUILD:-0}" != "1" ] && [ -f "$PROJECT_DIR/Sources/qwen3-asr-server/build.sh" ]; then
         echo "Building qwen3-asr-server (MLX JIT mode for macOS 14+ compat)..."
-        bash "$PROJECT_DIR/Modules/qwen3-asr-server/build.sh"
+        bash "$PROJECT_DIR/Sources/qwen3-asr-server/build.sh"
     fi
     if [ -d "$QWEN3_DIST" ]; then
         echo "Bundling qwen3-asr-server..."
@@ -353,7 +353,7 @@ else
 fi
 
 # Copy third-party licenses
-cp "$PROJECT_DIR/Type4Me/Resources/THIRD_PARTY_LICENSES.txt" "$APP_PATH/Contents/Resources/" 2>/dev/null || true
+cp "$PROJECT_DIR/Sources/Type4Me/Resources/THIRD_PARTY_LICENSES.txt" "$APP_PATH/Contents/Resources/" 2>/dev/null || true
 
 # CloudDocs/Finder can attach provenance or FinderInfo xattrs to copied resources.
 # Developer ID signing rejects those as resource-fork detritus, so scrub before signing.

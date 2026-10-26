@@ -270,7 +270,7 @@ private var compactRecordingContent: some View {
 建议新增：
 
 ```text
-Type4Me/UI/FloatingBar/CompactLiveTranscriptRow.swift
+Sources/Type4Me/UI/FloatingBar/CompactLiveTranscriptRow.swift
 ```
 
 API：
@@ -612,24 +612,24 @@ Regular 的 segment / width logic 已经有 `!usesCompactPresentation` guard，�
 预计修改：
 
 ```text
-Type4Me/UI/DesignSystem.swift
-Type4Me/UI/FloatingBar/FloatingBarView.swift
-Type4Me/UI/Settings/AppearanceSettingsTab.swift
-Type4MeTests/AppearancePreviewTests.swift
+Sources/Type4Me/UI/DesignSystem.swift
+Sources/Type4Me/UI/FloatingBar/FloatingBarView.swift
+Sources/Type4Me/UI/Settings/AppearanceSettingsTab.swift
+Tests/Type4MeTests/AppearancePreviewTests.swift
 ```
 
 预计新增：
 
 ```text
-Type4Me/UI/FloatingBar/CompactLiveTranscriptRow.swift
+Sources/Type4Me/UI/FloatingBar/CompactLiveTranscriptRow.swift
 ```
 
 大概率无需修改：
 
 ```text
-Type4Me/UI/AppState.swift
-Type4Me/UI/FloatingBar/CompactAudioIndicator.swift
-Type4Me/UI/Settings/AppearancePreviewStage.swift
+Sources/Type4Me/UI/AppState.swift
+Sources/Type4Me/UI/FloatingBar/CompactAudioIndicator.swift
+Sources/Type4Me/UI/Settings/AppearancePreviewStage.swift
 ```
 
 ## 21. 单元测试

@@ -14,7 +14,7 @@ Alternatively set `INTELLISENSE_EVAL_MODEL`, `INTELLISENSE_EVAL_BASE_URL`, and `
 
 ## Run
 
-Run these commands from this package directory (`tools/IntelliSenseEval`):
+Run these commands from this package directory (`Tests/IntelliSenseEval`):
 
 ```bash
 swift run intellisense-eval validate

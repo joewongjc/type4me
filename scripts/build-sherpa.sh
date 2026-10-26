@@ -13,7 +13,7 @@
 #
 # Output:
 #   Frameworks/sherpa-onnx.xcframework
-#   Type4Me/Bridge/SherpaOnnxBridge.swift  (copied from sherpa-onnx)
+#   Sources/Type4Me/Bridge/SherpaOnnxBridge.swift  (copied from sherpa-onnx)
 #
 # =============================================================================
 
@@ -23,7 +23,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BUILD_DIR="$PROJECT_ROOT/.build-sherpa"
 FRAMEWORK_DIR="$PROJECT_ROOT/Frameworks"
-BRIDGE_DIR="$PROJECT_ROOT/Type4Me/Bridge"
+BRIDGE_DIR="$PROJECT_ROOT/Sources/Type4Me/Bridge"
 
 SHERPA_REPO="https://github.com/k2-fsa/sherpa-onnx.git"
 SHERPA_TAG="v1.12.33"  # Update to latest stable release
@@ -130,7 +130,7 @@ if [ -f "$BRIDGE_DIR/SherpaOnnxBridge.swift" ]; then
 elif [ -f "$SWIFT_API" ]; then
     echo "→ Copying Swift API wrapper..."
     cp "$SWIFT_API" "$BRIDGE_DIR/SherpaOnnxBridge.swift"
-    echo "→ Copied SherpaOnnx.swift → Type4Me/Bridge/SherpaOnnxBridge.swift"
+    echo "→ Copied SherpaOnnx.swift → Sources/Type4Me/Bridge/SherpaOnnxBridge.swift"
 else
     echo "WARNING: SherpaOnnx.swift not found at $SWIFT_API"
     echo "  You'll need to manually copy it from the sherpa-onnx repo."
@@ -140,7 +140,7 @@ fi
 HEADER=$(find "$BUILD_DIR" -name "sherpa-onnx-c-api.h" -type f | head -1)
 if [ -n "$HEADER" ]; then
     cp "$HEADER" "$BRIDGE_DIR/sherpa-onnx-c-api.h"
-    echo "→ Copied C header → Type4Me/Bridge/sherpa-onnx-c-api.h"
+    echo "→ Copied C header → Sources/Type4Me/Bridge/sherpa-onnx-c-api.h"
 fi
 
 echo ""

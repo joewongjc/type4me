@@ -146,21 +146,21 @@ flowchart LR
 新增：
 
 ```text
-Type4Me/ASR/MetaMuseASRClient.swift
-Type4Me/ASR/Providers/MetaMuseASRConfig.swift
-Type4Me/Protocol/MetaMuseASRProtocol.swift
-Type4MeTests/MetaMuseASRConfigTests.swift
-Type4MeTests/MetaMuseASRProtocolTests.swift
-Type4MeTests/MetaMuseASRClientTests.swift   # 测试基础设施允许时
+Sources/Type4Me/ASR/MetaMuseASRClient.swift
+Sources/Type4Me/ASR/Providers/MetaMuseASRConfig.swift
+Sources/Type4Me/Protocol/MetaMuseASRProtocol.swift
+Tests/Type4MeTests/MetaMuseASRConfigTests.swift
+Tests/Type4MeTests/MetaMuseASRProtocolTests.swift
+Tests/Type4MeTests/MetaMuseASRClientTests.swift   # 测试基础设施允许时
 ```
 
 修改：
 
 ```text
-Type4Me/ASR/ASRProvider.swift
-Type4Me/ASR/ASRProviderRegistry.swift
-Type4Me/UI/Settings/ASRProviderDetailView.swift
-Type4MeTests/ASRProviderRegistryTests.swift
+Sources/Type4Me/ASR/ASRProvider.swift
+Sources/Type4Me/ASR/ASRProviderRegistry.swift
+Sources/Type4Me/UI/Settings/ASRProviderDetailView.swift
+Tests/Type4MeTests/ASRProviderRegistryTests.swift
 README.md
 AGENTS.md
 ```

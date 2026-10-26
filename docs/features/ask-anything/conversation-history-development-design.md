@@ -39,13 +39,13 @@
 
 | 当前组件 | 文件 | 当前职责 | 本项目影响 |
 |---|---|---|---|
-| `SelectionAskState` | `Type4Me/UI/SelectionAsk/SelectionAskController.swift` | 保存当前问题、选中文本、轮次和追问状态 | 状态上移到共享协调器 |
+| `SelectionAskState` | `Sources/Type4Me/UI/SelectionAsk/SelectionAskController.swift` | 保存当前问题、选中文本、轮次和追问状态 | 状态上移到共享协调器 |
 | `SelectionAskController` | 同上 | 创建和控制 `NSPanel`，处理追问按钮与 ESC | 退化为面板展示适配器 |
-| `SelectionAskView` | `Type4Me/UI/SelectionAsk/SelectionAskView.swift` | 渲染当前内存会话 | 改为读取共享会话视图模型 |
-| `RecognitionSession` | `Type4Me/Session/RecognitionSession.swift` | ASR、Prompt 构造、流式 LLM 和事件发射 | 接收结构化请求上下文并携带请求 ID 发事件 |
-| `RecordingControlCoordinator` | `Type4Me/Type4MeApp.swift` | 在追问和标准录音之间路由结束/取消动作 | 改为依赖共享 Ask Anything 协调器 |
-| `SettingsView` | `Type4Me/UI/Settings/SettingsView.swift` | 主窗口侧边栏和页面切换 | 新增一级 Ask Anything 页面和可外部控制的导航模型 |
-| `HistoryStore` | `Type4Me/Database/HistoryStore.swift` | `recognition_history` SQLite 存储 | 不扩展其业务模型，仅复用 SQLite 实现模式 |
+| `SelectionAskView` | `Sources/Type4Me/UI/SelectionAsk/SelectionAskView.swift` | 渲染当前内存会话 | 改为读取共享会话视图模型 |
+| `RecognitionSession` | `Sources/Type4Me/Session/RecognitionSession.swift` | ASR、Prompt 构造、流式 LLM 和事件发射 | 接收结构化请求上下文并携带请求 ID 发事件 |
+| `RecordingControlCoordinator` | `Sources/Type4Me/Type4MeApp.swift` | 在追问和标准录音之间路由结束/取消动作 | 改为依赖共享 Ask Anything 协调器 |
+| `SettingsView` | `Sources/Type4Me/UI/Settings/SettingsView.swift` | 主窗口侧边栏和页面切换 | 新增一级 Ask Anything 页面和可外部控制的导航模型 |
+| `HistoryStore` | `Sources/Type4Me/Database/HistoryStore.swift` | `recognition_history` SQLite 存储 | 不扩展其业务模型，仅复用 SQLite 实现模式 |
 
 当前 `SelectionAskState.turns` 是唯一会话数据源；`RecognitionSession` 通过字符串形式的 `pendingSelectionAskConversationContext` 接收追问上下文，ASR 事件不携带会话或轮次标识。引入持久化和第二个展示界面后，这些假设不再成立。
 
@@ -86,7 +86,7 @@ flowchart LR
 建议新增目录：
 
 ```text
-Type4Me/
+Sources/Type4Me/
 ├── Database/
 │   └── AskAnythingStore.swift
 ├── Services/
@@ -107,7 +107,7 @@ Type4Me/
 测试文件：
 
 ```text
-Type4MeTests/
+Tests/Type4MeTests/
 ├── AskAnythingStoreTests.swift
 ├── AskAnythingCoordinatorTests.swift
 ├── AskAnythingContextBuilderTests.swift

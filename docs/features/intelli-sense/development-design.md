@@ -72,17 +72,17 @@
 
 | 当前组件 | 文件 | 可复用能力 |
 |---|---|---|
-| `ProcessingMode` | `Type4Me/UI/AppState.swift` | 稳定模式 ID、名称、Prompt、快捷键、执行类型 |
-| `ModeStorage` | `Type4Me/Services/ModeStorage.swift` | 模式持久化、官方模式补入和旧模式迁移 |
-| `RecognitionSession` | `Type4Me/Session/RecognitionSession.swift` | 录音、ASR、停止后 LLM、后处理、注入、历史保存主流水线 |
-| `PromptContext` | `Type4Me/LLM/PromptContext.swift` | AX 调用超时与一次性 Prompt 变量展开模式 |
-| `TextInjectionEngine` | `Type4Me/Injection/TextInjectionEngine.swift` | 聚焦控件快照、注入结果检测、注入范围追踪 |
-| `CorrectionLearningCoordinator` | `Type4Me/Services/CorrectionLearning.swift` | 60 秒观察、4 秒防抖、词级 diff、敏感过滤、确认和保存 |
-| `CorrectionLearningPanelController` | `Type4Me/UI/FloatingBar/CorrectionLearningPanel.swift` | 现有纠错确认卡片，保持不变 |
-| `HotwordStorage` | `Type4Me/Services/HotwordStorage.swift` | 全局用户热词、缓存失效和 ASR 同步 |
-| `SnippetStorage` | `Type4Me/Services/SnippetStorage.swift` | 全局错误词映射、注入前替换和缓存 |
-| `ModesSettingsTab` | `Type4Me/UI/Settings/ModesSettingsTab.swift` | 模式列表、模式详情、快捷键和专用内置模式详情 |
-| `HistoryStore` | `Type4Me/Database/HistoryStore.swift` | 原始文本、处理文本和最终文本历史 |
+| `ProcessingMode` | `Sources/Type4Me/UI/AppState.swift` | 稳定模式 ID、名称、Prompt、快捷键、执行类型 |
+| `ModeStorage` | `Sources/Type4Me/Services/ModeStorage.swift` | 模式持久化、官方模式补入和旧模式迁移 |
+| `RecognitionSession` | `Sources/Type4Me/Session/RecognitionSession.swift` | 录音、ASR、停止后 LLM、后处理、注入、历史保存主流水线 |
+| `PromptContext` | `Sources/Type4Me/LLM/PromptContext.swift` | AX 调用超时与一次性 Prompt 变量展开模式 |
+| `TextInjectionEngine` | `Sources/Type4Me/Injection/TextInjectionEngine.swift` | 聚焦控件快照、注入结果检测、注入范围追踪 |
+| `CorrectionLearningCoordinator` | `Sources/Type4Me/Services/CorrectionLearning.swift` | 60 秒观察、4 秒防抖、词级 diff、敏感过滤、确认和保存 |
+| `CorrectionLearningPanelController` | `Sources/Type4Me/UI/FloatingBar/CorrectionLearningPanel.swift` | 现有纠错确认卡片，保持不变 |
+| `HotwordStorage` | `Sources/Type4Me/Services/HotwordStorage.swift` | 全局用户热词、缓存失效和 ASR 同步 |
+| `SnippetStorage` | `Sources/Type4Me/Services/SnippetStorage.swift` | 全局错误词映射、注入前替换和缓存 |
+| `ModesSettingsTab` | `Sources/Type4Me/UI/Settings/ModesSettingsTab.swift` | 模式列表、模式详情、快捷键和专用内置模式详情 |
+| `HistoryStore` | `Sources/Type4Me/Database/HistoryStore.swift` | 原始文本、处理文本和最终文本历史 |
 
 ### 3.2 当前需要调整的行为
 
@@ -1107,35 +1107,35 @@ Intelli Sense 完成最终 Guard 后构造 `IntelliSenseHistoryTrace`，以版�
 ### 19.1 新增文件
 
 ```text
-Type4Me/Services/IntelliSenseSettings.swift
-Type4Me/Services/IntelliSenseContext.swift
-Type4Me/LLM/IntelliSensePrompt.swift
-Type4Me/LLM/IntelliSenseOutputGuard.swift
-Type4Me/Services/ExpressionProfileStore.swift
-Type4Me/UI/Settings/IntelliSenseModeDetail.swift
+Sources/Type4Me/Services/IntelliSenseSettings.swift
+Sources/Type4Me/Services/IntelliSenseContext.swift
+Sources/Type4Me/LLM/IntelliSensePrompt.swift
+Sources/Type4Me/LLM/IntelliSenseOutputGuard.swift
+Sources/Type4Me/Services/ExpressionProfileStore.swift
+Sources/Type4Me/UI/Settings/IntelliSenseModeDetail.swift
 
-Type4MeTests/IntelliSenseSettingsTests.swift
-Type4MeTests/IntelliSenseContextTests.swift
-Type4MeTests/IntelliSensePromptAndGuardTests.swift
-Type4MeTests/ExpressionProfileStoreTests.swift
+Tests/Type4MeTests/IntelliSenseSettingsTests.swift
+Tests/Type4MeTests/IntelliSenseContextTests.swift
+Tests/Type4MeTests/IntelliSensePromptAndGuardTests.swift
+Tests/Type4MeTests/ExpressionProfileStoreTests.swift
 ```
 
 ### 19.2 修改文件
 
 | 文件 | 修改内容 |
 |---|---|
-| `Type4Me/UI/AppState.swift` | 新模式 ID、定义、默认列表；最后选择模式持久化与旧启动行为兼容 |
-| `Type4Me/Services/ModeStorage.swift` | 新模式补入与兼容迁移 |
-| `Type4Me/Session/RecognitionSession.swift` | 上下文任务、动态 Prompt、Guard、统一观察入口 |
-| `Type4Me/Database/HistoryStore.swift` | 增加可空轨迹与 LLM 快照列、向后兼容迁移与读写 |
-| `Type4Me/UI/Settings/HistoryTab.swift` | 展开 Intelli Sense 记录时显示三行脱敏说明，并分开展示 ASR 与当次 LLM |
-| `Type4Me/Services/CorrectionLearning.swift` | 观察资格改为 Intelli Sense；抽取统一观察生命周期 |
-| `Type4Me/Injection/TextInjectionEngine.swift` | 暴露可复用的安全焦点快照结构或采集器 |
-| `Type4Me/UI/Settings/ModesSettingsTab.swift` | Intelli Sense 专用详情分支 |
-| `Type4Me/UI/Settings/GeneralSettingsTab.swift` | 移除旧纠错开关入口 |
-| `Type4MeTests/ModeStorageTests.swift` | 新模式补入、排序和迁移测试 |
-| `Type4MeTests/CorrectionLearningTests.swift` | 新观察资格和全局保存回归测试 |
-| `Type4MeTests/RecognitionSessionTests.swift` | 动态 Prompt、降级与观察门控测试 |
+| `Sources/Type4Me/UI/AppState.swift` | 新模式 ID、定义、默认列表；最后选择模式持久化与旧启动行为兼容 |
+| `Sources/Type4Me/Services/ModeStorage.swift` | 新模式补入与兼容迁移 |
+| `Sources/Type4Me/Session/RecognitionSession.swift` | 上下文任务、动态 Prompt、Guard、统一观察入口 |
+| `Sources/Type4Me/Database/HistoryStore.swift` | 增加可空轨迹与 LLM 快照列、向后兼容迁移与读写 |
+| `Sources/Type4Me/UI/Settings/HistoryTab.swift` | 展开 Intelli Sense 记录时显示三行脱敏说明，并分开展示 ASR 与当次 LLM |
+| `Sources/Type4Me/Services/CorrectionLearning.swift` | 观察资格改为 Intelli Sense；抽取统一观察生命周期 |
+| `Sources/Type4Me/Injection/TextInjectionEngine.swift` | 暴露可复用的安全焦点快照结构或采集器 |
+| `Sources/Type4Me/UI/Settings/ModesSettingsTab.swift` | Intelli Sense 专用详情分支 |
+| `Sources/Type4Me/UI/Settings/GeneralSettingsTab.swift` | 移除旧纠错开关入口 |
+| `Tests/Type4MeTests/ModeStorageTests.swift` | 新模式补入、排序和迁移测试 |
+| `Tests/Type4MeTests/CorrectionLearningTests.swift` | 新观察资格和全局保存回归测试 |
+| `Tests/Type4MeTests/RecognitionSessionTests.swift` | 动态 Prompt、降级与观察门控测试 |
 
 ### 19.3 明确不修改
 
@@ -1211,7 +1211,7 @@ Type4MeTests/ExpressionProfileStoreTests.swift
 
 ### 20.5 独立语义评测包
 
-`tools/IntelliSenseEval` 是手动运行的独立 Swift Package，通过本地 package dependency 直接依赖生产 `Type4MeIntelliSenseCore`，不复制 Prompt。它不加入根目录 `swift test`、Dev/Release 构建、PR CI 或定时任务。
+`Tests/IntelliSenseEval` 是手动运行的独立 Swift Package，通过本地 package dependency 直接依赖生产 `Type4MeIntelliSenseCore`，不复制 Prompt。它不加入根目录 `swift test`、Dev/Release 构建、PR CI 或定时任务。
 
 - 当前 126 条人工策划 JSONL：`core-polish` 44、`boundary-fidelity` 20、`application` 20、`context` 20、`expression` 14、`privacy-fallback` 8；
 - `smoke` 是其中 28 条子集，16 条最高风险案例可用 `--repeat 3` 检查稳定性；

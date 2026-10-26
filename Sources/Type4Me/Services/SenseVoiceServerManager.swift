@@ -363,7 +363,7 @@ actor SenseVoiceServerManager {
         let serverScript: String
         let executable: String
 
-        // Dev mode: Modules/qwen3-asr-server/.venv/bin/python + server.py
+        // Dev mode: Sources/qwen3-asr-server/.venv/bin/python + server.py
         // Production: bundled binary at Contents/MacOS/qwen3-asr-server
         let devDir = findDevServerDir(name: "qwen3-asr-server")
         if let dir = devDir {
@@ -440,13 +440,13 @@ actor SenseVoiceServerManager {
         var dir = Bundle.main.bundlePath
         for _ in 0..<5 {
             dir = (dir as NSString).deletingLastPathComponent
-            let candidate = (dir as NSString).appendingPathComponent("Modules/\(name)")
+            let candidate = (dir as NSString).appendingPathComponent("Sources/\(name)")
             if FileManager.default.fileExists(atPath: (candidate as NSString).appendingPathComponent("server.py")) {
                 return candidate
             }
         }
         let home = NSHomeDirectory()
-        let fallback = (home as NSString).appendingPathComponent("projects/type4me/Modules/\(name)")
+        let fallback = (home as NSString).appendingPathComponent("projects/type4me/Sources/\(name)")
         if FileManager.default.fileExists(atPath: (fallback as NSString).appendingPathComponent("server.py")) {
             return fallback
         }

@@ -4,7 +4,7 @@ import AppKit
 let destinationDir = URL(fileURLWithPath: #filePath)
     .deletingLastPathComponent()
     .deletingLastPathComponent()
-    .appendingPathComponent("Type4Me/Resources/Icons")
+    .appendingPathComponent("Sources/Type4Me/Resources/Icons")
 
 try? FileManager.default.createDirectory(at: destinationDir, withIntermediateDirectories: true)
 

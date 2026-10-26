@@ -16,7 +16,7 @@
 
 - `FloatingBarView<S: FloatingBarState>` 已把运行状态抽象成协议；
 - `AudioLevelMeter` 只是一个可写的轻量 level 容器，可直接使用合成数值；
-- `Type4Me/UI/Setup/DemoState.swift` 已实现 `FloatingBarState`、合成音量和 Floating Bar 演示循环；
+- `Sources/Type4Me/UI/Setup/DemoState.swift` 已实现 `FloatingBarState`、合成音量和 Floating Bar 演示循环；
 - `FloatingBarView` 的生产直接构造点目前集中在 `FloatingBarPanel`；
 - `TextOutputFormatter.format(_:options:)` 是纯格式化入口，支持显式 spacing、quotes 和 punctuation options。
 
@@ -39,7 +39,7 @@
 
 ### 3.1 Settings 导航
 
-`Type4Me/UI/Settings/SettingsView.swift` 当前：
+`Sources/Type4Me/UI/Settings/SettingsView.swift` 当前：
 
 - `SettingsTab` 包含 `.preferences`, `.models`, `.modes`, `.about` 等；
 - `settingsSubtabs` 负责 Settings Hub 的二级导航；
@@ -127,9 +127,9 @@ Appearance Preview 直接使用这个入口即可覆盖三类文本设置。
 ### 4.1 新增文件
 
 ```text
-Type4Me/UI/Settings/AppearanceSettingsTab.swift
-Type4Me/UI/Settings/AppearancePreviewStage.swift
-Type4MeTests/AppearancePreviewTests.swift
+Sources/Type4Me/UI/Settings/AppearanceSettingsTab.swift
+Sources/Type4Me/UI/Settings/AppearancePreviewStage.swift
+Tests/Type4MeTests/AppearancePreviewTests.swift
 ```
 
 测试文件名可根据最终测试职责拆分；第一版保持一个聚合文件即可。
@@ -137,10 +137,10 @@ Type4MeTests/AppearancePreviewTests.swift
 ### 4.2 修改文件
 
 ```text
-Type4Me/UI/Settings/SettingsView.swift
-Type4Me/UI/Settings/GeneralSettingsTab.swift
-Type4Me/UI/FloatingBar/FloatingBarView.swift
-Type4Me/UI/Setup/DemoState.swift
+Sources/Type4Me/UI/Settings/SettingsView.swift
+Sources/Type4Me/UI/Settings/GeneralSettingsTab.swift
+Sources/Type4Me/UI/FloatingBar/FloatingBarView.swift
+Sources/Type4Me/UI/Setup/DemoState.swift
 ```
 
 如果实现阶段发现 `DemoState` 被其他未被静态 token search 捕获的入口使用，应保持现有 public behavior，再增加可控 preview API，不直接删除原 demo loop。

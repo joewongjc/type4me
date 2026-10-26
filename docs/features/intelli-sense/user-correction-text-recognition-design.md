@@ -597,7 +597,7 @@ CppJieba bridge 必须返回 UTF-8 byte offset；Swift 适配层统一转换为 
 
 ### 10.9 精简词典开关、生命周期与退出条件
 
-CppJieba 同时具有编译期、打包期和运行时三层开关：仓库存在 `Modules/CppJiebaBridge/marker` 时，`Package.swift` 加入 C++ target 并定义 `HAS_CPPJIEBA`；发布脚本仅在 `ENABLE_CPPJIEBA=1` 时打包桥接能力和精简资源；已编译构建由 `tf_cppJiebaExperimentEnabled` 控制运行时加载，默认开启。关闭后在下一次分词入口释放已有 handle；若没有后续调用，既有空闲计时仍保证 10 分钟内释放。之后使用 `NLTokenizer`、硬边界和已确认热词精确匹配。运行期间记录以下无正文指标：
+CppJieba 同时具有编译期、打包期和运行时三层开关：仓库存在 `Sources/CppJiebaBridge/marker` 时，`Package.swift` 加入 C++ target 并定义 `HAS_CPPJIEBA`；发布脚本仅在 `ENABLE_CPPJIEBA=1` 时打包桥接能力和精简资源；已编译构建由 `tf_cppJiebaExperimentEnabled` 控制运行时加载，默认开启。关闭后在下一次分词入口释放已有 handle；若没有后续调用，既有空闲计时仍保证 10 分钟内释放。之后使用 `NLTokenizer`、硬边界和已确认热词精确匹配。运行期间记录以下无正文指标：
 
 - 精简词典成功加载率与降级率；
 - CppJieba 和 `NLTokenizer` 的边界一致率；
@@ -1011,36 +1011,36 @@ Release 日志不得包含原文、修改后正文、错误词、正确词或原
 
 | 文件 | 内容 |
 |---|---|
-| `Type4Me/Services/UserEditObservation.swift` | 状态、结束原因、快照和结算模型 |
-| `Type4Me/Services/InjectedTextResolver.swift` | 从控件全文解析本次注入片段 |
-| `Type4Me/Services/UserEditClassifier.swift` | 修改分类和敏感门控 |
-| `Type4Me/Services/CorrectionAffinityAnalyzer.swift` | 拼写、中文同音、跨脚本音译与已确认映射关联判断 |
-| `Type4Me/Services/TechnicalTokenBoundaryResolver.swift` | 英文和技术 token 边界 |
-| `Type4Me/Services/ChineseWordSegmenter.swift` | Swift 协议、token span 与混合边界决策 |
-| `Type4Me/Services/JiebaChineseWordSegmenter.swift` | actor 封装、词典 snapshot 和 UTF-8 offset 转换 |
-| `Modules/CppJiebaBridge/` | 固定版本的 CppJieba、窄 C bridge 与模块头 |
-| `Type4Me/Resources/Jieba/` | 精简主词典、必要 HMM 资源和空的用户词典 overlay 基线；不包含标准大词典 |
-| `Type4Me/Services/BatchCorrectionInference.swift` | 历史证据聚合与建议状态 |
-| `Type4MeTests/InjectedTextResolverTests.swift` | 注入范围解析测试 |
-| `Type4MeTests/UserEditClassifierTests.swift` | 中英文分类测试 |
-| `Type4MeTests/ChineseWordSegmenterTests.swift` | 双分词器边界、词典和 offset 测试 |
-| `Type4MeTests/UserEditObservationLifecycleTests.swift` | 生命周期与竞态测试 |
-| `Type4MeTests/BatchCorrectionInferenceTests.swift` | 聚合阈值和冲突测试 |
+| `Sources/Type4Me/Services/UserEditObservation.swift` | 状态、结束原因、快照和结算模型 |
+| `Sources/Type4Me/Services/InjectedTextResolver.swift` | 从控件全文解析本次注入片段 |
+| `Sources/Type4Me/Services/UserEditClassifier.swift` | 修改分类和敏感门控 |
+| `Sources/Type4Me/Services/CorrectionAffinityAnalyzer.swift` | 拼写、中文同音、跨脚本音译与已确认映射关联判断 |
+| `Sources/Type4Me/Services/TechnicalTokenBoundaryResolver.swift` | 英文和技术 token 边界 |
+| `Sources/Type4Me/Services/ChineseWordSegmenter.swift` | Swift 协议、token span 与混合边界决策 |
+| `Sources/Type4Me/Services/JiebaChineseWordSegmenter.swift` | actor 封装、词典 snapshot 和 UTF-8 offset 转换 |
+| `Sources/CppJiebaBridge/` | 固定版本的 CppJieba、窄 C bridge 与模块头 |
+| `Sources/Type4Me/Resources/Jieba/` | 精简主词典、必要 HMM 资源和空的用户词典 overlay 基线；不包含标准大词典 |
+| `Sources/Type4Me/Services/BatchCorrectionInference.swift` | 历史证据聚合与建议状态 |
+| `Tests/Type4MeTests/InjectedTextResolverTests.swift` | 注入范围解析测试 |
+| `Tests/Type4MeTests/UserEditClassifierTests.swift` | 中英文分类测试 |
+| `Tests/Type4MeTests/ChineseWordSegmenterTests.swift` | 双分词器边界、词典和 offset 测试 |
+| `Tests/Type4MeTests/UserEditObservationLifecycleTests.swift` | 生命周期与竞态测试 |
+| `Tests/Type4MeTests/BatchCorrectionInferenceTests.swift` | 聚合阈值和冲突测试 |
 
 ### 19.2 修改文件
 
 | 文件 | 修改 |
 |---|---|
-| `Type4Me/Services/CorrectionLearning.swift` | 协调器改用即时快照、统一结算和新分析器 |
-| `Type4Me/Injection/TextInjectionEngine.swift` | 提供稳定锚点和可测试注入范围元数据 |
-| `Type4Me/Session/RecognitionSession.swift` | 新录音前先结算；注入后传入历史更新依赖 |
-| `Type4Me/Database/HistoryStore.swift` | 新字段迁移、读写和幂等更新 |
-| `Type4Me/UI/Settings/HistoryTab.swift` | 展示用户修改后文本和差异 |
-| `Type4Me/Services/ExpressionProfileStore.swift` | 消费统一分类结果，支持 reset watermark |
-| `Type4Me/UI/Settings/IntelliSenseModeDetail.swift` | 更新观察和本地持久化说明 |
+| `Sources/Type4Me/Services/CorrectionLearning.swift` | 协调器改用即时快照、统一结算和新分析器 |
+| `Sources/Type4Me/Injection/TextInjectionEngine.swift` | 提供稳定锚点和可测试注入范围元数据 |
+| `Sources/Type4Me/Session/RecognitionSession.swift` | 新录音前先结算；注入后传入历史更新依赖 |
+| `Sources/Type4Me/Database/HistoryStore.swift` | 新字段迁移、读写和幂等更新 |
+| `Sources/Type4Me/UI/Settings/HistoryTab.swift` | 展示用户修改后文本和差异 |
+| `Sources/Type4Me/Services/ExpressionProfileStore.swift` | 消费统一分类结果，支持 reset watermark |
+| `Sources/Type4Me/UI/Settings/IntelliSenseModeDetail.swift` | 更新观察和本地持久化说明 |
 | `Package.swift` | 增加本地 C++ bridge target、资源与 `c++` 链接配置 |
 | `THIRD_PARTY_NOTICES.md` | 记录 CppJieba 固定版本、许可证与词典来源 |
-| `Type4MeTests/CorrectionLearningTests.swift` | 保留现有回归并新增插入/删除与中文证据测试 |
+| `Tests/Type4MeTests/CorrectionLearningTests.swift` | 保留现有回归并新增插入/删除与中文证据测试 |
 
 ### 19.3 明确不修改
 

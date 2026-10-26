@@ -25,27 +25,27 @@ targets:
     type: library.static
     platform: iOS
     sources:
-      - path: ../Modules/Type4MeTransferCore
+      - path: ../Sources/Type4MeTransferCore
   Type4MeiOS:
     type: application
     platform: iOS
     sources:
       - path: App
       - path: Shared
-      - path: ../Type4Me/Models/TranslationLanguage.swift
+      - path: ../Sources/Type4Me/Models/TranslationLanguage.swift
       - path: SharedActivity
       - path: SharedUI
       # Liquid Glass orb shared verbatim with the Mac floating bar.
-      - path: ../Type4Me/UI/FloatingBar/LiquidGlass/OrbMetalSource.swift
+      - path: ../Sources/Type4Me/UI/FloatingBar/LiquidGlass/OrbMetalSource.swift
         group: SharedUI/Mac
-      - path: ../Type4Me/UI/FloatingBar/LiquidGlass/OrbPreset.swift
+      - path: ../Sources/Type4Me/UI/FloatingBar/LiquidGlass/OrbPreset.swift
         group: SharedUI/Mac
-      - path: ../Type4Me/UI/FloatingBar/LiquidGlass/LiquidGlassMotion.swift
+      - path: ../Sources/Type4Me/UI/FloatingBar/LiquidGlass/LiquidGlassMotion.swift
         group: SharedUI/Mac
       # Cloud speech clients, wire protocols and provider configs shared
       # verbatim with the Mac app. On-device engines and the deprecated
       # Baidu client stay on the Mac; App/ASR/PhoneASR.swift lists the rest.
-      - path: ../Type4Me/ASR
+      - path: ../Sources/Type4Me/ASR
         excludes:
           - ASRProviderRegistry.swift
           - SpeechRecognizer.swift
@@ -60,17 +60,17 @@ targets:
           - Providers/AWSASRConfig.swift
           - Providers/AliyunASRConfig.swift
           - Providers/IflytekASRConfig.swift
-      - path: ../Type4Me/Protocol
+      - path: ../Sources/Type4Me/Protocol
         excludes:
           - BaiduProtocol.swift
-      - path: ../Type4Me/Audio/WAVEncoder.swift
+      - path: ../Sources/Type4Me/Audio/WAVEncoder.swift
       # Volcano recognition profile and tuning the shared Volcano client reads.
-      - path: ../Type4Me/Services/VolcTuningSettings.swift
+      - path: ../Sources/Type4Me/Services/VolcTuningSettings.swift
       # Text model providers: base URLs, model lists, thinking switches.
-      - path: ../Type4Me/LLM/LLMProvider.swift
+      - path: ../Sources/Type4Me/LLM/LLMProvider.swift
       # Translation mode: target languages, prompt and output check.
-      - path: ../Type4Me/Services/TranslationPromptBuilder.swift
-      - path: ../Type4Me/Services/TranslationOutputValidator.swift
+      - path: ../Sources/Type4Me/Services/TranslationPromptBuilder.swift
+      - path: ../Sources/Type4Me/Services/TranslationOutputValidator.swift
     dependencies:
       - target: Type4MeTransferCore
       - target: Type4MeKeyboard
@@ -117,14 +117,14 @@ targets:
     sources:
       - path: Keyboard
       - path: Shared
-      - path: ../Type4Me/Models/TranslationLanguage.swift
+      - path: ../Sources/Type4Me/Models/TranslationLanguage.swift
       - path: SharedUI
       # Liquid Glass orb shared verbatim with the Mac floating bar.
-      - path: ../Type4Me/UI/FloatingBar/LiquidGlass/OrbMetalSource.swift
+      - path: ../Sources/Type4Me/UI/FloatingBar/LiquidGlass/OrbMetalSource.swift
         group: SharedUI/Mac
-      - path: ../Type4Me/UI/FloatingBar/LiquidGlass/OrbPreset.swift
+      - path: ../Sources/Type4Me/UI/FloatingBar/LiquidGlass/OrbPreset.swift
         group: SharedUI/Mac
-      - path: ../Type4Me/UI/FloatingBar/LiquidGlass/LiquidGlassMotion.swift
+      - path: ../Sources/Type4Me/UI/FloatingBar/LiquidGlass/LiquidGlassMotion.swift
         group: SharedUI/Mac
     entitlements:
       path: Keyboard/Type4MeKeyboard.entitlements
@@ -159,7 +159,7 @@ targets:
       - path: Widgets
       - path: SharedActivity
       - path: Shared
-      - path: ../Type4Me/Models/TranslationLanguage.swift
+      - path: ../Sources/Type4Me/Models/TranslationLanguage.swift
     info:
       path: Widgets/Info.plist
       properties:

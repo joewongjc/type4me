@@ -47,7 +47,7 @@ FloatingBarPlacementGuideWindow 拖动期间的十字虚线参考窗口（不接
 
 ### 3.1 面板定位
 
-[FloatingBarPanel.swift](../../../Type4Me/UI/FloatingBar/FloatingBarPanel.swift)：
+[FloatingBarPanel.swift](../../../Sources/Type4Me/UI/FloatingBar/FloatingBarPanel.swift)：
 
 ```swift
 static func bottomCenteredFrame(size: NSSize, visibleFrame: NSRect) -> NSRect {
@@ -94,7 +94,7 @@ VStack(spacing: topOverlayGap) {
 
 ### 4.1 模型
 
-新文件 `Type4Me/UI/FloatingBar/FloatingBarPlacement.swift`：
+新文件 `Sources/Type4Me/UI/FloatingBar/FloatingBarPlacement.swift`：
 
 ```swift
 struct FloatingBarPlacement: Codable, Equatable, Sendable {
@@ -143,7 +143,7 @@ enum FloatingBarPlacementStore {
 
 ## 5. 几何
 
-新文件 `Type4Me/UI/FloatingBar/FloatingBarPlacementGeometry.swift`，全部是 `static` 纯函数，不读取 `UserDefaults` 和 `NSScreen`。
+新文件 `Sources/Type4Me/UI/FloatingBar/FloatingBarPlacementGeometry.swift`，全部是 `static` 纯函数，不读取 `UserDefaults` 和 `NSScreen`。
 
 ### 5.1 基准高度
 
@@ -377,7 +377,7 @@ private var handleReserve: CGFloat { chrome != nil ? TF.barPlacementHandleReserv
 
 ### 7.5 手柄
 
-新文件 `Type4Me/UI/FloatingBar/FloatingBarDragHandle.swift`：
+新文件 `Sources/Type4Me/UI/FloatingBar/FloatingBarDragHandle.swift`：
 
 ```swift
 struct FloatingBarDragHandle: NSViewRepresentable {
@@ -505,7 +505,7 @@ commitCurrentDrag(at: p?):
 
 ## 9. 参考线窗口
 
-新文件 `Type4Me/UI/FloatingBar/FloatingBarPlacementGuideWindow.swift`：
+新文件 `Sources/Type4Me/UI/FloatingBar/FloatingBarPlacementGuideWindow.swift`：
 
 ```swift
 final class FloatingBarPlacementGuideWindow: NSPanel {
@@ -563,7 +563,7 @@ private var isPlacementDefault: Bool { FloatingBarPlacementStore.decode(placemen
 
 ## 12. Design Token
 
-`Type4Me/UI/DesignSystem.swift` 新增：
+`Sources/Type4Me/UI/DesignSystem.swift` 新增：
 
 ```swift
 // 手柄为脱离胶囊的细长抓手条（visionOS 窗口条样式），无玻璃、无点阵；
@@ -603,23 +603,23 @@ static let correctionPanelGap: CGFloat = 18
 
 | 文件 | 变更 |
 |---|---|
-| `Type4Me/UI/FloatingBar/FloatingBarPlacement.swift` | 新增：模型、Store、通知名 |
-| `Type4Me/UI/FloatingBar/FloatingBarPlacementGeometry.swift` | 新增：几何纯函数、`FloatingBarSnapAxes`、`FloatingBarSnapper`、`FloatingBarVerticalAnchor` |
-| `Type4Me/UI/FloatingBar/FloatingBarChromeModel.swift` | 新增：共享 UI 状态 |
-| `Type4Me/UI/FloatingBar/FloatingBarDragHandle.swift` | 新增：手柄视图与事件 NSView |
-| `Type4Me/UI/FloatingBar/FloatingBarPlacementGuideWindow.swift` | 新增：参考线窗口 |
-| `Type4Me/UI/FloatingBar/FloatingBarPanel.swift` | `FloatingBarPanelLayout.anchorSideReserve`；控制器位置、拖动、通知、屏幕变化 |
-| `Type4Me/UI/FloatingBar/FloatingBarView.swift` | `chrome` 参数、按锚定边排列、手柄、悬停、拖动中隐藏浮层、`.handle` tooltip |
-| `Type4Me/UI/FloatingBar/ManualInputPanel.swift` | 使用位置几何 |
-| `Type4Me/UI/FloatingBar/CorrectionLearningPanel.swift` | 按锚定边定位 |
-| `Type4Me/UI/Settings/AppearanceSettingsTab.swift` | 指示器位置设置行 |
-| `Type4Me/UI/DesignSystem.swift` | token |
-| `Type4MeTests/FloatingBarPlacementTests.swift` | 新增：见第 15 节 |
+| `Sources/Type4Me/UI/FloatingBar/FloatingBarPlacement.swift` | 新增：模型、Store、通知名 |
+| `Sources/Type4Me/UI/FloatingBar/FloatingBarPlacementGeometry.swift` | 新增：几何纯函数、`FloatingBarSnapAxes`、`FloatingBarSnapper`、`FloatingBarVerticalAnchor` |
+| `Sources/Type4Me/UI/FloatingBar/FloatingBarChromeModel.swift` | 新增：共享 UI 状态 |
+| `Sources/Type4Me/UI/FloatingBar/FloatingBarDragHandle.swift` | 新增：手柄视图与事件 NSView |
+| `Sources/Type4Me/UI/FloatingBar/FloatingBarPlacementGuideWindow.swift` | 新增：参考线窗口 |
+| `Sources/Type4Me/UI/FloatingBar/FloatingBarPanel.swift` | `FloatingBarPanelLayout.anchorSideReserve`；控制器位置、拖动、通知、屏幕变化 |
+| `Sources/Type4Me/UI/FloatingBar/FloatingBarView.swift` | `chrome` 参数、按锚定边排列、手柄、悬停、拖动中隐藏浮层、`.handle` tooltip |
+| `Sources/Type4Me/UI/FloatingBar/ManualInputPanel.swift` | 使用位置几何 |
+| `Sources/Type4Me/UI/FloatingBar/CorrectionLearningPanel.swift` | 按锚定边定位 |
+| `Sources/Type4Me/UI/Settings/AppearanceSettingsTab.swift` | 指示器位置设置行 |
+| `Sources/Type4Me/UI/DesignSystem.swift` | token |
+| `Tests/Type4MeTests/FloatingBarPlacementTests.swift` | 新增：见第 15 节 |
 | `docs/README.md` | 文档索引 |
 
 ## 15. 单元测试
 
-`Type4MeTests/FloatingBarPlacementTests.swift`：
+`Tests/Type4MeTests/FloatingBarPlacementTests.swift`：
 
 **默认回归**
 

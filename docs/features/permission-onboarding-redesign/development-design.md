@@ -321,16 +321,16 @@ struct FloatingModelAlertCards: View {
 
 | 文件路径 | 变动职责 |
 |---|---|
-| `Type4Me/UI/Setup/SetupWizardView.swift` | 简化向导为 2 步，移除冗余服务商表单，集成首启完成及云版本安全持久化 |
-| `Type4Me/Permissions/PermissionGuideView.swift` | 1:1 重构为 Screenflare 风格深色卡片、分组权限列表与底部操作栏 |
-| `Type4Me/Permissions/PermissionGuideModel.swift` | 接入 `hotkeyProbe` 真实探测、`onFlowCompleteOrRaise` 宿主闭包、持久化重启 `relaunchApp` |
-| `Type4Me/Type4MeApp.swift` | 绑定 `openSetupAction` / `presentSetupWizard()`，注入 `hotkeyProbe` 到 `PermissionGuideModel` |
-| `Type4Me/UI/MenuBar/MenuBarControlCenter.swift` | 注册全局 `AppDelegate.openSetupAction` |
-| `Type4Me/Services/KeychainService.swift` | 在 ASR/LLM 凭证保存与提供商变更时广播 `credentialsDidChange` 通知 |
-| `Type4Me/UI/Settings/GeneralSettingsTab.swift` | 在首页右下角集成 `FloatingModelAlertCards` |
-| `Type4Me/UI/Settings/SettingsView.swift` | `AppNavigationModel` 支持 `pendingModelCategory`，并在 Tab 切换时联动 |
-| `Type4Me/UI/Settings/ModelSettingsTab.swift` | 响应 `navigationModel.pendingModelCategory`，自动定位 ASR / LLM 选项卡 |
-| `Type4Me/UI/Localization.swift` | 补充双语对照文案（全链路 `L(zh, en)`） |
+| `Sources/Type4Me/UI/Setup/SetupWizardView.swift` | 简化向导为 2 步，移除冗余服务商表单，集成首启完成及云版本安全持久化 |
+| `Sources/Type4Me/Permissions/PermissionGuideView.swift` | 1:1 重构为 Screenflare 风格深色卡片、分组权限列表与底部操作栏 |
+| `Sources/Type4Me/Permissions/PermissionGuideModel.swift` | 接入 `hotkeyProbe` 真实探测、`onFlowCompleteOrRaise` 宿主闭包、持久化重启 `relaunchApp` |
+| `Sources/Type4Me/Type4MeApp.swift` | 绑定 `openSetupAction` / `presentSetupWizard()`，注入 `hotkeyProbe` 到 `PermissionGuideModel` |
+| `Sources/Type4Me/UI/MenuBar/MenuBarControlCenter.swift` | 注册全局 `AppDelegate.openSetupAction` |
+| `Sources/Type4Me/Services/KeychainService.swift` | 在 ASR/LLM 凭证保存与提供商变更时广播 `credentialsDidChange` 通知 |
+| `Sources/Type4Me/UI/Settings/GeneralSettingsTab.swift` | 在首页右下角集成 `FloatingModelAlertCards` |
+| `Sources/Type4Me/UI/Settings/SettingsView.swift` | `AppNavigationModel` 支持 `pendingModelCategory`，并在 Tab 切换时联动 |
+| `Sources/Type4Me/UI/Settings/ModelSettingsTab.swift` | 响应 `navigationModel.pendingModelCategory`，自动定位 ASR / LLM 选项卡 |
+| `Sources/Type4Me/UI/Localization.swift` | 补充双语对照文案（全链路 `L(zh, en)`） |
 
 ---
 

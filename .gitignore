@@ -43,12 +43,12 @@ __pycache__/
 *.egg-info/
 .coverage
 .mypy_cache/
-Modules/qwen3-asr-server/build/
-Modules/qwen3-asr-server/dist/
-Modules/qwen3-asr-server/.venv/
+Sources/qwen3-asr-server/build/
+Sources/qwen3-asr-server/dist/
+Sources/qwen3-asr-server/.venv/
 
 # Large model files
-Modules/qwen3-asr-server/models/
+Sources/qwen3-asr-server/models/
 
 # Binaries & Dynamic Libraries
 *.dylib
@@ -63,8 +63,8 @@ test*.txt
 scripts/benchmark_results.json
 scripts/llm_quality_report.html
 scripts/llm_quality_results*.json
-tools/IntelliSenseEval/.build/
-tools/IntelliSenseEval/.swiftpm/
-tools/IntelliSenseEval/eval-config.json
-tools/IntelliSenseEval/Runs/
-tools/IntelliSenseEval/Cache/
+Tests/IntelliSenseEval/.build/
+Tests/IntelliSenseEval/.swiftpm/
+Tests/IntelliSenseEval/eval-config.json
+Tests/IntelliSenseEval/Runs/
+Tests/IntelliSenseEval/Cache/

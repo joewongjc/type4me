@@ -154,7 +154,7 @@ processingLabel: L("翻译中", "Translating")
 
 新增文件建议：
 
-`Type4Me/Models/TranslationLanguage.swift`
+`Sources/Type4Me/Models/TranslationLanguage.swift`
 
 ```swift
 enum TranslationLanguage: String, Codable, CaseIterable, Identifiable, Sendable {
@@ -441,7 +441,7 @@ let userDefaults: UserDefaults
 
 新增：
 
-`Type4Me/Services/TranslationPromptBuilder.swift`
+`Sources/Type4Me/Services/TranslationPromptBuilder.swift`
 
 ```swift
 enum TranslationPromptBuilder {
@@ -593,7 +593,7 @@ L(
 
 新增：
 
-`Type4Me/Services/TranslationOutputValidator.swift`
+`Sources/Type4Me/Services/TranslationOutputValidator.swift`
 
 ```swift
 enum TranslationValidationDecision: Equatable {
@@ -935,23 +935,23 @@ translation failed reason=unexpectedOutputLanguage target=ja detected=en
 
 预计新增：
 
-- `Type4Me/Models/TranslationLanguage.swift`
-- `Type4Me/Services/TranslationPromptBuilder.swift`
-- `Type4Me/Services/TranslationOutputValidator.swift`
-- `Type4MeTests/TranslationLanguageTests.swift`
-- `Type4MeTests/TranslationPromptBuilderTests.swift`
-- `Type4MeTests/TranslationOutputValidatorTests.swift`
+- `Sources/Type4Me/Models/TranslationLanguage.swift`
+- `Sources/Type4Me/Services/TranslationPromptBuilder.swift`
+- `Sources/Type4Me/Services/TranslationOutputValidator.swift`
+- `Tests/Type4MeTests/TranslationLanguageTests.swift`
+- `Tests/Type4MeTests/TranslationPromptBuilderTests.swift`
+- `Tests/Type4MeTests/TranslationOutputValidatorTests.swift`
 
 预计修改：
 
-- `Type4Me/UI/AppState.swift`
-- `Type4Me/Services/ModeStorage.swift`
-- `Type4Me/Session/RecognitionSession.swift`
-- `Type4Me/UI/Settings/ModesSettingsTab.swift`
-- `Type4Me/UI/Settings/HomeDashboardView.swift`
-- `Type4MeTests/ModeStorageTests.swift`
-- `Type4MeTests/RecognitionSessionTests.swift`
-- 可能涉及 `Type4Me/Database/HistoryStore.swift`
+- `Sources/Type4Me/UI/AppState.swift`
+- `Sources/Type4Me/Services/ModeStorage.swift`
+- `Sources/Type4Me/Session/RecognitionSession.swift`
+- `Sources/Type4Me/UI/Settings/ModesSettingsTab.swift`
+- `Sources/Type4Me/UI/Settings/HomeDashboardView.swift`
+- `Tests/Type4MeTests/ModeStorageTests.swift`
+- `Tests/Type4MeTests/RecognitionSessionTests.swift`
+- 可能涉及 `Sources/Type4Me/Database/HistoryStore.swift`
 - 可能涉及 History schema 测试
 
 ## 18. 实施顺序
