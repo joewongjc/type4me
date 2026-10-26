@@ -3,7 +3,7 @@ import Type4MeTransferCore
 
 /// Pages under Settings. Value based, so Home can open one directly.
 enum SettingsRoute: Hashable {
-    case asr, llm, modes, hotwords, snippets, diagnostics
+    case asr, llm, modes, hotwords, snippets, appIcon, diagnostics
 
     @MainActor @ViewBuilder var destination: some View {
         switch self {
@@ -12,6 +12,7 @@ enum SettingsRoute: Hashable {
         case .modes: ModeSettingsView()
         case .hotwords: HotwordSettingsView()
         case .snippets: SnippetSettingsView()
+        case .appIcon: AppIconSettingsView()
         case .diagnostics: DiagnosticsView()
         }
     }
@@ -24,6 +25,7 @@ struct SettingsView: View {
     @EnvironmentObject private var history: HistoryStore
     @ObservedObject private var modes = ModeStore.shared
     @ObservedObject private var vocabulary = VocabularyStore.shared
+    @ObservedObject private var appIcon = AppIconStore.shared
 
     @State private var timeout = AppSettings.sessionTimeoutMinutes
     @State private var confirmClear = false
@@ -145,6 +147,11 @@ struct SettingsView: View {
                     Text(L("跟随系统", "System")).tag("system")
                     Text("中文").tag(AppLanguage.zh.rawValue)
                     Text("English").tag(AppLanguage.en.rawValue)
+                }
+                if appIcon.isSupported {
+                    NavigationLink(value: SettingsRoute.appIcon) {
+                        LabeledContent(L("应用图标", "App Icon"), value: appIcon.current.title)
+                    }
                 }
                 Button(L("打开系统设置", "Open iOS Settings")) {
                     if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }

@@ -111,6 +111,9 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: $(T4M_BUNDLE_ID_PREFIX).ios
         INFOPLIST_KEY_CFBundleDisplayName: $(T4M_DISPLAY_NAME)
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        # Icons the user can pick in Settings (App/Model/AppIconChoice.swift).
+        # Regenerate them with scripts/generate-ios-app-icons.py.
+        ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES: AppIcon-Light AppIcon-Dark AppIcon-Red AppIcon-KeycapLight AppIcon-KeycapDark AppIcon-KeycapRed
   Type4MeKeyboard:
     type: app-extension
     platform: iOS
