@@ -17,6 +17,9 @@ struct Type4MeApp: App {
                 .onOpenURL { model.handle(url: $0) }
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active { model.didBecomeActive() }
+                    // The go-back screen has done its job once the user
+                    // has left; next time the app opens on Home.
+                    if phase == .background { model.showsSessionStarted = false }
                 }
         }
     }

@@ -505,41 +505,143 @@ struct HistoryView: View {
     }
 }
 
-/// Shown after the keyboard opened the app to start a session.
+/// Shown after the keyboard opened the app to start a session. iOS gives no
+/// way to send the user back, so the page points at the system's "◀ App"
+/// back link in the top-left corner and acts out the swipe along the home
+/// bar. It closes itself once the user leaves.
 struct SessionStartedView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var session: VoiceSession
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Spacer()
-            LiquidGlassOrb(meter: session.meter, size: 96)
-            Text(L("语音会话已开启", "Voice Session On"))
-                .font(.system(size: 30, weight: .heavy))
-            Text(L("现在回到刚才的 App，按住键盘上的麦克风就能说话。", "Go back to the app you were in and hold the mic on the keyboard to talk."))
+        GeometryReader { proxy in
+            let top = proxy.safeAreaInsets.top
+            ZStack(alignment: .topLeading) {
+                DottedCanvas()
+                BackLinkPointer(statusBarHeight: top)
+                    .ignoresSafeArea()
+                content
+                    .padding(.top, 96)
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 20)
+                HomeBarSwipeHint()
+                    .ignoresSafeArea()
+            }
+        }
+    }
+
+    private var content: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(L("点左上角\n回到刚才的 App", "Tap the top-left corner\nto go back"))
+                .font(.system(size: 34, weight: .heavy))
+                .foregroundStyle(T4.ink)
+                .accessibilityAddTraits(.isHeader)
+            Text(L("回去后按住键盘上的麦克风说话。", "Then hold the mic on the keyboard to talk."))
                 .font(.system(size: 17))
                 .foregroundStyle(T4.secondary)
-            VStack(alignment: .leading, spacing: 10) {
-                Label(L("点屏幕左上角的「◀ 返回」", "Tap the “◀” back link in the top-left corner"), systemImage: "arrow.uturn.backward")
-                Label(L("或者沿屏幕底部横条向右滑", "Or swipe right along the bar at the bottom"), systemImage: "hand.draw")
+                .padding(.top, 12)
+            HStack(spacing: 8) {
+                LiquidGlassOrb(meter: session.meter, size: 18)
+                Text(L("语音会话已开启", "Voice session on"))
+                    .font(.system(size: 13, weight: .medium))
             }
-            .font(.system(size: 15))
-            .foregroundStyle(T4.ink)
-            .t4Card()
-            Text(L("Type4Me 留在后台时，下次就不用再跳过来了。只在按住说话时才打开麦克风。", "While Type4Me stays in the background, you won't need to come back here. The mic is only on while you hold to talk."))
-                .font(.system(size: 13))
-                .foregroundStyle(T4.secondary)
+            .foregroundStyle(T4.success)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(Capsule().fill(T4.success.opacity(0.14)))
+            .padding(.top, 22)
             Spacer()
-            Button(L("好的", "OK")) { model.showsSessionStarted = false }
-                .buttonStyle(PrimaryButtonStyle())
-            Button(L("关闭会话", "End Session")) {
-                session.endSession(reason: L("手动结束", "ended manually"))
-                model.showsSessionStarted = false
+            VStack(spacing: 16) {
+                Text(L("或者沿底部横条向右滑", "Or swipe right along the bar at the bottom"))
+                    .font(.system(size: 14))
+                    .foregroundStyle(T4.secondary)
+                HStack(spacing: 20) {
+                    Button(L("留在 Type4Me", "Stay in Type4Me")) { model.showsSessionStarted = false }
+                    Button(L("关闭会话", "End Session")) {
+                        session.endSession(reason: L("手动结束", "ended manually"))
+                        model.showsSessionStarted = false
+                    }
+                }
+                .font(.system(size: 14))
+                .foregroundStyle(T4.tertiary)
+                .buttonStyle(.plain)
             }
-            .buttonStyle(SecondaryButtonStyle())
+            .frame(maxWidth: .infinity)
+            .padding(.bottom, 28)
         }
-        .padding(20)
-        .background(DottedCanvas())
+    }
+}
+
+/// A ring pulsing around where iOS draws "◀ App" in the status bar, with an
+/// arrow swinging towards it.
+private struct BackLinkPointer: View {
+    let statusBarHeight: CGFloat
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var pulse = false
+
+    var body: some View {
+        // The back link sits at the left of the status bar, vertically
+        // centred in it (a little low on Dynamic Island phones).
+        let link = CGPoint(x: 46, y: max(22, statusBarHeight * 0.55))
+        ZStack(alignment: .topLeading) {
+            Capsule()
+                .stroke(T4.success, lineWidth: 2)
+                .frame(width: 80, height: 30)
+                .scaleEffect(pulse ? 1.45 : 0.85)
+                .opacity(pulse ? 0 : 0.9)
+                .position(link)
+            BackArrow()
+                .stroke(T4.success, style: StrokeStyle(lineWidth: 3.5, lineCap: .round, lineJoin: .round))
+                .frame(width: 92, height: 82)
+                .offset(x: pulse ? -4 : 0, y: pulse ? -4 : 0)
+                .position(x: link.x + 52, y: link.y + 58)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.easeOut(duration: 1.4).repeatForever(autoreverses: false)) { pulse = true }
+        }
+    }
+}
+
+/// A curved arrow from bottom right to top left, head at the top left.
+private struct BackArrow: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let tip = CGPoint(x: rect.minX + 6, y: rect.minY + 6)
+        path.move(to: CGPoint(x: rect.maxX - 6, y: rect.maxY - 4))
+        path.addQuadCurve(to: tip, control: CGPoint(x: rect.maxX - 18, y: rect.minY + 14))
+        path.move(to: tip)
+        path.addLine(to: CGPoint(x: tip.x + 18, y: tip.y - 2))
+        path.move(to: tip)
+        path.addLine(to: CGPoint(x: tip.x + 6, y: tip.y + 17))
+        return path
+    }
+}
+
+/// A dot sliding left to right along the home bar, acting out the swipe
+/// that goes back to the previous app.
+private struct HomeBarSwipeHint: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var slide = false
+
+    var body: some View {
+        Circle()
+            .fill(T4.success.opacity(0.85))
+            .frame(width: 18, height: 18)
+            .offset(x: slide ? 60 : -60)
+            .opacity(reduceMotion ? 0.85 : (slide ? 0 : 0.85))
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+            .padding(.bottom, 4)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+            .onAppear {
+                guard !reduceMotion else { return }
+                withAnimation(.easeIn(duration: 1.6).repeatForever(autoreverses: false)) { slide = true }
+            }
     }
 }
 
