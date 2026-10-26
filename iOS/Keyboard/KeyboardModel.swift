@@ -136,7 +136,8 @@ final class KeyboardModel: ObservableObject {
 
     // MARK: - Mode
 
-    func select(_ newMode: DictationMode) {
+    /// `haptic` is off when the control picking the mode already ticked.
+    func select(_ newMode: DictationMode, haptic: Bool = true) {
         guard phase == .idle else { return }
         if newMode.usesLLM, !llmConfigured {
             show(L("先在 Type4Me 里导入处理模型配置", "Import a text model in Type4Me first"), kind: .error)
@@ -144,7 +145,7 @@ final class KeyboardModel: ObservableObject {
         }
         mode = newMode
         SharedSettings.selectedMode = newMode
-        UISelectionFeedbackGenerator().selectionChanged()
+        if haptic { UISelectionFeedbackGenerator().selectionChanged() }
     }
 
     // MARK: - Intelli Sense

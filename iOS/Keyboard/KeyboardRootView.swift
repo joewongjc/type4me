@@ -3,6 +3,8 @@ import UIKit
 
 struct KeyboardRootView: View {
     @ObservedObject var model: KeyboardModel
+    /// The mode bar opened into a row of every mode.
+    @State private var modeBarOpen = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -44,6 +46,8 @@ struct KeyboardRootView: View {
                 .padding(.bottom, 4)
         }
         .frame(height: KeyboardMetrics.height)
+        // Recording or any notice replaces the bar; it comes back folded.
+        .onChange(of: model.phase) { _, _ in modeBarOpen = false }
         .id(model.language)
         // Transparent on purpose: iOS 26 draws the keyboard plate (with its
         // rounded top) behind the extension, and painting our own grey on
@@ -68,10 +72,16 @@ struct KeyboardRootView: View {
                 .frame(maxWidth: .infinity)
                 .transition(.opacity)
         } else {
-            HStack(spacing: 8) {
-                ModePicker(model: model)
+            // The dial spans the row; at rest it shows only its middle, and
+            // while it turns it widens over the "4", which keeps its place.
+            ZStack(alignment: .trailing) {
+                ModePicker(model: model, expanded: $modeBarOpen)
                 OpenAppButton { model.openSettings() }
+                    .opacity(modeBarOpen ? 0 : 1)
+                    .scaleEffect(modeBarOpen ? 0.8 : 1)
+                    .allowsHitTesting(!modeBarOpen)
             }
+            .animation(ModePicker.widen, value: modeBarOpen)
             .padding(.horizontal, 4)
             .transition(.opacity)
         }
@@ -247,85 +257,158 @@ enum KB {
     static let functionTint = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(white: 0, alpha: 0.10) : UIColor(white: 1, alpha: 0.12) })
     /// The lock target lights up teal, the cancel target the recording red.
     static let lock = Color(red: 0.11, green: 0.62, blue: 0.46)
+    /// The mode dial at rest: barely set off from the keyboard behind it.
+    static let dialBase = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(white: 1, alpha: 0.06) : UIColor(white: 1, alpha: 0.4) })
     static let halo = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(white: 1, alpha: 0.10) : UIColor(white: 0, alpha: 0.07) })
 }
 
-/// The system segmented control, so it keeps the iOS 26 Liquid Glass thumb
-/// that swells under a finger and can be dragged between modes, restyled to
-/// read like the tab bar: glass behind it and a faint selected pill. A mode
-/// that needs a text model can't be disabled on its own here; picking it
-/// without one is refused by the model, which shows why, and the control
-/// springs back to the mode in use.
+/// The modes on a dial, like the Camera app's. At rest it is a faint
+/// capsule with the mode in use in the middle, sitting on a small clear
+/// droplet, and half of each neighbour showing. Touch it and the capsule
+/// melts into the keyboard, the droplet swells under the middle name and
+/// the row widens over the "4"; the names scroll beneath with a tick as
+/// each reaches the middle. It is a system scroll view, so the fling, the
+/// deceleration and the give at either end are the system's own. Once it
+/// settles it narrows again. Tapping a visible name rolls it to the middle.
 struct ModePicker: View {
     @ObservedObject var model: KeyboardModel
+    /// The dial is turning or has just turned, and covers the whole row.
+    @Binding var expanded: Bool
+
+    /// The mode in the middle, which leads `model.mode` while the dial turns.
+    @State private var centred: DictationMode?
+    @State private var narrowing: Task<Void, Never>?
+
+    static let widen = Animation.spring(response: 0.28, dampingFraction: 0.86)
+    private static let roll = Animation.spring(response: 0.3, dampingFraction: 0.88)
+    /// Every mode gets the same slot, so the dial turns evenly.
+    private static let slot: CGFloat = 84
+    private static let restWidth: CGFloat = 200
+    /// Wider and taller than any name, so the droplet's bending edges fall
+    /// on empty space.
+    private static let droplet = CGSize(width: 96, height: 42)
+    /// How long the dial stays wide after it settles.
+    private static let foldDelay = Duration.milliseconds(250)
 
     var body: some View {
-        ModeSegments(
-            modes: DictationMode.keyboardOrder,
-            selected: model.mode,
-            select: { model.select($0) }
-        )
-        .frame(height: 38)
-        .padding(3)
-        .glassEffect(.regular.tint(KB.functionTint), in: Capsule())
-        .accessibilityLabel(L("模式", "Mode"))
-    }
-}
-
-private struct ModeSegments: UIViewRepresentable {
-    let modes: [DictationMode]
-    let selected: DictationMode
-    let select: (DictationMode) -> Void
-
-    func makeUIView(context: Context) -> TracklessSegmentedControl {
-        let control = TracklessSegmentedControl()
-        control.selectedSegmentTintColor = UIColor { traits in
-            traits.userInterfaceStyle == .dark ? UIColor(white: 1, alpha: 0.14) : UIColor(white: 0, alpha: 0.07)
+        let modes = DictationMode.keyboardOrder
+        GeometryReader { geometry in
+            let full = geometry.size.width
+            let canvas = expanded ? full : min(full, Self.restWidth)
+            ZStack {
+                Capsule()
+                    .fill(KB.dialBase)
+                    .frame(width: canvas, height: 44)
+                    .opacity(expanded ? 0 : 1)
+                // Under the names, never over them: glass on top of text
+                // blurs it.
+                Color.clear
+                    .frame(width: Self.droplet.width, height: Self.droplet.height)
+                    .glassEffect(.clear, in: Capsule())
+                    .scaleEffect(expanded ? 1 : 0.86)
+                    .opacity(expanded ? 1 : 0.5)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 0) {
+                        ForEach(Array(modes.enumerated()), id: \.element) { index, mode in
+                            name(mode)
+                                .frame(width: Self.slot, height: 44)
+                                .contentShape(Rectangle())
+                                .onTapGesture { tap(mode, index: index, in: modes) }
+                                .id(mode)
+                        }
+                    }
+                    .scrollTargetLayout()
+                }
+                // The first and last names can still reach the middle.
+                .contentMargins(.horizontal, max(0, (full - Self.slot) / 2), for: .scrollContent)
+                .scrollTargetBehavior(.viewAligned(limitBehavior: .never))
+                .scrollPosition(id: $centred, anchor: .center)
+                // The dial sits on the keyboard's top edge, where the
+                // default edge effect blurs the whole row.
+                .scrollEdgeEffectHidden(true, for: .all)
+                .onScrollPhaseChange { _, phase in
+                    if phase == .idle {
+                        commit()
+                    } else {
+                        narrowing?.cancel()
+                        expanded = true
+                    }
+                }
+                .mask {
+                    // Names fade out at the canvas edges.
+                    LinearGradient(
+                        stops: [
+                            .init(color: .clear, location: 0),
+                            .init(color: .black, location: 0.16),
+                            .init(color: .black, location: 0.84),
+                            .init(color: .clear, location: 1),
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                    .frame(width: canvas)
+                }
+            }
+            .frame(width: full, height: geometry.size.height)
         }
-        control.addTarget(context.coordinator, action: #selector(Coordinator.changed(_:)), for: .valueChanged)
-        control.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        control.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        return control
+        .frame(height: 44)
+        .animation(Self.widen, value: expanded)
+        .sensoryFeedback(.selection, trigger: centred) { old, new in old != nil && new != nil }
+        .onAppear { centred = model.mode }
+        .onChange(of: model.mode) { _, mode in
+            if centred != mode { centred = mode }
+        }
+        .onDisappear { narrowing?.cancel() }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(L("模式：\(model.mode.title)", "Mode: \(model.mode.title)"))
+        .accessibilityHint(L("上下轻扫切换模式", "Swipe up or down to switch modes"))
+        .accessibilityAdjustableAction { direction in
+            guard let index = modes.firstIndex(of: model.mode) else { return }
+            let next = direction == .increment ? index + 1 : index - 1
+            guard modes.indices.contains(next) else { return }
+            centred = modes[next]
+            commit()
+        }
     }
 
-    func updateUIView(_ control: TracklessSegmentedControl, context: Context) {
-        context.coordinator.parent = self
-        let titles = modes.map(\.title)
-        if (0..<control.numberOfSegments).map({ control.titleForSegment(at: $0) ?? "" }) != titles {
-            control.removeAllSegments()
-            for (index, title) in titles.enumerated() {
-                control.insertSegment(withTitle: title, at: index, animated: false)
+    private func name(_ mode: DictationMode) -> some View {
+        let inMiddle = mode == centred
+        return Text(mode.title)
+            .font(.system(size: 15, weight: inMiddle ? .semibold : .regular))
+            .foregroundStyle(inMiddle ? KB.ink : KB.secondary)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .padding(.horizontal, 8)
+    }
+
+    /// Only names that can be seen take a tap: at rest that is the middle
+    /// one and its two neighbours.
+    private func tap(_ mode: DictationMode, index: Int, in modes: [DictationMode]) {
+        guard let current = centred, let at = modes.firstIndex(of: current) else { return }
+        guard mode != current else { return }
+        guard expanded || abs(index - at) <= 1 else { return }
+        narrowing?.cancel()
+        expanded = true
+        withAnimation(Self.roll) { centred = mode }
+        commit()
+    }
+
+    /// The dial has settled: the mode in the middle becomes the mode in
+    /// use, unless the model refuses it, which says why and rolls the dial
+    /// back. Then the dial narrows.
+    private func commit() {
+        if let mode = centred, mode != model.mode {
+            model.select(mode, haptic: false)
+            if model.mode != mode {
+                withAnimation(Self.roll) { centred = model.mode }
             }
         }
-        // Also puts the control back after the model refuses a mode.
-        let index = modes.firstIndex(of: selected) ?? UISegmentedControl.noSegment
-        if control.selectedSegmentIndex != index { control.selectedSegmentIndex = index }
-    }
-
-    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
-
-    @MainActor
-    final class Coordinator: NSObject {
-        var parent: ModeSegments
-
-        init(parent: ModeSegments) { self.parent = parent }
-
-        @objc func changed(_ control: UISegmentedControl) {
-            guard parent.modes.indices.contains(control.selectedSegmentIndex) else { return }
-            parent.select(parent.modes[control.selectedSegmentIndex])
+        narrowing?.cancel()
+        narrowing = Task { @MainActor in
+            try? await Task.sleep(for: Self.foldDelay)
+            guard !Task.isCancelled else { return }
+            expanded = false
         }
-    }
-}
-
-/// UISegmentedControl without its grey track, so the glass behind it shows
-/// through and matches the keys around it. The track is drawn by the
-/// control's direct image-view children (one per segment); the selected
-/// pill and the drag thumb live in other views and are left alone. If a
-/// future iOS draws the track some other way, the grey simply comes back.
-final class TracklessSegmentedControl: UISegmentedControl {
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        for view in subviews where view is UIImageView { view.isHidden = true }
     }
 }
 
