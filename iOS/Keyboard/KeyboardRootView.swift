@@ -192,7 +192,7 @@ struct KeyboardRootView: View {
         case .processing: return model.liveText.isEmpty ? " " : model.mode.processingLabel
         case .idle:
             switch model.liveness {
-            case .ready: return L("按住说话 · 松手出字", "Hold to talk · Release to insert")
+            case .ready: return L("按住说话 · 轻点锁定", "Hold to talk · Tap to lock")
             case .checking: return L("正在连接 Type4Me…", "Connecting to Type4Me…")
             case .needsApp: return L("点一下打开 Type4Me 开启会话", "Tap to open Type4Me and start")
             }
