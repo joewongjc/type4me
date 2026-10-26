@@ -2,7 +2,7 @@
 
 > Type: user guide · Status: current · Last verified: 2026-10-06 · Version: v2.10.0
 
-[中文](modes.md) · [Back to README](../../README.en.md)
+[中文](modes.md) · [Back to README](../../README.md#english)
 
 ## More Than Speech-to-Text: 8 Default Input Modes
 

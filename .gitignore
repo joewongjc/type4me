@@ -1,6 +1,5 @@
 # Build
 .build/
-AECTest/.build/
 dist/
 *.dmg
 
@@ -44,17 +43,16 @@ __pycache__/
 *.egg-info/
 .coverage
 .mypy_cache/
-qwen3-asr-server/build/
-qwen3-asr-server/dist/
-qwen3-asr-server/.venv/
+Modules/qwen3-asr-server/build/
+Modules/qwen3-asr-server/dist/
+Modules/qwen3-asr-server/.venv/
 
 # Large model files
-qwen3-asr-server/models/
+Modules/qwen3-asr-server/models/
 
 # Binaries & Dynamic Libraries
 *.dylib
 *.so
-tools/aec-demo
 
 # Windows (removed, macOS-only project)
 windows/
@@ -65,8 +63,8 @@ test*.txt
 scripts/benchmark_results.json
 scripts/llm_quality_report.html
 scripts/llm_quality_results*.json
-Evaluation/IntelliSenseEval/.build/
-Evaluation/IntelliSenseEval/.swiftpm/
-Evaluation/IntelliSenseEval/eval-config.json
-Evaluation/IntelliSenseEval/Runs/
-Evaluation/IntelliSenseEval/Cache/
+tools/IntelliSenseEval/.build/
+tools/IntelliSenseEval/.swiftpm/
+tools/IntelliSenseEval/eval-config.json
+tools/IntelliSenseEval/Runs/
+tools/IntelliSenseEval/Cache/

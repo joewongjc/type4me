@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-SERVER_DIR="$PROJECT_DIR/qwen3-asr-server"
+SERVER_DIR="$PROJECT_DIR/Modules/qwen3-asr-server"
 
 echo "=== Building qwen3-asr-server standalone binary ==="
 

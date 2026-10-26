@@ -25,7 +25,7 @@ targets:
     type: library.static
     platform: iOS
     sources:
-      - path: ../Type4MeTransferCore
+      - path: ../Modules/Type4MeTransferCore
   Type4MeiOS:
     type: application
     platform: iOS
