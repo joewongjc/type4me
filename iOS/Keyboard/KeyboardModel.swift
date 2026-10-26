@@ -166,6 +166,12 @@ final class KeyboardModel: ObservableObject {
             field.isSensitive = true
             return field
         }
+        // Card numbers, codes and amounts often come without a content
+        // type, only a digit pad. Nothing typed there needs context.
+        if let keyboardType = proxy.keyboardType ?? nil, Self.digitPads.contains(keyboardType) {
+            field.isSensitive = true
+            return field
+        }
         guard SharedSettings.intelliSenseContext else { return field }
         field.before = String((proxy.documentContextBeforeInput ?? "").suffix(FieldContext.beforeLimit))
         field.after = String((proxy.documentContextAfterInput ?? "").prefix(FieldContext.afterLimit))
@@ -178,6 +184,9 @@ final class KeyboardModel: ObservableObject {
         .password, .newPassword, .oneTimeCode,
         .creditCardNumber, .creditCardSecurityCode, .creditCardExpiration,
     ]
+
+    /// Phone pads never get a third-party keyboard, so they aren't here.
+    private static let digitPads: Set<UIKeyboardType> = [.numberPad, .decimalPad, .asciiCapableNumberPad]
 
     // MARK: - Mic
 
