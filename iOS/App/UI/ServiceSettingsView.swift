@@ -294,13 +294,19 @@ struct LLMSettingsView: View {
     private var preset: LLMProviderPreset { LLMProviderPreset.preset(for: providerID) }
     private var savedProviders: [String] { ConfigStore.llmProfiles.map { ProviderNames.llm($0.provider) } }
 
+    private var trimmedBaseURL: String { baseURL.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    /// An empty field falls back to the provider's default, so clearing an
+    /// address synced from the Mac (a proxy, say) restores the default.
+    private var effectiveBaseURL: String { trimmedBaseURL.isEmpty ? preset.baseURL : trimmedBaseURL }
+
     private var endpoint: Type4MeTransferPayload.Endpoint {
-        preset.endpoint(apiKey: apiKey, model: modelName, baseURL: baseURL)
+        preset.endpoint(apiKey: apiKey, model: modelName, baseURL: effectiveBaseURL)
     }
 
     private var config: LLMEndpointConfig? {
         guard !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              URL(string: baseURL.trimmingCharacters(in: .whitespacesAndNewlines))?.scheme != nil
+              URL(string: effectiveBaseURL)?.scheme != nil
         else { return nil }
         return LLMEndpointConfig(endpoint: endpoint)
     }
@@ -349,19 +355,22 @@ struct LLMSettingsView: View {
             }
 
             Section {
-                TextField(L("接口地址", "Base URL"), text: $baseURL, prompt: Text("https://…/v1"))
+                TextField(L("接口地址", "Base URL"), text: $baseURL, prompt: Text(preset.isCustom ? "https://…/v1" : preset.baseURL))
                     .keyboardType(.URL)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
                     .font(.system(size: 15, design: .monospaced))
+                if !preset.isCustom, !trimmedBaseURL.isEmpty, trimmedBaseURL != preset.baseURL {
+                    Button(L("恢复默认地址", "Restore Default URL")) { baseURL = preset.baseURL }
+                }
             } header: {
                 Text(L("接口地址", "Base URL"))
             } footer: {
                 Text(preset.isCustom
                     ? L("填写 OpenAI 兼容接口的地址，会请求它的 /chat/completions。", "Enter an OpenAI-compatible base URL. Type4Me calls its /chat/completions.")
                     : preset.usesMessagesAPI
-                        ? L("一般不用改，和 Mac 版默认一致。会请求它的 /messages。", "Usually no need to change this. It matches the Mac default. Type4Me calls its /messages.")
-                        : L("一般不用改，和 Mac 版默认一致。", "Usually no need to change this. It matches the Mac default."))
+                        ? L("一般不用改，和 Mac 版默认一致，留空则使用默认地址。会请求它的 /messages。", "Usually no need to change this. It matches the Mac default; leave it empty to use the default. Type4Me calls its /messages.")
+                        : L("一般不用改，和 Mac 版默认一致，留空则使用默认地址。", "Usually no need to change this. It matches the Mac default; leave it empty to use the default."))
             }
 
             Section {
