@@ -316,6 +316,7 @@ extension DictationMode {
     /// Same symbols as the Mac mode list.
     var symbol: String {
         switch kind {
+        case .intelliSense: return "sparkles"
         case .quick: return "bolt"
         case .formalWriting: return "wand.and.stars"
         case .translation: return "character.book.closed"
@@ -328,6 +329,7 @@ extension DictationMode {
     /// modes show the start of their prompt.
     var summary: String {
         switch kind {
+        case .intelliSense: return L("结合当前输入框的场景和上下文，智能整理口述内容", "Polishes dictation using the text field's scene and context")
         case .quick: return L("快速转写，不进行后处理", "Fast transcription, no post-processing")
         case .formalWriting: return L("将口语整理成清晰、可读的文字", "Turns speech into clear, readable writing")
         case .translation:

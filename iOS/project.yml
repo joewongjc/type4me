@@ -26,6 +26,13 @@ targets:
     platform: iOS
     sources:
       - path: ../Sources/Type4MeTransferCore
+  # Intelli Sense prompt, scene rules and output guard, shared verbatim
+  # with the Mac.
+  Type4MeIntelliSenseCore:
+    type: library.static
+    platform: iOS
+    sources:
+      - path: ../Sources/Type4MeIntelliSenseCore
   Type4MeiOS:
     type: application
     platform: iOS
@@ -72,6 +79,7 @@ targets:
       - path: ../Sources/Type4Me/Services/TranslationPromptBuilder.swift
       - path: ../Sources/Type4Me/Services/TranslationOutputValidator.swift
     dependencies:
+      - target: Type4MeIntelliSenseCore
       - target: Type4MeTransferCore
       - target: Type4MeKeyboard
       - target: Type4MeWidgets

@@ -205,8 +205,8 @@ struct MobileSyncPanel: View {
         section(
             L("模式", "Modes"),
             note: L(
-                "内置模式里只有快速、翻译、语音润色和代办适合手机；智能感知、Mac 操作、随便问、Prompt 优化只在 Mac 上用。你自己建的模式也可以同步。",
-                "Of the built-in modes, only Quick, Translation, Voice Polish and Handle It suit the phone; Intelli Sense, Mac Action, Ask Anything and Prompt Optimizer stay on the Mac. Your own modes can sync too."
+                "内置模式里智能感知、快速、翻译、语音润色和代办适合手机；Mac 操作、随便问、Prompt 优化只在 Mac 上用。你自己建的模式也可以同步。",
+                "Of the built-in modes, Intelli Sense, Quick, Translation, Voice Polish and Handle It suit the phone; Mac Action, Ask Anything and Prompt Optimizer stay on the Mac. Your own modes can sync too."
             )
         ) {
             ForEach(modeCandidates) { candidate in

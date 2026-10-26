@@ -57,6 +57,15 @@ enum SharedSettings {
         static let keyboardDemo = "keyboardDemo"
         static let keyHaptics = "keyHaptics"
         static let keySounds = "keySounds"
+        static let intelliSenseContext = "intelliSenseContext"
+    }
+
+    /// Intelli Sense reads the text around the cursor and sends it to the
+    /// text model with the dictation. Off, it still adapts to the kind of
+    /// field but sends only the dictation. Defaults to on.
+    static var intelliSenseContext: Bool {
+        get { SharedContainer.defaults?.object(forKey: Key.intelliSenseContext) as? Bool ?? true }
+        set { SharedContainer.defaults?.set(newValue, forKey: Key.intelliSenseContext) }
     }
 
     /// Key presses on the keyboard buzz and click. iOS doesn't tell

@@ -54,6 +54,8 @@ final class VoiceSession: ObservableObject {
         var latestIsFinal = false
         var completed = false
         var asrError: String?
+        /// Intelli Sense: the field as the keyboard last saw it.
+        var field: FieldContext?
         var pumpTask: Task<Void, Never>?
         var eventsTask: Task<Void, Never>?
 
@@ -179,8 +181,10 @@ final class VoiceSession: ObservableObject {
         case .start:
             guard let requestID = command.requestID else { return }
             startDictation(requestID: requestID, mode: command.mode ?? .quick)
+            if current?.requestID == requestID { current?.field = command.field }
         case .stop:
             guard let current, current.requestID == command.requestID else { return }
+            if let field = command.field { current.field = field }
             finishDictation(current)
         case .cancel:
             guard current?.requestID == command.requestID else { return }
@@ -372,12 +376,23 @@ final class VoiceSession: ObservableObject {
         var output = input
         var note: String?
         if run.mode.usesLLM {
+            let intelliSense = run.mode.kind == .intelliSense
+                ? PhoneIntelliSense.request(text: input, field: run.field)
+                : nil
             if let endpoint = ConfigStore.llm, let config = LLMEndpointConfig(endpoint: endpoint),
-               let request = ModePrompts.request(for: run.mode, text: input) {
+               let request = intelliSense?.prompt ?? ModePrompts.request(for: run.mode, text: input) {
                 let started = Date()
                 do {
                     let client = ChatClient(config: config)
                     output = try await client.complete(system: request.system, user: request.user)
+                    if let intelliSense {
+                        let checked = PhoneIntelliSense.check(output, input: input, request: intelliSense)
+                        output = checked.text
+                        if let rejection = checked.rejection {
+                            log.add(L("智能感知结果没通过检查（\(rejection)），已用原文", "Intelli Sense output didn't pass the check (\(rejection)), so your words were used"))
+                        }
+                        log.add(L("智能感知场景：\(intelliSense.summary)", "Intelli Sense scene: \(intelliSense.summary)"))
+                    }
                     if run.mode.kind == .translation {
                         let checked = try await checkTranslation(output, raw: input, mode: run.mode, client: client)
                         output = checked.text

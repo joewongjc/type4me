@@ -143,6 +143,34 @@ final class KeyboardModel: ObservableObject {
         UISelectionFeedbackGenerator().selectionChanged()
     }
 
+    // MARK: - Intelli Sense
+
+    /// What Intelli Sense gets to see of the field, or nil for other modes.
+    private func fieldContext() -> FieldContext? {
+        guard mode.kind == .intelliSense, let proxy = controller?.proxy else { return nil }
+        let contentType = proxy.textContentType ?? nil
+        var field = FieldContext(
+            keyboardType: (proxy.keyboardType ?? .default).rawValue,
+            returnKeyType: (proxy.returnKeyType ?? .default).rawValue,
+            textContentType: contentType?.rawValue
+        )
+        if let contentType, Self.sensitiveContentTypes.contains(contentType) {
+            field.isSensitive = true
+            return field
+        }
+        guard SharedSettings.intelliSenseContext else { return field }
+        field.before = String((proxy.documentContextBeforeInput ?? "").suffix(FieldContext.beforeLimit))
+        field.after = String((proxy.documentContextAfterInput ?? "").prefix(FieldContext.afterLimit))
+        return field
+    }
+
+    /// Fields whose text must never leave the phone. Secure fields don't
+    /// even get a third-party keyboard; these are the rest.
+    private static let sensitiveContentTypes: Set<UITextContentType> = [
+        .password, .newPassword, .oneTimeCode,
+        .creditCardNumber, .creditCardSecurityCode, .creditCardExpiration,
+    ]
+
     // MARK: - Mic
 
     func micPressed() {
@@ -250,7 +278,7 @@ final class KeyboardModel: ObservableObject {
         phase = .recording(locked: false)
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         DictationChannel.send(KeyboardCommand(
-            kind: .start, requestID: id, mode: mode
+            kind: .start, requestID: id, mode: mode, field: fieldContext()
         ))
         // If the app does not acknowledge, it is gone: fall back to opening it.
         watchdog?.cancel()
@@ -273,7 +301,8 @@ final class KeyboardModel: ObservableObject {
         guard let requestID else { return }
         phase = .processing
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        DictationChannel.send(KeyboardCommand(kind: .stop, requestID: requestID))
+        // Read again on release, as the Mac refreshes before processing.
+        DictationChannel.send(KeyboardCommand(kind: .stop, requestID: requestID, field: fieldContext()))
         watchdog?.cancel()
         watchdog = Task {
             try? await Task.sleep(for: .seconds(30))

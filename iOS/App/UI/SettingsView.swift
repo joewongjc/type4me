@@ -30,6 +30,7 @@ struct SettingsView: View {
     @State private var timeout = AppSettings.sessionTimeoutMinutes
     @State private var keyHaptics = SharedSettings.keyHaptics
     @State private var keySounds = SharedSettings.keySounds
+    @State private var intelliSenseContext = SharedSettings.intelliSenseContext
     @State private var confirmClear = false
     @State private var confirmClearHistory = false
     @State private var language = AppLanguage.override?.rawValue ?? "system"
@@ -124,6 +125,18 @@ struct SettingsView: View {
                 Text(L(
                     "只在按住说话时打开麦克风，松开就关，其他时候状态栏没有麦克风提示，也不用跳回 App。",
                     "The mic opens only while you hold to talk and closes when you let go. No mic indicator the rest of the time, and no trip back to the app."
+                ))
+            }
+
+            Section {
+                Toggle(L("读取输入框上下文", "Read Field Context"), isOn: $intelliSenseContext)
+                    .onChange(of: intelliSenseContext) { _, on in SharedSettings.intelliSenseContext = on }
+            } header: {
+                Text(L("智能感知上下文", "Intelli Sense Context"))
+            } footer: {
+                Text(L(
+                    "打开时，智能感知会把光标前后的一小段文字（前 300 字、后 100 字）随口述一起发给处理模型，用来校正专有词、延续语气。密码、验证码和银行卡输入框不会读取。关掉后只按输入框类型调整。",
+                    "When on, Intelli Sense sends a short stretch of text around the cursor (300 characters before, 100 after) to the text model with your dictation, to spell names right and match the tone. Password, one-time-code and card fields are never read. When off, it adapts only to the kind of field."
                 ))
             }
 

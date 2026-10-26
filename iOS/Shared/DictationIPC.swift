@@ -43,7 +43,29 @@ struct KeyboardCommand: Codable, Equatable, Sendable {
     var requestID: UUID?
     var mode: DictationMode?
     var delivery: Delivery?
+    /// Intelli Sense only, on start and again on stop: what the keyboard
+    /// can see of the text field.
+    var field: FieldContext?
     var sentAt = Date()
+}
+
+/// The part of the text field a keyboard can see. iOS doesn't tell a
+/// keyboard which app it's in, so the field's own traits stand in for it.
+struct FieldContext: Codable, Equatable, Sendable {
+    /// Up to `beforeLimit` characters before the cursor and `afterLimit`
+    /// after it, the same window the Mac reads; empty when reading context
+    /// is off or the field looks sensitive.
+    var before = ""
+    var after = ""
+    /// `UIKeyboardType`, `UIReturnKeyType` and `UITextContentType` raw values.
+    var keyboardType = 0
+    var returnKeyType = 0
+    var textContentType: String?
+    /// Passwords, one-time codes, card numbers and the like.
+    var isSensitive = false
+
+    static let beforeLimit = 300
+    static let afterLimit = 100
 }
 
 struct DictationState: Codable, Equatable, Sendable {

@@ -49,6 +49,8 @@ final class AppModel: ObservableObject {
     init() {
         session = VoiceSession(history: history, log: log)
         ConfigStore.refreshSharedFlags()
+        // Before the keyboard next reads the library.
+        ModeLibrary.addIntelliSenseIfNeeded()
         DarwinNotifier.shared.observe(DarwinName.keyboardAppeared) { [weak self] in
             self?.keyboardSeen = true
         }

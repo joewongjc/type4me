@@ -7,7 +7,12 @@ import Type4MeTransferCore
 final class ModeStore: ObservableObject {
     static let shared = ModeStore()
 
-    @Published private(set) var modes = ModeLibrary.all
+    @Published private(set) var modes: [ModeDefinition]
+
+    private init() {
+        ModeLibrary.addIntelliSenseIfNeeded()
+        modes = ModeLibrary.all
+    }
 
     var keyboardCount: Int { modes.filter(\.onKeyboard).count }
 
@@ -312,6 +317,18 @@ struct ModeEditorView: View {
                     Text(L(
                         "自动识别口述语言，翻译为目标语言。和 Mac 版一样不用写 Prompt；结果不是目标语言时会自动重试一次。需要先配置处理模型。",
                         "Detects the spoken language and translates it into the target. Like the Mac, there's no prompt to write; a reply in the wrong language is retried once. Needs a text model."
+                    ))
+                }
+            } else if draft.kind == .intelliSense {
+                Section {
+                    Text(DictationMode(draft).summary)
+                        .foregroundStyle(T4.secondary)
+                } header: {
+                    Text(L("作用", "What It Does"))
+                } footer: {
+                    Text(L(
+                        "和 Mac 版用同一套规则：按输入框类型调整语气（聊天、邮件、搜索框等），参考光标前后的文字校正专有词，处理改口，明确列举时整理成列表，结果不可靠时退回原文。iPhone 键盘看不到当前是哪个 App，所以场景从输入框类型推断。没有可编辑的 Prompt，需要先配置处理模型。",
+                        "Same rules as the Mac: the tone follows the kind of field (chat, email, search and so on), text around the cursor helps spell names right, self-corrections are cleaned up, clear lists become lists, and an unreliable result falls back to your words. The iPhone keyboard can't tell which app it's in, so the scene comes from the field. There's no prompt to edit, and it needs a text model."
                     ))
                 }
             } else if draft.kind == .quick {

@@ -41,6 +41,9 @@ public struct Type4MeTransferPayload: Codable, Equatable, Sendable {
             /// syncs and iPhone libraries still match.
             public static let translation = "translateEnglish"
             public static let agentMode = "agentMode"
+            /// Intelli Sense. The iPhone builds its prompt from the text
+            /// field it can see, so nothing but the kind travels.
+            public static let intelliSense = "intelliSense"
             public static let custom = "custom"
         }
 
