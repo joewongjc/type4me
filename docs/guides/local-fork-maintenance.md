@@ -15,7 +15,7 @@ upstream. The goals are:
 
 ### Qwen3-ASR memory control
 
-Source: `Modules/qwen3-asr-server/server.py`
+Source: `Sources/qwen3-asr-server/server.py`
 
 This patch is based on upstream PR #157 and addresses memory growth during
 long SenseVoice + Qwen3 sessions:
@@ -31,7 +31,7 @@ and should not grow monotonically into multi-GB RSS during long dictation.
 
 ### Single final LLM request after recording stops
 
-Source: `Type4Me/Session/RecognitionSession.swift`
+Source: `Sources/Type4Me/Session/RecognitionSession.swift`
 
 Recording-time speculative LLM processing has been removed. All modes perform
 exactly one LLM post-processing request after the user finishes speaking and

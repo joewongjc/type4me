@@ -113,7 +113,7 @@ missing/invalid → siri
 
 ### 5.2 预设的单一真源
 
-新增 `Type4Me/UI/FloatingBar/LiquidGlass/OrbPreset.swift`：
+新增 `Sources/Type4Me/UI/FloatingBar/LiquidGlass/OrbPreset.swift`：
 
 ```swift
 struct OrbPreset: Equatable, Sendable {
@@ -134,13 +134,13 @@ struct OrbPreset: Equatable, Sendable {
 ### 6.1 文件布局
 
 ```text
-Type4Me/UI/FloatingBar/LiquidGlass/
+Sources/Type4Me/UI/FloatingBar/LiquidGlass/
 ├── OrbPreset.swift                 # 预设数据、映射和无动画策略
 ├── LiquidGlassMotion.swift         # 音量平滑、时间和 reduce-motion 策略
 ├── LiquidGlassOrb.swift            # 左侧 Finish 控件的 SwiftUI 外壳
 ├── LiquidGlassText.swift           # 文本掩码、confirmed/partial 组合
 └── LiquidGlassShaders.metal        # 从 Orb 固定快照移植的 Metal 算法和 stitchable entry points
-Type4Me/Resources/ThirdPartyNotices/
+Sources/Type4Me/Resources/ThirdPartyNotices/
 └── Orb-LICENSE
 ```
 
@@ -284,19 +284,19 @@ PR #279 不恢复任何全宽背景动画，而是将静态承载表面统一为
 
 | 文件 | 变更 |
 |---|---|
-| `Type4Me/UI/AppState.swift` | 替换 `RecordingVisualStyle`、新增迁移和 `RecordingTextParts` 纯 helper（或置于同职责文件）。 |
-| `Type4Me/Type4MeApp.swift` | 在启动 bootstrap 调用一次偏好迁移。 |
-| `Type4Me/UI/FloatingBar/FloatingBarView.swift` | 前景继续承载 Orb/文字路由；背景统一为 `RecordingGlassSurface`，增加 native glass、Reduce Transparency、局部 colorScheme 与 native/fallback border 分流。 |
-| `Type4Me/UI/FloatingBar/LiquidGlass/*` | 新增预设、动效策略、SwiftUI 外壳和 Metal shader。 |
-| `Type4Me/UI/Settings/AppearanceSettingsTab.swift` | 更新 row 标题、说明和枚举选项。 |
-| `Type4Me/UI/Settings/AppearancePreviewStage.swift` | 保留录音/处理预览阶段切换，并对 `FloatingBarView` 绑定 theme identity，稳定 Dark / Light 原生玻璃切换。 |
-| `Type4Me/UI/Setup/DemoState.swift` | 增加确定性录音/处理 demo 数据与完整 teardown。 |
-| `Type4Me/Resources/ThirdPartyNotices/Orb-LICENSE` | 加入上游 MIT 文本并确保 package/app 资源包含。 |
-| `Type4Me/UI/DesignSystem.swift` | 定义 `glassDarkContrastFloor = 0.52` / `glassLightContrastFloor = 0.45`，并明确旧 rim 只用于 fallback。 |
-| `Type4Me/UI/FloatingBar/FloatingBarPanel.swift` | panel width 偶数化、window origin 取整，稳定 overlay resize 时的中心位置。 |
-| `Type4MeTests/AppStateTests.swift` | 覆盖旧样式迁移/fallback，并新增 overlay resize 时胶囊中心不漂移的回归测试。 |
-| `Type4MeTests/AppearancePreviewTests.swift` | 覆盖 presentation、预览阶段和中英文行为。 |
-| `Type4MeTests/LiquidGlassVisualTests.swift` | 新增纯策略、预设、文本分段和 reduce-motion 测试。 |
+| `Sources/Type4Me/UI/AppState.swift` | 替换 `RecordingVisualStyle`、新增迁移和 `RecordingTextParts` 纯 helper（或置于同职责文件）。 |
+| `Sources/Type4Me/Type4MeApp.swift` | 在启动 bootstrap 调用一次偏好迁移。 |
+| `Sources/Type4Me/UI/FloatingBar/FloatingBarView.swift` | 前景继续承载 Orb/文字路由；背景统一为 `RecordingGlassSurface`，增加 native glass、Reduce Transparency、局部 colorScheme 与 native/fallback border 分流。 |
+| `Sources/Type4Me/UI/FloatingBar/LiquidGlass/*` | 新增预设、动效策略、SwiftUI 外壳和 Metal shader。 |
+| `Sources/Type4Me/UI/Settings/AppearanceSettingsTab.swift` | 更新 row 标题、说明和枚举选项。 |
+| `Sources/Type4Me/UI/Settings/AppearancePreviewStage.swift` | 保留录音/处理预览阶段切换，并对 `FloatingBarView` 绑定 theme identity，稳定 Dark / Light 原生玻璃切换。 |
+| `Sources/Type4Me/UI/Setup/DemoState.swift` | 增加确定性录音/处理 demo 数据与完整 teardown。 |
+| `Sources/Type4Me/Resources/ThirdPartyNotices/Orb-LICENSE` | 加入上游 MIT 文本并确保 package/app 资源包含。 |
+| `Sources/Type4Me/UI/DesignSystem.swift` | 定义 `glassDarkContrastFloor = 0.52` / `glassLightContrastFloor = 0.45`，并明确旧 rim 只用于 fallback。 |
+| `Sources/Type4Me/UI/FloatingBar/FloatingBarPanel.swift` | panel width 偶数化、window origin 取整，稳定 overlay resize 时的中心位置。 |
+| `Tests/Type4MeTests/AppStateTests.swift` | 覆盖旧样式迁移/fallback，并新增 overlay resize 时胶囊中心不漂移的回归测试。 |
+| `Tests/Type4MeTests/AppearancePreviewTests.swift` | 覆盖 presentation、预览阶段和中英文行为。 |
+| `Tests/Type4MeTests/LiquidGlassVisualTests.swift` | 新增纯策略、预设、文本分段和 reduce-motion 测试。 |
 
 ## 11. 自动化测试
 

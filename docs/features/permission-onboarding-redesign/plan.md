@@ -27,9 +27,9 @@
 ### Task 1: 凭证变更广播与导航模型扩展 (Credentials Notification & Navigation Model)
 
 **Files:**
-- Modify: `Type4Me/Services/KeychainService.swift`
-- Modify: `Type4Me/UI/Settings/SettingsView.swift`
-- Modify: `Type4Me/UI/Settings/ModelSettingsTab.swift`
+- Modify: `Sources/Type4Me/Services/KeychainService.swift`
+- Modify: `Sources/Type4Me/UI/Settings/SettingsView.swift`
+- Modify: `Sources/Type4Me/UI/Settings/ModelSettingsTab.swift`
 - Test: `Tests/Type4MeTests/KeychainNotificationTests.swift`
 
 **Interfaces:**
@@ -104,7 +104,7 @@ Expected: PASS.
 - [ ] **Step 5: 提交改动**
 
 ```bash
-git add Type4Me/Services/KeychainService.swift Type4Me/UI/Settings/SettingsView.swift Type4Me/UI/Settings/ModelSettingsTab.swift Tests/Type4MeTests/KeychainNotificationTests.swift
+git add Sources/Type4Me/Services/KeychainService.swift Sources/Type4Me/UI/Settings/SettingsView.swift Sources/Type4Me/UI/Settings/ModelSettingsTab.swift Tests/Type4MeTests/KeychainNotificationTests.swift
 git commit -m "feat: add credentialsDidChange notification and pendingModelCategory routing"
 ```
 
@@ -113,7 +113,7 @@ git commit -m "feat: add credentialsDidChange notification and pendingModelCateg
 ### Task 2: `PermissionGuideModel` 状态机与真实 EventTap 探测重构
 
 **Files:**
-- Modify: `Type4Me/Permissions/PermissionGuideModel.swift`
+- Modify: `Sources/Type4Me/Permissions/PermissionGuideModel.swift`
 - Test: `Tests/Type4MeTests/PermissionGuideModelTests.swift`
 
 **Interfaces:**
@@ -172,7 +172,7 @@ Expected: PASS.
 - [ ] **Step 5: 提交改动**
 
 ```bash
-git add Type4Me/Permissions/PermissionGuideModel.swift Tests/Type4MeTests/PermissionGuideModelTests.swift
+git add Sources/Type4Me/Permissions/PermissionGuideModel.swift Tests/Type4MeTests/PermissionGuideModelTests.swift
 git commit -m "feat: add hotkey tap probing and relaunch mechanics to PermissionGuideModel"
 ```
 
@@ -181,7 +181,7 @@ git commit -m "feat: add hotkey tap probing and relaunch mechanics to Permission
 ### Task 3: `PermissionGuideView` 1:1 Screenflare 视觉重构
 
 **Files:**
-- Modify: `Type4Me/Permissions/PermissionGuideView.swift`
+- Modify: `Sources/Type4Me/Permissions/PermissionGuideView.swift`
 
 **Interfaces:**
 - Consumes: `PermissionGuideModel`, `L(zh, en)`, `TF.amber`, `PermissionDragOverlay`
@@ -214,7 +214,7 @@ Expected: Build successfully without errors.
 - [ ] **Step 3: 提交改动**
 
 ```bash
-git add Type4Me/Permissions/PermissionGuideView.swift
+git add Sources/Type4Me/Permissions/PermissionGuideView.swift
 git commit -m "feat: implement 1:1 Screenflare-style PermissionGuideView layout and interactions"
 ```
 
@@ -223,7 +223,7 @@ git commit -m "feat: implement 1:1 Screenflare-style PermissionGuideView layout 
 ### Task 4: `SetupWizardView` 简化为 2 步与首启安全闭环
 
 **Files:**
-- Modify: `Type4Me/UI/Setup/SetupWizardView.swift`
+- Modify: `Sources/Type4Me/UI/Setup/SetupWizardView.swift`
 
 **Interfaces:**
 - Consumes: `PermissionGuideModel`, `AppState`, `AppEditionMigration`, `AppDelegate.presentSettings`
@@ -249,7 +249,7 @@ Expected: Build successfully without errors.
 - [ ] **Step 3: 提交改动**
 
 ```bash
-git add Type4Me/UI/Setup/SetupWizardView.swift
+git add Sources/Type4Me/UI/Setup/SetupWizardView.swift
 git commit -m "feat: simplify SetupWizardView to 2 steps with safe cloud edition persistence"
 ```
 
@@ -258,8 +258,8 @@ git commit -m "feat: simplify SetupWizardView to 2 steps with safe cloud edition
 ### Task 5: 窗口注册与生命周期唤起修复 (Type4MeApp & MenuBarControlCenter)
 
 **Files:**
-- Modify: `Type4Me/UI/MenuBar/MenuBarControlCenter.swift`
-- Modify: `Type4Me/Type4MeApp.swift`
+- Modify: `Sources/Type4Me/UI/MenuBar/MenuBarControlCenter.swift`
+- Modify: `Sources/Type4Me/Type4MeApp.swift`
 
 **Interfaces:**
 - Consumes: `openWindow(id: "setup")`, `openWindow(id: "settings")`, `openWindow(id: "permission-guide")`
@@ -332,7 +332,7 @@ Expected: Build successfully without errors.
 - [ ] **Step 4: 提交改动**
 
 ```bash
-git add Type4Me/UI/MenuBar/MenuBarControlCenter.swift Type4Me/Type4MeApp.swift
+git add Sources/Type4Me/UI/MenuBar/MenuBarControlCenter.swift Sources/Type4Me/Type4MeApp.swift
 git commit -m "fix: register openSetupAction and implement robust presentSetupWizard routing"
 ```
 
@@ -341,7 +341,7 @@ git commit -m "fix: register openSetupAction and implement robust presentSetupWi
 ### Task 6: 首页悬浮模型提醒卡片 (`FloatingModelAlertCards`)
 
 **Files:**
-- Modify: `Type4Me/UI/Settings/GeneralSettingsTab.swift`
+- Modify: `Sources/Type4Me/UI/Settings/GeneralSettingsTab.swift`
 
 **Interfaces:**
 - Consumes: `KeychainService.selectedASRProvider`, `KeychainService.selectedLLMProvider`, `ModelSettingsHelpers.hasConfiguredCredentials`, `Notification.Name.credentialsDidChange`
@@ -363,7 +363,7 @@ Expected: Build successfully without errors.
 - [ ] **Step 3: 提交改动**
 
 ```bash
-git add Type4Me/UI/Settings/GeneralSettingsTab.swift
+git add Sources/Type4Me/UI/Settings/GeneralSettingsTab.swift
 git commit -m "feat: add FloatingModelAlertCards to GeneralSettingsTab for progressive model configuration"
 ```
 
@@ -372,7 +372,7 @@ git commit -m "feat: add FloatingModelAlertCards to GeneralSettingsTab for progr
 ### Task 7: 端到端构建、本地化校验与集成测试 (End-to-End Verification)
 
 **Files:**
-- Modify: `Type4Me/UI/Localization.swift` (补充所有缺失双语词条)
+- Modify: `Sources/Type4Me/UI/Localization.swift` (补充所有缺失双语词条)
 - Test: 全量单元测试与编译
 
 - [ ] **Step 1: 补齐双语词条并验证中英双语覆盖**
@@ -392,6 +392,6 @@ Expected: Compiled successfully with zero warnings/errors.
 - [ ] **Step 4: 提交最终改动**
 
 ```bash
-git add Type4Me/UI/Localization.swift
+git add Sources/Type4Me/UI/Localization.swift
 git commit -m "chore: ensure full bilingual localization coverage for permission onboarding"
 ```

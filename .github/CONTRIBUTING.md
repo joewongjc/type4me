@@ -33,7 +33,7 @@ git clone https://github.com/joewongjc/type4me.git && cd type4me
 bash scripts/build-sherpa.sh
 
 # 3. (Optional) Setup Qwen3-ASR server (needs python3.12, Apple Silicon only)
-cd Modules/qwen3-asr-server && python3.12 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && cd ../..
+cd Sources/qwen3-asr-server && python3.12 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && cd ../..
 
 # 4. Dev deploy (builds, signs, installs /Applications/Type4Me Dev.app, launches)
 # Complete the one-time Xcode signing setup below before the first run.
@@ -117,23 +117,23 @@ For non-Dev packaging, a signing identity can be supplied explicitly with
 
 | Module | Description |
 |--------|-------------|
-| `Type4Me/ASR/` | ASR engine abstraction layer, pluggable provider architecture |
-| `Type4Me/Audio/` | Audio capture (16kHz mono PCM) |
-| `Type4Me/Session/` | Core state machine: record > ASR > inject |
-| `Type4Me/Services/` | Credential storage, hotwords, model management, Python service management |
-| `Type4Me/LLM/` | LLM text processing (15 providers) |
-| `Type4Me/Input/` | Global hotkey management |
-| `Type4Me/Injection/` | Text injection (clipboard Cmd+V) |
-| `Type4Me/Bridge/` | SherpaOnnx C API Swift bridge (optional) |
-| `Type4Me/UI/` | SwiftUI interface: floating window + settings |
-| `Modules/Type4MeIntelliSenseCore/` | Intelli Sense context awareness and preference learning core |
-| `Modules/Type4MeReviseCore/` | Voice Revise tracking, slot targeting, and replacement core |
-| `Modules/qwen3-asr-server/` | Python Qwen3-ASR calibration service (Apple Silicon, MLX) |
-| `Modules/Type4MeTransferCore/` | Mac ↔ iPhone sync format and snippet matching shared with `iOS/` |
-| `Modules/Type4MeUI/` | Shared SwiftUI components |
-| `Modules/CppJiebaBridge/` | Optional pinned CppJieba C++ bridge (`marker` enables it) |
+| `Sources/Type4Me/ASR/` | ASR engine abstraction layer, pluggable provider architecture |
+| `Sources/Type4Me/Audio/` | Audio capture (16kHz mono PCM) |
+| `Sources/Type4Me/Session/` | Core state machine: record > ASR > inject |
+| `Sources/Type4Me/Services/` | Credential storage, hotwords, model management, Python service management |
+| `Sources/Type4Me/LLM/` | LLM text processing (15 providers) |
+| `Sources/Type4Me/Input/` | Global hotkey management |
+| `Sources/Type4Me/Injection/` | Text injection (clipboard Cmd+V) |
+| `Sources/Type4Me/Bridge/` | SherpaOnnx C API Swift bridge (optional) |
+| `Sources/Type4Me/UI/` | SwiftUI interface: floating window + settings |
+| `Sources/Type4MeIntelliSenseCore/` | Intelli Sense context awareness and preference learning core |
+| `Sources/Type4MeReviseCore/` | Voice Revise tracking, slot targeting, and replacement core |
+| `Sources/qwen3-asr-server/` | Python Qwen3-ASR calibration service (Apple Silicon, MLX) |
+| `Sources/Type4MeTransferCore/` | Mac ↔ iPhone sync format and snippet matching shared with `iOS/` |
+| `Sources/Type4MeUI/` | Shared SwiftUI components |
+| `Sources/CppJiebaBridge/` | Optional pinned CppJieba C++ bridge (`marker` enables it) |
 | `iOS/` | iPhone voice keyboard app (XcodeGen project) |
-| `tools/IntelliSenseEval/` | Standalone Intelli Sense evaluation package (manual, real models) |
+| `Tests/IntelliSenseEval/` | Standalone Intelli Sense evaluation package (manual, real models) |
 
 The ASR provider architecture is fully pluggable: implement `ASRProviderConfig` (define credential fields) and `SpeechRecognizer` (implement recognition logic), register with `ASRProviderRegistry`, and you have a new engine.
 

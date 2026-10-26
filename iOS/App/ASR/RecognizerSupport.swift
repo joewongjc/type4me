@@ -3,9 +3,9 @@ import os
 @preconcurrency import AVFoundation
 
 // The cloud speech clients, their wire protocols and provider configs are
-// compiled straight from the Mac sources (`Type4Me/ASR`, `Type4Me/Protocol`,
+// compiled straight from the Mac sources (`Sources/Type4Me/ASR`, `Sources/Type4Me/Protocol`,
 // see project.yml). The Mac declares these shared types in
-// `Type4Me/ASR/SpeechRecognizer.swift` next to Mac-only session events;
+// `Sources/Type4Me/ASR/SpeechRecognizer.swift` next to Mac-only session events;
 // this file carries the part the clients use, with the same shapes.
 // `L(zh, en)` comes from Shared/Localization.swift.
 

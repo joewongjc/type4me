@@ -42,7 +42,7 @@ final class ChineseWordSegmenterTests: XCTestCase {
         let resources = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-            .appendingPathComponent("Type4Me/Resources/Jieba")
+            .appendingPathComponent("../Sources/Type4Me/Resources/Jieba")
         XCTAssertFalse(FileManager.default.fileExists(
             atPath: resources.appendingPathComponent("jieba.dict.utf8").path
         ))
@@ -65,7 +65,7 @@ final class ChineseWordSegmenterTests: XCTestCase {
         let licenses = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-            .appendingPathComponent("Modules/CppJiebaBridge")
+            .appendingPathComponent("../Sources/CppJiebaBridge")
         XCTAssertTrue(FileManager.default.fileExists(
             atPath: licenses.appendingPathComponent("CPPJIEBA_LICENSE").path
         ))
@@ -78,7 +78,7 @@ final class ChineseWordSegmenterTests: XCTestCase {
         let resources = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-            .appendingPathComponent("Type4Me/Resources/Jieba")
+            .appendingPathComponent("../Sources/Type4Me/Resources/Jieba")
         let overlay = FileManager.default.temporaryDirectory
             .appendingPathComponent("type4me-jieba-\(UUID().uuidString).utf8")
         defer { try? FileManager.default.removeItem(at: overlay) }
@@ -100,7 +100,7 @@ final class ChineseWordSegmenterTests: XCTestCase {
         let resources = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-            .appendingPathComponent("Type4Me/Resources/Jieba")
+            .appendingPathComponent("../Sources/Type4Me/Resources/Jieba")
         let overlay = FileManager.default.temporaryDirectory
             .appendingPathComponent("type4me-jieba-mixed-\(UUID().uuidString).utf8")
         defer { try? FileManager.default.removeItem(at: overlay) }
@@ -124,7 +124,7 @@ final class ChineseWordSegmenterTests: XCTestCase {
         let resources = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-            .appendingPathComponent("Type4Me/Resources/Jieba")
+            .appendingPathComponent("../Sources/Type4Me/Resources/Jieba")
         let overlay = FileManager.default.temporaryDirectory
             .appendingPathComponent("type4me-jieba-\(UUID().uuidString).utf8")
         defer { try? FileManager.default.removeItem(at: overlay) }
@@ -146,7 +146,7 @@ final class ChineseWordSegmenterTests: XCTestCase {
         let resources = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-            .appendingPathComponent("Type4Me/Resources/Jieba")
+            .appendingPathComponent("../Sources/Type4Me/Resources/Jieba")
         let overlay = FileManager.default.temporaryDirectory
             .appendingPathComponent("type4me-jieba-dynamic-\(UUID().uuidString).utf8")
         defer { try? FileManager.default.removeItem(at: overlay) }
@@ -171,7 +171,7 @@ final class ChineseWordSegmenterTests: XCTestCase {
         let resources = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-            .appendingPathComponent("Type4Me/Resources/Jieba")
+            .appendingPathComponent("../Sources/Type4Me/Resources/Jieba")
         let overlay = FileManager.default.temporaryDirectory
             .appendingPathComponent("type4me-jieba-idle-\(UUID().uuidString).utf8")
         defer { try? FileManager.default.removeItem(at: overlay) }
@@ -232,7 +232,7 @@ final class ChineseWordSegmenterTests: XCTestCase {
         let resources = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-            .appendingPathComponent("Type4Me/Resources/Jieba")
+            .appendingPathComponent("../Sources/Type4Me/Resources/Jieba")
         let overlay = FileManager.default.temporaryDirectory
             .appendingPathComponent("type4me-jieba-disabled-\(UUID().uuidString).utf8")
         defer { try? FileManager.default.removeItem(at: overlay) }
@@ -257,7 +257,7 @@ final class ChineseWordSegmenterTests: XCTestCase {
         let resources = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-            .appendingPathComponent("Type4Me/Resources/Jieba")
+            .appendingPathComponent("../Sources/Type4Me/Resources/Jieba")
         let overlay = FileManager.default.temporaryDirectory
             .appendingPathComponent("type4me-jieba-purge-\(UUID().uuidString).utf8")
         defer { try? FileManager.default.removeItem(at: overlay) }
@@ -286,7 +286,7 @@ final class ChineseWordSegmenterTests: XCTestCase {
         let resources = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-            .appendingPathComponent("Type4Me/Resources/Jieba")
+            .appendingPathComponent("../Sources/Type4Me/Resources/Jieba")
         let overlay = FileManager.default.temporaryDirectory
             .appendingPathComponent("type4me-jieba-boost-\(UUID().uuidString).utf8")
         defer { try? FileManager.default.removeItem(at: overlay) }
@@ -306,7 +306,7 @@ final class ChineseWordSegmenterTests: XCTestCase {
         let resources = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-            .appendingPathComponent("Type4Me/Resources/Jieba")
+            .appendingPathComponent("../Sources/Type4Me/Resources/Jieba")
         let overlay = FileManager.default.temporaryDirectory
             .appendingPathComponent("type4me-jieba-equiv-\(UUID().uuidString).utf8")
         defer { try? FileManager.default.removeItem(at: overlay) }

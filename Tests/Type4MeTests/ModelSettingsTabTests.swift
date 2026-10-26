@@ -98,9 +98,9 @@ final class ModelSettingsTabTests: XCTestCase {
         let sourceDir = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent() // Type4MeTests
             .deletingLastPathComponent() // Project root
-            .appendingPathComponent("Type4Me/Resources/Icons")
+            .appendingPathComponent("../Sources/Type4Me/Resources/Icons")
         let testIconURL = sourceDir.appendingPathComponent("openai.png")
-        XCTAssertTrue(FileManager.default.fileExists(atPath: testIconURL.path), "Brand icons must exist at Type4Me/Resources/Icons")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: testIconURL.path), "Brand icons must exist at Sources/Type4Me/Resources/Icons")
     }
 
     func testInitialProviderDefaultsDoNotTriggerUnsavedChanges() {

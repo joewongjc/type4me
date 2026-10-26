@@ -38,7 +38,7 @@ AppState / RecordingControlCoordinator / RecognitionSession
 
 ### 2.1 URL Scheme
 
-`Type4Me/Type4MeApp.swift` 已实现：
+`Sources/Type4Me/Type4MeApp.swift` 已实现：
 
 ```swift
 func application(_ application: NSApplication, open urls: [URL])
@@ -439,8 +439,8 @@ type4me://toggle
 预计主要修改：
 
 ```text
-Type4Me/Type4MeApp.swift
-Type4MeTests/...URL...Tests.swift
+Sources/Type4Me/Type4MeApp.swift
+Tests/Type4MeTests/...URL...Tests.swift
 README.md
 docs/features/url-recording-commands/product-design.md
 docs/features/url-recording-commands/development-design.md
@@ -449,7 +449,7 @@ docs/features/url-recording-commands/development-design.md
 如果纯 parser/decision 类型足够独立，可以新增：
 
 ```text
-Type4Me/Services/RecordingURLCommands.swift
+Sources/Type4Me/Services/RecordingURLCommands.swift
 ```
 
 但第一版应避免为了形式拆出过多文件。

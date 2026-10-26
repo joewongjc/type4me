@@ -161,17 +161,17 @@ func inject(
   - *注：保留 `inferInsertedRange` 作为 IntelliSense 文本纠正追踪学习的局部辅助计算。*
 
 ### 4.2 关联文件清理项
-- **`Type4Me/Injection/InjectionTargetPreference.swift`**：
+- **`Sources/Type4Me/Injection/InjectionTargetPreference.swift`**：
   - 废弃并删除该文件及其枚举定义。
-- **`Type4Me/Input/HotkeyManager.swift`**：
+- **`Sources/Type4Me/Input/HotkeyManager.swift`**：
   - 移除对 `TextInjectionEngine.beginGlobalInputEvent`、`endGlobalInputEvent` 和 `authorizeCurrentGlobalInputForStopCapture` 的调用。
-- **`Type4Me/Type4MeApp.swift`**：
+- **`Sources/Type4Me/Type4MeApp.swift`**：
   - 移除 `activeInjectionTargetPreference`、`freezeInjectionTargetPreference`、`preparePreciseTargetCapture` 以及相关的通知监听。
-- **`Type4Me/Session/RecognitionSession.swift`**：
+- **`Sources/Type4Me/Session/RecognitionSession.swift`**：
   - 移除 `injectionTargetPreference` 参数传递与 `planInjectionTarget` / `hasEndTarget` 分支，直接统一为交互式输入模式。
-- **`Type4Me/UI/Settings/GeneralSettingsTab.swift`**：
+- **`Sources/Type4Me/UI/Settings/GeneralSettingsTab.swift`**：
   - 移除 `injectionTargetRow` 视图及相关 `@AppStorage` 状态。
-- **`Type4MeTests/InjectionTargetPreferenceTests.swift`（770 行）**：
+- **`Tests/Type4MeTests/InjectionTargetPreferenceTests.swift`（770 行）**：
   - 彻底删除该测试文件（其测试内容全为已废弃的内部私有状态与偏好加载）。
 
 ## 5. 数据迁移与向后兼容

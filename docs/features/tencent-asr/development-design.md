@@ -54,7 +54,7 @@
 - **凭证**：使用用户提供的、仅授权语音识别的子账号 SecretId / SecretKey 与 AppID。凭证不写入仓库、脚本和日志；
 - **工具**：用一次性脚本（需要实现两套签名，可以先写 `TencentCloudSigner` 并用它驱动脚本），放在临时目录，不提交；
 - **测试音频**：统一使用合成或专门录制的样本，不使用用户的真实语音。样本集：中文短句、英文短句、中英混合句、带方言口音的普通话、含专有名词的句子、多次停顿的段落、连续说话 90 秒的长段落、2 秒静音、5 秒键盘噪声、1 秒 / 2 分钟 / 2.5 分钟长度的音频。全部为 16 kHz 单声道 16-bit PCM / WAV。实时测试按 200 ms 一包、1:1 速率发送；
-- **夹具**：脱敏后的响应存到 `Type4MeTests/Fixtures/tencent/`，文件名带编号（如 `T-1-v2-interim-confirmed.jsonl`）；实时消息按到达顺序每行一条；
+- **夹具**：脱敏后的响应存到 `Tests/Type4MeTests/Fixtures/tencent/`，文件名带编号（如 `T-1-v2-interim-confirmed.jsonl`）；实时消息按到达顺序每行一条；
 - **记录**：每完成一项，在“实测记录”表中填写日期、结论、夹具路径和对设计的改动，并把状态改为“已确认”或“已调整”；
 - **费用**：按秒计费，全部实测约 20 分钟音频，通常落在每月免费额度内（实时 5 小时、录音文件 10 小时）。
 
@@ -108,7 +108,7 @@
 
 - 本轮实测共约 60 次非实时任务、20 次实时会话。测试音频为 macOS 语音合成（Tingting、Samantha）生成的样本和程序生成的静音、噪声，没有方言样本，也不含真实人声；
 - 实时测试使用 Swift `URLSessionWebSocketTask`，与 App 的网络实现相同；签名用的是按第 5 节写的独立实现，两套签名一次通过，说明第 5 节的算法描述正确；
-- “夹具”一栏是实现时要导出的文件名。原始响应目前只保存在本地临时目录，实现时脱敏（去掉 `voice_id`、`RequestId`、`TaskId`）后放入 `Type4MeTests/Fixtures/tencent/`；
+- “夹具”一栏是实现时要导出的文件名。原始响应目前只保存在本地临时目录，实现时脱敏（去掉 `voice_id`、`RequestId`、`TaskId`）后放入 `Tests/Type4MeTests/Fixtures/tencent/`；
 - **附带发现**：用这对仅用于语音识别的子账号密钥调用 CAM 的 `GetUserAppId`（`cam.tencentcloudapi.com`，版本 `2019-01-16`）成功拿到了 AppID。这意味着 AppID 可以在测试连接时自动获取，用户不必手动填写。是否采用属于产品决策，暂列为后续演进（产品文档第 16 节），本设计仍按手动填写实现。
 
 V2 文档对发送节奏有两处说法（握手部分写 200 ms / 6400 字节，识别部分写 40 ms / 1280 字节），两者都是 1:1 实时速率。Type4Me 每 200 ms 发送 6400 字节，符合要求，不列入实测。
@@ -119,30 +119,30 @@ V2 文档对发送节奏有两处说法（握手部分写 200 ms / 6400 字节�
 
 | 文件 | 内容 |
 |---|---|
-| `Type4Me/Protocol/TencentCloudSigner.swift` | WebSocket HMAC-SHA1 签名、TC3-HMAC-SHA256 签名（纯函数） |
-| `Type4Me/Protocol/TencentASRProtocol.swift` | 实时：URL 构造、响应解析、结束消息、错误码映射；热词格式化 |
-| `Type4Me/Protocol/TencentRecTaskProtocol.swift` | 非实时：`TencentRecTaskTranscriber`，请求构造、响应解析、轮询 |
-| `Type4Me/ASR/TencentASRClient.swift` | 实时 WebSocket Client（actor） |
-| `Type4Me/Resources/Icons/tencent.png` | 品牌图标 |
-| `Type4MeTests/TencentCloudSignerTests.swift` | 签名测试 |
-| `Type4MeTests/TencentASRProtocolTests.swift` | 实时协议测试 |
-| `Type4MeTests/TencentRecTaskProtocolTests.swift` | 非实时协议与轮询测试 |
-| `Type4MeTests/TencentASRConfigTests.swift` | Config 测试 |
+| `Sources/Type4Me/Protocol/TencentCloudSigner.swift` | WebSocket HMAC-SHA1 签名、TC3-HMAC-SHA256 签名（纯函数） |
+| `Sources/Type4Me/Protocol/TencentASRProtocol.swift` | 实时：URL 构造、响应解析、结束消息、错误码映射；热词格式化 |
+| `Sources/Type4Me/Protocol/TencentRecTaskProtocol.swift` | 非实时：`TencentRecTaskTranscriber`，请求构造、响应解析、轮询 |
+| `Sources/Type4Me/ASR/TencentASRClient.swift` | 实时 WebSocket Client（actor） |
+| `Sources/Type4Me/Resources/Icons/tencent.png` | 品牌图标 |
+| `Tests/Type4MeTests/TencentCloudSignerTests.swift` | 签名测试 |
+| `Tests/Type4MeTests/TencentASRProtocolTests.swift` | 实时协议测试 |
+| `Tests/Type4MeTests/TencentRecTaskProtocolTests.swift` | 非实时协议与轮询测试 |
+| `Tests/Type4MeTests/TencentASRConfigTests.swift` | Config 测试 |
 
 ### 3.2 修改文件
 
 | 文件 | 改动 |
 |---|---|
-| `Type4Me/ASR/Providers/TencentASRConfig.swift` | 采用 `ASRRecognitionModeConfigurable`；增加 `recognitionMode` 字段、引擎常量、字段提示、去空白校验 |
-| `Type4Me/ASR/BufferedBatchASRClient.swift` | `BatchASRTranscriber` 增加 `transcribe(...)` 定制点；时长预检提取为独立函数 |
-| `Type4Me/ASR/ASRProviderRegistry.swift` | `.tencent` 注册实时 Client、批量变体与两个校验器 |
-| `Type4Me/Session/RecognitionSession.swift` | `asrModelLabel` 增加 `.tencent` 分支，显示引擎名 |
-| `Type4Me/UI/AppState.swift` | `RecordingDisplayMetadata.current` 增加 `.tencent` 分支 |
-| `Type4Me/UI/Settings/ASRProviderDetailView.swift` | 指引链接、Provider Note（按模式区分） |
-| `Type4Me/UI/Settings/ModelSettingsState.swift` | SF Symbol 兜底图标 `cloud.bolt.fill` |
-| `Type4Me/UI/Settings/BrandIconView.swift` | `.tencent → "tencent"`（彩色标识，不加入深色反色列表） |
-| `Type4MeTests/ASRProviderRegistryTests.swift` | `.tencent` 加入双模式 Provider 断言列表 |
-| `Type4MeTests/ASRRecognitionModeTests.swift` | 两种模式下字段 key 一致 |
+| `Sources/Type4Me/ASR/Providers/TencentASRConfig.swift` | 采用 `ASRRecognitionModeConfigurable`；增加 `recognitionMode` 字段、引擎常量、字段提示、去空白校验 |
+| `Sources/Type4Me/ASR/BufferedBatchASRClient.swift` | `BatchASRTranscriber` 增加 `transcribe(...)` 定制点；时长预检提取为独立函数 |
+| `Sources/Type4Me/ASR/ASRProviderRegistry.swift` | `.tencent` 注册实时 Client、批量变体与两个校验器 |
+| `Sources/Type4Me/Session/RecognitionSession.swift` | `asrModelLabel` 增加 `.tencent` 分支，显示引擎名 |
+| `Sources/Type4Me/UI/AppState.swift` | `RecordingDisplayMetadata.current` 增加 `.tencent` 分支 |
+| `Sources/Type4Me/UI/Settings/ASRProviderDetailView.swift` | 指引链接、Provider Note（按模式区分） |
+| `Sources/Type4Me/UI/Settings/ModelSettingsState.swift` | SF Symbol 兜底图标 `cloud.bolt.fill` |
+| `Sources/Type4Me/UI/Settings/BrandIconView.swift` | `.tencent → "tencent"`（彩色标识，不加入深色反色列表） |
+| `Tests/Type4MeTests/ASRProviderRegistryTests.swift` | `.tencent` 加入双模式 Provider 断言列表 |
+| `Tests/Type4MeTests/ASRRecognitionModeTests.swift` | 两种模式下字段 key 一致 |
 | `CLAUDE.md` / `AGENTS.md`、`README.md`、`README.en.md`、`CHANGELOG.md`、`docs/README.md` | 把腾讯云从“Config only”移到“Fully implemented”，补充双模式列表与 Key Files |
 
 不需要改动：`KeychainService`（存储键 `tf_asr_tencent` 自动生成，`secretKey` 已是 secure 字段）、`MenuBarControlCenter`、`ModelProviderListView`（按 capability 自动处理）。

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 project_dir="$(cd "$(dirname "$0")/.." && pwd)"
-resource_dir="$project_dir/Type4Me/Resources/Jieba"
+resource_dir="$project_dir/Sources/Type4Me/Resources/Jieba"
 temporary_dir="$(mktemp -d /tmp/type4me-jieba-budget.XXXXXX)"
 trap 'rm -rf "$temporary_dir"' EXIT
 

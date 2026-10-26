@@ -7,10 +7,10 @@ let hasSherpaFramework = FileManager.default.fileExists(
     atPath: packageDir + "/Frameworks/sherpa-onnx.xcframework/Info.plist"
 )
 let hasCloudSubscription = FileManager.default.fileExists(
-    atPath: packageDir + "/Type4Me/CloudSubscription/marker"
+    atPath: packageDir + "/Sources/Type4Me/CloudSubscription/marker"
 )
 let hasCppJiebaBridge = FileManager.default.fileExists(
-    atPath: packageDir + "/Modules/CppJiebaBridge/marker"
+    atPath: packageDir + "/Sources/CppJiebaBridge/marker"
 )
 let isDevBuild = ProcessInfo.processInfo.environment["TYPE4ME_DEV_BUILD"] == "1"
 
@@ -26,22 +26,22 @@ if !hasCloudSubscription { excludes.append("CloudSubscription") }
 var targets: [Target] = [
     .target(
         name: "Type4MeIntelliSenseCore",
-        path: "Modules/Type4MeIntelliSenseCore",
+        path: "Sources/Type4MeIntelliSenseCore",
         swiftSettings: swiftDefines
     ),
     .target(
         name: "Type4MeReviseCore",
-        path: "Modules/Type4MeReviseCore",
+        path: "Sources/Type4MeReviseCore",
         swiftSettings: swiftDefines
     ),
     .target(
         name: "Type4MeTransferCore",
-        path: "Modules/Type4MeTransferCore",
+        path: "Sources/Type4MeTransferCore",
         swiftSettings: swiftDefines
     ),
     .target(
         name: "Type4MeUI",
-        path: "Modules/Type4MeUI",
+        path: "Sources/Type4MeUI",
         swiftSettings: swiftDefines
     ),
     .executableTarget(
@@ -49,7 +49,7 @@ var targets: [Target] = [
         dependencies: ["Type4MeIntelliSenseCore", "Type4MeReviseCore", "Type4MeTransferCore"]
             + (hasSherpaFramework ? ["SherpaOnnxLib"] : [])
             + (hasCppJiebaBridge ? ["CppJiebaBridge"] : []),
-        path: "Type4Me",
+        path: "Sources/Type4Me",
         exclude: excludes,
         cSettings: hasSherpaFramework ? [.headerSearchPath("Bridge")] : [],
         swiftSettings: swiftDefines,
@@ -65,7 +65,7 @@ var targets: [Target] = [
     .testTarget(
         name: "Type4MeTests",
         dependencies: ["Type4Me", "Type4MeIntelliSenseCore", "Type4MeReviseCore", "Type4MeTransferCore"],
-        path: "Type4MeTests",
+        path: "Tests/Type4MeTests",
         swiftSettings: swiftDefines
     ),
 ]
@@ -74,7 +74,7 @@ if hasCppJiebaBridge {
     targets.insert(
         .target(
             name: "CppJiebaBridge",
-            path: "Modules/CppJiebaBridge",
+            path: "Sources/CppJiebaBridge",
             exclude: ["CPPJIEBA_LICENSE", "JIEBA_LICENSE", "PROVENANCE.md", "marker"],
             publicHeadersPath: "include",
             cxxSettings: [.headerSearchPath("vendor")]

@@ -117,9 +117,9 @@ docs/
 
 以下文档与产物按代码职责留在原目录，不搬入 `docs/`：
 
-- `README.md`（中英双语同页）、`CHANGELOG.md`、`AGENTS.md`（及其 `CLAUDE.md` 符号链接）：仓库入口、版本记录和代理说明；
+- `README.md`（中英双语同页）、`docs/CHANGELOG.md`、`AGENTS.md`（及其 `CLAUDE.md` 符号链接）：仓库入口、版本记录和代理说明；
 - `.github/CONTRIBUTING.md`：从源码构建、签名和架构概览；
-- `tools/IntelliSenseEval/README.md`：独立评测包使用说明；
+- `Tests/IntelliSenseEval/README.md`：独立评测包使用说明；
 - `tests/*.md`、`tests/*.html`：Prompt 实验和测试报告；
 - `scripts/*.html`：脚本生成的本地质量报告。
 

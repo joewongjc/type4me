@@ -42,6 +42,6 @@
 
 ## 代码
 
-- `Type4Me/Services/VolcTuningSettings.swift`：参数、方案、存储与 `CJKAwareJoiner`。
-- `Type4Me/UI/Settings/VolcRecognitionSettingsSection.swift`：设置界面。
+- `Sources/Type4Me/Services/VolcTuningSettings.swift`：参数、方案、存储与 `CJKAwareJoiner`。
+- `Sources/Type4Me/UI/Settings/VolcRecognitionSettingsSection.swift`：设置界面。
 - 请求字段在 `VolcProtocol.buildClientRequest` 合并；停止流程的等待在 `RecognitionSession.stopRecording`；音频分包在 `AudioCaptureEngine.start`。

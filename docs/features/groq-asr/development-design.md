@@ -50,7 +50,7 @@ Groq 提供与 OpenAI 兼容的同步转写接口 `POST https://api.groq.com/ope
 - **凭证**：使用用户提供的 Groq API Key。Key 不写入仓库、脚本和日志；
 - **工具**：用 `curl` 或一次性脚本，放在临时目录，不提交；
 - **测试音频**：统一使用合成或专门录制的样本，不使用用户的真实语音。样本集：中文短句、英文短句、中英混合句、轻声说话、2 秒静音、5 秒键盘噪声、长音频（短句重复拼接到所需时长）。全部为 16 kHz 单声道 16-bit WAV；
-- **夹具**：脱敏后的响应存到 `Type4MeTests/Fixtures/groq/`，文件名带编号（如 `G-1-verbose-json-zh.json`），供单元测试使用；
+- **夹具**：脱敏后的响应存到 `Tests/Type4MeTests/Fixtures/groq/`，文件名带编号（如 `G-1-verbose-json-zh.json`），供单元测试使用；
 - **记录**：每完成一项，在“实测记录”表中填写日期、结论、夹具路径和对设计的改动，并把状态从“待实测”改为“已确认”（与假设一致）或“已调整”（设计已按结果修改）；
 - **费用**：Groq 最短按 10 秒计费，全部实测（约 100 次请求）费用在 $0.05 以内。
 
@@ -89,7 +89,7 @@ Groq 提供与 OpenAI 兼容的同步转写接口 `POST https://api.groq.com/ope
 说明：
 
 - 本轮实测共约 260 次请求，测试音频为 macOS 语音合成（Tingting、Samantha）生成的样本和程序生成的静音、噪声，不含真实人声。真实麦克风环境下的静音与噪声表现，需要在用户验收时补充观察；
-- “夹具”一栏是实现时要导出的文件名。原始响应目前只保存在本地临时目录，实现时脱敏（去掉组织 ID、请求 ID）后放入 `Type4MeTests/Fixtures/groq/`；
+- “夹具”一栏是实现时要导出的文件名。原始响应目前只保存在本地临时目录，实现时脱敏（去掉组织 ID、请求 ID）后放入 `Tests/Type4MeTests/Fixtures/groq/`；
 - G-5、G-4 的结果推翻了原设计中“置信度过滤”和“简体引导语”两项，第 5.2、5.3、6.4 节和产品文档第 7、9 节已按实测结果修改。
 
 ## 3. 改动清单
@@ -98,27 +98,27 @@ Groq 提供与 OpenAI 兼容的同步转写接口 `POST https://api.groq.com/ope
 
 | 文件 | 内容 |
 |---|---|
-| `Type4Me/ASR/Providers/GroqASRConfig.swift` | `GroqASRConfig` + `GroqWhisperModel` |
-| `Type4Me/Resources/Icons/groq.png` | 品牌图标（与现有图标同尺寸） |
-| `Type4MeTests/GroqASRConfigTests.swift` | Config 测试 |
-| `Type4Me/ASR/GroqHallucinationPhrases.swift` | 已知幻觉短语表（第 5.3 节） |
-| `Type4Me/ASR/PCMSilenceDetector.swift` | 上传前静音门限（第 6.4 节） |
-| `Type4MeTests/PCMSilenceDetectorTests.swift` | 静音门限测试 |
-| `Type4MeTests/Fixtures/groq/G-*.json` | 第 2.1 节实测的脱敏响应夹具 |
+| `Sources/Type4Me/ASR/Providers/GroqASRConfig.swift` | `GroqASRConfig` + `GroqWhisperModel` |
+| `Sources/Type4Me/Resources/Icons/groq.png` | 品牌图标（与现有图标同尺寸） |
+| `Tests/Type4MeTests/GroqASRConfigTests.swift` | Config 测试 |
+| `Sources/Type4Me/ASR/GroqHallucinationPhrases.swift` | 已知幻觉短语表（第 5.3 节） |
+| `Sources/Type4Me/ASR/PCMSilenceDetector.swift` | 上传前静音门限（第 6.4 节） |
+| `Tests/Type4MeTests/PCMSilenceDetectorTests.swift` | 静音门限测试 |
+| `Tests/Type4MeTests/Fixtures/groq/G-*.json` | 第 2.1 节实测的脱敏响应夹具 |
 
 ### 3.2 修改文件
 
 | 文件 | 改动 |
 |---|---|
-| `Type4Me/ASR/ASRProvider.swift` | International 段新增 `case groq`，`displayName` 返回 `"Groq"` |
-| `Type4Me/Protocol/BatchASRTranscribers.swift` | 新增 `GroqBatchTranscriber` |
-| `Type4Me/ASR/BufferedBatchASRClient.swift` | 协议新增 `minimumDuration`、`suggestsRealtimeFallback`、`skipsSilentAudio`；最短录音判断改为读 transcriber；按需调用静音门限；`recordingTooLong` 文案分支 |
-| `Type4Me/ASR/ASRProviderRegistry.swift` | 注册 `.groq` |
-| `Type4Me/UI/Settings/ASRProviderDetailView.swift` | 指引链接 + Provider Note |
-| `Type4Me/UI/Settings/ModelSettingsState.swift` | SF Symbol 兜底图标 |
-| `Type4Me/UI/Settings/BrandIconView.swift` | `.groq → "groq"`，按图标色彩决定是否加入深色反色列表 |
-| `Type4MeTests/BatchASRTranscribersTests.swift` | Groq 请求构造与解析测试 |
-| `Type4MeTests/ASRProviderRegistryTests.swift` | 把 `.groq` 加入非实时、无模式切换的断言列表 |
+| `Sources/Type4Me/ASR/ASRProvider.swift` | International 段新增 `case groq`，`displayName` 返回 `"Groq"` |
+| `Sources/Type4Me/Protocol/BatchASRTranscribers.swift` | 新增 `GroqBatchTranscriber` |
+| `Sources/Type4Me/ASR/BufferedBatchASRClient.swift` | 协议新增 `minimumDuration`、`suggestsRealtimeFallback`、`skipsSilentAudio`；最短录音判断改为读 transcriber；按需调用静音门限；`recordingTooLong` 文案分支 |
+| `Sources/Type4Me/ASR/ASRProviderRegistry.swift` | 注册 `.groq` |
+| `Sources/Type4Me/UI/Settings/ASRProviderDetailView.swift` | 指引链接 + Provider Note |
+| `Sources/Type4Me/UI/Settings/ModelSettingsState.swift` | SF Symbol 兜底图标 |
+| `Sources/Type4Me/UI/Settings/BrandIconView.swift` | `.groq → "groq"`，按图标色彩决定是否加入深色反色列表 |
+| `Tests/Type4MeTests/BatchASRTranscribersTests.swift` | Groq 请求构造与解析测试 |
+| `Tests/Type4MeTests/ASRProviderRegistryTests.swift` | 把 `.groq` 加入非实时、无模式切换的断言列表 |
 | `CLAUDE.md` / `AGENTS.md`、`README.md`、`README.en.md`、`CHANGELOG.md` | Provider 数量与列表 |
 | `docs/README.md` | 实现后更新状态 |
 

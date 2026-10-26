@@ -34,7 +34,7 @@ Compact 不进入 Regular transcript、Transcript hover popup、`AudioRipple`、
 
 ### 3.1 RecordingVisualStyle
 
-当前 `Type4Me/UI/AppState.swift`：
+当前 `Sources/Type4Me/UI/AppState.swift`：
 
 ```swift
 enum RecordingVisualStyle: String, CaseIterable {
@@ -88,7 +88,7 @@ Compact 应复用 action/interaction 基础设施，但使用单独布局。
 
 ### 3.5 Design Token
 
-当前 `Type4Me/UI/DesignSystem.swift` 已有：
+当前 `Sources/Type4Me/UI/DesignSystem.swift` 已有：
 
 ```swift
 TF.floatingControlLight   // 对应 #FBFBFB
@@ -359,7 +359,7 @@ FloatingBarButtonInteraction
 建议新增：
 
 ```text
-Type4Me/UI/FloatingBar/CompactAudioIndicator.swift
+Sources/Type4Me/UI/FloatingBar/CompactAudioIndicator.swift
 ```
 
 API：
@@ -583,18 +583,18 @@ error + compact      -> intrinsic(content), height 24
 预计修改：
 
 ```text
-Type4Me/UI/AppState.swift
-Type4Me/UI/DesignSystem.swift
-Type4Me/UI/FloatingBar/FloatingBarView.swift
-Type4Me/UI/Settings/AppearanceSettingsTab.swift
-Type4Me/UI/Settings/AppearancePreviewStage.swift
-Type4MeTests/AppearancePreviewTests.swift
+Sources/Type4Me/UI/AppState.swift
+Sources/Type4Me/UI/DesignSystem.swift
+Sources/Type4Me/UI/FloatingBar/FloatingBarView.swift
+Sources/Type4Me/UI/Settings/AppearanceSettingsTab.swift
+Sources/Type4Me/UI/Settings/AppearancePreviewStage.swift
+Tests/Type4MeTests/AppearancePreviewTests.swift
 ```
 
 预计新增：
 
 ```text
-Type4Me/UI/FloatingBar/CompactAudioIndicator.swift
+Sources/Type4Me/UI/FloatingBar/CompactAudioIndicator.swift
 ```
 
 第一版预计不修改 `FloatingBarPanel.swift`。

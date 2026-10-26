@@ -81,24 +81,24 @@ Magpie Agent 插件不放在本仓库，单独维护在独立仓库 [`kchen0x/ma
 ## 4. 文件规划
 
 ```text
-Type4Me/LLM/LLMProvider.swift                       # .magpie case 与各属性
-Type4Me/LLM/LLMProviderRegistry.swift               # 注册
-Type4Me/LLM/Providers/MagpieLLMConfig.swift         # 新增：LLMProviderConfig
-Type4Me/LLM/Magpie/MagpieAgentFile.swift            # 新增：插件接入文件模型与解析
-Type4Me/LLM/Magpie/MagpieGateway.swift              # 新增：端口发现、回环校验、hello/models 探测
-Type4Me/LLM/Magpie/MagpieConnectionResolver.swift   # 新增：模式判定与凭据合成
-Type4Me/LLM/Magpie/MagpieModelCatalog.swift         # 新增：/v1/models 缓存与最低推理档位
-Type4Me/LLM/Magpie/MagpieInstallation.swift         # 新增：安装检测、打开 App
-Type4Me/LLM/Magpie/MagpieAgentModelWriter.swift     # 新增：托管模式写入模型（同步写文件 + 后台通知 Magpie）、写锁与 MagpieReconciler
-Type4Me/LLM/DoubaoChatClient.swift                  # 推理档位、User-Agent、错误映射
-Type4Me/Services/KeychainService.swift              # load/save 分支
-Type4Me/UI/Settings/MagpieProviderSection.swift     # 新增：详情页状态驱动内容
-Type4Me/UI/Settings/MagpieProviderStatusModel.swift # 新增：@MainActor 状态模型与轮询
-Type4Me/UI/Settings/LLMProviderDetailView.swift     # 接入 MagpieProviderSection
-Type4Me/UI/Settings/ModelSettingsState.swift        # 分组、配置判定、图标
-Type4Me/UI/Settings/BrandIconView.swift             # 图标
-Type4Me/Resources/Icons/magpie.png                  # Magpie 品牌图标（见 §13）
-Type4MeTests/Magpie*Tests.swift                     # 新增测试，见 §15
+Sources/Type4Me/LLM/LLMProvider.swift                       # .magpie case 与各属性
+Sources/Type4Me/LLM/LLMProviderRegistry.swift               # 注册
+Sources/Type4Me/LLM/Providers/MagpieLLMConfig.swift         # 新增：LLMProviderConfig
+Sources/Type4Me/LLM/Magpie/MagpieAgentFile.swift            # 新增：插件接入文件模型与解析
+Sources/Type4Me/LLM/Magpie/MagpieGateway.swift              # 新增：端口发现、回环校验、hello/models 探测
+Sources/Type4Me/LLM/Magpie/MagpieConnectionResolver.swift   # 新增：模式判定与凭据合成
+Sources/Type4Me/LLM/Magpie/MagpieModelCatalog.swift         # 新增：/v1/models 缓存与最低推理档位
+Sources/Type4Me/LLM/Magpie/MagpieInstallation.swift         # 新增：安装检测、打开 App
+Sources/Type4Me/LLM/Magpie/MagpieAgentModelWriter.swift     # 新增：托管模式写入模型（同步写文件 + 后台通知 Magpie）、写锁与 MagpieReconciler
+Sources/Type4Me/LLM/DoubaoChatClient.swift                  # 推理档位、User-Agent、错误映射
+Sources/Type4Me/Services/KeychainService.swift              # load/save 分支
+Sources/Type4Me/UI/Settings/MagpieProviderSection.swift     # 新增：详情页状态驱动内容
+Sources/Type4Me/UI/Settings/MagpieProviderStatusModel.swift # 新增：@MainActor 状态模型与轮询
+Sources/Type4Me/UI/Settings/LLMProviderDetailView.swift     # 接入 MagpieProviderSection
+Sources/Type4Me/UI/Settings/ModelSettingsState.swift        # 分组、配置判定、图标
+Sources/Type4Me/UI/Settings/BrandIconView.swift             # 图标
+Sources/Type4Me/Resources/Icons/magpie.png                  # Magpie 品牌图标（见 §13）
+Tests/Type4MeTests/Magpie*Tests.swift                     # 新增测试，见 §15
 CLAUDE.md、docs/README.md                           # 政策、Key Files、索引
 ```
 
@@ -422,7 +422,7 @@ if disableField == .lowestReasoningEffort, let base = URL(string: config.baseURL
 
 ### 10.1 User-Agent
 
-`.magpie` 请求设置 `User-Agent: Type4Me/<CFBundleShortVersionString>`。正常情况下 Magpie 按 key 归属用量，UA 只在 key 缺失时兜底。其他 Provider 不改 UA。
+`.magpie` 请求设置 `User-Agent: Sources/Type4Me/<CFBundleShortVersionString>`。正常情况下 Magpie 按 key 归属用量，UA 只在 key 缺失时兜底。其他 Provider 不改 UA。
 
 ### 10.2 代理
 
@@ -594,7 +594,7 @@ export function connect({ gateway }) {
 使用 Magpie 官方品牌图标（授权已由产品负责人确认）：
 
 - 来源：Magpie 仓库 `build/darwin/magpie.icns`（App 图标）；
-- 产物：`Type4Me/Resources/Icons/magpie.png`，256×256 PNG，与现有品牌图标规格一致（例如 `ollama.png`）；用 `sips`/`iconutil` 从 icns 导出；
+- 产物：`Sources/Type4Me/Resources/Icons/magpie.png`，256×256 PNG，与现有品牌图标规格一致（例如 `ollama.png`）；用 `sips`/`iconutil` 从 icns 导出；
 - `BrandIconView.iconName` 增加 `.llm(.magpie)` → `"magpie"`；App 图标自带底色，不加入 `shouldInvertInDarkMode`；
 - `ModelSettingsHelpers.icon(for: .magpie)` 的 SF Symbol 仅在图标资源加载失败时作为后备，沿用现有各 Provider 的后备机制；
 - 插件 `agent.icon` 使用 Type4Me 自己的 App 图标（https 地址），不是 Magpie 图标。
@@ -603,14 +603,14 @@ export function connect({ gateway }) {
 
 - `CLAUDE.md`：
   - “LLM Provider Inclusion Policy”增加例外：本地运行、由用户自持的模型网关（如 Ollama、Magpie）可以作为一等公民；
-  - Key Files 表增加 `Type4Me/LLM/Magpie/`；在 Magpie 小节注明插件在独立仓库 `magpie-agent-type4me`，以及 `CONFIG_PATH` 跨仓库契约；
+  - Key Files 表增加 `Sources/Type4Me/LLM/Magpie/`；在 Magpie 小节注明插件在独立仓库 `magpie-agent-type4me`，以及 `CONFIG_PATH` 跨仓库契约；
   - `LLMProvider.swift` 描述中的数量从 15 改为 16，并列出 Magpie；
 - `docs/README.md`：功能文档表登记本功能两份文档；
 - `README.md` / `README.en.md`：LLM Provider 列表加入 Magpie（实现完成后）。
 
 ## 15. 测试计划
 
-### 15.1 单元测试（XCTest，`Type4MeTests/`）
+### 15.1 单元测试（XCTest，`Tests/Type4MeTests/`）
 
 | 文件 | 覆盖 |
 |---|---|
@@ -632,7 +632,7 @@ export function connect({ gateway }) {
 
 用 `URLProtocol` 桩拦截：
 
-- `.magpie` 请求地址为 `<baseURL>/chat/completions`，`Authorization: Bearer <key>`，`User-Agent` 以 `Type4Me/` 开头；
+- `.magpie` 请求地址为 `<baseURL>/chat/completions`，`Authorization: Bearer <key>`，`User-Agent` 以 `Sources/Type4Me/` 开头；
 - 关闭思考且目录有档位 → 请求体带 `reasoning_effort: <最低档>`；目录无档位或超时 → 不带该字段；
 - 连接被拒 → `LLMError.magpieUnavailable`；401 → `magpieRejected(401)`；
 - 其他 Provider 的请求体与改动前一致（回归）。

@@ -384,7 +384,7 @@ actor LLMUsageRecorder {
 现有的 `HistoryTab.swift` 文件庞大（1600+ 行），借此机会进行清晰的模块化重构：
 
 ```
-Type4Me/UI/Settings/
+Sources/Type4Me/UI/Settings/
 ├── HistoryTab.swift                   // 顶层容器，管理分段切换与子页面切换动画
 ├── History/
 │   ├── HistoryTranscriptsView.swift   // 原有听写记录列表、搜索、过滤

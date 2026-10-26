@@ -34,7 +34,7 @@
 
 ### 3.1 FloatingBarPresentation 结构
 
-当前定义（`Type4Me/UI/FloatingBar/FloatingBarView.swift`）：
+当前定义（`Sources/Type4Me/UI/FloatingBar/FloatingBarView.swift`）：
 ```swift
 struct FloatingBarPresentation: Equatable {
     var indicatorStyle: RecordingIndicatorStyle = .regular
@@ -290,12 +290,12 @@ private var showCancelButtonRow: some View {
 
 | 文件 | 变更内容 |
 |---|---|
-| `Type4Me/UI/AppState.swift` | 声明 `AppearancePreferenceDefaults` 常量（key / default） |
-| `Type4Me/UI/DesignSystem.swift` | 声明 `recordingSingleButtonChromeWidth` 常量 |
-| `Type4Me/UI/FloatingBar/FloatingBarView.swift` | `FloatingBarPresentation` 扩展新字段；`activeTopOverlay`、`currentRecordingChromeWidth` 与录音布局适配显隐 |
-| `Type4Me/UI/Settings/AppearanceSettingsTab.swift` | 新增两个通用开关；重构为条件化渲染（`if !isCompact`） |
-| `Type4Me/UI/Settings/AppearancePreviewStage.swift` | 传递新增 presentation 字段以供实时预览 |
-| `Type4MeTests/AppearancePreviewTests.swift` | 增加新增配置的默认值、Presentation 解析与单/双按钮 Chrome 宽度断言测试 |
+| `Sources/Type4Me/UI/AppState.swift` | 声明 `AppearancePreferenceDefaults` 常量（key / default） |
+| `Sources/Type4Me/UI/DesignSystem.swift` | 声明 `recordingSingleButtonChromeWidth` 常量 |
+| `Sources/Type4Me/UI/FloatingBar/FloatingBarView.swift` | `FloatingBarPresentation` 扩展新字段；`activeTopOverlay`、`currentRecordingChromeWidth` 与录音布局适配显隐 |
+| `Sources/Type4Me/UI/Settings/AppearanceSettingsTab.swift` | 新增两个通用开关；重构为条件化渲染（`if !isCompact`） |
+| `Sources/Type4Me/UI/Settings/AppearancePreviewStage.swift` | 传递新增 presentation 字段以供实时预览 |
+| `Tests/Type4MeTests/AppearancePreviewTests.swift` | 增加新增配置的默认值、Presentation 解析与单/双按钮 Chrome 宽度断言测试 |
 
 ---
 

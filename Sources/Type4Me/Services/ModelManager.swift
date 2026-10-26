@@ -73,7 +73,7 @@ actor ModelManager {
         }
         // Dev mode: check if qwen3-asr-server dir exists in project
         let home = NSHomeDirectory()
-        let devPath = (home as NSString).appendingPathComponent("projects/type4me/Modules/qwen3-asr-server/server.py")
+        let devPath = (home as NSString).appendingPathComponent("projects/type4me/Sources/qwen3-asr-server/server.py")
         return FileManager.default.fileExists(atPath: devPath)
     }
 

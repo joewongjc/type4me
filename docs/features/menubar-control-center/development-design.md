@@ -26,7 +26,7 @@
 
 ### 2.1 菜单与状态
 
-`Type4Me/Type4MeApp.swift` 以 `MenuBarExtra` 挂载 `MenuBarContent`，并注入 `AppState`、`AppUpdater`。现有 `MenuBarContent` 显示状态点、遍历 `appState.availableModes`，模式点击后打开 Settings 并发出 `.navigateToMode`；其余为历史、偏好设置和退出。
+`Sources/Type4Me/Type4MeApp.swift` 以 `MenuBarExtra` 挂载 `MenuBarContent`，并注入 `AppState`、`AppUpdater`。现有 `MenuBarContent` 显示状态点、遍历 `appState.availableModes`，模式点击后打开 Settings 并发出 `.navigateToMode`；其余为历史、偏好设置和退出。
 
 `AppState` 已提供本功能的核心可观察状态：
 
@@ -87,13 +87,13 @@ flowchart LR
 建议新增：
 
 ```text
-Type4Me/UI/MenuBar/
+Sources/Type4Me/UI/MenuBar/
   MenuBarControlCenterView.swift
   MenuBarControlCenterModel.swift
   MenuBarActionCoordinator.swift
   MenuBarSnapshot.swift
   MenuBarFormatting.swift
-Type4Me/Services/
+Sources/Type4Me/Services/
   RuntimeSettingsService.swift
   ProviderAvailabilityService.swift       # 仅在现有 Registry 不足时新增
 ```
@@ -300,6 +300,6 @@ Coordinator 使用现有 `openWindow(id: "settings")` 和 `AppNavigationModel`/�
 
 ## 11. P0 实现记录
 
-P0 将 View、Model 和 Action Coordinator 合并在 `Type4Me/UI/MenuBar/MenuBarControlCenter.swift`：View 直接观察已注入的 `AppState`（录音权威状态），Model 只维护设备、可用 Provider、权限、改口及 History 可用性等外部快照，Coordinator 统一承接菜单副作用。
+P0 将 View、Model 和 Action Coordinator 合并在 `Sources/Type4Me/UI/MenuBar/MenuBarControlCenter.swift`：View 直接观察已注入的 `AppState`（录音权威状态），Model 只维护设备、可用 Provider、权限、改口及 History 可用性等外部快照，Coordinator 统一承接菜单副作用。
 
 `AppDelegate` 现在提供共享的普通录音/改口启动命令；热键与菜单栏调用同一条命令，并继续保留原有 Selection Ask、恢复、start gate、`awaitIdle` 和 Session 路由。History 使用窄查询 `latestCopyableFinalText()`，正文只在复制动作的一次性 actor 查询中出现，不进入菜单 Model。

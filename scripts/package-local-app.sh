@@ -28,8 +28,8 @@ if [ ! -d "$PROJECT_DIR/Frameworks/sherpa-onnx.xcframework" ]; then
     bash "$PROJECT_DIR/scripts/build-sherpa.sh"
 fi
 
-if [ "$SKIP_QWEN3_BUILD" != "1" ] || [ ! -d "$PROJECT_DIR/Modules/qwen3-asr-server/dist/qwen3-asr-server" ]; then
-    bash "$PROJECT_DIR/Modules/qwen3-asr-server/build.sh"
+if [ "$SKIP_QWEN3_BUILD" != "1" ] || [ ! -d "$PROJECT_DIR/Sources/qwen3-asr-server/dist/qwen3-asr-server" ]; then
+    bash "$PROJECT_DIR/Sources/qwen3-asr-server/build.sh"
 fi
 
 osascript -e 'quit app "Type4Me"' 2>/dev/null || true

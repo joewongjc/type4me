@@ -125,14 +125,14 @@ case gemini
 ### 5.1 新增文件
 
 ```text
-Type4Me/ASR/GeminiASRClient.swift
-Type4Me/ASR/GeminiConnectionGate.swift
-Type4Me/ASR/Providers/GeminiASRConfig.swift
-Type4Me/Protocol/GeminiTranscribeProtocol.swift
-Type4MeTests/GeminiASRClientTests.swift
-Type4MeTests/GeminiASRConfigTests.swift
-Type4MeTests/GeminiLocalizationTests.swift
-Type4MeTests/GeminiTranscribeProtocolTests.swift
+Sources/Type4Me/ASR/GeminiASRClient.swift
+Sources/Type4Me/ASR/GeminiConnectionGate.swift
+Sources/Type4Me/ASR/Providers/GeminiASRConfig.swift
+Sources/Type4Me/Protocol/GeminiTranscribeProtocol.swift
+Tests/Type4MeTests/GeminiASRClientTests.swift
+Tests/Type4MeTests/GeminiASRConfigTests.swift
+Tests/Type4MeTests/GeminiLocalizationTests.swift
+Tests/Type4MeTests/GeminiTranscribeProtocolTests.swift
 ```
 
 `GeminiConnectionGate.swift` 同时承载连接 gate、`GeminiCloseTracker` 与 `URLSessionWebSocketDelegate`（§24.1）。
@@ -140,11 +140,11 @@ Type4MeTests/GeminiTranscribeProtocolTests.swift
 ### 5.2 修改文件
 
 ```text
-Type4Me/ASR/ASRProvider.swift
-Type4Me/ASR/ASRProviderRegistry.swift
-Type4Me/Session/RecognitionSession.swift
-Type4Me/UI/Settings/ASRSettingsCard.swift
-Type4MeTests/ASRProviderRegistryTests.swift
+Sources/Type4Me/ASR/ASRProvider.swift
+Sources/Type4Me/ASR/ASRProviderRegistry.swift
+Sources/Type4Me/Session/RecognitionSession.swift
+Sources/Type4Me/UI/Settings/ASRSettingsCard.swift
+Tests/Type4MeTests/ASRProviderRegistryTests.swift
 AGENTS.md
 README.md
 ```

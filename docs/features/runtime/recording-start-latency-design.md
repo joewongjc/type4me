@@ -34,7 +34,7 @@ Issue #356 反馈：按下快捷键后立刻开口，第一个字经常丢失（
 
 两台机器的 `engineStart` 相差约 4–5 倍，但 `requestToReady − engineStart`（采集前的准备阶段）在两台机器上都稳定在约 100 ms。
 
-“麦克风保活”对此无效：`AudioInputDevicePreferenceStore.keepAliveInputDevice` 只在设备类别为 `.bluetooth` 时返回设备（`Type4Me/Audio/AudioInputDevicePreference.swift:208`）。
+“麦克风保活”对此无效：`AudioInputDevicePreferenceStore.keepAliveInputDevice` 只在设备类别为 `.bluetooth` 时返回设备（`Sources/Type4Me/Audio/AudioInputDevicePreference.swift:208`）。
 
 ## 2. 现状时序与根因
 
@@ -420,7 +420,7 @@ stop():
 
 ### 5.9 Aggregate 子设备拓扑监听
 
-新增 `AggregateTopologyObserver`（放在 `Type4Me/Audio/` 下，与采集引擎同目录）：
+新增 `AggregateTopologyObserver`（放在 `Sources/Type4Me/Audio/` 下，与采集引擎同目录）：
 
 ```swift
 /// Watches one aggregate device's sub-device composition so a prepared
@@ -635,7 +635,7 @@ HFP 链路的采样率很低（通常为 16 kHz 或 24 kHz），A2DP 一般为 4
 
 #### 11.4.3 组件与改动点
 
-新增 `Type4Me/Audio/StartSoundRouteGate.swift`：
+新增 `Sources/Type4Me/Audio/StartSoundRouteGate.swift`：
 
 ```swift
 /// Arms before capture starts so a Bluetooth A2DP→HFP switch is observed,
