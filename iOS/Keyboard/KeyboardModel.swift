@@ -45,6 +45,10 @@ final class KeyboardModel: ObservableObject {
     @Published var canRedo = false
     /// Where a held finger currently is, for the caption under the orb.
     @Published var holdZone: HoldZone = .none
+    /// How far the held finger has slid towards a side key: -1 is all the
+    /// way to cancel, 1 all the way to lock. Stepped so a drag doesn't
+    /// redraw the keyboard on every point.
+    @Published var holdPull: CGFloat = 0
 
     enum HoldZone { case none, cancel, lock }
 
@@ -254,6 +258,20 @@ final class KeyboardModel: ObservableObject {
         }
     }
     #endif
+
+    /// The lock key that replaces delete while the mic is held.
+    func lockFromKey() {
+        guard phase == .recording(locked: false) else { return }
+        phase = .recording(locked: true)
+        holdZone = .none
+        holdPull = 0
+    }
+
+    /// The done key that replaces lock once recording is locked.
+    func finishFromKey() {
+        guard phase == .recording(locked: true) else { return }
+        stopRecording()
+    }
 
     /// The cancel key that replaces undo while recording.
     func cancelFromKey() {

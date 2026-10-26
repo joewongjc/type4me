@@ -35,6 +35,21 @@ enum KeyFeedback {
         }
     }
 
+    private static let crossing = UIImpactFeedbackGenerator(style: .rigid)
+
+    /// Readies the tap a held mic finger gets on reaching cancel or lock.
+    static func prepareCrossing() {
+        crossing.prepare()
+    }
+
+    /// The finger has crossed into, or back out of, a place where letting
+    /// go acts. It tells you where to let go, so it plays even with key
+    /// haptics off.
+    static func playCrossing(entering: Bool) {
+        crossing.impactOccurred(intensity: entering ? 1 : 0.5)
+        crossing.prepare()
+    }
+
     static func play(_ kind: Kind) {
         if haptics {
             // Character keys tap lighter than the keys around them.

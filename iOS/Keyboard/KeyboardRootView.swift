@@ -99,11 +99,18 @@ struct KeyboardRootView: View {
 
     private var micArea: some View {
         HStack(alignment: .center) {
-            // While recording the left key cancels; undo only makes sense
-            // once text has landed.
+            // While recording the side keys become the two places the held
+            // finger can slide to: cancel on the left, lock on the right.
+            // Undo only makes sense once text has landed.
             ZStack {
                 if case .recording = model.phase {
-                    SideKey(systemImage: "xmark", title: L("取消", "Cancel"), enabled: true) {
+                    SlideTargetKey(
+                        systemImage: "xmark",
+                        title: L("取消", "Cancel"),
+                        pull: max(0, -model.holdPull),
+                        armed: model.holdZone == .cancel,
+                        tint: Bar.recording
+                    ) {
                         model.cancelFromKey()
                     }
                     .transition(.blurReplace)
@@ -133,19 +140,42 @@ struct KeyboardRootView: View {
                     .lineLimit(1)
             }
             Spacer()
-            RepeatingKey(systemImage: "delete.left", title: L("删除", "Delete")) { model.deleteBackward() }
+            ZStack {
+                switch model.phase {
+                case .recording(locked: false):
+                    SlideTargetKey(
+                        systemImage: "lock.fill",
+                        title: L("锁定", "Lock"),
+                        pull: max(0, model.holdPull),
+                        armed: model.holdZone == .lock,
+                        tint: KB.lock
+                    ) {
+                        model.lockFromKey()
+                    }
+                    .transition(.blurReplace)
+                case .recording(locked: true):
+                    SideKey(systemImage: "checkmark", title: L("完成", "Done"), enabled: true) {
+                        model.finishFromKey()
+                    }
+                    .transition(.blurReplace)
+                default:
+                    RepeatingKey(systemImage: "delete.left", title: L("删除", "Delete")) { model.deleteBackward() }
+                        .transition(.blurReplace)
+                }
+            }
+            .animation(.easeInOut(duration: 0.18), value: model.phase)
         }
         .padding(.horizontal, 18)
     }
 
     private var micCaption: String {
         switch model.phase {
-        case .recording(locked: true): return L("已锁定 · 点一下结束", "Locked · Tap to finish")
+        case .recording(locked: true): return L("已锁定 · 点光球或完成结束", "Locked · Tap the orb or Done")
         case .recording:
             switch model.holdZone {
             case .cancel: return L("松手取消", "Release to cancel")
-            case .lock: return L("松手锁定，可以腾出手来", "Release to lock, no need to keep holding")
-            case .none: return L("松手出字 · 左滑取消 · 上滑锁定", "Release to insert · ← Cancel · ↑ Lock")
+            case .lock: return L("松手锁定", "Release to lock")
+            case .none: return L("← 取消 · 松手出字 · 锁定 →", "← Cancel · Release · Lock →")
             }
         // With no transcript the caption itself names the step; otherwise
         // it keeps the words on screen and the step is named here.
@@ -215,6 +245,8 @@ enum KB {
     /// the way the system keyboard separates them.
     static let keyTint = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(white: 1, alpha: 0.10) : UIColor(white: 1, alpha: 0.55) })
     static let functionTint = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(white: 0, alpha: 0.10) : UIColor(white: 1, alpha: 0.12) })
+    /// The lock target lights up teal, the cancel target the recording red.
+    static let lock = Color(red: 0.11, green: 0.62, blue: 0.46)
     static let halo = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(white: 1, alpha: 0.10) : UIColor(white: 0, alpha: 0.07) })
 }
 
@@ -331,8 +363,12 @@ struct MicButton: View {
     @State private var cancelZone = false
     @State private var lockZone = false
     @State private var pressed = false
+    /// The orb leans a little after the finger, towards the target.
+    @State private var drift: CGFloat = 0
 
     static let size: CGFloat = 84
+    /// How far the finger slides sideways to reach cancel or lock.
+    static let slideThreshold: CGFloat = 70
 
     private var isRecording: Bool {
         if case .recording = model.phase { return true }
@@ -387,6 +423,8 @@ struct MicButton: View {
             overlayGlyph
         }
         .frame(width: Self.size + 8, height: Self.size + 8)
+        .offset(x: isLocked ? 0 : drift)
+        .animation(.interactiveSpring(response: 0.2, dampingFraction: 0.8), value: drift)
         .scaleEffect(pressed && !showsOrb ? 0.94 : 1)
         .animation(.spring(response: 0.25, dampingFraction: 0.7), value: pressed)
         .animation(.spring(response: 0.38, dampingFraction: 0.72), value: showsOrb)
@@ -401,17 +439,24 @@ struct MicButton: View {
                         pressed = true
                         cancelZone = false
                         lockZone = false
+                        KeyFeedback.prepareCrossing()
                         model.micPressed()
                     }
                     guard isRecording, !isLocked else { return }
-                    let nowCancel = value.translation.width < -70
-                    let nowLock = value.translation.height < -50 && !nowCancel
+                    // Sideways only: both targets sit beside the thumb,
+                    // where it can see them, instead of under it.
+                    let dx = value.translation.width
+                    let nowCancel = dx < -Self.slideThreshold
+                    let nowLock = dx > Self.slideThreshold
                     if nowCancel != cancelZone || nowLock != lockZone {
-                        UISelectionFeedbackGenerator().selectionChanged()
+                        KeyFeedback.playCrossing(entering: nowCancel || nowLock)
                     }
                     cancelZone = nowCancel
                     lockZone = nowLock
+                    drift = max(-14, min(14, dx * 0.2))
                     model.holdZone = nowCancel ? .cancel : (nowLock ? .lock : .none)
+                    let pull = (max(-1, min(1, dx / Self.slideThreshold)) * 10).rounded() / 10
+                    if pull != model.holdPull { model.holdPull = pull }
                 }
                 .onEnded { _ in
                     let held = Date().timeIntervalSince(pressStarted ?? Date())
@@ -421,7 +466,9 @@ struct MicButton: View {
                     model.micReleased(cancelled: cancelZone, locked: lockZone || held < 0.3)
                     cancelZone = false
                     lockZone = false
+                    drift = 0
                     model.holdZone = .none
+                    model.holdPull = 0
                 }
         )
         .accessibilityLabel(isRecording ? L("结束说话", "Finish talking") : L("按住说话", "Hold to talk"))
@@ -472,6 +519,39 @@ struct SideKey: View {
         .buttonStyle(KeyPressStyle(feedback: .modifier))
         .glassEffect(.regular.tint(KB.functionTint).interactive(enabled), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .disabled(!enabled)
+    }
+}
+
+/// A side key the held mic finger can slide to. It grows and takes its
+/// colour as the finger comes closer, and is fully lit once letting go
+/// would act. It can be tapped too.
+struct SlideTargetKey: View {
+    let systemImage: String
+    let title: String
+    /// 0 at rest, 1 when the finger reaches the threshold.
+    let pull: CGFloat
+    let armed: Bool
+    let tint: Color
+    let action: () -> Void
+
+    private var shape: RoundedRectangle { RoundedRectangle(cornerRadius: 16, style: .continuous) }
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                Image(systemName: systemImage).font(.system(size: 18, weight: armed ? .bold : .medium))
+                Text(title).font(.system(size: 11, weight: armed ? .semibold : .regular))
+            }
+            .foregroundStyle(armed ? Color.white : KB.ink.opacity(0.55 + 0.45 * pull))
+            .frame(width: 64, height: 56)
+            .background(shape.fill(tint.opacity(armed ? 0.9 : 0.35 * pull)))
+            .contentShape(shape)
+        }
+        .buttonStyle(KeyPressStyle(feedback: .modifier))
+        .glassEffect(.regular.tint(KB.functionTint).interactive(), in: shape)
+        .scaleEffect(1 + 0.08 * pull + (armed ? 0.06 : 0))
+        .animation(.spring(response: 0.22, dampingFraction: 0.7), value: pull)
+        .animation(.spring(response: 0.22, dampingFraction: 0.6), value: armed)
     }
 }
 
