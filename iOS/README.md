@@ -4,11 +4,9 @@ iPhone 上的 Type4Me 是一个语音键盘：在输入框切到 Type4Me 键盘�
 
 手机版已开放 TestFlight 公开测试，直接在 iPhone 上打开 [https://testflight.apple.com/join/57f5897s](https://testflight.apple.com/join/57f5897s) 安装即可；App Store 上架情况以实际页面为准。想自己编译的话，按下面的步骤用 Xcode 装到 iPhone 上。
 
-键盘截图展示的是旧版布局，1.1.0 的模式拨盘与录音手势以实际界面为准。
-
 <table>
   <tr>
-    <td width="25%"><img src="../docs/screenshots/ios-keyboard.png" alt="键盘：按住说话，松手出字" /></td>
+    <td width="25%"><img src="../docs/screenshots/ios-1.1-keyboard.png" alt="键盘：按住说话，松手出字" /></td>
     <td width="25%"><img src="../docs/screenshots/ios-home.png" alt="首页：用量与我的模式" /></td>
     <td width="25%"><img src="../docs/screenshots/ios-settings.png" alt="设置：识别、模型与词汇" /></td>
     <td width="25%"><img src="../docs/screenshots/ios-scan-sync.jpg" alt="扫码同步 Mac 上的配置" /></td>

@@ -6,6 +6,15 @@
 
 ### iPhone 版 1.1.0
 
+<table>
+  <tr>
+    <td><img src="screenshots/ios-1.1-mode-dial.png" alt="模式拨盘" /></td>
+    <td><img src="screenshots/ios-1.1-correction-selection.png" alt="选中文本进行语音纠正" /></td>
+    <td><img src="screenshots/ios-1.1-correction-result.png" alt="纠正结果与记住词汇" /></td>
+    <td><img src="screenshots/ios-1.1-recording-lock.png" alt="滑动锁定录音" /></td>
+  </tr>
+</table>
+
 - **相机式模式拨盘 (#384)**：左右滑动或点击切换模式，模式数量不再限制；没有配置文本模型时，需要模型的模式会显示为不可用。
 - **录音手势与键盘操作 (#384)**：按住录音时左滑取消、右滑锁定，轻点麦克风也可锁定；标点键支持上滑句号和长按选择，空格键可拖动光标，按键触感与声音可分别关闭，撤销后可重做。
 - **智能感知来到 iPhone (#384)**：根据输入框类型和光标附近的文字调整表达，并校验输出；不可靠时回退原文。敏感输入框不读取上下文，也可在设置中关闭上下文读取。
