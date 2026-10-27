@@ -1,10 +1,11 @@
 # 选中纠正（Correct）开发设计
 
 > 文档类型：开发设计
-> 文档状态：当前有效（已实现，待真机验证）
+> 文档状态：当前有效（已实现，持续验证）
 > 适用平台：Type4Me iPhone 键盘（首版）
 > 设计日期：2026-10-27
 > 最后校验：2026-10-27
+> 实现基线：`d8081b71`（PR #392）
 > 上游文档：`docs/features/voice-correction/product-design.md`、`docs/features/mobile-app/design.md`
 
 ---
