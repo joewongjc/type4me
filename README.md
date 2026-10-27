@@ -23,16 +23,18 @@ Type4Me 是一款免费开源的 macOS 语音输入法。按下快捷键说话�
 
 | 版本 | 说明 | 大小 |
 | --- | --- | --- |
-| ✨ **[云端版（推荐）](https://github.com/joewongjc/type4me/releases/download/v3.0.0/Type4Me-v3.0.0-cloud.dmg)** | Intel 与 Apple Silicon 通用。需要自备语音识别和大模型的 API Key，识别推荐火山引擎（豆包）或 Soniox。[配置指引](https://github.com/joewongjc/type4me/issues/388) | ~18 MB |
-| **[本地版](https://github.com/joewongjc/type4me/releases/download/v3.0.0/Type4Me-v3.0.0-local-apple-silicon.dmg)** | 仅支持 Apple Silicon。内置 SenseVoice + Qwen3-ASR 离线识别，约占 8 GB 内存，建议 32 GB 以上的机器使用；文本处理仍需 API Key 或本地 Ollama | ~720 MB |
+| ✨ **[云端版（推荐）](https://github.com/joewongjc/type4me/releases/download/v3.1.0/Type4Me-v3.1.0-cloud.dmg)** | Intel 与 Apple Silicon 通用。需要自备语音识别和大模型的 API Key，识别推荐火山引擎（豆包）或 Soniox。[配置指引](https://github.com/joewongjc/type4me/issues/388) | ~18 MB |
+| **[本地版](https://github.com/joewongjc/type4me/releases/download/v3.1.0/Type4Me-v3.1.0-local-apple-silicon.dmg)** | 仅支持 Apple Silicon。内置 SenseVoice + Qwen3-ASR 离线识别，约占 8 GB 内存，建议 32 GB 以上的机器使用；文本处理仍需 API Key 或本地 Ollama | ~720 MB |
 
 需要 macOS 14 (Sonoma) 及以上。两个版本共用一份配置，可以随时互相替换。安装包已通过 Apple 公证，首次打开按引导授予**麦克风**和**辅助功能**权限就能用。
 
 ## 手机版（测试中）
 
-iPhone 上的 Type4Me 是一个语音键盘：任何输入框切到 Type4Me，按住说话，松手出字，同样支持润色、翻译、代办等模式和热词、片段替换。识别服务、模型、模式和词汇可以在 Mac 版侧边栏的「手机版」里扫码同步过去，不用在手机上重新填 API Key。
+iPhone 上的 Type4Me 是一个语音键盘：切到 Type4Me，按住说话、松手出字，也可以使用模式拨盘、智能感知和选中纠正。识别服务、模型、模式和词汇可以在 Mac 版侧边栏的「手机版」里扫码同步过去，不用在手机上重新填 API Key。
 
-手机版已开放 TestFlight 公开测试：在 iPhone 上打开 [https://testflight.apple.com/join/57f5897s](https://testflight.apple.com/join/57f5897s)，按提示装好 TestFlight 后就能安装（需要 iOS 26）。App Store 版还在审核中。也可以用 Xcode 自己编译安装，步骤见 [iOS/README.md](iOS/README.md)。
+手机版已开放 TestFlight 公开测试：在 iPhone 上打开 [https://testflight.apple.com/join/57f5897s](https://testflight.apple.com/join/57f5897s)，按提示装好 TestFlight 后就能安装（需要 iOS 26）。App Store 上架情况以实际页面为准。也可以用 Xcode 自己编译安装，步骤见 [iOS/README.md](iOS/README.md)。
+
+键盘截图展示的是旧版布局，1.1.0 的模式拨盘与录音手势以实际界面为准。
 
 <table>
   <tr>
@@ -164,16 +166,18 @@ Type4Me is a free, open-source voice input app for macOS. Hold a hotkey and talk
 
 | Edition | Details | Size |
 | --- | --- | --- |
-| ✨ **[Cloud (recommended)](https://github.com/joewongjc/type4me/releases/download/v3.0.0/Type4Me-v3.0.0-cloud.dmg)** | Intel and Apple Silicon. Bring your own speech and LLM API keys; Volcano Engine (Doubao) or Soniox recommended for recognition. [Setup guide](https://github.com/joewongjc/type4me/issues/388) | ~18 MB |
-| **[Local](https://github.com/joewongjc/type4me/releases/download/v3.0.0/Type4Me-v3.0.0-local-apple-silicon.dmg)** | Apple Silicon only. Bundles SenseVoice + Qwen3-ASR for offline recognition (~8 GB RAM, 32 GB+ Macs recommended). Text processing still needs an API key or local Ollama | ~720 MB |
+| ✨ **[Cloud (recommended)](https://github.com/joewongjc/type4me/releases/download/v3.1.0/Type4Me-v3.1.0-cloud.dmg)** | Intel and Apple Silicon. Bring your own speech and LLM API keys; Volcano Engine (Doubao) or Soniox recommended for recognition. [Setup guide](https://github.com/joewongjc/type4me/issues/388) | ~18 MB |
+| **[Local](https://github.com/joewongjc/type4me/releases/download/v3.1.0/Type4Me-v3.1.0-local-apple-silicon.dmg)** | Apple Silicon only. Bundles SenseVoice + Qwen3-ASR for offline recognition (~8 GB RAM, 32 GB+ Macs recommended). Text processing still needs an API key or local Ollama | ~720 MB |
 
 Requires macOS 14 (Sonoma) or later. Both editions share the same settings, so you can switch anytime. The app is notarized by Apple; on first launch, grant **Microphone** and **Accessibility** access as prompted.
 
 ## Mobile (beta)
 
-Type4Me on iPhone is a voice keyboard: switch to it in any text field, hold to talk and let go to type. Modes such as Voice Polish, Translation and Handle It work there too, along with hotwords and snippets. Speech services, models, modes and vocabulary sync over by scanning a QR code on the Mobile page in the Mac app's sidebar, so there are no API keys to retype.
+Type4Me on iPhone is a voice keyboard: switch to it in a text field, hold to talk and let go to type. Use the mode dial, Intelli Sense and selection correction as you write. Speech services, models, modes and vocabulary sync over by scanning a QR code on the Mobile page in the Mac app's sidebar, so there are no API keys to retype.
 
-The mobile app is in public beta on TestFlight: open [https://testflight.apple.com/join/57f5897s](https://testflight.apple.com/join/57f5897s) on your iPhone and follow the prompts (iOS 26 required). The App Store version is still in review. You can also build and install it yourself with Xcode; see [iOS/README.md](iOS/README.md) (in Chinese).
+The mobile app is in public beta on TestFlight: open [https://testflight.apple.com/join/57f5897s](https://testflight.apple.com/join/57f5897s) on your iPhone and follow the prompts (iOS 26 required). Check the App Store for availability. You can also build and install it yourself with Xcode; see [iOS/README.md](iOS/README.md) (in Chinese).
+
+The keyboard screenshot shows the previous layout; see the app for the 1.1.0 mode dial and recording gestures.
 
 <table>
   <tr>
