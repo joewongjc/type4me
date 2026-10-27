@@ -78,7 +78,7 @@ enum DemoSeed {
         }
         if debugFile("T4M_SCAN_FILE") != nil { model.showsScanner = true }
         switch ProcessInfo.processInfo.environment["T4M_TAB"] {
-        case "history": model.tab = .history
+        case "history": model.tab = .home
         case "settings": model.tab = .settings
         default: break
         }

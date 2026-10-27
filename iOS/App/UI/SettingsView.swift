@@ -40,21 +40,6 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
-            if !AppSettings.syncedFromMac {
-                Section {
-                    Button { model.showsScanner = true } label: {
-                        actionRow(
-                            symbol: "laptopcomputer.and.iphone",
-                            title: L("已经在用 Mac 版？", "Already Using Type4Me on Mac?"),
-                            detail: L(
-                                "扫码就能把识别服务、处理模型、模式和词汇一次同步过来。在 Mac 版侧边栏打开「手机版」，再点这里对准二维码。",
-                                "Scan once to bring over your speech service, text model, modes and vocabulary. Open Mobile in the Mac app's sidebar, then tap here and point at the code."
-                            )
-                        )
-                    }
-                }
-            }
-
             Section {
                 NavigationLink(value: SettingsRoute.asr) {
                     serviceRow(
@@ -78,12 +63,9 @@ struct SettingsView: View {
                 Text(serviceFooter)
             }
 
+            MyModesSection()
+
             Section {
-                NavigationLink(value: SettingsRoute.modes) {
-                    LabeledContent(L("模式", "Modes")) {
-                        Text(L("键盘上 \(modes.keyboardCount) 个，共 \(modes.modes.count) 个", "\(modes.keyboardCount) on keyboard, \(modes.modes.count) total"))
-                    }
-                }
                 NavigationLink(value: SettingsRoute.hotwords) {
                     LabeledContent(L("热词", "Hotwords")) {
                         Text(L("\(vocabulary.hotwords.count) 个", "\(vocabulary.hotwords.count)"))
@@ -95,7 +77,7 @@ struct SettingsView: View {
                     }
                 }
             } header: {
-                Text(L("模式与词汇", "Modes & Vocabulary"))
+                Text(L("词汇", "Vocabulary"))
             } footer: {
                 Text(L(
                     "热词帮识别服务认准专有名词，片段替换把说出的触发词换成固定内容。",
@@ -120,26 +102,24 @@ struct SettingsView: View {
                 ))
             }
 
-            if AppSettings.syncedFromMac {
-                Section {
-                    Button { model.showsScanner = true } label: {
-                        actionRow(
-                            symbol: "qrcode.viewfinder",
-                            title: L("扫码同步", "Scan to Sync"),
-                            detail: L(
-                                "在 Mac 版 Type4Me 的侧边栏打开「手机版」，对准二维码",
-                                "In Type4Me on your Mac, open Mobile in the sidebar and point at the code"
-                            )
+            Section {
+                Button { model.showsScanner = true } label: {
+                    actionRow(
+                        symbol: "qrcode.viewfinder",
+                        title: L("扫码同步", "Scan to Sync"),
+                        detail: L(
+                            "在 Mac 版 Type4Me 的侧边栏打开「手机版」，对准二维码",
+                            "In Type4Me on your Mac, open Mobile in the sidebar and point at the code"
                         )
-                    }
-                } header: {
-                    Text(L("从 Mac 同步", "Sync from Mac"))
-                } footer: {
-                    Text(L(
-                        "识别服务、处理模型、模式、词汇和文本输出都可以从 Mac 同步。",
-                        "Speech services, text models, modes, vocabulary and text output can all sync from your Mac."
-                    ))
+                    )
                 }
+            } header: {
+                Text(L("从 Mac 同步", "Sync from Mac"))
+            } footer: {
+                Text(L(
+                    "识别服务、处理模型、模式、词汇和文本输出都可以从 Mac 同步。",
+                    "Speech services, text models, modes, vocabulary and text output can all sync from your Mac."
+                ))
             }
 
             Section {
@@ -227,9 +207,7 @@ struct SettingsView: View {
                 session.endSession(reason: L("删除配置", "setup deleted"))
                 ConfigStore.clearAll()
                 modes.resetToDefaults()
-                // Bring the import card back on Home, and the sync prompt
-                // here, for the next setup.
-                AppSettings.importCardDismissed = false
+                // Bring the import card back on Home for the next setup.
                 AppSettings.syncedFromMac = false
                 model.configVersion += 1
             }
@@ -316,6 +294,76 @@ struct SettingsView: View {
                 .foregroundStyle(T4.tertiary)
         }
         .contentShape(Rectangle())
+    }
+}
+
+/// The keyboard's default mode, moved here from Home. Picks among the modes
+/// on the keyboard; the keyboard's top bar still switches at any time.
+struct MyModesSection: View {
+    @ObservedObject private var modes = ModeStore.shared
+    @State private var selected = SharedSettings.selectedMode
+
+    var body: some View {
+        Section {
+            ForEach(DictationMode.keyboardOrder) { mode in
+                row(mode)
+            }
+        } header: {
+            HStack {
+                Text(L("我的模式", "My Modes"))
+                Spacer()
+                NavigationLink(L("管理", "Manage"), value: SettingsRoute.modes)
+                    .font(.system(size: 13, weight: .medium))
+                    .textCase(nil)
+            }
+        } footer: {
+            Text(L("键盘默认用哪个，也可以在键盘顶部随时切换。", "Choose the keyboard's default. You can switch anytime at the top of the keyboard."))
+        }
+        .onAppear { selected = SharedSettings.selectedMode }
+        .onChange(of: modes.modes) { _, _ in selected = SharedSettings.selectedMode }
+    }
+
+    private func row(_ mode: DictationMode) -> some View {
+        let available = !mode.usesLLM || SharedSettings.llmConfigured
+        // The keyboard falls back to 快速 when the text model is missing.
+        let effective = (!selected.usesLLM || SharedSettings.llmConfigured) ? selected : .quick
+        let isSelected = effective == mode
+        return Button {
+            guard available else { return }
+            SharedSettings.selectedMode = mode
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { selected = mode }
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: mode.symbol)
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(T4.ink.opacity(available ? 1 : 0.4))
+                    .frame(width: 34, height: 34)
+                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(mode.title)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(T4.ink.opacity(available ? 1 : 0.4))
+                        T4Badge(text: mode.kind == .custom ? L("自定义", "Custom") : L("内置", "Built-in"))
+                    }
+                    Text(available ? mode.summary : L("需要先导入处理模型", "Import a text model first"))
+                        .font(.system(size: 12))
+                        .foregroundStyle(T4.tertiary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 21))
+                    .foregroundStyle(isSelected ? T4.ink : T4.ink.opacity(0.2))
+                    .contentTransition(.symbolEffect(.replace))
+            }
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!available)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 

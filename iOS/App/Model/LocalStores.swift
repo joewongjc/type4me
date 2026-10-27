@@ -98,7 +98,6 @@ final class DiagnosticsLog: ObservableObject {
 enum AppSettings {
     private enum Key {
         static let timeout = "sessionTimeoutMinutes"
-        static let importCardDismissed = "importCardDismissed"
         static let onboarded = "onboardingCompleted"
         static let aiConsent = "aiSharingConsent"
         static let dismissedUpdate = "dismissedUpdateBuild"
@@ -121,12 +120,6 @@ enum AppSettings {
     static var sessionTimeoutMinutes: Int {
         get { UserDefaults.standard.object(forKey: Key.timeout) as? Int ?? 60 }
         set { UserDefaults.standard.set(newValue, forKey: Key.timeout) }
-    }
-
-    /// The Home "Import from Mac" card was swiped away or closed.
-    static var importCardDismissed: Bool {
-        get { UserDefaults.standard.bool(forKey: Key.importCardDismissed) }
-        set { UserDefaults.standard.set(newValue, forKey: Key.importCardDismissed) }
     }
 
     /// Something came over from the Mac at least once. Until then Settings

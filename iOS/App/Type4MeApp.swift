@@ -147,12 +147,6 @@ final class AppModel: ObservableObject {
         didBecomeActive()
     }
 
-    /// Opens Settings › Modes from anywhere.
-    func showModeSettings() {
-        tab = .settings
-        settingsPath = [.modes]
-    }
-
     func importConfig(_ payload: Type4MeTransferPayload) throws {
         try importConfig(payload, selection: ConfigStore.ImportSelection(all: payload))
     }
@@ -182,7 +176,7 @@ final class AppModel: ObservableObject {
 }
 
 enum AppTab: Hashable {
-    case home, history, settings
+    case home, settings
 }
 
 struct PendingImport: Identifiable {
@@ -196,14 +190,11 @@ struct RootView: View {
     var body: some View {
         Group {
             if model.onboardingCompleted {
-                // The Mac window's sidebar (Home, History, Settings) as the
-                // iOS 26 Liquid Glass tab bar.
+                // The Mac window's sidebar (Home, Settings) as the iOS 26
+                // Liquid Glass tab bar.
                 TabView(selection: $model.tab) {
                     Tab(L("首页", "Home"), systemImage: "house", value: AppTab.home) {
                         NavigationStack { HomeView() }
-                    }
-                    Tab(L("历史", "History"), systemImage: "clock.arrow.circlepath", value: AppTab.history) {
-                        NavigationStack { HistoryView() }
                     }
                     Tab(L("设置", "Settings"), systemImage: "gearshape", value: AppTab.settings) {
                         NavigationStack(path: $model.settingsPath) {

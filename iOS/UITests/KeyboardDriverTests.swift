@@ -290,12 +290,12 @@ final class KeyboardDriverTests: XCTestCase {
         }
         pick("中文")
         snap("lang-zh-settings")
-        app.buttons.matching(NSPredicate(format: "label == '历史'")).firstMatch.tap()
+        app.buttons.matching(NSPredicate(format: "label == '首页'")).firstMatch.tap()
         sleep(1)
         app.textFields.firstMatch.tap()
         sleep(2)
         snap("lang-zh-keyboard")
-        // The keyboard covers the tab bar; scrolling History dismisses it.
+        // The keyboard covers the tab bar; scrolling Home dismisses it.
         app.scrollViews.firstMatch.swipeDown(velocity: .slow)
         sleep(1)
         app.buttons.matching(NSPredicate(format: "label == '设置'")).firstMatch.tap()
