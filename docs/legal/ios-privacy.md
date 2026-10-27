@@ -1,6 +1,6 @@
 # Type4Me for iPhone Privacy Policy / 隐私政策
 
-Last updated: October 25, 2026 · 更新日期：2026 年 10 月 25 日
+Last updated: October 27, 2026 · 更新日期：2026 年 10 月 27 日
 
 [English](#english) · [中文](#中文)
 
@@ -13,7 +13,7 @@ Type4Me for iPhone is a voice keyboard. You hold the mic on the keyboard, Type4M
 Type4Me sends data only to the third-party services you set up yourself, with your own account and API key, and only after you agree in the app:
 
 - **Speech recognition service** (for example Volcano Engine, Soniox, Deepgram or OpenAI). It receives the audio recorded while you hold to talk, and your hotwords if you use them.
-- **Text model service** (for example DeepSeek, OpenAI, Anthropic Claude or Google Gemini), only when you use a mode that processes text, such as Intelli Sense, Voice Polish or Translate. It receives the recognized text. In Intelli Sense it also receives up to 300 characters before the cursor and 100 after it in the field you are typing into, so names and tone match what is already there; this is never read from password, one-time-code or card fields, is skipped when it looks like a credential, and can be turned off in Settings › Intelli Sense Context.
+- **Text model service** (for example DeepSeek, OpenAI, Anthropic Claude or Google Gemini), only when you use a mode that processes text, such as Intelli Sense, Voice Polish or Translate. It receives the recognized text. When you select text on the keyboard and say what it should be, it receives the selected text and what you said. In Intelli Sense and when correcting a selection it also receives up to 300 characters before the cursor and 100 after it in the field you are typing into, so names and tone match what is already there; this is never read from password, one-time-code or card fields, is skipped when it looks like a credential, and can be turned off in Settings › Field Context.
 
 These services handle the data under their own privacy policies and your agreement with them. You can withdraw your permission anytime in Settings › Privacy, which stops dictation until you agree again.
 
@@ -60,7 +60,7 @@ Type4Me iPhone 版是一个语音键盘：你按住键盘上的麦克风，Type4
 Type4Me 只把数据发给你自己配置的第三方服务（使用你自己的账号和 API Key），并且要先在 App 里征得你的同意：
 
 - **语音识别服务**（例如火山引擎、Soniox、Deepgram、OpenAI）：接收你按住说话期间录下的声音，以及你设置的热词。
-- **文本模型服务**（例如 DeepSeek、OpenAI、Anthropic Claude、Google Gemini）：只在你使用需要处理文字的模式（如智能感知、语音润色、翻译）时，接收识别出的文字。智能感知还会附上当前输入框里光标前最多 300 字、光标后最多 100 字，让专有词和语气与已有内容一致；密码、验证码和银行卡输入框一律不读，看起来像密钥的内容也会跳过，可以在「设置 › 智能感知上下文」里关掉。
+- **文本模型服务**（例如 DeepSeek、OpenAI、Anthropic Claude、Google Gemini）：只在你使用需要处理文字的模式（如智能感知、语音润色、翻译）时，接收识别出的文字。你在键盘上选中文字、说出它应该是什么时，它会接收选中的文字和你说的话。智能感知和选中纠正还会附上当前输入框里光标前最多 300 字、光标后最多 100 字，让专有词和语气与已有内容一致；密码、验证码和银行卡输入框一律不读，看起来像密钥的内容也会跳过，可以在「设置 › 输入框上下文」里关掉。
 
 这些服务按各自的隐私政策和你与它们之间的协议处理数据。你可以随时在「设置 › 隐私」里撤回授权，撤回后重新同意之前不能听写。
 

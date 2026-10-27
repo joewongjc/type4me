@@ -1,4 +1,5 @@
 import SwiftUI
+import Type4MeCorrectionCore
 import UIKit
 
 /// Keyboard-side state machine. Talks to the app through `DictationChannel`
@@ -54,12 +55,40 @@ final class KeyboardModel: ObservableObject {
 
     enum HoldZone { case none, cancel, lock }
 
+    /// What holding the mic corrects instead of dictating.
+    enum Correction: Equatable {
+        case none
+        /// Text is selected in the field.
+        case armed(CorrectionRequest)
+        /// Just replaced; holding again corrects the word before the cursor.
+        case corrected(Corrected)
+    }
+
+    struct Corrected: Equatable {
+        var replacement: String
+        /// Every spelling tried before this one, the original first.
+        var rejected: [String]
+        var count: Int
+        var canRemember: Bool
+        var remembered = false
+    }
+
+    @Published private(set) var correction: Correction = .none
+
     private weak var controller: KeyboardViewController?
     private var pendingPing: UUID?
     private var requestID: UUID?
     private var startDocumentID: UUID?
     private var lastInsertion: Insertion?
+    private var lastCorrection: CorrectionUndo?
     private var redo: Redo?
+    /// The correction this recording carries, and whether it re-corrects the
+    /// word before the cursor rather than a selection.
+    private var correctionInFlight: (request: CorrectionRequest, again: Bool)?
+    /// Set while edits land in the field, so their own callbacks are ignored.
+    private var applying = false
+    private var pendingHotword: String?
+    private var foldTask: Task<Void, Never>?
 
     /// Dictated text, plus the selection it typed over, so undo can put
     /// the original back.
@@ -106,6 +135,7 @@ final class KeyboardModel: ObservableObject {
             }
         }
         ping()
+        refreshSelection()
     }
 
     func disappeared() {
@@ -113,6 +143,7 @@ final class KeyboardModel: ObservableObject {
             DictationChannel.send(KeyboardCommand(kind: .cancel, requestID: requestID))
         }
         resetToIdle()
+        correction = .none
     }
 
     func refreshReturnKey() {
@@ -174,13 +205,7 @@ final class KeyboardModel: ObservableObject {
             returnKeyType: (proxy.returnKeyType ?? .default).rawValue,
             textContentType: contentType?.rawValue
         )
-        if let contentType, Self.sensitiveContentTypes.contains(contentType) {
-            field.isSensitive = true
-            return field
-        }
-        // Card numbers, codes and amounts often come without a content
-        // type, only a digit pad. Nothing typed there needs context.
-        if let keyboardType = proxy.keyboardType ?? nil, Self.digitPads.contains(keyboardType) {
+        if isSensitiveField {
             field.isSensitive = true
             return field
         }
@@ -188,6 +213,15 @@ final class KeyboardModel: ObservableObject {
         field.before = String((proxy.documentContextBeforeInput ?? "").suffix(FieldContext.beforeLimit))
         field.after = String((proxy.documentContextAfterInput ?? "").prefix(FieldContext.afterLimit))
         return field
+    }
+
+    private var isSensitiveField: Bool {
+        guard let proxy = controller?.proxy else { return true }
+        if let contentType = proxy.textContentType ?? nil, Self.sensitiveContentTypes.contains(contentType) { return true }
+        // Card numbers, codes and amounts often come without a content
+        // type, only a digit pad. Nothing typed there needs context.
+        if let keyboardType = proxy.keyboardType ?? nil, Self.digitPads.contains(keyboardType) { return true }
+        return false
     }
 
     /// Fields whose text must never leave the phone. Secure fields don't
@@ -315,13 +349,16 @@ final class KeyboardModel: ObservableObject {
         let id = UUID()
         requestID = id
         startDocumentID = controller.proxy.documentIdentifier
+        correctionInFlight = pendingCorrection()
         liveText = ""
         level = 0
         notice = nil
         phase = .recording(locked: false)
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         DictationChannel.send(KeyboardCommand(
-            kind: .start, requestID: id, mode: mode, field: fieldContext()
+            kind: .start, requestID: id, mode: mode,
+            field: correctionInFlight == nil ? fieldContext() : nil,
+            correction: correctionInFlight?.request
         ))
         // If the app does not acknowledge, it is gone: fall back to opening it.
         watchdog?.cancel()
@@ -365,6 +402,7 @@ final class KeyboardModel: ObservableObject {
     private func resetToIdle() {
         watchdog?.cancel()
         requestID = nil
+        correctionInFlight = nil
         phase = .idle
         liveText = ""
         level = 0
@@ -385,6 +423,13 @@ final class KeyboardModel: ObservableObject {
         if pendingPing == nil {
             liveness = state.sessionActive ? .ready : .needsApp
         }
+        if let word = pendingHotword, state.rememberedHotword == word {
+            pendingHotword = nil
+            if case .corrected(var done) = correction, done.replacement == word {
+                done.remembered = true
+                correction = .corrected(done)
+            }
+        }
 
         guard let requestID, state.requestID == requestID else { return }
         acknowledged = true
@@ -397,6 +442,16 @@ final class KeyboardModel: ObservableObject {
             liveText = state.liveText
             if phase != .processing { phase = .processing }
         case .done:
+            if let outcome = state.correction, let inFlight = correctionInFlight {
+                // Stays "processing" until every edit has landed.
+                watchdog?.cancel()
+                correctionInFlight = nil
+                Task {
+                    await applyCorrection(outcome, request: inFlight.request, again: inFlight.again)
+                    resetToIdle()
+                }
+                return
+            }
             if let text = state.finalText { deliver(text, note: state.errorMessage) }
             resetToIdle()
         case .failed:
@@ -433,9 +488,220 @@ final class KeyboardModel: ObservableObject {
         UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
 
+    // MARK: - Correction
+
+    /// Called whenever the host's text or selection changes: a selection
+    /// turns the mic into a correction, and moving off a fresh correction
+    /// turns it back.
+    func refreshSelection() {
+        guard hasFullAccess, phase == .idle, !applying, let proxy = controller?.proxy else { return }
+        let selected = proxy.selectedText ?? ""
+        if !selected.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            guard !isSensitiveField else {
+                if correction != .none { correction = .none }
+                return
+            }
+            let reads = SharedSettings.intelliSenseContext
+            let request = CorrectionRequest(
+                before: reads ? String((proxy.documentContextBeforeInput ?? "").suffix(FieldContext.beforeLimit)) : "",
+                selected: selected,
+                after: reads ? String((proxy.documentContextAfterInput ?? "").prefix(FieldContext.afterLimit)) : ""
+            )
+            if correction != .armed(request) { correction = .armed(request) }
+            return
+        }
+        if case .corrected(let done) = correction, (proxy.documentContextBeforeInput ?? "").hasSuffix(done.replacement) {
+            return
+        }
+        if correction != .none { correction = .none }
+    }
+
+    func exitCorrection() {
+        foldTask?.cancel()
+        correction = .none
+    }
+
+    var isCorrecting: Bool {
+        correction != .none || correctionInFlight != nil
+    }
+
+    /// The caption under the orb while the request is processed.
+    var processingLabel: String {
+        correctionInFlight != nil ? L("正在纠正…", "Correcting…") : mode.processingLabel
+    }
+
+    private func pendingCorrection() -> (request: CorrectionRequest, again: Bool)? {
+        switch correction {
+        case .none:
+            return nil
+        case .armed(let request):
+            return (request, false)
+        case .corrected(let done):
+            guard let proxy = controller?.proxy else { return nil }
+            let before = proxy.documentContextBeforeInput ?? ""
+            guard before.hasSuffix(done.replacement) else { return nil }
+            let reads = SharedSettings.intelliSenseContext
+            return (CorrectionRequest(
+                before: reads ? String(before.dropLast(done.replacement.count).suffix(FieldContext.beforeLimit)) : "",
+                selected: done.replacement,
+                after: reads ? String((proxy.documentContextAfterInput ?? "").prefix(FieldContext.afterLimit)) : "",
+                attempts: done.rejected
+            ), true)
+        }
+    }
+
+    /// Positions below are characters from where the corrected word starts
+    /// in the text as it was sent; edits further on never move earlier
+    /// text, so every pass works from the end backwards.
+    private func applyCorrection(_ outcome: CorrectionOutcome, request: CorrectionRequest, again: Bool) async {
+        guard let proxy = controller?.proxy else { return }
+        let old = request.selected
+        let new = outcome.replacement
+        let inPlace = again
+            ? (proxy.selectedText ?? "").isEmpty && (proxy.documentContextBeforeInput ?? "").hasSuffix(old)
+            : proxy.selectedText == old
+        guard proxy.documentIdentifier == startDocumentID, inPlace else {
+            UIPasteboard.general.string = new
+            show(L("选中的位置变了，结果已复制", "The selection changed, so the result was copied"), kind: .success)
+            correction = .none
+            return
+        }
+
+        applying = true
+        defer { applying = false }
+        if again {
+            for _ in 0..<old.count { proxy.deleteBackward() }
+        }
+        proxy.insertText(new)
+
+        // The same mistake elsewhere: after the word first, then before it.
+        let delta = new.count - old.count
+        var cursor = new.count
+        var changed = [0]
+        let others = CorrectionOccurrences.find(before: request.before, after: request.after, matching: old)
+            .filter { outcome.also.contains($0.number) }
+            .sorted { $0.offset > $1.offset }
+        for other in others {
+            let start = other.offset > 0 ? other.offset + delta : other.offset
+            guard await swap(old, for: new, endingAt: start + old.count, cursor: &cursor) else { break }
+            changed.append(other.offset)
+        }
+        let end = new.count + delta * changed.filter { $0 < 0 }.count
+        proxy.adjustTextPosition(byCharacterOffset: end - cursor)
+
+        lastInsertion = nil
+        redo = nil
+        canRedo = false
+        lastCorrection = CorrectionUndo(old: old, new: new, starts: changed)
+        canUndo = true
+        correction = .corrected(Corrected(
+            replacement: new,
+            rejected: request.attempts + [old],
+            count: changed.count,
+            canRemember: !outcome.isHotword && Self.isHotwordSized(new)
+        ))
+        let message = changed.count > 1
+            ? L("已改为「\(new)」· 共 \(changed.count) 处", "Changed to “\(new)” · \(changed.count) places")
+            : L("已改为「\(new)」", "Changed to “\(new)”")
+        show(message, kind: .success, duration: 1.1)
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        foldCorrectionLater()
+    }
+
+    /// The result bar folds back into the dial after a few quiet seconds;
+    /// selecting the word again brings correction back.
+    private func foldCorrectionLater() {
+        foldTask?.cancel()
+        foldTask = Task {
+            try? await Task.sleep(for: .seconds(5))
+            guard !Task.isCancelled, phase == .idle, case .corrected = correction else { return }
+            correction = .none
+        }
+    }
+
+    /// Hotwords are words: up to five Chinese characters or two English
+    /// words, without punctuation.
+    static func isHotwordSized(_ text: String) -> Bool {
+        guard !text.contains(where: { $0.isPunctuation || $0.isNewline }) else { return false }
+        if text.unicodeScalars.contains(where: { $0.properties.isIdeographic }) {
+            return text.filter { !$0.isWhitespace }.count <= 5
+        }
+        return text.split(whereSeparator: \.isWhitespace).count <= 2
+    }
+
+    /// One correction, enough to put every place back.
+    private struct CorrectionUndo {
+        let old: String
+        let new: String
+        /// Where each changed place started before the change, the
+        /// corrected word itself at 0.
+        let starts: [Int]
+    }
+
+    private func undoCorrection(_ undo: CorrectionUndo) async {
+        guard let proxy = controller?.proxy else { return }
+        let delta = undo.new.count - undo.old.count
+        // Where each place starts now that the earlier ones changed length.
+        let now = undo.starts.map { start in start + delta * undo.starts.filter { $0 < start }.count }
+        let mainStart = delta * undo.starts.filter { $0 < 0 }.count
+        guard (proxy.documentContextBeforeInput ?? "").hasSuffix(undo.new) else {
+            show(L("光标位置变了，没法撤销", "The cursor moved, so this can't be undone"), kind: .error)
+            return
+        }
+        applying = true
+        defer { applying = false }
+        var cursor = mainStart + undo.new.count
+        for start in now.sorted(by: >) {
+            guard await swap(undo.new, for: undo.old, endingAt: start + undo.new.count, cursor: &cursor) else { break }
+        }
+        proxy.adjustTextPosition(byCharacterOffset: undo.old.count - cursor)
+        correction = .none
+        show(L("已撤销", "Undone"))
+    }
+
+    /// Moves to the end of `old` and swaps it for `new`, if `old` is really there.
+    private func swap(_ old: String, for new: String, endingAt end: Int, cursor: inout Int) async -> Bool {
+        guard let proxy = controller?.proxy else { return false }
+        if end != cursor {
+            proxy.adjustTextPosition(byCharacterOffset: end - cursor)
+            cursor = end
+        }
+        // The proxy's context catches up a moment after the cursor moves.
+        var found = false
+        for _ in 0..<15 {
+            if (proxy.documentContextBeforeInput ?? "").hasSuffix(old) { found = true; break }
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+        guard found else { return false }
+        for _ in 0..<old.count { proxy.deleteBackward() }
+        proxy.insertText(new)
+        cursor = end - old.count + new.count
+        return true
+    }
+
+    func rememberCorrection() {
+        guard case .corrected(let done) = correction, !done.remembered else { return }
+        let word = done.replacement
+        foldCorrectionLater()
+        pendingHotword = word
+        DictationChannel.send(KeyboardCommand(kind: .rememberHotword, hotword: word))
+        Task {
+            try? await Task.sleep(for: .milliseconds(1_200))
+            guard pendingHotword == word else { return }
+            pendingHotword = nil
+            show(L("没能记住，打开 Type4Me 再试", "Couldn't remember it. Open Type4Me and try again"), kind: .error)
+        }
+    }
+
     // MARK: - Keys
 
     func undoLastInsertion() {
+        if let undo = lastCorrection {
+            lastCorrection = nil
+            canUndo = false
+            Task { await undoCorrection(undo) }
+            return
+        }
         guard let controller, let insertion = lastInsertion else { return }
         let text = insertion.text
         let before = controller.proxy.documentContextBeforeInput ?? ""
@@ -485,6 +751,7 @@ final class KeyboardModel: ObservableObject {
 
     /// Dictated text that the undo key can take back out.
     private func recordInsertion(_ text: String, replacing replaced: String? = nil) {
+        lastCorrection = nil
         lastInsertion = Insertion(text: text, replaced: replaced)
         canUndo = true
         redo = nil
@@ -538,6 +805,7 @@ final class KeyboardModel: ObservableObject {
     var needsGlobeKey: Bool { controller?.needsInputModeSwitchKey ?? true }
 
     private func invalidateUndo() {
+        lastCorrection = nil
         lastInsertion = nil
         canUndo = false
         redo = nil

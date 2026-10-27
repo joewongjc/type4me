@@ -40,9 +40,15 @@ final class KeyboardViewController: UIInputViewController {
         model.disappeared()
     }
 
+    override func selectionDidChange(_ textInput: UITextInput?) {
+        super.selectionDidChange(textInput)
+        model.refreshSelection()
+    }
+
     override func textDidChange(_ textInput: UITextInput?) {
         super.textDidChange(textInput)
         model.refreshReturnKey()
+        model.refreshSelection()
     }
 
     // MARK: - Proxy helpers used by the model

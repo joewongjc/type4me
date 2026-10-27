@@ -132,11 +132,11 @@ struct SettingsView: View {
                 Toggle(L("读取输入框上下文", "Read Field Context"), isOn: $intelliSenseContext)
                     .onChange(of: intelliSenseContext) { _, on in SharedSettings.intelliSenseContext = on }
             } header: {
-                Text(L("智能感知上下文", "Intelli Sense Context"))
+                Text(L("输入框上下文", "Field Context"))
             } footer: {
                 Text(L(
-                    "打开时，智能感知会把光标前后的一小段文字（前 300 字、后 100 字）随口述一起发给处理模型，用来校正专有词、延续语气。密码、验证码和银行卡输入框不会读取。关掉后只按输入框类型调整。",
-                    "When on, Intelli Sense sends a short stretch of text around the cursor (300 characters before, 100 after) to the text model with your dictation, to spell names right and match the tone. Password, one-time-code and card fields are never read. When off, it adapts only to the kind of field."
+                    "打开时，智能感知和选中纠正会把光标前后的一小段文字（前 300 字、后 100 字）一起发给处理模型，用来校正专有词、延续语气、判断该怎么改。密码、验证码和银行卡输入框不会读取。关掉后，智能感知只按输入框类型调整，选中纠正只发送选中的文字和你说的话。",
+                    "When on, Intelli Sense and Correct send a short stretch of text around the cursor (300 characters before, 100 after) to the text model, to spell names right, match the tone and work out the fix. Password, one-time-code and card fields are never read. When off, Intelli Sense adapts only to the kind of field, and Correct sends only the selection and what you said."
                 ))
             }
 
