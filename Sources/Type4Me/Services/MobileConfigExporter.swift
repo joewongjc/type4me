@@ -47,9 +47,9 @@ enum MobileConfigExporter {
     }
 
     /// Modes that make sense on the iPhone keyboard. Mac Action, Command
-    /// Mode and Ask Anything need the Mac (tools, selected text, a panel),
-    /// and Intelli Sense needs the app and text around the cursor, which an
-    /// iPhone keyboard can't see.
+    /// Mode and Ask Anything need the Mac (tools, selected text, a panel).
+    /// Intelli Sense travels: the iPhone keyboard sees the text around the
+    /// cursor and the kind of field, though not which app it is in.
     static func modeCandidates() -> [Candidate] {
         ModeStorage().load().compactMap { mode in
             guard transferMode(for: mode) != nil else { return nil }
@@ -129,13 +129,12 @@ enum MobileConfigExporter {
     typealias TransferMode = Type4MeTransferPayload.Mode
 
     /// Shipped Mac modes that stay on the Mac. Of the modes Type4Me ships,
-    /// only Quick, Translation, Voice Polish and Handle It suit the phone
-    /// keyboard; the user's own prompt modes travel too.
+    /// only Intelli Sense, Quick, Translation, Voice Polish and Handle It suit
+    /// the phone keyboard; the user's own prompt modes travel too.
     private static let macOnlyModeIDs = Set<UUID>([
         ProcessingMode.macActionId,
         ProcessingMode.selectionAskId,
         ProcessingMode.commandMode.id,
-        ProcessingMode.intelliSenseId,
         ProcessingMode.promptOptimizeId,
         ProcessingMode.smartDirectId,
     ]).union(ProcessingMode.legacyTranslationModeIDs)
@@ -146,6 +145,8 @@ enum MobileConfigExporter {
         switch mode.id {
         case ProcessingMode.directId:
             return TransferMode(id: TransferMode.Kind.quick, kind: TransferMode.Kind.quick, name: nil, prompt: nil)
+        case ProcessingMode.intelliSenseId:
+            return TransferMode(id: TransferMode.Kind.intelliSense, kind: TransferMode.Kind.intelliSense, name: nil, prompt: nil)
         case ProcessingMode.formalWritingId:
             return builtIn(TransferMode.Kind.formalWriting, mode, defaultPrompt: ProcessingMode.formalWritingPromptTemplate)
         case ProcessingMode.agentModeId:

@@ -40,9 +40,17 @@ final class KeyboardModel: ObservableObject {
     /// Read on every appearance so a change made in the app shows up the
     /// next time the keyboard opens.
     @Published var language = AppLanguage.current
+    /// Full-width marks (，。) rather than ASCII (,.) on the punctuation key.
+    @Published private(set) var fullWidthPunctuation = true
     @Published var canUndo = false
+    /// Set right after an undo, until anything else changes the text.
+    @Published var canRedo = false
     /// Where a held finger currently is, for the caption under the orb.
     @Published var holdZone: HoldZone = .none
+    /// How far the held finger has slid towards a side key: -1 is all the
+    /// way to cancel, 1 all the way to lock. Stepped so a drag doesn't
+    /// redraw the keyboard on every point.
+    @Published var holdPull: CGFloat = 0
 
     enum HoldZone { case none, cancel, lock }
 
@@ -51,6 +59,16 @@ final class KeyboardModel: ObservableObject {
     private var requestID: UUID?
     private var startDocumentID: UUID?
     private var lastInsertion: String?
+    private var redo: Redo?
+
+    /// What an undo took out, and where, so redo puts it back only in the
+    /// same place.
+    private struct Redo {
+        let text: String
+        let documentID: UUID
+        /// The end of the text before the cursor once the undo is done.
+        let anchor: String
+    }
     private var watchdog: Task<Void, Never>?
     private var noticeTask: Task<Void, Never>?
     private var observing = false
@@ -63,9 +81,11 @@ final class KeyboardModel: ObservableObject {
 
     func appeared() {
         language = AppLanguage.current
+        fullWidthPunctuation = SharedSettings.fullWidthPunctuation ?? (language == .zh)
         hasFullAccess = controller?.hasFullAccess ?? false
         refreshReturnKey()
         guard hasFullAccess else { return }
+        KeyFeedback.reload()
         LiquidOrbPipeline.shared.warmUp()
         mode = SharedSettings.selectedMode
         llmConfigured = SharedSettings.llmConfigured
@@ -119,7 +139,13 @@ final class KeyboardModel: ObservableObject {
 
     // MARK: - Mode
 
-    func select(_ newMode: DictationMode) {
+    /// Modes that need a text model wait until one is imported.
+    func isAvailable(_ mode: DictationMode) -> Bool {
+        !mode.usesLLM || llmConfigured
+    }
+
+    /// `haptic` is off when the control picking the mode already ticked.
+    func select(_ newMode: DictationMode, haptic: Bool = true) {
         guard phase == .idle else { return }
         if newMode.usesLLM, !llmConfigured {
             show(L("先在 Type4Me 里导入处理模型配置", "Import a text model in Type4Me first"), kind: .error)
@@ -127,8 +153,45 @@ final class KeyboardModel: ObservableObject {
         }
         mode = newMode
         SharedSettings.selectedMode = newMode
-        UISelectionFeedbackGenerator().selectionChanged()
+        if haptic { UISelectionFeedbackGenerator().selectionChanged() }
     }
+
+    // MARK: - Intelli Sense
+
+    /// What Intelli Sense gets to see of the field, or nil for other modes.
+    private func fieldContext() -> FieldContext? {
+        guard mode.kind == .intelliSense, let proxy = controller?.proxy else { return nil }
+        let contentType = proxy.textContentType ?? nil
+        var field = FieldContext(
+            keyboardType: (proxy.keyboardType ?? .default).rawValue,
+            returnKeyType: (proxy.returnKeyType ?? .default).rawValue,
+            textContentType: contentType?.rawValue
+        )
+        if let contentType, Self.sensitiveContentTypes.contains(contentType) {
+            field.isSensitive = true
+            return field
+        }
+        // Card numbers, codes and amounts often come without a content
+        // type, only a digit pad. Nothing typed there needs context.
+        if let keyboardType = proxy.keyboardType ?? nil, Self.digitPads.contains(keyboardType) {
+            field.isSensitive = true
+            return field
+        }
+        guard SharedSettings.intelliSenseContext else { return field }
+        field.before = String((proxy.documentContextBeforeInput ?? "").suffix(FieldContext.beforeLimit))
+        field.after = String((proxy.documentContextAfterInput ?? "").prefix(FieldContext.afterLimit))
+        return field
+    }
+
+    /// Fields whose text must never leave the phone. Secure fields don't
+    /// even get a third-party keyboard; these are the rest.
+    private static let sensitiveContentTypes: Set<UITextContentType> = [
+        .password, .newPassword, .oneTimeCode,
+        .creditCardNumber, .creditCardSecurityCode, .creditCardExpiration,
+    ]
+
+    /// Phone pads never get a third-party keyboard, so they aren't here.
+    private static let digitPads: Set<UIKeyboardType> = [.numberPad, .decimalPad, .asciiCapableNumberPad]
 
     // MARK: - Mic
 
@@ -137,6 +200,9 @@ final class KeyboardModel: ObservableObject {
         switch phase {
         case .idle:
             if liveness == .ready {
+                // A new dictation replaces whatever an undo took out.
+                redo = nil
+                canRedo = false
                 startRecording()
             } else {
                 openApp()
@@ -203,14 +269,27 @@ final class KeyboardModel: ObservableObject {
             if !text.isEmpty {
                 let ending = L("。", ".")
                 controller?.proxy.insertText(text + ending)
-                lastInsertion = text + ending
-                canUndo = true
+                recordInsertion(text + ending)
                 show(L("已完成", "Done"), kind: .success, duration: 1.1)
             }
             resetToIdle()
         }
     }
     #endif
+
+    /// The lock key that replaces delete while the mic is held.
+    func lockFromKey() {
+        guard phase == .recording(locked: false) else { return }
+        phase = .recording(locked: true)
+        holdZone = .none
+        holdPull = 0
+    }
+
+    /// The done key that replaces lock once recording is locked.
+    func finishFromKey() {
+        guard phase == .recording(locked: true) else { return }
+        stopRecording()
+    }
 
     /// The cancel key that replaces undo while recording.
     func cancelFromKey() {
@@ -235,7 +314,7 @@ final class KeyboardModel: ObservableObject {
         phase = .recording(locked: false)
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         DictationChannel.send(KeyboardCommand(
-            kind: .start, requestID: id, mode: mode
+            kind: .start, requestID: id, mode: mode, field: fieldContext()
         ))
         // If the app does not acknowledge, it is gone: fall back to opening it.
         watchdog?.cancel()
@@ -258,7 +337,8 @@ final class KeyboardModel: ObservableObject {
         guard let requestID else { return }
         phase = .processing
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        DictationChannel.send(KeyboardCommand(kind: .stop, requestID: requestID))
+        // Read again on release, as the Mac refreshes before processing.
+        DictationChannel.send(KeyboardCommand(kind: .stop, requestID: requestID, field: fieldContext()))
         watchdog?.cancel()
         watchdog = Task {
             try? await Task.sleep(for: .seconds(30))
@@ -330,8 +410,7 @@ final class KeyboardModel: ObservableObject {
         let sameField = controller.proxy.documentIdentifier == startDocumentID
         if sameField {
             controller.proxy.insertText(text)
-            lastInsertion = text
-            canUndo = true
+            recordInsertion(text)
             DictationChannel.send(KeyboardCommand(kind: .delivered, requestID: requestID, mode: mode, delivery: .inserted))
             if let note { show(note) } else { show(L("已完成", "Done"), kind: .success, duration: 1.1) }
         } else {
@@ -351,20 +430,69 @@ final class KeyboardModel: ObservableObject {
         let before = controller.proxy.documentContextBeforeInput ?? ""
         guard before.hasSuffix(text) else {
             show(L("光标位置变了，没法撤销", "The cursor moved, so this can't be undone"), kind: .error)
-            lastInsertion = nil
-            canUndo = false
+            invalidateUndo()
             return
         }
         for _ in 0..<text.count { controller.proxy.deleteBackward() }
         lastInsertion = nil
         canUndo = false
-        show(L("已撤销", "Undone"))
+        // The proxy's context updates after the deletes land, so the anchor
+        // comes from the text read before them.
+        redo = Redo(
+            text: text,
+            documentID: controller.proxy.documentIdentifier,
+            anchor: String(before.dropLast(text.count).suffix(Self.anchorLength))
+        )
+        canRedo = true
+        show(L("已撤销 · 可重做", "Undone · Redo available"))
+    }
+
+    func redoUndoneInsertion() {
+        guard let controller, let redo else { return }
+        let before = controller.proxy.documentContextBeforeInput ?? ""
+        guard controller.proxy.documentIdentifier == redo.documentID,
+              String(before.suffix(Self.anchorLength)) == redo.anchor
+        else {
+            show(L("光标位置变了，没法重做", "The cursor moved, so this can't be redone"), kind: .error)
+            invalidateUndo()
+            return
+        }
+        controller.proxy.insertText(redo.text)
+        recordInsertion(redo.text)
+        show(L("已重做", "Redone"))
+    }
+
+    /// Enough of the text before the cursor to tell that it hasn't moved;
+    /// the proxy only ever shows a window of it anyway.
+    private static let anchorLength = 24
+
+    /// Dictated text that the undo key can take back out.
+    private func recordInsertion(_ text: String) {
+        lastInsertion = text
+        canUndo = true
+        redo = nil
+        canRedo = false
     }
 
     func insert(_ text: String) {
         controller?.proxy.insertText(text)
-        UIDevice.current.playInputClick()
         invalidateUndo()
+    }
+
+    /// The punctuation key's mark, then what a long press offers.
+    var punctuation: (main: String, more: [String]) {
+        fullWidthPunctuation ? ("，", ["。", "？", "！", "、"]) : (",", [".", "?", "!", "'"])
+    }
+
+    func togglePunctuationWidth() {
+        fullWidthPunctuation.toggle()
+        SharedSettings.fullWidthPunctuation = fullWidthPunctuation
+    }
+
+    /// The space-bar trackpad. Undo checks the text before the cursor
+    /// itself, so moving away and back keeps it.
+    func moveCursor(by offset: Int) {
+        controller?.proxy.adjustTextPosition(byCharacterOffset: offset)
     }
 
     func deleteBackward() {
@@ -375,6 +503,11 @@ final class KeyboardModel: ObservableObject {
     func returnKey() {
         controller?.proxy.insertText("\n")
         invalidateUndo()
+    }
+
+    /// The "4" button next to the modes: more settings live in the app.
+    func openSettings() {
+        controller?.openContainingApp(SharedContainer.Link.settings)
     }
 
     func dismissKeyboard() {
@@ -390,6 +523,8 @@ final class KeyboardModel: ObservableObject {
     private func invalidateUndo() {
         lastInsertion = nil
         canUndo = false
+        redo = nil
+        canRedo = false
     }
 
     private func show(_ message: String, kind: KeyboardNotice.Kind = .info, duration: Double = 2.5) {

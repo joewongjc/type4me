@@ -42,6 +42,9 @@ final class AudioSessionKeeper {
             mode: .default,
             options: [.mixWithOthers, .defaultToSpeaker, .allowBluetoothA2DP]
         )
+        // iOS mutes haptics while the mic records, which would swallow the
+        // keyboard's tap when a held finger crosses into cancel or lock.
+        try? session.setAllowHapticsAndSystemSoundsDuringRecording(true)
         try session.setActive(true)
         try startSilence()
         isActive = true

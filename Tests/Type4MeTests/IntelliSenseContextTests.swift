@@ -65,6 +65,24 @@ final class IntelliSenseContextTests: XCTestCase {
         XCTAssertFalse(IntelliSenseSensitiveTextScanner.containsSensitiveContent("请把这段话说得自然一点"))
     }
 
+    func testSensitiveScannerDetectsCardNumbersThatPassLuhn() {
+        XCTAssertTrue(IntelliSenseSensitiveTextScanner.containsSensitiveContent("4111111111111111"))
+        XCTAssertTrue(IntelliSenseSensitiveTextScanner.containsSensitiveContent("卡号 6222 0212 3456 7890 128，请核对"))
+        XCTAssertTrue(IntelliSenseSensitiveTextScanner.containsSensitiveContent("5500-0000-0000-0004"))
+        // Same length, fails the check: an order number, not a card.
+        XCTAssertFalse(IntelliSenseSensitiveTextScanner.containsSensitiveContent("订单号 4111111111111112"))
+        XCTAssertFalse(IntelliSenseSensitiveTextScanner.containsSensitiveContent("电话 13800138000"))
+    }
+
+    func testSensitiveScannerDetectsOneTimeCodes() {
+        XCTAssertTrue(IntelliSenseSensitiveTextScanner.containsSensitiveContent("【某银行】验证码 482913，5 分钟内有效"))
+        XCTAssertTrue(IntelliSenseSensitiveTextScanner.containsSensitiveContent("482913是你的登录验证码"))
+        XCTAssertTrue(IntelliSenseSensitiveTextScanner.containsSensitiveContent("Your verification code is 7731"))
+        XCTAssertTrue(IntelliSenseSensitiveTextScanner.containsSensitiveContent("OTP: 90210"))
+        XCTAssertFalse(IntelliSenseSensitiveTextScanner.containsSensitiveContent("会议改到 2026 年 11 月 3 号"))
+        XCTAssertFalse(IntelliSenseSensitiveTextScanner.containsSensitiveContent("验证一下这个方案"))
+    }
+
     func testAppOnlySnapshotDoesNotInventContext() {
         let snapshot = IntelliSenseContextSnapshot.appOnly(TargetApplicationContext(
             processIdentifier: nil,

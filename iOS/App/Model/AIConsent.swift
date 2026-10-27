@@ -25,11 +25,13 @@ enum AIConsent {
         }
         if let llm = ConfigStore.llm {
             result.append(Recipient(
-                key: "llm:\(llm.provider)",
+                // The suffix asks again of people who agreed before Intelli
+                // Sense started sending the text around the cursor.
+                key: "llm:\(llm.provider):context",
                 name: ProviderNames.llm(llm.provider),
                 receives: L(
-                    "识别出的文字（仅限润色、翻译等使用文本模型的模式）",
-                    "The recognized text (only in modes that use a text model, such as Voice Polish and Translate)"
+                    "识别出的文字（仅限智能感知、润色、翻译等使用文本模型的模式）；智能感知还会附上输入框里光标前后的一小段文字，可以在「设置」里关掉",
+                    "The recognized text (only in modes that use a text model, such as Intelli Sense, Voice Polish and Translate). Intelli Sense also sends a short stretch of the text around the cursor, which you can turn off in Settings"
                 )
             ))
         }

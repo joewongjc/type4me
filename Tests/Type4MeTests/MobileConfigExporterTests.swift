@@ -29,11 +29,17 @@ final class MobileConfigExporterTests: XCTestCase {
         XCTAssertEqual(transfer?.prompt, "只改错别字：{text}")
     }
 
+    func testIntelliSenseTravelsAsItsKindOnly() throws {
+        let transfer = try XCTUnwrap(MobileConfigExporter.transferMode(for: .intelliSense))
+        XCTAssertEqual(transfer.kind, Kind.intelliSense)
+        XCTAssertEqual(transfer.id, Kind.intelliSense)
+        XCTAssertNil(transfer.prompt, "the iPhone builds the Intelli Sense prompt itself")
+    }
+
     func testMacOnlyModesStayOnTheMac() {
         XCTAssertNil(MobileConfigExporter.transferMode(for: .macAction))
         XCTAssertNil(MobileConfigExporter.transferMode(for: .selectionAsk))
         XCTAssertNil(MobileConfigExporter.transferMode(for: .commandMode))
-        XCTAssertNil(MobileConfigExporter.transferMode(for: .intelliSense))
         XCTAssertNil(MobileConfigExporter.transferMode(for: .promptOptimize))
         XCTAssertNil(MobileConfigExporter.transferMode(for: .smartDirect))
     }
@@ -54,7 +60,7 @@ final class MobileConfigExporterTests: XCTestCase {
 
     func testOnlyPhoneSuitedShippedModesTravel() {
         let kinds = ProcessingMode.defaults.compactMap(MobileConfigExporter.transferMode(for:)).map(\.kind)
-        XCTAssertEqual(kinds.sorted(), [Kind.agentMode, Kind.formalWriting, Kind.quick, Kind.translation].sorted())
+        XCTAssertEqual(kinds.sorted(), [Kind.agentMode, Kind.formalWriting, Kind.intelliSense, Kind.quick, Kind.translation].sorted())
         XCTAssertNil(MobileConfigExporter.transferMode(for: .translateToChinese), "legacy translation records duplicate Translation")
     }
 

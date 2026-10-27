@@ -3,7 +3,7 @@ import Type4MeTransferCore
 
 /// Pages under Settings. Value based, so Home can open one directly.
 enum SettingsRoute: Hashable {
-    case asr, llm, modes, hotwords, snippets, diagnostics
+    case asr, llm, modes, hotwords, snippets, appIcon, diagnostics
 
     @MainActor @ViewBuilder var destination: some View {
         switch self {
@@ -12,6 +12,7 @@ enum SettingsRoute: Hashable {
         case .modes: ModeSettingsView()
         case .hotwords: HotwordSettingsView()
         case .snippets: SnippetSettingsView()
+        case .appIcon: AppIconSettingsView()
         case .diagnostics: DiagnosticsView()
         }
     }
@@ -24,8 +25,12 @@ struct SettingsView: View {
     @EnvironmentObject private var history: HistoryStore
     @ObservedObject private var modes = ModeStore.shared
     @ObservedObject private var vocabulary = VocabularyStore.shared
+    @ObservedObject private var appIcon = AppIconStore.shared
 
     @State private var timeout = AppSettings.sessionTimeoutMinutes
+    @State private var keyHaptics = SharedSettings.keyHaptics
+    @State private var keySounds = SharedSettings.keySounds
+    @State private var intelliSenseContext = SharedSettings.intelliSenseContext
     @State private var confirmClear = false
     @State private var confirmClearHistory = false
     @State private var language = AppLanguage.override?.rawValue ?? "system"
@@ -84,7 +89,7 @@ struct SettingsView: View {
             } header: {
                 Text(L("模式", "Modes"))
             } footer: {
-                Text(L("新建、改名、调整顺序，并选择最多 \(ModeLibrary.keyboardLimit) 个放到键盘上。", "Add, rename and reorder modes, and pick up to \(ModeLibrary.keyboardLimit) for the keyboard."))
+                Text(L("新建、改名、调整顺序，并选择哪些放到键盘上。", "Add, rename and reorder modes, and pick which ones the keyboard shows."))
             }
 
             Section {
@@ -124,6 +129,32 @@ struct SettingsView: View {
             }
 
             Section {
+                Toggle(L("读取输入框上下文", "Read Field Context"), isOn: $intelliSenseContext)
+                    .onChange(of: intelliSenseContext) { _, on in SharedSettings.intelliSenseContext = on }
+            } header: {
+                Text(L("智能感知上下文", "Intelli Sense Context"))
+            } footer: {
+                Text(L(
+                    "打开时，智能感知会把光标前后的一小段文字（前 300 字、后 100 字）随口述一起发给处理模型，用来校正专有词、延续语气。密码、验证码和银行卡输入框不会读取。关掉后只按输入框类型调整。",
+                    "When on, Intelli Sense sends a short stretch of text around the cursor (300 characters before, 100 after) to the text model with your dictation, to spell names right and match the tone. Password, one-time-code and card fields are never read. When off, it adapts only to the kind of field."
+                ))
+            }
+
+            Section {
+                Toggle(L("按键震动", "Key Haptics"), isOn: $keyHaptics)
+                    .onChange(of: keyHaptics) { _, on in SharedSettings.keyHaptics = on }
+                Toggle(L("按键音", "Key Sounds"), isOn: $keySounds)
+                    .onChange(of: keySounds) { _, on in SharedSettings.keySounds = on }
+            } header: {
+                Text(L("键盘", "Keyboard"))
+            } footer: {
+                Text(L(
+                    "iOS 不向第三方键盘提供系统的键盘反馈设置，所以在这里单独开关。按键音和系统键盘一样，静音模式下不响。",
+                    "iOS doesn't share its keyboard feedback settings with third-party keyboards, so they're set here. Like the system keyboard, key sounds stay quiet in silent mode."
+                ))
+            }
+
+            Section {
                 Link(L("隐私政策", "Privacy Policy"), destination: AppLinks.privacyPolicy)
                 Link(L("帮助与反馈", "Help & Feedback"), destination: AppLinks.support)
                 if !AppSettings.aiConsentKeys.isEmpty {
@@ -145,6 +176,11 @@ struct SettingsView: View {
                     Text(L("跟随系统", "System")).tag("system")
                     Text("中文").tag(AppLanguage.zh.rawValue)
                     Text("English").tag(AppLanguage.en.rawValue)
+                }
+                if appIcon.isSupported {
+                    NavigationLink(value: SettingsRoute.appIcon) {
+                        LabeledContent(L("应用图标", "App Icon"), value: appIcon.current.title)
+                    }
                 }
                 Button(L("打开系统设置", "Open iOS Settings")) {
                     if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }

@@ -17,6 +17,9 @@ struct Type4MeApp: App {
                 .onOpenURL { model.handle(url: $0) }
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active { model.didBecomeActive() }
+                    // The go-back screen has done its job once the user
+                    // has left; next time the app opens on Home.
+                    if phase == .background { model.showsSessionStarted = false }
                 }
         }
     }
@@ -49,6 +52,8 @@ final class AppModel: ObservableObject {
     init() {
         session = VoiceSession(history: history, log: log)
         ConfigStore.refreshSharedFlags()
+        // Before the keyboard next reads the library.
+        ModeLibrary.addIntelliSenseIfNeeded()
         DarwinNotifier.shared.observe(DarwinName.keyboardAppeared) { [weak self] in
             self?.keyboardSeen = true
         }
@@ -76,6 +81,9 @@ final class AppModel: ObservableObject {
             }
         case "session":
             startSession(trigger: L("从键盘跳转", "opened from the keyboard"), confirm: true)
+        case "settings":
+            tab = .settings
+            settingsPath = []
         default:
             break
         }

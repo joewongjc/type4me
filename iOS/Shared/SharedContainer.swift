@@ -40,6 +40,8 @@ enum SharedContainer {
     enum Link {
         /// Start the voice session and show the "go back" screen.
         static let startSession = URL(string: "\(urlScheme)://session?start=1")!
+        /// Open the app on its Settings tab.
+        static let settings = URL(string: "\(urlScheme)://settings")!
     }
 }
 
@@ -53,6 +55,38 @@ enum SharedSettings {
         static let keyboardLastSeen = "keyboardLastSeen"
         static let keyboardHostIsSelf = "keyboardHostIsSelf"
         static let keyboardDemo = "keyboardDemo"
+        static let keyHaptics = "keyHaptics"
+        static let keySounds = "keySounds"
+        static let fullWidthPunctuation = "fullWidthPunctuation"
+        static let intelliSenseContext = "intelliSenseContext"
+    }
+
+    /// Intelli Sense reads the text around the cursor and sends it to the
+    /// text model with the dictation. Off, it still adapts to the kind of
+    /// field but sends only the dictation. Defaults to on.
+    static var intelliSenseContext: Bool {
+        get { SharedContainer.defaults?.object(forKey: Key.intelliSenseContext) as? Bool ?? true }
+        set { SharedContainer.defaults?.set(newValue, forKey: Key.intelliSenseContext) }
+    }
+
+    /// Key presses on the keyboard buzz and click. iOS doesn't tell
+    /// third-party keyboards about the system keyboard-feedback switches, so
+    /// the app keeps its own; both default to on.
+    static var keyHaptics: Bool {
+        get { SharedContainer.defaults?.object(forKey: Key.keyHaptics) as? Bool ?? true }
+        set { SharedContainer.defaults?.set(newValue, forKey: Key.keyHaptics) }
+    }
+
+    static var keySounds: Bool {
+        get { SharedContainer.defaults?.object(forKey: Key.keySounds) as? Bool ?? true }
+        set { SharedContainer.defaults?.set(newValue, forKey: Key.keySounds) }
+    }
+
+    /// The punctuation key types full-width marks. Unset until the user
+    /// switches it from the key's menu; until then it follows the language.
+    static var fullWidthPunctuation: Bool? {
+        get { SharedContainer.defaults?.object(forKey: Key.fullWidthPunctuation) as? Bool }
+        set { SharedContainer.defaults?.set(newValue, forKey: Key.fullWidthPunctuation) }
     }
 
     /// DEBUG simulator screenshots: the keyboard plays a scripted dictation

@@ -54,7 +54,7 @@ enum ModePrompts {
             return formalWritingTemplate
         case .agentMode:
             return agentModeTemplate
-        case .quick, .translation, .custom:
+        case .intelliSense, .quick, .translation, .custom:
             return nil
         }
     }

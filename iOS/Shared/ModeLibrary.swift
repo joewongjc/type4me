@@ -4,6 +4,10 @@ import Foundation
 /// code (`ModePrompts`); custom ones carry the user's own prompt.
 struct ModeDefinition: Codable, Identifiable, Equatable, Sendable {
     enum Kind: String, Codable, Sendable {
+        /// Polishes with what the keyboard can see of the field: the text
+        /// around the cursor and the kind of field. Its prompt is built in
+        /// code from the shared Mac core, so it has none to edit.
+        case intelliSense
         case quick
         case formalWriting
         /// The Mac's Translation mode. The raw value predates choosing a
@@ -46,6 +50,7 @@ struct ModeDefinition: Codable, Identifiable, Equatable, Sendable {
 
     static func builtInName(_ kind: Kind) -> String {
         switch kind {
+        case .intelliSense: return L("智能感知", "Intelli Sense")
         case .quick: return L("快速", "Quick")
         case .formalWriting: return L("语音润色", "Voice Polish")
         case .translation: return L("翻译", "Translate")
@@ -62,18 +67,48 @@ struct ModeDefinition: Codable, Identifiable, Equatable, Sendable {
 /// The user's modes in display order, shared with the keyboard through the
 /// App Group. The app edits it; the keyboard only reads it.
 enum ModeLibrary {
-    /// The keyboard's switcher fits this many chips.
-    static let keyboardLimit = 4
-
     private static let key = "modes.v1"
     private static let lock = NSLock()
     nonisolated(unsafe) private static var cache: (data: Data, modes: [ModeDefinition])?
 
-    /// The Mac modes that make sense on a phone keyboard. Mac Action, Ask
-    /// Anything and Intelli Sense need the Mac; Prompt Optimizer stays there too.
+    /// The Mac modes that make sense on a phone keyboard. Mac Action and Ask
+    /// Anything need the Mac; Prompt Optimizer stays there too. Intelli Sense
+    /// leads; Voice Polish stays in the library, off the keyboard.
     static let defaults: [ModeDefinition] = [
-        .builtIn(.formalWriting), .builtIn(.quick), .builtIn(.translation), .builtIn(.agentMode),
+        .builtIn(.intelliSense), .builtIn(.quick), .builtIn(.translation), .builtIn(.agentMode),
+        offKeyboard(.builtIn(.formalWriting)),
     ]
+
+    private static func offKeyboard(_ mode: ModeDefinition) -> ModeDefinition {
+        var mode = mode
+        mode.onKeyboard = false
+        return mode
+    }
+
+    private static let intelliSenseMigrationKey = "modes.intelliSenseAdded"
+
+    /// Libraries saved before the iPhone had Intelli Sense: put it first on
+    /// the keyboard in Voice Polish's place, once. Run by the app, which
+    /// owns the library; a later rearrangement by the user is left alone.
+    static func addIntelliSenseIfNeeded() {
+        guard let store = SharedContainer.defaults,
+              !store.bool(forKey: intelliSenseMigrationKey) else { return }
+        store.set(true, forKey: intelliSenseMigrationKey)
+        guard store.data(forKey: key) != nil else { return }
+        all = withIntelliSenseFirst(all)
+    }
+
+    static func withIntelliSenseFirst(_ modes: [ModeDefinition]) -> [ModeDefinition] {
+        var modes = modes
+        var intelliSense = modes.first { $0.kind == .intelliSense } ?? .builtIn(.intelliSense)
+        modes.removeAll { $0.kind == .intelliSense }
+        intelliSense.onKeyboard = true
+        modes.insert(intelliSense, at: 0)
+        if let polish = modes.firstIndex(where: { $0.kind == .formalWriting && $0.onKeyboard }) {
+            modes[polish].onKeyboard = false
+        }
+        return modes
+    }
 
     static var all: [ModeDefinition] {
         get {
@@ -94,7 +129,7 @@ enum ModeLibrary {
 
     /// Shown on the keyboard, in library order.
     static var keyboardModes: [ModeDefinition] {
-        Array(all.filter(\.onKeyboard).prefix(keyboardLimit))
+        all.filter(\.onKeyboard)
     }
 
     static func definition(for id: String) -> ModeDefinition? {
@@ -119,28 +154,12 @@ enum ModeLibrary {
 }
 
 /// One library entry as stored. Kinds this build doesn't know are dropped
-/// instead of failing the whole library; Intelli Sense, which the iPhone no
-/// longer has, hands its place to Voice Polish.
+/// instead of failing the whole library.
 private struct StoredMode: Decodable {
     let mode: ModeDefinition?
 
-    private enum Keys: String, CodingKey {
-        case kind, onKeyboard
-    }
-
     init(from decoder: Decoder) throws {
-        if let mode = try? ModeDefinition(from: decoder) {
-            self.mode = mode
-            return
-        }
-        let container = try decoder.container(keyedBy: Keys.self)
-        guard try container.decodeIfPresent(String.self, forKey: .kind) == DictationMode.legacyIntelliSenseID else {
-            mode = nil
-            return
-        }
-        var polish = ModeDefinition.builtIn(.formalWriting)
-        polish.onKeyboard = try container.decodeIfPresent(Bool.self, forKey: .onKeyboard) ?? true
-        mode = polish
+        mode = try? ModeDefinition(from: decoder)
     }
 }
 
@@ -163,13 +182,11 @@ struct DictationMode: RawRepresentable, Hashable, Codable, Identifiable, Sendabl
         rawValue = id
     }
 
+    static let intelliSense = DictationMode(id: ModeDefinition.Kind.intelliSense.rawValue)
     static let quick = DictationMode(id: ModeDefinition.Kind.quick.rawValue)
     static let formalWriting = DictationMode(id: ModeDefinition.Kind.formalWriting.rawValue)
     static let translation = DictationMode(id: ModeDefinition.Kind.translation.rawValue)
     static let agentMode = DictationMode(id: ModeDefinition.Kind.agentMode.rawValue)
-
-    /// History written before the iPhone dropped Intelli Sense still carries this ID.
-    static let legacyIntelliSenseID = "intelliSense"
 
     var id: String { rawValue }
 
@@ -184,12 +201,12 @@ struct DictationMode: RawRepresentable, Hashable, Codable, Identifiable, Sendabl
         if let kind = ModeDefinition.Kind(rawValue: rawValue), kind != .custom {
             return ModeDefinition.builtInName(kind)
         }
-        if rawValue == Self.legacyIntelliSenseID { return L("智能感知", "Intelli Sense") }
         return L("已删除的模式", "Deleted Mode")
     }
 
     var processingLabel: String {
         switch kind {
+        case .intelliSense: return L("整理中", "Polishing")
         case .quick: return L("识别中", "Recognizing")
         case .formalWriting: return L("润色中", "Polishing")
         case .translation: return L("翻译中", "Translating")
