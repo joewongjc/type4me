@@ -97,13 +97,20 @@ struct ASRSettingsView: View {
     }
 
     private var isUnchanged: Bool { ConfigStore.asr == endpoint }
-    private var savedProviders: [String] { ConfigStore.profiles(.asr).map { PhoneASR.name($0.provider) } }
+    /// Providers saved on this iPhone, listed first in the picker.
+    private var configuredProviders: Set<String> {
+        Set(ConfigStore.profiles(.asr).map(\.provider) + [ConfigStore.asr?.provider].compactMap { $0 })
+    }
 
     var body: some View {
         Form {
             Section {
                 Picker(L("服务商", "Provider"), selection: $provider) {
-                    ForEach(PhoneASR.providers, id: \.self) { Text($0.displayName).tag($0) }
+                    let configured = configuredProviders
+                    ProviderPickerItems(
+                        configured: PhoneASR.providers.filter { configured.contains($0.rawValue) },
+                        others: PhoneASR.providers.filter { !configured.contains($0.rawValue) }
+                    ) { Text($0.displayName).tag($0) }
                 }
                 if let modeField {
                     Picker(modeField.label, selection: binding(for: modeField)) {
@@ -124,13 +131,6 @@ struct ASRSettingsView: View {
                     }
                 } header: {
                     Text(L("设置", "Settings"))
-                } footer: {
-                    if !savedProviders.isEmpty, savedProviders.count > 1 || !savedProviders.contains(provider.displayName) {
-                        Text(L(
-                            "这台 iPhone 上存了 \(savedProviders.count) 个识别服务（\(savedProviders.joined(separator: "、"))）。切换服务商会带出它的设置，保存后改用它。",
-                            "\(savedProviders.count) speech services are saved on this iPhone (\(savedProviders.joined(separator: ", "))). Switching provider brings back its settings; save to use it."
-                        ))
-                    }
                 }
             }
 
@@ -299,7 +299,10 @@ struct LLMSettingsView: View {
     }
 
     private var preset: LLMProviderPreset { LLMProviderPreset.preset(for: providerID) }
-    private var savedProviders: [String] { ConfigStore.llmProfiles.map { ProviderNames.llm($0.provider) } }
+    /// Providers saved on this iPhone, listed first in the picker.
+    private var configuredProviders: Set<String> {
+        Set(ConfigStore.llmProfiles.map(\.provider) + [ConfigStore.llm?.provider].compactMap { $0 })
+    }
 
     private var trimmedBaseURL: String { baseURL.trimmingCharacters(in: .whitespacesAndNewlines) }
 
@@ -329,7 +332,11 @@ struct LLMSettingsView: View {
         Form {
             Section {
                 Picker(L("服务商", "Provider"), selection: $providerID) {
-                    ForEach(LLMProviderPreset.all) { Text($0.name).tag($0.id) }
+                    let configured = configuredProviders
+                    ProviderPickerItems(
+                        configured: LLMProviderPreset.all.filter { configured.contains($0.id) },
+                        others: LLMProviderPreset.all.filter { !configured.contains($0.id) }
+                    ) { Text($0.name).tag($0.id) }
                 }
                 CredentialInput(title: "API Key", text: $apiKey, secret: true)
                 HStack {
@@ -352,13 +359,6 @@ struct LLMSettingsView: View {
                 }
             } header: {
                 Text(L("服务", "Service"))
-            } footer: {
-                if savedProviders.count > 1 {
-                    Text(L(
-                        "这台 iPhone 上存了 \(savedProviders.count) 个处理模型（\(savedProviders.joined(separator: "、"))）。切换服务商会带出它的密钥和模型，保存后改用它。",
-                        "\(savedProviders.count) text models are saved on this iPhone (\(savedProviders.joined(separator: ", "))). Switching provider brings back its key and model; save to use it."
-                    ))
-                }
             }
 
             Section {
@@ -583,6 +583,27 @@ enum ConnectionTest {
             return .passed(ms: Int(Date().timeIntervalSince(started) * 1000))
         } catch {
             return .failed(error.localizedDescription)
+        }
+    }
+}
+
+/// Provider picker contents: the ones saved on this iPhone first, under their
+/// own heading, then the rest. Without any saved, a plain list as before.
+private struct ProviderPickerItems<Item: Hashable, Row: View>: View {
+    let configured: [Item]
+    let others: [Item]
+    @ViewBuilder let row: (Item) -> Row
+
+    var body: some View {
+        if configured.isEmpty {
+            ForEach(others, id: \.self, content: row)
+        } else {
+            Section(L("已配置", "Set Up")) {
+                ForEach(configured, id: \.self, content: row)
+            }
+            Section(L("其他服务商", "Other Providers")) {
+                ForEach(others, id: \.self, content: row)
+            }
         }
     }
 }
