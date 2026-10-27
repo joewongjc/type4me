@@ -194,8 +194,13 @@ struct KeyboardRootView: View {
                     }
                     .transition(.blurReplace)
                 default:
-                    RepeatingKey(systemImage: "delete.left", title: L("删除", "Delete")) { model.deleteBackward() }
-                        .transition(.blurReplace)
+                    RepeatingKey(
+                        systemImage: "delete.left",
+                        title: L("删除", "Delete"),
+                        action: { model.deleteBackward() },
+                        clear: { model.clearAll(afterDeleting: $0) }
+                    )
+                    .transition(.blurReplace)
                 }
             }
             .animation(.easeInOut(duration: 0.18), value: model.phase)
@@ -888,25 +893,42 @@ struct SlideTargetKey: View {
     }
 }
 
-/// Delete key that repeats while held, speeding up after a while.
+/// Delete key that repeats while held, speeding up after a while. Sliding
+/// up turns it into clear, which acts on letting go there.
 struct RepeatingKey: View {
     let systemImage: String
     let title: String
     let action: () -> Void
+    /// Called with how many deletes the press made before it slid up.
+    let clear: (Int) -> Void
+
+    @State private var armed = false
+
+    private var shape: RoundedRectangle { RoundedRectangle(cornerRadius: 16, style: .continuous) }
 
     var body: some View {
         VStack(spacing: 4) {
-            Image(systemName: systemImage).font(.system(size: 18, weight: .medium))
-            Text(title).font(.system(size: 11))
+            Image(systemName: armed ? "xmark" : systemImage).font(.system(size: 18, weight: armed ? .bold : .medium))
+            Text(armed ? L("清空", "Clear") : title).font(.system(size: 11, weight: armed ? .semibold : .regular))
         }
-        .foregroundStyle(KB.ink)
+        .foregroundStyle(armed ? Color.white : KB.ink)
         .frame(width: 64, height: 56)
-        .glassEffect(.regular.tint(KB.functionTint).interactive(), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(shape.fill(Bar.recording.opacity(armed ? 0.9 : 0)))
+        .glassEffect(.regular.tint(KB.functionTint).interactive(), in: shape)
+        .scaleEffect(armed ? 1.08 : 1)
+        .animation(.spring(response: 0.22, dampingFraction: 0.6), value: armed)
         .contentShape(Rectangle())
-        .modifier(KeyRepeat(feedback: .delete, accelerates: true, action: action))
+        .modifier(KeyRepeat(
+            feedback: .delete,
+            accelerates: true,
+            swipeUp: .init(armed: $armed, action: clear),
+            action: action
+        ))
         .accessibilityLabel(title)
+        .accessibilityHint(L("上划清空全部", "Swipe up to clear everything"))
         .accessibilityAddTraits(.isButton)
         .accessibilityAction { action() }
+        .accessibilityAction(named: L("清空全部", "Clear all")) { clear(0) }
     }
 }
 

@@ -89,31 +89,62 @@ struct KeyPressStyle: ButtonStyle {
 struct KeyRepeat: ViewModifier {
     let feedback: KeyFeedback.Kind
     var accelerates = false
+    /// Sliding up arms this and stops the repeat; letting go while it is
+    /// armed acts. Sliding back down disarms it.
+    var swipeUp: SwipeUp? = nil
     let action: () -> Void
+
+    struct SwipeUp {
+        let armed: Binding<Bool>
+        /// Called with how many times the press had already fired.
+        let action: (Int) -> Void
+    }
+
+    static let swipeDistance: CGFloat = 30
 
     @State private var timer: Timer?
     @State private var repeats = 0
+    @State private var pressing = false
 
     func body(content: Content) -> some View {
         content
             .gesture(
                 DragGesture(minimumDistance: 0)
-                    .onChanged { _ in
-                        guard timer == nil else { return }
-                        fire()
-                        repeats = 0
-                        timer = Timer.scheduledTimer(withTimeInterval: 0.45, repeats: false) { _ in
-                            MainActor.assumeIsolated { schedule(every: 0.08) }
+                    .onChanged { value in
+                        if !pressing {
+                            pressing = true
+                            fire()
+                            repeats = 0
+                            if swipeUp != nil { KeyFeedback.prepareCrossing() }
+                            timer = Timer.scheduledTimer(withTimeInterval: 0.45, repeats: false) { _ in
+                                MainActor.assumeIsolated { schedule(every: 0.08) }
+                            }
                         }
+                        guard let swipeUp else { return }
+                        let up = value.translation.height < -Self.swipeDistance
+                        guard up != swipeUp.armed.wrappedValue else { return }
+                        // Once the finger has gone up, the repeat stays off
+                        // for the rest of the press.
+                        timer?.invalidate()
+                        timer = nil
+                        swipeUp.armed.wrappedValue = up
+                        KeyFeedback.playCrossing(entering: up)
                     }
                     .onEnded { _ in
                         timer?.invalidate()
                         timer = nil
+                        pressing = false
+                        if let swipeUp, swipeUp.armed.wrappedValue {
+                            swipeUp.armed.wrappedValue = false
+                            swipeUp.action(repeats + 1)
+                        }
                     }
             )
             .onDisappear {
                 timer?.invalidate()
                 timer = nil
+                pressing = false
+                swipeUp?.armed.wrappedValue = false
             }
     }
 
