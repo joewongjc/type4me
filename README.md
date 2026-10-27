@@ -23,7 +23,7 @@ Type4Me 是一款免费开源的 macOS 语音输入法。按下快捷键说话�
 
 | 版本 | 说明 | 大小 |
 | --- | --- | --- |
-| ✨ **[云端版（推荐）](https://github.com/joewongjc/type4me/releases/download/v3.0.0/Type4Me-v3.0.0-cloud.dmg)** | Intel 与 Apple Silicon 通用。需要自备语音识别和大模型的 API Key，识别推荐火山引擎（豆包）或 Soniox。[配置指引](https://my.feishu.cn/wiki/QdEnwBMfUi0mN4k3ucMcNYhUnXr) | ~18 MB |
+| ✨ **[云端版（推荐）](https://github.com/joewongjc/type4me/releases/download/v3.0.0/Type4Me-v3.0.0-cloud.dmg)** | Intel 与 Apple Silicon 通用。需要自备语音识别和大模型的 API Key，识别推荐火山引擎（豆包）或 Soniox。[配置指引](https://github.com/joewongjc/type4me/issues/388) | ~18 MB |
 | **[本地版](https://github.com/joewongjc/type4me/releases/download/v3.0.0/Type4Me-v3.0.0-local-apple-silicon.dmg)** | 仅支持 Apple Silicon。内置 SenseVoice + Qwen3-ASR 离线识别，约占 8 GB 内存，建议 32 GB 以上的机器使用；文本处理仍需 API Key 或本地 Ollama | ~720 MB |
 
 需要 macOS 14 (Sonoma) 及以上。两个版本共用一份配置，可以随时互相替换。安装包已通过 Apple 公证，首次打开按引导授予**麦克风**和**辅助功能**权限就能用。
@@ -164,7 +164,7 @@ Type4Me is a free, open-source voice input app for macOS. Hold a hotkey and talk
 
 | Edition | Details | Size |
 | --- | --- | --- |
-| ✨ **[Cloud (recommended)](https://github.com/joewongjc/type4me/releases/download/v3.0.0/Type4Me-v3.0.0-cloud.dmg)** | Intel and Apple Silicon. Bring your own speech and LLM API keys; Volcano Engine (Doubao) or Soniox recommended for recognition. [Setup guide](https://my.feishu.cn/wiki/QdEnwBMfUi0mN4k3ucMcNYhUnXr) | ~18 MB |
+| ✨ **[Cloud (recommended)](https://github.com/joewongjc/type4me/releases/download/v3.0.0/Type4Me-v3.0.0-cloud.dmg)** | Intel and Apple Silicon. Bring your own speech and LLM API keys; Volcano Engine (Doubao) or Soniox recommended for recognition. [Setup guide](https://github.com/joewongjc/type4me/issues/388) | ~18 MB |
 | **[Local](https://github.com/joewongjc/type4me/releases/download/v3.0.0/Type4Me-v3.0.0-local-apple-silicon.dmg)** | Apple Silicon only. Bundles SenseVoice + Qwen3-ASR for offline recognition (~8 GB RAM, 32 GB+ Macs recommended). Text processing still needs an API key or local Ollama | ~720 MB |
 
 Requires macOS 14 (Sonoma) or later. Both editions share the same settings, so you can switch anytime. The app is notarized by Apple; on first launch, grant **Microphone** and **Accessibility** access as prompted.
