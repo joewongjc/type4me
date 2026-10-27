@@ -98,12 +98,13 @@ struct RecordingGlassTuning: Equatable {
         }
     }
 
-    /// Tuned by eye on the real panel (2026-10): no floor so the glass shows
-    /// the desktop, no extra rim, full drop shadow for depth on flat pages.
-    /// Theme-independent; `theme` is kept so presets can diverge again.
+    /// Tuned by eye on the real panel (2026-10): no extra rim, full drop
+    /// shadow for depth on flat pages. Light has no floor so the glass shows
+    /// the desktop. Active glass over a white page renders mid grey, which left
+    /// dark-theme white text near 2.5:1, so dark keeps a thin floor.
     static func enhanced(for theme: RecordingTheme) -> RecordingGlassTuning {
         RecordingGlassTuning(
-            floorOpacity: 0,
+            floorOpacity: theme == .dark ? 0.30 : 0,
             edgeFade: 0,
             rimStrength: 0,
             glassTint: 0,
@@ -113,8 +114,9 @@ struct RecordingGlassTuning: Equatable {
         )
     }
 
-    /// Custom starts from the enhanced preset.
-    static let customDefault = enhanced(for: .dark)
+    /// Custom starts from the enhanced preset. Custom values apply to both
+    /// themes, so start from the floorless light variant.
+    static let customDefault = enhanced(for: .light)
 
     enum StorageKey {
         static let floorOpacity = "tf_recordingGlassFloorOpacity"

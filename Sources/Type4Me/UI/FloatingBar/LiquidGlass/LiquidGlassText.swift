@@ -76,12 +76,14 @@ struct LiquidGlassText: View {
             startPoint = UnitPoint(x: Double(phase - glintWidth), y: 0.5)
             endPoint = UnitPoint(x: Double(phase + glintWidth), y: 0.5)
         } else {
-            // Off-screen during the 2.0s idle period (text remains clean high-contrast silver at 0.70 opacity)
+            // Off-screen during the 2.0s idle period (text remains clean full-contrast colour)
             startPoint = UnitPoint(x: -2.0, y: 0.5)
             endPoint = UnitPoint(x: -1.7, y: 0.5)
         }
 
-        let textColor = theme == .light ? TF.floatingTextLight : Color.white.opacity(0.70)
+        // Dark text stays fully opaque: at 0.70 it read as grey over the frosted
+        // standard glass on bright pages (3.1:1). The sweep shows via the glow.
+        let textColor = theme == .light ? TF.floatingTextLight : Color.white
         let gradientStops: [Gradient.Stop] = theme == .light ? [
             .init(color: textColor, location: 0.0),
             .init(color: textColor.opacity(0.75), location: 0.32),
@@ -89,11 +91,8 @@ struct LiquidGlassText: View {
             .init(color: textColor.opacity(0.75), location: 0.68),
             .init(color: textColor, location: 1.0),
         ] : [
-            .init(color: Color.white.opacity(0.70), location: 0.0),
-            .init(color: Color.white.opacity(0.85), location: 0.35),
-            .init(color: Color.white, location: 0.50),
-            .init(color: Color.white.opacity(0.85), location: 0.65),
-            .init(color: Color.white.opacity(0.70), location: 1.0),
+            .init(color: textColor, location: 0.0),
+            .init(color: textColor, location: 1.0),
         ]
 
         return Text(text)
