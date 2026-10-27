@@ -1,7 +1,7 @@
 # Type4Me 文档中心
 
 > 文档状态：当前有效
-> 最后整理：2026-10-25
+> 最后整理：2026-10-27
 
 这里是仓库文档的唯一入口。功能设计、开发设计和历史材料不再平铺在 `docs/` 根目录。
 
@@ -21,6 +21,7 @@
 
 | 功能 | 文档 | 类型 | 状态 | 设计日期 | 实现基线 |
 |---|---|---|---|---:|---|
+| 选中纠正 | [产品设计](features/voice-correction/product-design.md) / [开发设计](features/voice-correction/development-design.md) | 产品与开发设计 | 设计完成，待实现 | 2026-10-27 | — |
 | 手机版 | [iPhone 语音键盘与 Mac 配置同步](features/mobile-app/design.md) | 产品与开发设计 | 已实现，测试中 | 2026-10-25 | `9334f5d1`（PR #372） |
 | 火山识别方案 | [准确 / 快速 / 自定义](features/volc-recognition-presets/design.md) | 产品与开发设计 | 已实现，待用户验收 | 2026-10-24 | main |
 | 录音结束节奏 | [松手出字：录音结束后的浮动条节奏](features/release-to-text/design.md) | 产品与开发设计 | 设计完成，待实现 | 2026-10-22 | `4422e95d`（main） |
