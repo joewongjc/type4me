@@ -30,6 +30,9 @@ final class RecordingGlassTuningTests: XCTestCase {
         // Enhanced must be visibly thinner than the standard contrast floors.
         XCTAssertLessThan(dark!.floorOpacity, TF.glassDarkContrastFloor)
         XCTAssertLessThan(light!.floorOpacity, TF.glassLightContrastFloor)
+        // White text needs a thin dark floor over bright pages; light stays clear.
+        XCTAssertGreaterThan(dark!.floorOpacity, 0)
+        XCTAssertEqual(light!.floorOpacity, 0)
     }
 
     func testCustomUsesStoredValues() {
