@@ -40,6 +40,18 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
+            // The title sits in the content, as Home's wordmark does, so both
+            // tabs scroll under the same soft fade. Pages pushed from here
+            // keep their navigation bar for the back button.
+            Section {
+                Text(L("设置", "Settings"))
+                    .font(.system(size: 31, weight: .heavy))
+                    .foregroundStyle(T4.ink)
+                    .accessibilityAddTraits(.isHeader)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 6, leading: 4, bottom: 0, trailing: 0))
+            }
+
             Section {
                 NavigationLink(value: SettingsRoute.asr) {
                     serviceRow(
@@ -188,6 +200,12 @@ struct SettingsView: View {
         .scrollContentBackground(.hidden)
         .background(DottedCanvas())
         .navigationTitle(L("设置", "Settings"))
+        // Kept for the back button only. Inline, so the hidden bar's large
+        // title doesn't change the insets mid-bounce at the top.
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .navigationBar)
+        .safeAreaBar(edge: .top) { Color.clear.frame(height: 0) }
+        .scrollEdgeEffectStyle(.soft, for: .top)
         // Re-read the Keychain-backed rows after an import or an edit.
         .id(model.configVersion)
         .onChange(of: timeout) { _, value in AppSettings.sessionTimeoutMinutes = value }
