@@ -102,6 +102,7 @@ enum AppSettings {
         static let onboarded = "onboardingCompleted"
         static let aiConsent = "aiSharingConsent"
         static let dismissedUpdate = "dismissedUpdateBuild"
+        static let syncedFromMac = "syncedFromMac"
     }
 
     /// The update the user closed on Home, as `version(build)`.
@@ -126,6 +127,14 @@ enum AppSettings {
     static var importCardDismissed: Bool {
         get { UserDefaults.standard.bool(forKey: Key.importCardDismissed) }
         set { UserDefaults.standard.set(newValue, forKey: Key.importCardDismissed) }
+    }
+
+    /// Something came over from the Mac at least once. Until then Settings
+    /// leads with how to sync. Imports made before this flag existed left
+    /// the Mac's name behind.
+    static var syncedFromMac: Bool {
+        get { UserDefaults.standard.bool(forKey: Key.syncedFromMac) || ConfigStore.meta?.sourceName != nil }
+        set { UserDefaults.standard.set(newValue, forKey: Key.syncedFromMac) }
     }
 
     static var onboardingCompleted: Bool {

@@ -166,6 +166,10 @@ final class AppModel: ObservableObject {
         if !hotwords.isEmpty || !snippets.isEmpty {
             VocabularyStore.shared.applySync(hotwords: hotwords, snippets: snippets)
         }
+        if selection.textOutput, let textOutput = payload.textOutput {
+            TextOutputSettings.apply(textOutput)
+        }
+        AppSettings.syncedFromMac = true
         configVersion += 1
         let asrCount = payload.allASRs.filter { selection.asrs.contains($0.provider) }.count
         let llmCount = payload.allLLMs.filter { selection.llms.contains($0.provider) }.count

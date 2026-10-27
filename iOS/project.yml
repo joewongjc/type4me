@@ -80,6 +80,8 @@ targets:
       - path: ../Sources/Type4Me/Audio/WAVEncoder.swift
       # Volcano recognition profile and tuning the shared Volcano client reads.
       - path: ../Sources/Type4Me/Services/VolcTuningSettings.swift
+      # Text output: punctuation, Pangu spacing and corner quotes, as on the Mac.
+      - path: ../Sources/Type4Me/Services/TextOutputFormatter.swift
       # Text model providers: base URLs, model lists, thinking switches.
       - path: ../Sources/Type4Me/LLM/LLMProvider.swift
       # Translation mode: target languages, prompt and output check.

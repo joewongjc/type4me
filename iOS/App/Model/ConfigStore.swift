@@ -37,6 +37,7 @@ enum ConfigStore {
         var modes: Set<String>
         var hotwords: Bool
         var snippets: Bool
+        var textOutput: Bool
 
         init(all payload: Type4MeTransferPayload) {
             asrs = Set(payload.allASRs.map(\.provider))
@@ -46,9 +47,10 @@ enum ConfigStore {
             modes = Set((payload.modes ?? []).map(\.id))
             hotwords = !(payload.hotwords ?? []).isEmpty
             snippets = !(payload.snippets ?? []).isEmpty
+            textOutput = payload.textOutput != nil
         }
 
-        var isEmpty: Bool { asrs.isEmpty && llms.isEmpty && modes.isEmpty && !hotwords && !snippets }
+        var isEmpty: Bool { asrs.isEmpty && llms.isEmpty && modes.isEmpty && !hotwords && !snippets && !textOutput }
     }
 
     static func save(_ payload: Type4MeTransferPayload) throws {
@@ -196,5 +198,78 @@ enum ProviderNames {
 
     static func llm(_ id: String) -> String {
         LLMProvider(rawValue: id)?.displayName ?? id
+    }
+}
+
+/// Settings › Text Output, stored under the Mac's own keys so the shared
+/// `TextOutputFormatter` reads it exactly as it does on the Mac.
+enum TextOutputSettings {
+    static let trailingPunctuationKey = "tf_stripTrailingPunctuation"
+
+    static var cjkSpacing: CJKSpacingMode {
+        get { CJKSpacingMode.current() }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: CJKSpacingMode.storageKey) }
+    }
+
+    static var trailingPunctuation: TrailingPunctuationMode {
+        get { UserDefaults.standard.string(forKey: trailingPunctuationKey).flatMap(TrailingPunctuationMode.init(rawValue:)) ?? .off }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: trailingPunctuationKey) }
+    }
+
+    static var cornerQuotes: Bool {
+        get { UserDefaults.standard.object(forKey: CornerQuotePreference.storageKey) as? Bool ?? CornerQuotePreference.defaultValue }
+        set { UserDefaults.standard.set(newValue, forKey: CornerQuotePreference.storageKey) }
+    }
+
+    /// Takes the Mac's values; any this build doesn't know are left as they are.
+    static func apply(_ synced: Type4MeTransferPayload.TextOutput) {
+        if let mode = synced.cjkSpacing.flatMap(CJKSpacingMode.init(rawValue:)) { cjkSpacing = mode }
+        if let mode = synced.trailingPunctuation.flatMap(TrailingPunctuationMode.init(rawValue:)) { trailingPunctuation = mode }
+        if let on = synced.cornerQuotes { cornerQuotes = on }
+    }
+
+    /// Final formatting for a dictation, with the mode's own punctuation.
+    static func format(_ text: String, mode: ModeDefinition?) -> String {
+        let punctuation = mode?.punctuation.flatMap(ModePunctuationMode.init(rawValue:)) ?? .inherit
+        return TextOutputFormatter.format(text, options: .current(modePunctuation: punctuation))
+    }
+
+    static func name(_ mode: CJKSpacingMode) -> String {
+        switch mode {
+        case .pangu: return L("开启", "On")
+        case .off: return L("关闭", "Off")
+        case .remove: return L("移除空格", "Remove Spaces")
+        }
+    }
+
+    static func name(_ mode: TrailingPunctuationMode) -> String {
+        switch mode {
+        case .off: return L("不去掉", "Off")
+        case .period: return L("去掉句号", "Periods Only")
+        case .all: return L("去掉所有标点", "All Punctuation")
+        }
+    }
+
+    static func name(_ mode: ModePunctuationMode) -> String {
+        switch mode {
+        case .inherit: return L("跟随文本输出设置", "Follow Text Output")
+        case .preserve: return L("保留全部标点", "Keep All Punctuation")
+        case .stripTrailing: return L("去掉句末标点", "Remove Trailing Punctuation")
+        case .questionsAndExclamationsOnly: return L("仅保留问号和感叹号", "Keep Only ? and !")
+        case .removeAll: return L("去掉全部标点", "Remove All Punctuation")
+        }
+    }
+
+    /// One line for the import screen.
+    static func summary(_ synced: Type4MeTransferPayload.TextOutput) -> String {
+        var parts: [String] = []
+        if let mode = synced.cjkSpacing.flatMap(CJKSpacingMode.init(rawValue:)) {
+            parts.append(L("盘古之白：", "Pangu spacing: ") + name(mode))
+        }
+        if let mode = synced.trailingPunctuation.flatMap(TrailingPunctuationMode.init(rawValue:)) {
+            parts.append(L("句末标点：", "Trailing punctuation: ") + name(mode))
+        }
+        if synced.cornerQuotes == true { parts.append(L("『』代替‘’", "『』 for ‘’")) }
+        return parts.joined(separator: L("，", ", "))
     }
 }
