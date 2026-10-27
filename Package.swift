@@ -40,6 +40,11 @@ var targets: [Target] = [
         swiftSettings: swiftDefines
     ),
     .target(
+        name: "Type4MeCorrectionCore",
+        path: "Sources/Type4MeCorrectionCore",
+        swiftSettings: swiftDefines
+    ),
+    .target(
         name: "Type4MeUI",
         path: "Sources/Type4MeUI",
         swiftSettings: swiftDefines
@@ -64,7 +69,7 @@ var targets: [Target] = [
     ),
     .testTarget(
         name: "Type4MeTests",
-        dependencies: ["Type4Me", "Type4MeIntelliSenseCore", "Type4MeReviseCore", "Type4MeTransferCore"],
+        dependencies: ["Type4Me", "Type4MeIntelliSenseCore", "Type4MeReviseCore", "Type4MeTransferCore", "Type4MeCorrectionCore"],
         path: "Tests/Type4MeTests",
         swiftSettings: swiftDefines
     ),
@@ -99,6 +104,7 @@ let package = Package(
         .library(name: "Type4MeIntelliSenseCore", targets: ["Type4MeIntelliSenseCore"]),
         .library(name: "Type4MeReviseCore", targets: ["Type4MeReviseCore"]),
         .library(name: "Type4MeTransferCore", targets: ["Type4MeTransferCore"]),
+        .library(name: "Type4MeCorrectionCore", targets: ["Type4MeCorrectionCore"]),
     ],
     dependencies: [],
     targets: targets

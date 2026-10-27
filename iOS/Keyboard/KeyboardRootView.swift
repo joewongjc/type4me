@@ -87,7 +87,13 @@ struct KeyboardRootView: View {
             // while it turns it widens over the buttons either side, which
             // keep their places.
             ZStack {
-                ModePicker(model: model, expanded: $modeBarOpen)
+                if model.correction == .none {
+                    ModePicker(model: model, expanded: $modeBarOpen)
+                } else {
+                    CorrectionChip(model: model)
+                        .padding(.horizontal, 52)
+                        .transition(.opacity)
+                }
                 HStack {
                     // Face ID iPhones give third-party keyboards no way to
                     // close, so the keyboard carries its own.
@@ -100,6 +106,7 @@ struct KeyboardRootView: View {
                 .allowsHitTesting(!modeBarOpen)
             }
             .animation(ModePicker.widen, value: modeBarOpen)
+            .animation(.easeInOut(duration: 0.2), value: model.correction == .none)
             .padding(.horizontal, 4)
             .transition(.opacity)
         }
@@ -112,7 +119,7 @@ struct KeyboardRootView: View {
         case .recording(let locked):
             return .recording(text: model.liveText, locked: locked)
         case .processing:
-            return .processing(text: model.liveText, label: model.mode.processingLabel)
+            return .processing(text: model.liveText, label: model.processingLabel)
         case .idle:
             guard let notice = model.notice else { return nil }
             switch notice.kind {
@@ -203,14 +210,22 @@ struct KeyboardRootView: View {
             switch model.holdZone {
             case .cancel: return L("松手取消", "Release to cancel")
             case .lock: return L("松手锁定", "Release to lock")
-            case .none: return L("← 取消 · 松手出字 · 锁定 →", "← Cancel · Release · Lock →")
+            case .none:
+                return model.isCorrecting
+                    ? L("← 取消 · 松手纠正 · 锁定 →", "← Cancel · Release to correct · Lock →")
+                    : L("← 取消 · 松手出字 · 锁定 →", "← Cancel · Release · Lock →")
             }
         // With no transcript the caption itself names the step; otherwise
         // it keeps the words on screen and the step is named here.
-        case .processing: return model.liveText.isEmpty ? " " : model.mode.processingLabel
+        case .processing: return model.liveText.isEmpty ? " " : model.processingLabel
         case .idle:
             switch model.liveness {
-            case .ready: return L("按住说话 · 轻点锁定", "Hold to talk · Tap to lock")
+            case .ready:
+                switch model.correction {
+                case .armed: return L("按住说出正确内容", "Hold and say what it should be")
+                case .corrected: return L("还不对？按住再说一次", "Still wrong? Hold and say it again")
+                case .none: return L("按住说话 · 轻点锁定", "Hold to talk · Tap to lock")
+                }
             case .checking: return L("正在连接 Type4Me…", "Connecting to Type4Me…")
             case .needsApp: return L("点一下打开 Type4Me 开启会话", "Tap to open Type4Me and start")
             }
@@ -269,6 +284,8 @@ enum KB {
     static let lock = Color(red: 0.11, green: 0.62, blue: 0.46)
     /// The mode dial at rest: barely set off from the keyboard behind it.
     static let dialBase = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(white: 1, alpha: 0.06) : UIColor(white: 1, alpha: 0.4) })
+    /// A quiet button inside a glass chip: an ink wash, white on a dark keyboard.
+    static let chipButton = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(white: 1, alpha: 0.16) : UIColor(white: 0.075, alpha: 0.08) })
     static let halo = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(white: 1, alpha: 0.10) : UIColor(white: 0, alpha: 0.07) })
 }
 
@@ -568,6 +585,88 @@ struct OpenAppButton: View {
     }
 }
 
+/// Takes the dial's place while holding the mic corrects a selection: what
+/// will be corrected, then what it became.
+struct CorrectionChip: View {
+    @ObservedObject var model: KeyboardModel
+
+    var body: some View {
+        // The message stays centred; "Remember" and the close button sit at
+        // opposite ends so one can't be hit for the other.
+        ZStack {
+            Text(message)
+                .lineLimit(1)
+                .padding(.horizontal, sideRoom)
+            HStack(spacing: 0) {
+                if case .corrected(let done) = model.correction, done.canRemember {
+                    rememberButton(done)
+                }
+                Spacer(minLength: 0)
+                Button { model.exitCorrection() } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(KB.secondary)
+                        .frame(width: 30, height: 30)
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(model.correction == .none ? "" : L("退出纠正", "Stop correcting"))
+            }
+        }
+        .font(.system(size: 14, weight: .medium))
+        .foregroundStyle(KB.ink)
+        .padding(.horizontal, 5)
+        .frame(maxWidth: .infinity)
+        .frame(height: 36)
+        .glassEffect(.regular.tint(KB.keyTint), in: Capsule())
+    }
+
+    private var message: String {
+        switch model.correction {
+        case .armed(let request):
+            return L("纠正「\(Self.short(request.selected))」", "Correct “\(Self.short(request.selected))”")
+        case .corrected(let done):
+            let word = Self.short(done.replacement)
+            return done.count > 1
+                ? L("已改为「\(word)」· 共 \(done.count) 处", "Changed to “\(word)” · \(done.count)")
+                : L("已改为「\(word)」", "Changed to “\(word)”")
+        case .none:
+            return ""
+        }
+    }
+
+    /// Keeps the centred message clear of whatever sits at either end.
+    private var sideRoom: CGFloat {
+        if case .corrected(let done) = model.correction, done.canRemember { return 84 }
+        return 34
+    }
+
+    private func rememberButton(_ done: KeyboardModel.Corrected) -> some View {
+        Button { model.rememberCorrection() } label: {
+            HStack(spacing: 3) {
+                Image(systemName: done.remembered ? "checkmark" : "plus")
+                    .font(.system(size: 11, weight: .bold))
+                Text(done.remembered ? L("已记住", "Saved") : L("记住", "Remember"))
+                    .font(.system(size: 13, weight: .semibold))
+            }
+            .foregroundStyle(KB.ink)
+            .padding(.horizontal, 10)
+            .frame(height: 26)
+            .background(KB.chipButton, in: Capsule())
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .disabled(done.remembered)
+        .accessibilityLabel(done.remembered
+            ? L("已记住「\(done.replacement)」", "Remembered “\(done.replacement)”")
+            : L("记住「\(done.replacement)」", "Remember “\(done.replacement)”"))
+    }
+
+    static func short(_ text: String) -> String {
+        text.count > 8 ? String(text.prefix(8)) + "…" : text
+    }
+}
+
 struct HideKeyboardButton: View {
     let action: () -> Void
 
@@ -703,7 +802,9 @@ struct MicButton: View {
                     model.holdPull = 0
                 }
         )
-        .accessibilityLabel(isRecording ? L("结束说话", "Finish talking") : L("按住说话", "Hold to talk"))
+        .accessibilityLabel(isRecording
+            ? L("结束说话", "Finish talking")
+            : (model.correction == .none ? L("按住说话", "Hold to talk") : L("按住说出正确内容", "Hold and say what it should be")))
         .accessibilityAddTraits(.isButton)
     }
 
@@ -717,7 +818,7 @@ struct MicButton: View {
         } else if lockZone {
             glassBadge(Image(systemName: "lock.fill").font(.system(size: 20, weight: .semibold)))
         } else if !showsOrb {
-            Image(systemName: model.liveness == .needsApp ? "mic" : "mic.fill")
+            Image(systemName: model.liveness == .needsApp ? "mic" : (model.correction == .none ? "mic.fill" : "pencil"))
                 .font(.system(size: 30, weight: .semibold))
                 .foregroundStyle(model.liveness == .needsApp ? KB.ink : KB.micGlyph)
                 .transition(.scale(scale: 0.6).combined(with: .opacity))

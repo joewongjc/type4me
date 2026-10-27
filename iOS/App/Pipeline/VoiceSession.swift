@@ -56,6 +56,8 @@ final class VoiceSession: ObservableObject {
         var asrError: String?
         /// Intelli Sense: the field as the keyboard last saw it.
         var field: FieldContext?
+        /// Set when this recording corrects a selection instead of dictating.
+        var correction: CorrectionRequest?
         var pumpTask: Task<Void, Never>?
         var eventsTask: Task<Void, Never>?
 
@@ -181,7 +183,10 @@ final class VoiceSession: ObservableObject {
         case .start:
             guard let requestID = command.requestID else { return }
             startDictation(requestID: requestID, mode: command.mode ?? .quick)
-            if current?.requestID == requestID { current?.field = command.field }
+            if current?.requestID == requestID {
+                current?.field = command.field
+                current?.correction = command.correction
+            }
         case .stop:
             guard let current, current.requestID == command.requestID else { return }
             if let field = command.field { current.field = field }
@@ -194,6 +199,13 @@ final class VoiceSession: ObservableObject {
                 history.update(id: run, delivery: command.delivery == .copied ? .copied : .inserted)
                 deliveredRuns[id] = nil
             }
+        case .rememberHotword:
+            guard let word = command.hotword else { return }
+            if VocabularyStore.shared.addHotword(word) {
+                log.add(L("已从键盘加入 1 个热词", "Added 1 hotword from the keyboard"))
+            }
+            state.rememberedHotword = word
+            publishState(force: true)
         }
     }
 
@@ -248,6 +260,7 @@ final class VoiceSession: ObservableObject {
         state.mode = mode
         state.liveText = ""
         state.finalText = nil
+        state.correction = nil
         state.errorMessage = nil
         state.needsForeground = false
         state.level = 0
@@ -370,6 +383,18 @@ final class VoiceSession: ObservableObject {
             return
         }
 
+        if let correction = run.correction {
+            let result = await CorrectionRunner.run(spoken: raw, request: correction, log: log)
+            guard current === run else { return }
+            switch result {
+            case .replace(var outcome):
+                outcome.isHotword = VocabularyStore.shared.containsHotword(outcome.replacement)
+                finishCorrection(run, outcome: outcome, error: nil)
+            case .failed(let message): finishCorrection(run, outcome: nil, error: message)
+            }
+            return
+        }
+
         // Snippets run before the mode, as on the Mac, so a model sees the
         // corrected words.
         let input = VocabularyStore.shared.apply(to: raw)
@@ -455,6 +480,21 @@ final class VoiceSession: ObservableObject {
         releaseMicrophoneIfUnneeded()
     }
 
+    /// Corrections stay out of history: they fix text that is already there.
+    private func finishCorrection(_ run: Run, outcome: CorrectionOutcome?, error: String?) {
+        state.phase = outcome == nil ? .failed : .done
+        state.finalText = nil
+        state.correction = outcome
+        state.errorMessage = error
+        state.liveText = ""
+        publishState(force: true)
+        current = nil
+        status = keeper.isActive ? .idle : .off
+        liveText = ""
+        touch()
+        releaseMicrophoneIfUnneeded()
+    }
+
     private func fail(requestID: UUID, mode: DictationMode, message: String, needsForeground: Bool) {
         state.phase = .failed
         state.requestID = requestID
@@ -462,6 +502,7 @@ final class VoiceSession: ObservableObject {
         state.errorMessage = message
         state.needsForeground = needsForeground
         state.finalText = nil
+        state.correction = nil
         publishState(force: true)
     }
 

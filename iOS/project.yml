@@ -33,6 +33,13 @@ targets:
     platform: iOS
     sources:
       - path: ../Sources/Type4MeIntelliSenseCore
+  # Selection correction: prompt, reply parsing and occurrence matching,
+  # shared verbatim with the Mac tests.
+  Type4MeCorrectionCore:
+    type: library.static
+    platform: iOS
+    sources:
+      - path: ../Sources/Type4MeCorrectionCore
   Type4MeiOS:
     type: application
     platform: iOS
@@ -81,6 +88,7 @@ targets:
     dependencies:
       - target: Type4MeIntelliSenseCore
       - target: Type4MeTransferCore
+      - target: Type4MeCorrectionCore
       - target: Type4MeKeyboard
       - target: Type4MeWidgets
     entitlements:
@@ -137,6 +145,8 @@ targets:
         group: SharedUI/Mac
       - path: ../Sources/Type4Me/UI/FloatingBar/LiquidGlass/LiquidGlassMotion.swift
         group: SharedUI/Mac
+    dependencies:
+      - target: Type4MeCorrectionCore
     entitlements:
       path: Keyboard/Type4MeKeyboard.entitlements
       properties:

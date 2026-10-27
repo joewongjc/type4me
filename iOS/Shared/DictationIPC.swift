@@ -30,6 +30,8 @@ struct KeyboardCommand: Codable, Equatable, Sendable {
         case ping
         /// The keyboard reports what it did with the text for `requestID`.
         case delivered
+        /// Add `hotword` to the vocabulary; answered with `rememberedHotword`.
+        case rememberHotword
     }
 
     enum Delivery: String, Codable, Sendable {
@@ -46,6 +48,9 @@ struct KeyboardCommand: Codable, Equatable, Sendable {
     /// Intelli Sense only, on start and again on stop: what the keyboard
     /// can see of the text field.
     var field: FieldContext?
+    /// On start: correct this selection instead of dictating.
+    var correction: CorrectionRequest?
+    var hotword: String?
     var sentAt = Date()
 }
 
@@ -86,6 +91,8 @@ struct DictationState: Codable, Equatable, Sendable {
     var mode: DictationMode?
     var liveText = ""
     var finalText: String?
+    /// A finished correction, in place of `finalText`.
+    var correction: CorrectionOutcome?
     var errorMessage: String?
     /// The app could not open the microphone from the background; the keyboard
     /// should bring the app forward once so it can.
@@ -93,6 +100,7 @@ struct DictationState: Codable, Equatable, Sendable {
     /// 0…1 input level for the waveform while recording.
     var level: Float = 0
     var pongFor: UUID?
+    var rememberedHotword: String?
     var updatedAt = Date()
 }
 
