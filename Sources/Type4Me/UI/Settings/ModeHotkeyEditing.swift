@@ -181,6 +181,7 @@ enum ModeHotkeyEditing {
         to modes: inout [ProcessingMode],
         for target: RecordingTarget
     ) {
+        let style = ProcessingMode.HotkeyStyle.isAvailable(style, forKeyCode: code) ? style : .toggle
         removeConflictingBindings(
             keyCode: code, modifiers: mods, from: &modes, excludingModeID: target.modeId
         )

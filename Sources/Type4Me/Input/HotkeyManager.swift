@@ -384,6 +384,23 @@ final class HotkeyManager: NSObject {
         return stored > 0 ? stored : Self.defaultModifierPrefixTriggerDelay
     }
 
+    /// Default window for a double-tap binding: each tap must be released within it
+    /// of being pressed, and the second tap within it of the first tap's release.
+    static let defaultDoubleTapInterval: TimeInterval = 0.4
+    /// UserDefaults key to override `defaultDoubleTapInterval` at runtime.
+    /// No settings UI yet — adjust via `defaults write` if needed.
+    static let doubleTapIntervalKey = "tf_doubleTapInterval"
+    private var doubleTapInterval: TimeInterval {
+        let stored = UserDefaults.standard.double(forKey: Self.doubleTapIntervalKey)
+        return stored > 0 ? stored : Self.defaultDoubleTapInterval
+    }
+    /// The first clean tap of a double-tap binding, waiting for its second tap.
+    private var pendingDoubleTap: (bindingId: UUID, releasedAt: TimeInterval)?
+    /// When the currently armed double-tap candidate was pressed.
+    private var doubleTapPressedAt: TimeInterval?
+    /// Monotonic clock for double-tap timing. Tests replace it to control time.
+    internal var now: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
+
     // MARK: - State
 
     /// When true, all hotkey events pass through unhandled (used during hotkey recording).
@@ -406,6 +423,7 @@ final class HotkeyManager: NSObject {
         holdSafetyTimers.values.forEach { $0.invalidate() }
         holdSafetyTimers = [:]
         cancelCandidateTimer()
+        clearDoubleTapState()
         gestureState = .idle
         previousModifierFlags = []
         heldModifierKeyCodes.removeAll()
@@ -498,6 +516,7 @@ final class HotkeyManager: NSObject {
         holdSafetyTimers.values.forEach { $0.invalidate() }
         holdSafetyTimers = [:]
         cancelCandidateTimer()
+        clearDoubleTapState()
         gestureState = .idle
         previousModifierFlags = []
         heldModifierKeyCodes.removeAll()
@@ -750,7 +769,7 @@ final class HotkeyManager: NSObject {
                     } else {
                         handleBindingEvent(binding: binding, pressed: false)
                     }
-                case .toggle:
+                case .toggle, .doubleTap:  // Double-tap is modifier-only; act as toggle here.
                     if type == .otherMouseDown {
                         handleTogglePress(binding: binding)
                     }
@@ -790,7 +809,7 @@ final class HotkeyManager: NSObject {
                     } else if isKeyUp {
                         handleBindingEvent(binding: binding, pressed: false)
                     }
-                case .toggle:
+                case .toggle, .doubleTap:  // Double-tap is modifier-only; act as toggle here.
                     if isKeyDown {
                         handleTogglePress(binding: binding)
                     }
@@ -852,7 +871,7 @@ final class HotkeyManager: NSObject {
                 } else if type == .keyUp {
                     handleBindingEvent(binding: binding, pressed: false)
                 }
-            case .toggle:
+            case .toggle, .doubleTap:  // Double-tap is modifier-only; act as toggle here.
                 if type == .keyDown {
                     let isRepeat = event.getIntegerValueField(.keyboardEventAutorepeat)
                     if isRepeat != 0 { return nil }
@@ -902,7 +921,7 @@ final class HotkeyManager: NSObject {
                 handleHoldRelease(binding: binding)
             }
 
-        case .toggle:
+        case .toggle, .doubleTap:
             let bindingId = binding.bindingId
             if pressed {
                 let wasDown = wasModifierDown[bindingId] ?? false
@@ -1058,6 +1077,8 @@ final class HotkeyManager: NSObject {
         guard !isModifierKeyCode(keyCode) else { return }
 
         cancelCandidateTimer()
+        // Typing between two taps means they were not a double-tap.
+        clearDoubleTapState()
 
         switch gestureState {
         case .idle:
@@ -1144,6 +1165,11 @@ final class HotkeyManager: NSObject {
         candidateTimer != nil
     }
 
+    /// True while a double-tap binding's first tap is waiting for its second tap.
+    internal func hasPendingDoubleTap(for bindingId: UUID) -> Bool {
+        pendingDoubleTap?.bindingId == bindingId
+    }
+
     /// Read-only snapshot of current modifier gesture state for tests.
     internal var currentModifierGestureStateDescription: String {
         switch gestureState {
@@ -1184,7 +1210,9 @@ final class HotkeyManager: NSObject {
             guard expected == current else { return false }
             return heldModifierKeyCodes.contains(Int(b.keyCode))
         }
-        let shouldSwallow = matched != nil
+        // Double-tap bindings let every tap reach the system: a single tap of the
+        // modifier keeps its normal behavior, and press/release stay balanced.
+        let shouldSwallow = matched.map { $0.style != .doubleTap } ?? false
 
         if current.isEmpty {
             cancelCandidateTimer()
@@ -1198,9 +1226,8 @@ final class HotkeyManager: NSObject {
             case .candidate(let candidateId, let expected, _):
                 gestureState = .idle
                 if previous == expected {
-                    if let candidateBinding = bindings.first(where: { $0.bindingId == candidateId }),
-                       candidateBinding.style == .toggle {
-                        handleTogglePress(binding: candidateBinding)
+                    if let candidateBinding = bindings.first(where: { $0.bindingId == candidateId }) {
+                        handleModifierTap(binding: candidateBinding)
                     }
                 }
                 return false
@@ -1234,9 +1261,10 @@ final class HotkeyManager: NSObject {
             if let matched,
                let expected = ModeBinding.fullModifierFlags(keyCode: Int(matched.keyCode), modifiers: matched.modifiers.rawValue) {
                 armCandidate(binding: matched, expected: expected)
-                return true
+                return shouldSwallow
             } else {
                 gestureState = .tracking
+                clearDoubleTapState()
                 return false
             }
 
@@ -1245,7 +1273,7 @@ final class HotkeyManager: NSObject {
                let matched,
                let expected = ModeBinding.fullModifierFlags(keyCode: Int(matched.keyCode), modifiers: matched.modifiers.rawValue) {
                 armCandidate(binding: matched, expected: expected)
-                return true
+                return shouldSwallow
             }
             return false
 
@@ -1258,8 +1286,8 @@ final class HotkeyManager: NSObject {
                 cancelCandidateTimer()
                 gestureState = current.isEmpty ? .idle : .settling
 
-                if let candidateBinding, candidateBinding.style == .toggle {
-                    handleTogglePress(binding: candidateBinding)
+                if let candidateBinding {
+                    handleModifierTap(binding: candidateBinding)
                 }
                 return false
             }
@@ -1270,10 +1298,11 @@ final class HotkeyManager: NSObject {
                    expected.isStrictSubset(of: newExpected) {
                     cancelCandidateTimer()
                     armCandidate(binding: matched, expected: newExpected)
-                    return true
+                    return shouldSwallow
                 } else if expected.isStrictSubset(of: current) {
                     cancelCandidateTimer()
                     gestureState = .tracking
+                    clearDoubleTapState()
                     return false
                 }
             }
@@ -1310,7 +1339,7 @@ final class HotkeyManager: NSObject {
                 if let matched,
                    let newExpected = ModeBinding.fullModifierFlags(keyCode: Int(matched.keyCode), modifiers: matched.modifiers.rawValue) {
                     armCandidate(binding: matched, expected: newExpected)
-                    return true
+                    return shouldSwallow
                 } else {
                     gestureState = .tracking
                     return false
@@ -1336,6 +1365,10 @@ final class HotkeyManager: NSObject {
 
     private func armCandidate(binding: ModeBinding, expected: CGEventFlags) {
         cancelCandidateTimer()
+        if pendingDoubleTap?.bindingId != binding.bindingId {
+            pendingDoubleTap = nil
+        }
+        doubleTapPressedAt = binding.style == .doubleTap ? now() : nil
         if binding.style == .hold {
             let token = UUID()
             gestureState = .candidate(bindingId: binding.bindingId, expected: expected, token: token)
@@ -1371,6 +1404,51 @@ final class HotkeyManager: NSObject {
         candidateToken = nil
         candidateTimer?.invalidate()
         candidateTimer = nil
+    }
+
+    // MARK: - Modifier Taps
+
+    /// A modifier-only candidate was released cleanly, with no other key in between.
+    private func handleModifierTap(binding: ModeBinding) {
+        switch binding.style {
+        case .hold:
+            break
+        case .toggle:
+            handleTogglePress(binding: binding)
+        case .doubleTap:
+            handleDoubleTapTap(binding: binding)
+        }
+    }
+
+    /// The first short tap is remembered; a second short tap of the same binding
+    /// within `doubleTapInterval` acts like a toggle press.
+    private func handleDoubleTapTap(binding: ModeBinding) {
+        let releasedAt = now()
+        let pressedAt = doubleTapPressedAt
+        doubleTapPressedAt = nil
+
+        // A long press is not a tap, and it also breaks any tap waiting before it.
+        guard let pressedAt, releasedAt - pressedAt <= doubleTapInterval else {
+            pendingDoubleTap = nil
+            return
+        }
+
+        if let pending = pendingDoubleTap,
+           pending.bindingId == binding.bindingId,
+           releasedAt - pending.releasedAt <= doubleTapInterval {
+            pendingDoubleTap = nil
+            handleTogglePress(binding: binding)
+            // The press of this tap already reached the system, so let its release
+            // through too instead of swallowing it as a modifier-only stop.
+            didDispatchBindingCallback = false
+        } else {
+            pendingDoubleTap = (bindingId: binding.bindingId, releasedAt: releasedAt)
+        }
+    }
+
+    private func clearDoubleTapState() {
+        pendingDoubleTap = nil
+        doubleTapPressedAt = nil
     }
 
     private func updateHeldModifierKeyCodes(

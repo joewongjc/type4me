@@ -1003,6 +1003,7 @@ struct HotkeySectionView: View, SettingsCardHelpers {
         switch style {
         case .hold: return "hand.tap.fill"
         case .toggle: return "arrow.triangle.2.circlepath"
+        case .doubleTap: return "hand.tap"
         }
     }
 
@@ -1010,6 +1011,7 @@ struct HotkeySectionView: View, SettingsCardHelpers {
         switch style {
         case .hold: return Color(red: 0.20, green: 0.60, blue: 0.86)
         case .toggle: return TF.settingsAccentGreen
+        case .doubleTap: return Color(red: 0.58, green: 0.40, blue: 0.86)
         }
     }
 
@@ -1017,6 +1019,7 @@ struct HotkeySectionView: View, SettingsCardHelpers {
         switch style {
         case .hold: return L("按住", "Hold")
         case .toggle: return L("切换", "Toggle")
+        case .doubleTap: return L("双击", "Double-tap")
         }
     }
 }
@@ -1120,6 +1123,22 @@ struct HotkeyRecordingSheet: View {
 
     @AppStorage("tf_language") private var language = AppLanguage.systemDefault
     private var reservedConflict: String? { checkReservedConflict(capturedKeyCode, capturedModifiers) }
+
+    private var hotkeyStyleOptions: [(value: String, label: String)] {
+        Self.styleOptions(forKeyCode: capturedKeyCode)
+    }
+
+    /// Double-tap is offered only once a modifier-only hotkey has been captured.
+    static func styleOptions(forKeyCode capturedKeyCode: Int?) -> [(value: String, label: String)] {
+        var options: [(value: String, label: String)] = [
+            (ProcessingMode.HotkeyStyle.hold.rawValue, L("按住录制", "Hold to record")),
+            (ProcessingMode.HotkeyStyle.toggle.rawValue, L("按下切换", "Toggle")),
+        ]
+        if ProcessingMode.HotkeyStyle.isAvailable(.doubleTap, forKeyCode: capturedKeyCode) {
+            options.append((ProcessingMode.HotkeyStyle.doubleTap.rawValue, L("双击触发", "Double-tap")))
+        }
+        return options
+    }
 
     private var isEditing: Bool { target.editingBindingId != nil }
 
@@ -1235,11 +1254,23 @@ struct HotkeyRecordingSheet: View {
                                 }
                             }
                         ),
-                        options: [
-                            (ProcessingMode.HotkeyStyle.hold.rawValue, L("按住录制", "Hold to record")),
-                            (ProcessingMode.HotkeyStyle.toggle.rawValue, L("按下切换", "Toggle")),
-                        ]
+                        options: hotkeyStyleOptions
                     )
+
+                    if hotkeyStyle == .doubleTap {
+                        Text(L(
+                            "快速按两下开始录音，再按两下结束；只按一下时该键保持原有功能",
+                            "Tap twice quickly to start recording and twice again to stop. A single tap keeps the key's normal behavior."
+                        ))
+                        .font(.system(size: 11))
+                        .foregroundStyle(TF.settingsTextTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .onChange(of: capturedKeyCode) { _, newKeyCode in
+                    if !ProcessingMode.HotkeyStyle.isAvailable(hotkeyStyle, forKeyCode: newKeyCode) {
+                        hotkeyStyle = .toggle
+                    }
                 }
 
             }
