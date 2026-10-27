@@ -107,7 +107,7 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
         switch provider {
         case .volcano:
             return [
-                (L("配置指南", "Setup guide"), L("查看", "view"), URL(string: "https://my.feishu.cn/wiki/QdEnwBMfUi0mN4k3ucMcNYhUnXr")!),
+                (L("配置指南", "Setup guide"), L("查看", "view"), URL(string: "https://github.com/joewongjc/type4me/issues/388")!),
                 ("API Key", L("获取", "get"), URL(string: "https://console.volcengine.com/speech/new/setting/apikeys?projectName=default")!),
                 (L("官方文档", "Docs"), L("查看", "view"), URL(string: "https://www.volcengine.com/docs/6561/1354869?lang=zh")!),
             ]
