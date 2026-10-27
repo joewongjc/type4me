@@ -177,16 +177,16 @@ The mobile app is in public beta on TestFlight: open [https://testflight.apple.c
 
 <table>
   <tr>
-    <td width="25%"><img src="docs/screenshots/ios-keyboard.png" alt="Keyboard: hold to talk, release to type" /></td>
-    <td width="25%"><img src="docs/screenshots/ios-home.png" alt="Home: usage and your modes" /></td>
-    <td width="25%"><img src="docs/screenshots/ios-settings.png" alt="Settings: speech, models and vocabulary" /></td>
-    <td width="25%"><img src="docs/screenshots/ios-scan-sync.jpg" alt="Scan to sync your Mac setup" /></td>
+    <td width="25%"><img src="docs/screenshots/ios-keyboard-en.png" alt="Keyboard: hold to talk, release to type" /></td>
+    <td width="25%"><img src="docs/screenshots/ios-home-en.png" alt="Home: usage and your modes" /></td>
+    <td width="25%"><img src="docs/screenshots/ios-settings-en.png" alt="Settings: speech, models and vocabulary" /></td>
+    <td width="25%"><img src="docs/screenshots/ios-import-en.png" alt="Pick what to sync from your Mac" /></td>
   </tr>
   <tr>
     <td align="center"><sub>Keyboard: hold to talk, release to type</sub></td>
     <td align="center"><sub>Home: usage and your modes</sub></td>
     <td align="center"><sub>Settings: speech, models and vocabulary</sub></td>
-    <td align="center"><sub>Scan to sync your Mac setup</sub></td>
+    <td align="center"><sub>Pick what to sync from your Mac</sub></td>
   </tr>
 </table>
 
@@ -232,12 +232,12 @@ Examples and use cases for each mode: [Modes & Features](docs/usage/modes.en.md)
 
 <table>
   <tr>
-    <td width="50%"><img src="https://github.com/user-attachments/assets/ed1b714f-fbaf-41ac-92dc-546e0f0e5428" alt="Home: usage overview, activity heatmap and My Modes" /></td>
-    <td width="50%"><img src="docs/screenshots/screenshot-askit.png" alt="Ask Anything: ask about the selected text" /></td>
+    <td width="50%"><img src="docs/screenshots/mac-home-en.png" alt="Home: recent dictation, usage overview and My Modes" /></td>
+    <td width="50%"><img src="docs/screenshots/mac-ask-en.png" alt="Ask Anything: voice questions with saved conversations" /></td>
   </tr>
   <tr>
-    <td><img src="https://github.com/user-attachments/assets/3008f47a-7718-4f83-9961-7a0339568ceb" alt="History and LLM usage dashboard" /></td>
-    <td><img src="https://github.com/user-attachments/assets/63e0bd41-3d79-482f-a0e0-e48c6037dbf0" alt="Appearance settings with a live recording bar preview" /></td>
+    <td><img src="docs/screenshots/mac-llm-usage-en.png" alt="History and LLM usage dashboard" /></td>
+    <td><img src="docs/screenshots/mac-appearance-en.png" alt="Appearance settings with a live recording bar preview" /></td>
   </tr>
 </table>
 
