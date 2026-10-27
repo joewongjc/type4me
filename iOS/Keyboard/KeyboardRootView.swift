@@ -288,6 +288,11 @@ struct ModePicker: View {
     /// The mode in the middle, which leads `model.mode` while the dial turns.
     @State private var centred: DictationMode?
     @State private var narrowing: Task<Void, Never>?
+    /// Moved to exact offsets: the id-and-anchor form of scroll position
+    /// left the name a few points off the middle.
+    @State private var position = ScrollPosition()
+    @State private var width: CGFloat = 0
+    @State private var offset = DialOffset()
 
     static let widen = Animation.spring(response: 0.28, dampingFraction: 0.86)
     private static let roll = Animation.spring(response: 0.3, dampingFraction: 0.88)
@@ -329,28 +334,45 @@ struct ModePicker: View {
                     .scaleEffect(expanded ? 1 : 0.86)
                     .opacity(expanded ? 1 : 0.5)
                     .animation(Self.roll, value: centred)
+                let layout = Self.layout(of: modes, in: full)
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 0) {
-                        ForEach(Array(modes.enumerated()), id: \.element) { index, mode in
-                            name(mode)
-                                .frame(width: Self.slotWidth(mode), height: 44)
-                                .contentShape(Rectangle())
-                                .onTapGesture { tap(mode, index: index, in: modes) }
-                                .id(mode)
+                        // Room so the first and last names can still reach
+                        // the middle. Inside the content rather than as
+                        // margins, so every name's centre is known exactly.
+                        Color.clear.frame(width: layout.lead, height: 44)
+                        HStack(spacing: 0) {
+                            ForEach(Array(modes.enumerated()), id: \.element) { index, mode in
+                                name(mode)
+                                    .frame(width: Self.slotWidth(mode), height: 44)
+                                    .contentShape(Rectangle())
+                                    .onTapGesture { tap(mode, index: index, in: modes) }
+                                    .id(mode)
+                            }
                         }
+                        .scrollTargetLayout()
+                        Color.clear.frame(width: layout.trail, height: 44)
                     }
-                    .scrollTargetLayout()
                 }
-                // The first and last names can still reach the middle.
-                .contentMargins(.leading, max(0, (full - (modes.first.map(Self.slotWidth) ?? 0)) / 2), for: .scrollContent)
-                .contentMargins(.trailing, max(0, (full - (modes.last.map(Self.slotWidth) ?? 0)) / 2), for: .scrollContent)
-                .scrollTargetBehavior(.viewAligned(limitBehavior: .never))
-                .scrollPosition(id: $centred, anchor: .center)
+                .scrollTargetBehavior(CentredSnap(centres: layout.centres, offset: offset))
+                .scrollPosition($position)
                 // The dial sits on the keyboard's top edge, where the
                 // default edge effect blurs the whole row.
                 .scrollEdgeEffectHidden(true, for: .all)
+                // The name nearest the middle is the one in the middle.
+                .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.x + $0.containerSize.width / 2 } action: { _, middle in
+                    offset.x = middle - full / 2
+                    let nearest = layout.centres.indices.min { abs(layout.centres[$0] - middle) < abs(layout.centres[$1] - middle) }
+                    if let nearest, centred != modes[nearest] { centred = modes[nearest] }
+                }
+                .onChange(of: full, initial: true) { _, full in
+                    width = full
+                    roll(to: model.mode, in: modes, animated: false)
+                }
                 .onScrollPhaseChange { _, phase in
+                    if phase == .interacting { offset.rolling = false }
                     if phase == .idle {
+                        offset.rolling = false
                         commit(in: modes)
                     } else {
                         narrowing?.cancel()
@@ -377,9 +399,8 @@ struct ModePicker: View {
         .frame(height: 44)
         .animation(Self.widen, value: expanded)
         .sensoryFeedback(.selection, trigger: centred) { old, new in old != nil && new != nil }
-        .onAppear { centred = model.mode }
         .onChange(of: model.mode) { _, mode in
-            if centred != mode { centred = mode }
+            if centred != mode { roll(to: mode, in: modes, animated: false) }
         }
         .onDisappear { narrowing?.cancel() }
         .accessibilityElement(children: .ignore)
@@ -390,8 +411,35 @@ struct ModePicker: View {
             let step = direction == .increment ? 1 : -1
             let ahead = stride(from: index + step, to: step > 0 ? modes.count : -1, by: step)
             guard let next = ahead.first(where: { model.isAvailable(modes[$0]) }) else { return }
-            centred = modes[next]
+            roll(to: modes[next], in: modes, animated: false)
             commit(in: modes)
+        }
+    }
+
+    /// Room before the first name and after the last, so both can reach
+    /// the middle, and where each name's centre sits in the content.
+    private static func layout(of modes: [DictationMode], in full: CGFloat) -> (lead: CGFloat, trail: CGFloat, centres: [CGFloat]) {
+        let lead = max(0, (full - (modes.first.map(slotWidth) ?? 0)) / 2)
+        let trail = max(0, (full - (modes.last.map(slotWidth) ?? 0)) / 2)
+        var x = lead
+        let centres = modes.map { mode in
+            let width = slotWidth(mode)
+            defer { x += width }
+            return x + width / 2
+        }
+        return (lead, trail, centres)
+    }
+
+    /// Puts `mode` exactly on the middle.
+    private func roll(to mode: DictationMode, in modes: [DictationMode], animated: Bool = true) {
+        centred = mode
+        guard width > 0, let index = modes.firstIndex(of: mode) else { return }
+        let x = Self.layout(of: modes, in: width).centres[index] - width / 2
+        offset.rolling = true
+        if animated {
+            withAnimation(Self.roll) { position.scrollTo(x: x) }
+        } else {
+            position.scrollTo(x: x)
         }
     }
 
@@ -422,7 +470,7 @@ struct ModePicker: View {
         }
         narrowing?.cancel()
         expanded = true
-        withAnimation(Self.roll) { centred = mode }
+        roll(to: mode, in: modes)
         commit(in: modes)
     }
 
@@ -434,15 +482,13 @@ struct ModePicker: View {
             if model.isAvailable(mode) {
                 model.select(mode, haptic: false)
             } else if let next = nearestAvailable(to: mode, in: modes) {
-                withAnimation(Self.roll) { centred = next }
+                roll(to: next, in: modes)
                 if next != model.mode { model.select(next, haptic: false) }
             } else {
                 // Nothing usable either side: the model says why.
                 model.select(mode, haptic: false)
             }
-            if centred != model.mode {
-                withAnimation(Self.roll) { centred = model.mode }
-            }
+            if centred != model.mode { roll(to: model.mode, in: modes) }
         }
         narrowing?.cancel()
         narrowing = Task { @MainActor in
@@ -464,6 +510,36 @@ struct ModePicker: View {
             }
         }
         return nil
+    }
+}
+
+/// Where the dial is right now, for the snap to measure a flick from. A
+/// reference, so the snap reads it live rather than as it was when the
+/// view last drew.
+private final class DialOffset {
+    var x: CGFloat = 0
+    /// The dial is rolling to a name on its own, not coasting from a flick.
+    var rolling = false
+}
+
+/// Names are different widths, so the system's view alignment, which lines
+/// up leading edges, would stop them off centre. This settles a flick with
+/// the nearest name's centre on the dial's middle. The system projects a
+/// flick as far as a page scrolls; the dial carries a fifth of that, about
+/// what UIKit's fast deceleration rate gives, so it stops promptly.
+private struct CentredSnap: ScrollTargetBehavior {
+    let centres: [CGFloat]
+    let offset: DialOffset
+    private static let carry: CGFloat = 0.2
+
+    func updateTarget(_ target: inout ScrollTarget, context: TargetContext) {
+        let half = context.containerSize.width / 2
+        let start = offset.x
+        // A roll to a tapped name already ends on it.
+        let carry = offset.rolling ? 1 : Self.carry
+        let landing = start + (target.rect.minX - start) * carry + half
+        guard let nearest = centres.min(by: { abs($0 - landing) < abs($1 - landing) }) else { return }
+        target.rect.origin.x = nearest - half
     }
 }
 
