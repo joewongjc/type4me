@@ -84,9 +84,16 @@ struct ASRSettingsView: View {
 
     private var isComplete: Bool {
         let fields = endpoint.fields
-        let required = shownFields.filter { !$0.isOptional }
+        let required = shownFields.filter { !isOptional($0) }
         return PhoneASR.config(for: endpoint) != nil
             && required.allSatisfy { !(fields[$0.key] ?? "").isEmpty }
+    }
+
+    /// Volcano marks its keys optional because which ones are needed depends
+    /// on the authentication; the ones shown for it are required.
+    private func isOptional(_ field: CredentialField) -> Bool {
+        if provider == .volcano, ["apiKey", "appKey", "accessKey"].contains(field.key) { return false }
+        return field.isOptional
     }
 
     private var isUnchanged: Bool { ConfigStore.asr == endpoint }
@@ -197,7 +204,7 @@ struct ASRSettingsView: View {
 
     @ViewBuilder
     private func fieldRow(_ field: CredentialField) -> some View {
-        let title = field.isOptional ? L("\(field.label)（可选）", "\(field.label) (optional)") : field.label
+        let title = isOptional(field) ? L("\(field.label)（可选）", "\(field.label) (optional)") : field.label
         VStack(alignment: .leading, spacing: 4) {
             if !field.options.isEmpty {
                 optionRow(field, title: title)
