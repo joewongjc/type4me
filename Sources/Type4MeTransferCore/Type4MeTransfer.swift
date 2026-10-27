@@ -58,13 +58,29 @@ public struct Type4MeTransferPayload: Codable, Equatable, Sendable {
         /// Translation only: the Mac `TranslationLanguage` code (`en`, `ja`,
         /// `zh-Hans`, …). nil means English.
         public var targetLanguage: String?
+        /// The mode's own punctuation, a Mac `ModePunctuationMode` raw value.
+        /// nil follows the global text output setting.
+        public var punctuation: String?
+        /// Recognized text shorter than this many characters skips the text
+        /// model. nil or 0 always runs it.
+        public var shortTextExemption: Int?
 
-        public init(id: String, kind: String, name: String?, prompt: String?, targetLanguage: String? = nil) {
+        public init(
+            id: String,
+            kind: String,
+            name: String?,
+            prompt: String?,
+            targetLanguage: String? = nil,
+            punctuation: String? = nil,
+            shortTextExemption: Int? = nil
+        ) {
             self.id = id
             self.kind = kind
             self.name = name
             self.prompt = prompt
             self.targetLanguage = targetLanguage
+            self.punctuation = punctuation
+            self.shortTextExemption = shortTextExemption
         }
 
         enum CodingKeys: String, CodingKey {
@@ -73,6 +89,8 @@ public struct Type4MeTransferPayload: Codable, Equatable, Sendable {
             case name = "n"
             case prompt = "p"
             case targetLanguage = "g"
+            case punctuation = "u"
+            case shortTextExemption = "x"
         }
     }
 
@@ -93,6 +111,29 @@ public struct Type4MeTransferPayload: Codable, Equatable, Sendable {
         }
     }
 
+    /// The Mac's global text output formatting, applied to every dictation.
+    /// Values are the Mac's raw setting values, so newer ones still decode.
+    public struct TextOutput: Codable, Equatable, Sendable {
+        /// A Mac `CJKSpacingMode` raw value: `pangu`, `off` or `remove`.
+        public var cjkSpacing: String?
+        /// A Mac `TrailingPunctuationMode` raw value: `off`, `period` or `all`.
+        public var trailingPunctuation: String?
+        /// Uses 『』 in place of ‘’.
+        public var cornerQuotes: Bool?
+
+        public init(cjkSpacing: String?, trailingPunctuation: String?, cornerQuotes: Bool?) {
+            self.cjkSpacing = cjkSpacing
+            self.trailingPunctuation = trailingPunctuation
+            self.cornerQuotes = cornerQuotes
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case cjkSpacing = "s"
+            case trailingPunctuation = "p"
+            case cornerQuotes = "q"
+        }
+    }
+
     public var version: Int
     /// The speech service the Mac uses by default; becomes the iPhone's active one.
     public var asr: Endpoint?
@@ -108,6 +149,7 @@ public struct Type4MeTransferPayload: Codable, Equatable, Sendable {
     /// The user's global snippets. Per-app snippets stay on the Mac: an iPhone
     /// keyboard can't tell which app it is typing into.
     public var snippets: [Snippet]?
+    public var textOutput: TextOutput?
     /// Name of the Mac that produced the payload, shown on the import screen.
     public var sourceName: String?
     /// Seconds since 1970 when the payload was produced.
@@ -122,6 +164,7 @@ public struct Type4MeTransferPayload: Codable, Equatable, Sendable {
         modes: [Mode]? = nil,
         hotwords: [String]? = nil,
         snippets: [Snippet]? = nil,
+        textOutput: TextOutput? = nil,
         sourceName: String? = nil,
         createdAt: Int? = nil
     ) {
@@ -133,6 +176,7 @@ public struct Type4MeTransferPayload: Codable, Equatable, Sendable {
         self.modes = modes
         self.hotwords = hotwords
         self.snippets = snippets
+        self.textOutput = textOutput
         self.sourceName = sourceName
         self.createdAt = createdAt
     }
@@ -166,6 +210,7 @@ public struct Type4MeTransferPayload: Codable, Equatable, Sendable {
         case modes = "m"
         case hotwords = "h"
         case snippets = "s"
+        case textOutput = "o"
         case sourceName = "d"
         case createdAt = "t"
     }

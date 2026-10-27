@@ -140,6 +140,28 @@ final class Type4MeTransferTests: XCTestCase {
         XCTAssertNil(older.targetLanguage)
     }
 
+    func testModeFormattingRoundTripsAndIsOptional() throws {
+        let mode = Type4MeTransferPayload.Mode(
+            id: "formalWriting", kind: "formalWriting", name: nil, prompt: nil,
+            punctuation: "stripTrailing", shortTextExemption: 8
+        )
+        let payload = Type4MeTransferPayload(asr: nil, llm: nil, modes: [mode])
+        let decoded = try Type4MeTransferCodec.decode(try Type4MeTransferCodec.encodeText(payload)).modes?.first
+        XCTAssertEqual(decoded?.punctuation, "stripTrailing")
+        XCTAssertEqual(decoded?.shortTextExemption, 8)
+        let older = try JSONDecoder().decode(Type4MeTransferPayload.Mode.self, from: Data(#"{"i":"quick","k":"quick"}"#.utf8))
+        XCTAssertNil(older.punctuation)
+        XCTAssertNil(older.shortTextExemption)
+    }
+
+    func testTextOutputRoundTripsAndIsOptional() throws {
+        var payload = sample
+        payload.textOutput = .init(cjkSpacing: "remove", trailingPunctuation: "period", cornerQuotes: true)
+        let decoded = try Type4MeTransferCodec.decode(try Type4MeTransferCodec.encodeText(payload))
+        XCTAssertEqual(decoded.textOutput, payload.textOutput)
+        XCTAssertNil(try Type4MeTransferCodec.decode(try Type4MeTransferCodec.encodeText(sample)).textOutput)
+    }
+
     func testModesOnlyPayloadIsNotEmpty() throws {
         let payload = Type4MeTransferPayload(asr: nil, llm: nil, modes: [.init(id: "quick", kind: "quick", name: "快", prompt: nil)])
         XCTAssertEqual(try Type4MeTransferCodec.decode(try Type4MeTransferCodec.encodeText(payload)), payload)

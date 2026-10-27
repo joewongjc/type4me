@@ -89,6 +89,7 @@ enum MobileConfigExporter {
             modes: modes.isEmpty ? nil : modes,
             hotwords: hotwords.isEmpty ? nil : hotwords,
             snippets: snippets.isEmpty ? nil : snippets,
+            textOutput: textOutput(),
             sourceName: Host.current().localizedName,
             createdAt: Int(Date().timeIntervalSince1970)
         )
@@ -124,6 +125,19 @@ enum MobileConfigExporter {
         }
     }
 
+    // MARK: - Text output
+
+    /// The global formatting under Appearance › Text Output, as stored.
+    static func textOutput(userDefaults: UserDefaults = .standard) -> Type4MeTransferPayload.TextOutput {
+        Type4MeTransferPayload.TextOutput(
+            cjkSpacing: CJKSpacingMode.current(userDefaults: userDefaults).rawValue,
+            trailingPunctuation: userDefaults.string(forKey: "tf_stripTrailingPunctuation")
+                .flatMap(TrailingPunctuationMode.init(rawValue:))?.rawValue ?? TrailingPunctuationMode.off.rawValue,
+            cornerQuotes: userDefaults.object(forKey: CornerQuotePreference.storageKey) as? Bool
+                ?? CornerQuotePreference.defaultValue
+        )
+    }
+
     // MARK: - Modes
 
     typealias TransferMode = Type4MeTransferPayload.Mode
@@ -140,6 +154,14 @@ enum MobileConfigExporter {
     ]).union(ProcessingMode.legacyTranslationModeIDs)
 
     static func transferMode(for mode: ProcessingMode) -> TransferMode? {
+        guard var transfer = baseTransferMode(for: mode) else { return nil }
+        // Defaults stay out, keeping the codes small.
+        transfer.punctuation = mode.punctuationMode == .inherit ? nil : mode.punctuationMode.rawValue
+        transfer.shortTextExemption = mode.shortTextExemption > 0 ? mode.shortTextExemption : nil
+        return transfer
+    }
+
+    private static func baseTransferMode(for mode: ProcessingMode) -> TransferMode? {
         guard mode.executionKind == .recording, !macOnlyModeIDs.contains(mode.id) else { return nil }
 
         switch mode.id {
