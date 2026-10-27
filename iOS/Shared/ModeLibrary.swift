@@ -67,9 +67,6 @@ struct ModeDefinition: Codable, Identifiable, Equatable, Sendable {
 /// The user's modes in display order, shared with the keyboard through the
 /// App Group. The app edits it; the keyboard only reads it.
 enum ModeLibrary {
-    /// The keyboard's switcher fits this many chips.
-    static let keyboardLimit = 4
-
     private static let key = "modes.v1"
     private static let lock = NSLock()
     nonisolated(unsafe) private static var cache: (data: Data, modes: [ModeDefinition])?
@@ -109,9 +106,6 @@ enum ModeLibrary {
         modes.insert(intelliSense, at: 0)
         if let polish = modes.firstIndex(where: { $0.kind == .formalWriting && $0.onKeyboard }) {
             modes[polish].onKeyboard = false
-        } else if modes.filter(\.onKeyboard).count > keyboardLimit,
-                  let last = modes.lastIndex(where: \.onKeyboard) {
-            modes[last].onKeyboard = false
         }
         return modes
     }
@@ -135,7 +129,7 @@ enum ModeLibrary {
 
     /// Shown on the keyboard, in library order.
     static var keyboardModes: [ModeDefinition] {
-        Array(all.filter(\.onKeyboard).prefix(keyboardLimit))
+        all.filter(\.onKeyboard)
     }
 
     static func definition(for id: String) -> ModeDefinition? {

@@ -89,7 +89,7 @@ struct SettingsView: View {
             } header: {
                 Text(L("模式", "Modes"))
             } footer: {
-                Text(L("新建、改名、调整顺序，并选择最多 \(ModeLibrary.keyboardLimit) 个放到键盘上。", "Add, rename and reorder modes, and pick up to \(ModeLibrary.keyboardLimit) for the keyboard."))
+                Text(L("新建、改名、调整顺序，并选择哪些放到键盘上。", "Add, rename and reorder modes, and pick which ones the keyboard shows."))
             }
 
             Section {

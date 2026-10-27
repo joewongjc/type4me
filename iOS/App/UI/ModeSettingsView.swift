@@ -36,12 +36,10 @@ final class ModeStore: ObservableObject {
         persist()
     }
 
-    /// Returns false when the keyboard is already full, or when this is the
-    /// last mode left on it.
+    /// Returns false when this is the last mode left on the keyboard.
     @discardableResult
     func setOnKeyboard(_ on: Bool, id: String) -> Bool {
         guard let index = modes.firstIndex(where: { $0.id == id }), modes[index].onKeyboard != on else { return true }
-        if on, keyboardCount >= ModeLibrary.keyboardLimit { return false }
         if !on, keyboardCount <= 1 { return false }
         modes[index].onKeyboard = on
         persist()
@@ -50,7 +48,7 @@ final class ModeStore: ObservableObject {
 
     /// Merges modes synced from the Mac. Built-in kinds update the matching
     /// built-in mode's name (and prompt, when the Mac sent one); custom modes
-    /// are updated by ID or added, going on the keyboard while there is room.
+    /// are updated by ID or added, going on the keyboard.
     func applySync(_ synced: [Type4MeTransferPayload.Mode]) {
         for item in synced {
             let kind = ModeDefinition.Kind(rawValue: item.kind) ?? .custom
@@ -70,7 +68,7 @@ final class ModeStore: ObservableObject {
                     kind: .custom,
                     name: item.name ?? L("Mac 模式", "Mac Mode"),
                     prompt: prompt,
-                    onKeyboard: keyboardCount < ModeLibrary.keyboardLimit
+                    onKeyboard: true
                 ))
             }
         }
@@ -92,7 +90,7 @@ final class ModeStore: ObservableObject {
 }
 
 /// Settings › Modes: every mode in one list. The keyboard toggle on each row
-/// picks the (at most four) chips the keyboard shows; drag to reorder.
+/// picks the modes the keyboard's dial shows; drag to reorder.
 struct ModeSettingsView: View {
     @ObservedObject private var store = ModeStore.shared
     @State private var notice: String?
@@ -110,11 +108,11 @@ struct ModeSettingsView: View {
                 }
                 .onMove { store.move(from: $0, to: $1) }
             } header: {
-                Text(L("键盘上显示 \(store.keyboardCount)/\(ModeLibrary.keyboardLimit)", "On Keyboard \(store.keyboardCount)/\(ModeLibrary.keyboardLimit)"))
+                Text(L("键盘上显示 \(store.keyboardCount) 个", "On Keyboard: \(store.keyboardCount)"))
             } footer: {
                 Text(notice ?? L(
-                    "点键盘图标选择放到输入法上的模式，最多 \(ModeLibrary.keyboardLimit) 个。按住拖动可以调整顺序，键盘按这个顺序排列。",
-                    "Tap the keyboard icon to choose which modes appear on the keyboard, up to \(ModeLibrary.keyboardLimit). Touch and hold to drag them into the order the keyboard uses."
+                    "点键盘图标选择放到输入法上的模式。按住拖动可以调整顺序，键盘按这个顺序排列。",
+                    "Tap the keyboard icon to choose which modes appear on the keyboard. Touch and hold to drag them into the order the keyboard uses."
                 ))
                 .foregroundStyle(notice == nil ? T4.secondary : T4.recording)
             }
@@ -140,7 +138,7 @@ struct ModeSettingsView: View {
                     name: "",
                     // Start from a working prompt with {text} already in place.
                     prompt: ModePrompts.newModeTemplate,
-                    onKeyboard: store.keyboardCount < ModeLibrary.keyboardLimit
+                    onKeyboard: true
                 ), isNew: true)
             }
         }
@@ -193,9 +191,7 @@ struct ModeSettingsView: View {
             notice = nil
             UISelectionFeedbackGenerator().selectionChanged()
         } else {
-            notice = turningOn
-                ? L("键盘最多放 \(ModeLibrary.keyboardLimit) 个模式，先关掉一个。", "The keyboard holds up to \(ModeLibrary.keyboardLimit) modes. Turn one off first.")
-                : L("键盘上至少要留一个模式。", "Keep at least one mode on the keyboard.")
+            notice = L("键盘上至少要留一个模式。", "Keep at least one mode on the keyboard.")
             UINotificationFeedbackGenerator().notificationOccurred(.warning)
         }
     }
@@ -211,7 +207,6 @@ struct ModeEditorView: View {
     /// unedited built-in mode.
     @State private var promptText: String
     @State private var confirmDelete = false
-    @State private var keyboardFull = false
     let isNew: Bool
 
     private let nameLimit = 12
@@ -282,23 +277,11 @@ struct ModeEditorView: View {
             }
 
             Section {
-                Toggle(L("在键盘上显示", "Show on Keyboard"), isOn: Binding(
-                    get: { draft.onKeyboard },
-                    set: { on in
-                        if on, !draft.onKeyboard, keyboardSlotsTaken >= ModeLibrary.keyboardLimit {
-                            keyboardFull = true
-                            return
-                        }
-                        draft.onKeyboard = on
-                    }
-                ))
+                Toggle(L("在键盘上显示", "Show on Keyboard"), isOn: $draft.onKeyboard)
                 .tint(T4.success)
                 .disabled(draft.onKeyboard && keyboardSlotsTaken == 0)
             } footer: {
-                if keyboardFull {
-                    Text(L("键盘最多放 \(ModeLibrary.keyboardLimit) 个模式，先在模式列表里关掉一个。", "The keyboard holds up to \(ModeLibrary.keyboardLimit) modes. Turn one off in the mode list first."))
-                        .foregroundStyle(T4.recording)
-                } else if draft.onKeyboard && keyboardSlotsTaken == 0 {
+                if draft.onKeyboard && keyboardSlotsTaken == 0 {
                     Text(L("键盘上至少要留一个模式。", "Keep at least one mode on the keyboard."))
                 }
             }
@@ -411,7 +394,7 @@ struct ModeEditorView: View {
         }
     }
 
-    /// Keyboard slots used by the other modes.
+    /// Modes other than this one on the keyboard.
     private var keyboardSlotsTaken: Int {
         store.modes.filter { $0.onKeyboard && $0.id != draft.id }.count
     }

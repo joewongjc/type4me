@@ -139,6 +139,11 @@ final class KeyboardModel: ObservableObject {
 
     // MARK: - Mode
 
+    /// Modes that need a text model wait until one is imported.
+    func isAvailable(_ mode: DictationMode) -> Bool {
+        !mode.usesLLM || llmConfigured
+    }
+
     /// `haptic` is off when the control picking the mode already ticked.
     func select(_ newMode: DictationMode, haptic: Bool = true) {
         guard phase == .idle else { return }

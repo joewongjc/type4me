@@ -291,14 +291,25 @@ struct ModePicker: View {
 
     static let widen = Animation.spring(response: 0.28, dampingFraction: 0.86)
     private static let roll = Animation.spring(response: 0.3, dampingFraction: 0.88)
-    /// Every mode gets the same slot, so the dial turns evenly.
-    private static let slot: CGFloat = 84
+    /// Each name gets its own width plus the same room either side, like
+    /// the Camera app's modes.
+    private static let gap: CGFloat = 14
+    private static let longestName: CGFloat = 150
+    private static let nameFont = UIFont.systemFont(ofSize: 15, weight: .semibold)
     private static let restWidth: CGFloat = 200
-    /// Wider and taller than any name, so the droplet's bending edges fall
-    /// on empty space.
-    private static let droplet = CGSize(width: 96, height: 42)
+    /// The droplet spans the middle name and its room, so its bending
+    /// edges fall on the gaps between names.
+    private static let dropletHeight: CGFloat = 42
+    private static let narrowestDroplet: CGFloat = 64
     /// How long the dial stays wide after it settles.
     private static let foldDelay = Duration.milliseconds(250)
+
+    /// Measured at the middle name's weight, so a name doesn't grow when it
+    /// reaches the middle.
+    static func slotWidth(_ mode: DictationMode) -> CGFloat {
+        let text = (mode.title as NSString).size(withAttributes: [.font: nameFont]).width
+        return min(ceil(text), longestName) + gap * 2
+    }
 
     var body: some View {
         let modes = DictationMode.keyboardOrder
@@ -313,15 +324,16 @@ struct ModePicker: View {
                 // Under the names, never over them: glass on top of text
                 // blurs it.
                 Color.clear
-                    .frame(width: Self.droplet.width, height: Self.droplet.height)
+                    .frame(width: dropletWidth, height: Self.dropletHeight)
                     .glassEffect(.clear, in: Capsule())
                     .scaleEffect(expanded ? 1 : 0.86)
                     .opacity(expanded ? 1 : 0.5)
+                    .animation(Self.roll, value: centred)
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 0) {
                         ForEach(Array(modes.enumerated()), id: \.element) { index, mode in
                             name(mode)
-                                .frame(width: Self.slot, height: 44)
+                                .frame(width: Self.slotWidth(mode), height: 44)
                                 .contentShape(Rectangle())
                                 .onTapGesture { tap(mode, index: index, in: modes) }
                                 .id(mode)
@@ -330,7 +342,8 @@ struct ModePicker: View {
                     .scrollTargetLayout()
                 }
                 // The first and last names can still reach the middle.
-                .contentMargins(.horizontal, max(0, (full - Self.slot) / 2), for: .scrollContent)
+                .contentMargins(.leading, max(0, (full - (modes.first.map(Self.slotWidth) ?? 0)) / 2), for: .scrollContent)
+                .contentMargins(.trailing, max(0, (full - (modes.last.map(Self.slotWidth) ?? 0)) / 2), for: .scrollContent)
                 .scrollTargetBehavior(.viewAligned(limitBehavior: .never))
                 .scrollPosition(id: $centred, anchor: .center)
                 // The dial sits on the keyboard's top edge, where the
@@ -338,7 +351,7 @@ struct ModePicker: View {
                 .scrollEdgeEffectHidden(true, for: .all)
                 .onScrollPhaseChange { _, phase in
                     if phase == .idle {
-                        commit()
+                        commit(in: modes)
                     } else {
                         narrowing?.cancel()
                         expanded = true
@@ -374,42 +387,60 @@ struct ModePicker: View {
         .accessibilityHint(L("上下轻扫切换模式", "Swipe up or down to switch modes"))
         .accessibilityAdjustableAction { direction in
             guard let index = modes.firstIndex(of: model.mode) else { return }
-            let next = direction == .increment ? index + 1 : index - 1
-            guard modes.indices.contains(next) else { return }
+            let step = direction == .increment ? 1 : -1
+            let ahead = stride(from: index + step, to: step > 0 ? modes.count : -1, by: step)
+            guard let next = ahead.first(where: { model.isAvailable(modes[$0]) }) else { return }
             centred = modes[next]
-            commit()
+            commit(in: modes)
         }
+    }
+
+    private var dropletWidth: CGFloat {
+        max(Self.narrowestDroplet, centred.map(Self.slotWidth) ?? Self.narrowestDroplet)
     }
 
     private func name(_ mode: DictationMode) -> some View {
         let inMiddle = mode == centred
+        let available = model.isAvailable(mode)
         return Text(mode.title)
-            .font(.system(size: 15, weight: inMiddle ? .semibold : .regular))
-            .foregroundStyle(inMiddle ? KB.ink : KB.secondary)
+            .font(.system(size: 15, weight: inMiddle && available ? .semibold : .regular))
+            .foregroundStyle(available ? (inMiddle ? KB.ink : KB.secondary) : KB.secondary.opacity(0.4))
             .lineLimit(1)
-            .minimumScaleFactor(0.7)
-            .padding(.horizontal, 8)
+            .truncationMode(.tail)
+            .frame(maxWidth: Self.longestName)
     }
 
     /// Only names that can be seen take a tap: at rest that is the middle
-    /// one and its two neighbours.
+    /// one and its two neighbours. A greyed-out mode says why instead.
     private func tap(_ mode: DictationMode, index: Int, in modes: [DictationMode]) {
         guard let current = centred, let at = modes.firstIndex(of: current) else { return }
         guard mode != current else { return }
         guard expanded || abs(index - at) <= 1 else { return }
+        guard model.isAvailable(mode) else {
+            model.select(mode)
+            return
+        }
         narrowing?.cancel()
         expanded = true
         withAnimation(Self.roll) { centred = mode }
-        commit()
+        commit(in: modes)
     }
 
     /// The dial has settled: the mode in the middle becomes the mode in
-    /// use, unless the model refuses it, which says why and rolls the dial
-    /// back. Then the dial narrows.
-    private func commit() {
+    /// use. A greyed-out one isn't a place to stop, so the dial rolls on to
+    /// the nearest usable mode, onward first. Then the dial narrows.
+    private func commit(in modes: [DictationMode]) {
         if let mode = centred, mode != model.mode {
-            model.select(mode, haptic: false)
-            if model.mode != mode {
+            if model.isAvailable(mode) {
+                model.select(mode, haptic: false)
+            } else if let next = nearestAvailable(to: mode, in: modes) {
+                withAnimation(Self.roll) { centred = next }
+                if next != model.mode { model.select(next, haptic: false) }
+            } else {
+                // Nothing usable either side: the model says why.
+                model.select(mode, haptic: false)
+            }
+            if centred != model.mode {
                 withAnimation(Self.roll) { centred = model.mode }
             }
         }
@@ -419,6 +450,20 @@ struct ModePicker: View {
             guard !Task.isCancelled else { return }
             expanded = false
         }
+    }
+
+    private func nearestAvailable(to mode: DictationMode, in modes: [DictationMode]) -> DictationMode? {
+        guard let at = modes.firstIndex(of: mode) else { return nil }
+        let from = modes.firstIndex(of: model.mode) ?? at
+        let onward = at >= from ? 1 : -1
+        for step in [onward, -onward] {
+            var index = at + step
+            while modes.indices.contains(index) {
+                if model.isAvailable(modes[index]) { return modes[index] }
+                index += step
+            }
+        }
+        return nil
     }
 }
 
