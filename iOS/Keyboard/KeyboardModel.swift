@@ -82,6 +82,13 @@ final class KeyboardModel: ObservableObject {
     private var lastInsertion: Insertion?
     private var lastCorrection: CorrectionUndo?
     private var redo: Redo?
+    /// What clearing the field took out, so undo can put it back.
+    private var lastClear: Cleared?
+    /// Set once a clear is undone: redo clears this document again.
+    private var clearRedoDocument: UUID?
+    /// What each delete took out, newest last, so a clear can put back
+    /// what the same press had already deleted before it.
+    private var recentDeletions: [String] = []
     /// The correction this recording carries, and whether it re-corrects the
     /// word before the cursor rather than a selection.
     private var correctionInFlight: (request: CorrectionRequest, again: Bool)?
@@ -103,6 +110,14 @@ final class KeyboardModel: ObservableObject {
         let insertion: Insertion
         let documentID: UUID
         /// The end of the text before the cursor once the undo is done.
+        let anchor: String
+    }
+
+    /// Everything a clear took out, and where the cursor was left.
+    private struct Cleared {
+        let text: String
+        let documentID: UUID
+        /// The end of the text before the cursor once the clear is done.
         let anchor: String
     }
     private var watchdog: Task<Void, Never>?
@@ -243,6 +258,7 @@ final class KeyboardModel: ObservableObject {
             if liveness == .ready {
                 // A new dictation replaces whatever an undo took out.
                 redo = nil
+                clearRedoDocument = nil
                 canRedo = false
                 startRecording()
             } else {
@@ -590,7 +606,9 @@ final class KeyboardModel: ObservableObject {
         proxy.adjustTextPosition(byCharacterOffset: end - cursor)
 
         lastInsertion = nil
+        lastClear = nil
         redo = nil
+        clearRedoDocument = nil
         canRedo = false
         lastCorrection = CorrectionUndo(old: old, new: new, starts: changed)
         canUndo = true
@@ -696,6 +714,12 @@ final class KeyboardModel: ObservableObject {
     // MARK: - Keys
 
     func undoLastInsertion() {
+        if let cleared = lastClear {
+            lastClear = nil
+            canUndo = false
+            restoreCleared(cleared)
+            return
+        }
         if let undo = lastCorrection {
             lastCorrection = nil
             canUndo = false
@@ -727,6 +751,16 @@ final class KeyboardModel: ObservableObject {
     }
 
     func redoUndoneInsertion() {
+        if let document = clearRedoDocument {
+            clearRedoDocument = nil
+            canRedo = false
+            guard controller?.proxy.documentIdentifier == document else {
+                show(L("输入框换了，没法重做", "The text field changed, so this can't be redone"), kind: .error)
+                return
+            }
+            Task { await clearField() }
+            return
+        }
         guard let controller, let redo else { return }
         let before = controller.proxy.documentContextBeforeInput ?? ""
         let replaced = redo.insertion.replaced ?? ""
@@ -752,11 +786,96 @@ final class KeyboardModel: ObservableObject {
     /// Dictated text that the undo key can take back out.
     private func recordInsertion(_ text: String, replacing replaced: String? = nil) {
         lastCorrection = nil
+        lastClear = nil
         lastInsertion = Insertion(text: text, replaced: replaced)
         canUndo = true
         redo = nil
+        clearRedoDocument = nil
         canRedo = false
     }
+
+    // MARK: - Clear
+
+    /// Swiping up on delete empties the field. The press already deleted
+    /// something on touch-down, so that goes back in first and undo
+    /// restores the field whole.
+    func clearAll(afterDeleting deletes: Int) {
+        guard !applying else { return }
+        let pressed = recentDeletions.suffix(deletes).reversed().joined()
+        recentDeletions.removeAll()
+        Task { await clearField(puttingBack: pressed) }
+    }
+
+    /// The proxy only shows a window of text either side of the cursor, so
+    /// the cursor goes to the end first and the text before it is deleted a
+    /// window at a time.
+    private func clearField(puttingBack pressed: String = "") async {
+        guard let proxy = controller?.proxy else { return }
+        applying = true
+        defer { applying = false }
+        let documentID = proxy.documentIdentifier
+
+        if !pressed.isEmpty {
+            proxy.insertText(pressed)
+            _ = await settled { (proxy.documentContextBeforeInput ?? "").hasSuffix(pressed) }
+        }
+        for _ in 0..<Self.clearWindowLimit {
+            let after = proxy.documentContextAfterInput ?? ""
+            guard !after.isEmpty else { break }
+            // Going past the end is harmless; stopping short is not.
+            proxy.adjustTextPosition(byCharacterOffset: after.utf16.count)
+            guard await settled({ (proxy.documentContextAfterInput ?? "") != after }) else { break }
+        }
+        var cleared = ""
+        for _ in 0..<Self.clearWindowLimit {
+            let before = proxy.documentContextBeforeInput ?? ""
+            guard !before.isEmpty else { break }
+            for _ in 0..<before.count { proxy.deleteBackward() }
+            cleared = before + cleared
+            guard await settled({ (proxy.documentContextBeforeInput ?? "") != before }) else { break }
+        }
+        guard !cleared.isEmpty else { return }
+
+        invalidateUndo()
+        lastClear = Cleared(
+            text: cleared,
+            documentID: documentID,
+            anchor: String((proxy.documentContextBeforeInput ?? "").suffix(Self.anchorLength))
+        )
+        canUndo = true
+        show(L("已清空 · 可撤销", "Cleared · Undo available"))
+    }
+
+    private func restoreCleared(_ cleared: Cleared) {
+        guard let proxy = controller?.proxy else { return }
+        let before = proxy.documentContextBeforeInput ?? ""
+        guard proxy.documentIdentifier == cleared.documentID,
+              String(before.suffix(Self.anchorLength)) == cleared.anchor
+        else {
+            show(L("光标位置变了，没法撤销", "The cursor moved, so this can't be undone"), kind: .error)
+            invalidateUndo()
+            return
+        }
+        proxy.insertText(cleared.text)
+        clearRedoDocument = cleared.documentID
+        canRedo = true
+        show(L("已撤销 · 可重做", "Undone · Redo available"))
+    }
+
+    /// Waits for the proxy's context to catch up, which it does a moment
+    /// after an edit or a cursor move.
+    private func settled(_ condition: () -> Bool) async -> Bool {
+        for _ in 0..<15 {
+            if condition() { return true }
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+        return false
+    }
+
+    /// Enough for any field a keyboard is used in; a huge document stops
+    /// here instead of tying the keyboard up.
+    private static let clearWindowLimit = 500
+    private static let deletionMemory = 200
 
     func insert(_ text: String) {
         controller?.proxy.insertText(text)
@@ -780,7 +899,11 @@ final class KeyboardModel: ObservableObject {
     }
 
     func deleteBackward() {
-        controller?.proxy.deleteBackward()
+        guard let proxy = controller?.proxy else { return }
+        let selected = proxy.selectedText ?? ""
+        recentDeletions.append(selected.isEmpty ? (proxy.documentContextBeforeInput?.last.map(String.init) ?? "") : selected)
+        if recentDeletions.count > Self.deletionMemory { recentDeletions.removeFirst() }
+        proxy.deleteBackward()
         invalidateUndo()
     }
 
@@ -807,8 +930,10 @@ final class KeyboardModel: ObservableObject {
     private func invalidateUndo() {
         lastCorrection = nil
         lastInsertion = nil
+        lastClear = nil
         canUndo = false
         redo = nil
+        clearRedoDocument = nil
         canRedo = false
     }
 
