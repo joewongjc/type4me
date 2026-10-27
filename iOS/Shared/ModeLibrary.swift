@@ -30,6 +30,12 @@ struct ModeDefinition: Codable, Identifiable, Equatable, Sendable {
     var onKeyboard: Bool
     /// Translation only: a Mac `TranslationLanguage` code. nil means English.
     var targetLanguage: String?
+    /// The mode's own punctuation, a Mac `ModePunctuationMode` raw value.
+    /// nil follows Settings › Text Output.
+    var punctuation: String?
+    /// Recognized text shorter than this many characters skips the text
+    /// model. nil or 0 always runs it.
+    var shortTextExemption: Int?
 
     var translationTarget: TranslationLanguage {
         targetLanguage.flatMap(TranslationLanguage.init(rawValue:)) ?? .english

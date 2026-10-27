@@ -400,7 +400,16 @@ final class VoiceSession: ObservableObject {
         let input = VocabularyStore.shared.apply(to: raw)
         var output = input
         var note: String?
-        if run.mode.usesLLM {
+        let definition = run.mode.definition
+        // The Mac's short-text skip: below the mode's threshold the words go
+        // out as recognized, without a round trip to the text model.
+        let threshold = definition?.shortTextExemption ?? 0
+        let skipsLLM = run.mode.usesLLM && threshold > 0
+            && input.trimmingCharacters(in: .whitespacesAndNewlines).count < threshold
+        if skipsLLM {
+            log.add(L("少于 \(threshold) 字，跳过\(run.mode.title)", "Under \(threshold) characters, so \(run.mode.title) was skipped"))
+        }
+        if run.mode.usesLLM, !skipsLLM {
             let intelliSense = run.mode.kind == .intelliSense
                 ? PhoneIntelliSense.request(text: input, field: run.field)
                 : nil
@@ -433,7 +442,7 @@ final class VoiceSession: ObservableObject {
             }
         }
         guard current === run else { return }
-        finish(run, text: output, raw: raw, error: note)
+        finish(run, text: TextOutputSettings.format(output, mode: definition), raw: raw, error: note)
     }
 
     /// The Mac's rule: a reply confidently in the wrong language gets one

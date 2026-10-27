@@ -148,6 +148,20 @@ struct ImportView: View {
                     }
                 }
             }
+
+            if let textOutput = payload.textOutput {
+                group(
+                    L("文本输出", "Text Output"),
+                    note: L("替换这台 iPhone 上的文本输出设置。", "Replaces the text output settings on this iPhone.")
+                ) {
+                    checkRow(
+                        title: L("标点与空格", "Punctuation and Spacing"),
+                        detail: TextOutputSettings.summary(textOutput),
+                        isOn: selection.textOutput,
+                        warning: nil
+                    )
+                }
+            }
         }
     }
 

@@ -34,9 +34,24 @@ struct SettingsView: View {
     @State private var confirmClear = false
     @State private var confirmClearHistory = false
     @State private var language = AppLanguage.override?.rawValue ?? "system"
+    @State private var cjkSpacing = TextOutputSettings.cjkSpacing
+    @State private var trailingPunctuation = TextOutputSettings.trailingPunctuation
+    @State private var cornerQuotes = TextOutputSettings.cornerQuotes
 
     var body: some View {
         Form {
+            // The title sits in the content, as Home's wordmark does, so both
+            // tabs scroll under the same soft fade. Pages pushed from here
+            // keep their navigation bar for the back button.
+            Section {
+                Text(L("设置", "Settings"))
+                    .font(.system(size: 31, weight: .heavy))
+                    .foregroundStyle(T4.ink)
+                    .accessibilityAddTraits(.isHeader)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 6, leading: 4, bottom: 0, trailing: 0))
+            }
+
             Section {
                 NavigationLink(value: SettingsRoute.asr) {
                     serviceRow(
@@ -60,37 +75,7 @@ struct SettingsView: View {
                 Text(serviceFooter)
             }
 
-            Section {
-                Button { model.showsScanner = true } label: {
-                    actionRow(
-                        symbol: "qrcode.viewfinder",
-                        title: L("扫码同步", "Scan to Sync"),
-                        detail: L(
-                            "在 Mac 版 Type4Me 的侧边栏打开「手机版」，对准二维码",
-                            "In Type4Me on your Mac, open Mobile in the sidebar and point at the code"
-                        )
-                    )
-                }
-            } header: {
-                Text(L("从 Mac 同步", "Sync from Mac"))
-            } footer: {
-                Text(L(
-                    "内容多时 Mac 会轮播几张码，保持对准直到扫齐。导入前还可以再挑选要同步的内容。",
-                    "Larger setups cycle through several codes on the Mac; keep pointing until all are in. You can choose what to import before saving."
-                ))
-            }
-
-            Section {
-                NavigationLink(value: SettingsRoute.modes) {
-                    LabeledContent(L("模式", "Modes")) {
-                        Text(L("键盘上 \(modes.keyboardCount) 个，共 \(modes.modes.count) 个", "\(modes.keyboardCount) on keyboard, \(modes.modes.count) total"))
-                    }
-                }
-            } header: {
-                Text(L("模式", "Modes"))
-            } footer: {
-                Text(L("新建、改名、调整顺序，并选择哪些放到键盘上。", "Add, rename and reorder modes, and pick which ones the keyboard shows."))
-            }
+            MyModesSection()
 
             Section {
                 NavigationLink(value: SettingsRoute.hotwords) {
@@ -107,36 +92,45 @@ struct SettingsView: View {
                 Text(L("词汇", "Vocabulary"))
             } footer: {
                 Text(L(
-                    "热词帮识别服务认准专有名词，片段替换把说出的触发词换成固定内容。都可以从 Mac 同步。",
-                    "Hotwords help the speech service get names and terms right; snippets swap a spoken trigger for fixed text. Both can sync from your Mac."
+                    "热词帮识别服务认准专有名词，片段替换把说出的触发词换成固定内容。",
+                    "Hotwords help the speech service get names and terms right; snippets swap a spoken trigger for fixed text."
                 ))
             }
 
             Section {
-                Picker(L("无操作后自动关闭", "Auto-End When Idle"), selection: $timeout) {
-                    Text(L("15 分钟", "15 min")).tag(15)
-                    Text(L("1 小时", "1 hour")).tag(60)
-                    Text(L("4 小时", "4 hours")).tag(240)
-                    Text(L("不自动关闭", "Never")).tag(0)
+                Picker(L("盘古之白", "Pangu Spacing"), selection: $cjkSpacing) {
+                    ForEach(CJKSpacingMode.allCases, id: \.self) { Text(TextOutputSettings.name($0)).tag($0) }
+                }
+                Picker(L("去句末标点", "Strip Trailing Punctuation"), selection: $trailingPunctuation) {
+                    ForEach([TrailingPunctuationMode.off, .period, .all], id: \.self) { Text(TextOutputSettings.name($0)).tag($0) }
+                }
+                Toggle(L("用『』代替‘’", "Use 『』 for ‘’"), isOn: $cornerQuotes)
+            } header: {
+                Text(L("文本输出", "Text Output"))
+            } footer: {
+                Text(L(
+                    "盘古之白会在中文和英文、数字之间加空格。每个模式还能在模式设置里单独指定标点。",
+                    "Pangu spacing puts a space between Chinese and Latin letters or digits. Each mode can also set its own punctuation in its settings."
+                ))
+            }
+
+            Section {
+                Button { model.showsScanner = true } label: {
+                    actionRow(
+                        symbol: "qrcode.viewfinder",
+                        title: L("扫码同步", "Scan to Sync"),
+                        detail: L(
+                            "在 Mac 版 Type4Me 的侧边栏打开「手机版」，对准二维码",
+                            "In Type4Me on your Mac, open Mobile in the sidebar and point at the code"
+                        )
+                    )
                 }
             } header: {
-                Text(L("语音会话", "Voice Session"))
+                Text(L("从 Mac 同步", "Sync from Mac"))
             } footer: {
                 Text(L(
-                    "只在按住说话时打开麦克风，松开就关，其他时候状态栏没有麦克风提示，也不用跳回 App。",
-                    "The mic opens only while you hold to talk and closes when you let go. No mic indicator the rest of the time, and no trip back to the app."
-                ))
-            }
-
-            Section {
-                Toggle(L("读取输入框上下文", "Read Field Context"), isOn: $intelliSenseContext)
-                    .onChange(of: intelliSenseContext) { _, on in SharedSettings.intelliSenseContext = on }
-            } header: {
-                Text(L("输入框上下文", "Field Context"))
-            } footer: {
-                Text(L(
-                    "打开时，智能感知和选中纠正会把光标前后的一小段文字（前 300 字、后 100 字）一起发给处理模型，用来校正专有词、延续语气、判断该怎么改。密码、验证码和银行卡输入框不会读取。关掉后，智能感知只按输入框类型调整，选中纠正只发送选中的文字和你说的话。",
-                    "When on, Intelli Sense and Correct send a short stretch of text around the cursor (300 characters before, 100 after) to the text model, to spell names right, match the tone and work out the fix. Password, one-time-code and card fields are never read. When off, Intelli Sense adapts only to the kind of field, and Correct sends only the selection and what you said."
+                    "识别服务、处理模型、模式、词汇和文本输出都可以从 Mac 同步。",
+                    "Speech services, text models, modes, vocabulary and text output can all sync from your Mac."
                 ))
             }
 
@@ -147,16 +141,22 @@ struct SettingsView: View {
                     .onChange(of: keySounds) { _, on in SharedSettings.keySounds = on }
             } header: {
                 Text(L("键盘", "Keyboard"))
-            } footer: {
-                Text(L(
-                    "iOS 不向第三方键盘提供系统的键盘反馈设置，所以在这里单独开关。按键音和系统键盘一样，静音模式下不响。",
-                    "iOS doesn't share its keyboard feedback settings with third-party keyboards, so they're set here. Like the system keyboard, key sounds stay quiet in silent mode."
-                ))
             }
 
             Section {
-                Link(L("隐私政策", "Privacy Policy"), destination: AppLinks.privacyPolicy)
-                Link(L("帮助与反馈", "Help & Feedback"), destination: AppLinks.support)
+                Picker(L("闲置多久后结束", "End After Idle"), selection: $timeout) {
+                    Text(L("15 分钟", "15 min")).tag(15)
+                    Text(L("1 小时", "1 hour")).tag(60)
+                    Text(L("4 小时", "4 hours")).tag(240)
+                    Text(L("一直待命", "Always On")).tag(0)
+                }
+            } header: {
+                Text(L("后台待命", "Background Standby"))
+            }
+
+            Section {
+                Toggle(L("读取输入框上下文", "Read Field Context"), isOn: $intelliSenseContext)
+                    .onChange(of: intelliSenseContext) { _, on in SharedSettings.intelliSenseContext = on }
                 if !AppSettings.aiConsentKeys.isEmpty {
                     Button(L("撤回第三方 AI 服务授权", "Withdraw Third-Party AI Permission"), role: .destructive) {
                         model.revokeAIConsent()
@@ -165,10 +165,7 @@ struct SettingsView: View {
             } header: {
                 Text(L("隐私", "Privacy"))
             } footer: {
-                Text(L(
-                    "撤回后会关闭语音会话，下次听写前重新询问。",
-                    "Ends the voice session; you'll be asked again before the next dictation."
-                ))
+                Text(privacyFooter)
             }
 
             Section(L("通用", "General")) {
@@ -185,11 +182,16 @@ struct SettingsView: View {
                 Button(L("打开系统设置", "Open iOS Settings")) {
                     if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
                 }
+            }
+
+            Section(L("关于", "About")) {
+                Link(L("帮助与反馈", "Help & Feedback"), destination: AppLinks.support)
+                Link(L("隐私政策", "Privacy Policy"), destination: AppLinks.privacyPolicy)
                 NavigationLink(L("诊断记录", "Diagnostics"), value: SettingsRoute.diagnostics)
                 LabeledContent(L("版本", "Version"), value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")
             }
 
-            Section {
+            Section(L("清除数据", "Erase Data")) {
                 Button(L("清空历史", "Clear History"), role: .destructive) { confirmClearHistory = true }
                 Button(L("删除识别、处理配置和模式", "Delete Speech, Text Setup & Modes"), role: .destructive) { confirmClear = true }
                     .disabled(ConfigStore.asr == nil && ConfigStore.llm == nil && modes.isDefault)
@@ -198,10 +200,19 @@ struct SettingsView: View {
         .scrollContentBackground(.hidden)
         .background(DottedCanvas())
         .navigationTitle(L("设置", "Settings"))
+        // Kept for the back button only. Inline, so the hidden bar's large
+        // title doesn't change the insets mid-bounce at the top.
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .navigationBar)
+        .safeAreaBar(edge: .top) { Color.clear.frame(height: 0) }
+        .scrollEdgeEffectStyle(.soft, for: .top)
         // Re-read the Keychain-backed rows after an import or an edit.
         .id(model.configVersion)
         .onChange(of: timeout) { _, value in AppSettings.sessionTimeoutMinutes = value }
         .onChange(of: language) { _, value in model.setLanguage(AppLanguage(rawValue: value)) }
+        .onChange(of: cjkSpacing) { _, value in TextOutputSettings.cjkSpacing = value }
+        .onChange(of: trailingPunctuation) { _, value in TextOutputSettings.trailingPunctuation = value }
+        .onChange(of: cornerQuotes) { _, value in TextOutputSettings.cornerQuotes = value }
         .alert(L("清空全部历史？", "Clear all history?"), isPresented: $confirmClearHistory) {
             Button(L("取消", "Cancel"), role: .cancel) {}
             Button(L("清空", "Clear"), role: .destructive) { history.clear() }
@@ -215,7 +226,7 @@ struct SettingsView: View {
                 ConfigStore.clearAll()
                 modes.resetToDefaults()
                 // Bring the import card back on Home for the next setup.
-                AppSettings.importCardDismissed = false
+                AppSettings.syncedFromMac = false
                 model.configVersion += 1
             }
         } message: {
@@ -230,6 +241,18 @@ struct SettingsView: View {
         let summary = PhoneASR.summary(for: endpoint)
         let name = ProviderNames.asr(endpoint.provider)
         return summary.isEmpty ? name : "\(name) · \(summary)"
+    }
+
+    private var privacyFooter: String {
+        let context = L(
+            "打开后，光标前后的少量文字（前 300 字、后 100 字）会一起发给处理模型，帮助校正专有词和语气。密码、验证码、银行卡输入框不读取。",
+            "When on, a little text around the cursor (300 characters before, 100 after) goes to the text model with your words, to get names and tone right. Password, one-time-code and card fields are never read."
+        )
+        guard !AppSettings.aiConsentKeys.isEmpty else { return context }
+        return context + L(
+            "撤回授权会关闭语音会话，下次听写前重新询问。",
+            " Withdrawing ends the voice session; you'll be asked again before the next dictation."
+        )
     }
 
     private var serviceFooter: String {
@@ -289,6 +312,76 @@ struct SettingsView: View {
                 .foregroundStyle(T4.tertiary)
         }
         .contentShape(Rectangle())
+    }
+}
+
+/// The keyboard's default mode, moved here from Home. Picks among the modes
+/// on the keyboard; the keyboard's top bar still switches at any time.
+struct MyModesSection: View {
+    @ObservedObject private var modes = ModeStore.shared
+    @State private var selected = SharedSettings.selectedMode
+
+    var body: some View {
+        Section {
+            ForEach(DictationMode.keyboardOrder) { mode in
+                row(mode)
+            }
+        } header: {
+            HStack {
+                Text(L("我的模式", "My Modes"))
+                Spacer()
+                NavigationLink(L("管理", "Manage"), value: SettingsRoute.modes)
+                    .font(.system(size: 13, weight: .medium))
+                    .textCase(nil)
+            }
+        } footer: {
+            Text(L("键盘默认用哪个，也可以在键盘顶部随时切换。", "Choose the keyboard's default. You can switch anytime at the top of the keyboard."))
+        }
+        .onAppear { selected = SharedSettings.selectedMode }
+        .onChange(of: modes.modes) { _, _ in selected = SharedSettings.selectedMode }
+    }
+
+    private func row(_ mode: DictationMode) -> some View {
+        let available = !mode.usesLLM || SharedSettings.llmConfigured
+        // The keyboard falls back to 快速 when the text model is missing.
+        let effective = (!selected.usesLLM || SharedSettings.llmConfigured) ? selected : .quick
+        let isSelected = effective == mode
+        return Button {
+            guard available else { return }
+            SharedSettings.selectedMode = mode
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { selected = mode }
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: mode.symbol)
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(T4.ink.opacity(available ? 1 : 0.4))
+                    .frame(width: 34, height: 34)
+                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(mode.title)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(T4.ink.opacity(available ? 1 : 0.4))
+                        T4Badge(text: mode.kind == .custom ? L("自定义", "Custom") : L("内置", "Built-in"))
+                    }
+                    Text(available ? mode.summary : L("需要先导入处理模型", "Import a text model first"))
+                        .font(.system(size: 12))
+                        .foregroundStyle(T4.tertiary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 21))
+                    .foregroundStyle(isSelected ? T4.ink : T4.ink.opacity(0.2))
+                    .contentTransition(.symbolEffect(.replace))
+            }
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!available)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 

@@ -29,6 +29,34 @@ final class MobileConfigExporterTests: XCTestCase {
         XCTAssertEqual(transfer?.prompt, "只改错别字：{text}")
     }
 
+    func testModeFormattingTravelsOnlyWhenSet() throws {
+        let plain = try XCTUnwrap(MobileConfigExporter.transferMode(for: .formalWriting))
+        XCTAssertNil(plain.punctuation, "inherit stays out of the code")
+        XCTAssertNil(plain.shortTextExemption, "0 stays out of the code")
+        var mode = ProcessingMode.formalWriting
+        mode.punctuationMode = .removeAll
+        mode.shortTextExemption = 6
+        let transfer = try XCTUnwrap(MobileConfigExporter.transferMode(for: mode))
+        XCTAssertEqual(transfer.punctuation, ModePunctuationMode.removeAll.rawValue)
+        XCTAssertEqual(transfer.shortTextExemption, 6)
+    }
+
+    func testTextOutputReadsTheMacSettings() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "MobileConfigExporterTests.textOutput"))
+        defaults.removePersistentDomain(forName: "MobileConfigExporterTests.textOutput")
+        XCTAssertEqual(
+            MobileConfigExporter.textOutput(userDefaults: defaults),
+            .init(cjkSpacing: "pangu", trailingPunctuation: "off", cornerQuotes: false)
+        )
+        defaults.set("remove", forKey: CJKSpacingMode.storageKey)
+        defaults.set("all", forKey: "tf_stripTrailingPunctuation")
+        defaults.set(true, forKey: CornerQuotePreference.storageKey)
+        XCTAssertEqual(
+            MobileConfigExporter.textOutput(userDefaults: defaults),
+            .init(cjkSpacing: "remove", trailingPunctuation: "all", cornerQuotes: true)
+        )
+    }
+
     func testIntelliSenseTravelsAsItsKindOnly() throws {
         let transfer = try XCTUnwrap(MobileConfigExporter.transferMode(for: .intelliSense))
         XCTAssertEqual(transfer.kind, Kind.intelliSense)

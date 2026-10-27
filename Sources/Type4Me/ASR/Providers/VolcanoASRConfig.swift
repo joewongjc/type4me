@@ -8,7 +8,7 @@ struct VolcanoASRConfig: ASRProviderConfig, Sendable {
     }
 
     static let provider = ASRProvider.volcano
-    static var displayName: String { L("火山引擎 (Doubao)", "Volcano (Doubao)") }
+    static var displayName: String { L("火山引擎", "Volcengine") }
 
     /// 豆包流式语音识别模型 2.0
     static let resourceIdSeedASR = "volc.seedasr.sauc.duration"

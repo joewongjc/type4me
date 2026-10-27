@@ -22,7 +22,7 @@ enum LLMProvider: String, CaseIterable, Codable, Sendable {
 
     var displayName: String {
         switch self {
-        case .doubao:      return L("豆包 (ByteDance ARK)", "Doubao (ByteDance ARK)")
+        case .doubao:      return L("火山方舟 (字节跳动)", "Volcengine Ark (ByteDance)")
         case .minimaxCN:   return L("MiniMax 国内", "MiniMax China")
         case .minimaxIntl: return L("MiniMax 海外", "MiniMax Global")
         case .bailian:     return L("百炼 (阿里云)", "Bailian (Alibaba Cloud)")

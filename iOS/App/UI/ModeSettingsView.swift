@@ -62,13 +62,17 @@ final class ModeStore: ObservableObject {
                 } else if let prompt, !prompt.isEmpty {
                     modes[index].prompt = prompt
                 }
+                modes[index].punctuation = item.punctuation
+                modes[index].shortTextExemption = item.shortTextExemption
             } else if kind == .custom, let prompt, !prompt.isEmpty {
                 modes.append(ModeDefinition(
                     id: id,
                     kind: .custom,
                     name: item.name ?? L("Mac 模式", "Mac Mode"),
                     prompt: prompt,
-                    onKeyboard: true
+                    onKeyboard: true,
+                    punctuation: item.punctuation,
+                    shortTextExemption: item.shortTextExemption
                 ))
             }
         }
@@ -211,6 +215,13 @@ struct ModeEditorView: View {
 
     private let nameLimit = 12
 
+    /// The Mac's choices, plus a value synced from it that isn't one of them.
+    private var exemptionOptions: [Int] {
+        let options = [0, 10, 20, 30, 40, 50]
+        guard let current = draft.shortTextExemption, current > 0, !options.contains(current) else { return options }
+        return (options + [current]).sorted()
+    }
+
     init(mode: ModeDefinition, isNew: Bool) {
         _draft = State(initialValue: mode)
         let defaultPrompt = ModePrompts.defaultPrompt(for: mode.kind)
@@ -338,12 +349,37 @@ struct ModeEditorView: View {
                 } footer: {
                     Text(promptFooter)
                 }
+            }
 
-                if !isNew && !draft.isBuiltIn {
-                    Section {
-                        Button(L("删除模式", "Delete Mode"), role: .destructive) { confirmDelete = true }
-                            .disabled(draft.onKeyboard && keyboardSlotsTaken == 0)
+            Section {
+                Picker(L("标点", "Punctuation"), selection: Binding(
+                    get: { draft.punctuation.flatMap(ModePunctuationMode.init(rawValue:)) ?? .inherit },
+                    set: { draft.punctuation = $0 == .inherit ? nil : $0.rawValue }
+                )) {
+                    ForEach(ModePunctuationMode.allCases, id: \.self) { Text(TextOutputSettings.name($0)).tag($0) }
+                }
+                if draft.kind != .quick {
+                    Picker(L("短文本跳过", "Short Text Skip"), selection: Binding(
+                        get: { draft.shortTextExemption ?? 0 },
+                        set: { draft.shortTextExemption = $0 > 0 ? $0 : nil }
+                    )) {
+                        ForEach(exemptionOptions, id: \.self) { value in
+                            Text(value == 0 ? L("关闭", "Off") : L("\(value) 字以下", "Under \(value) chars")).tag(value)
+                        }
                     }
+                }
+            } header: {
+                Text(L("标点与格式", "Punctuation & Format"))
+            } footer: {
+                if draft.kind != .quick {
+                    Text(L("识别结果少于设定字数时不经过处理模型，直接输出。", "Below the set length, the transcript goes out as is, without the text model."))
+                }
+            }
+
+            if !isNew && !draft.isBuiltIn {
+                Section {
+                    Button(L("删除模式", "Delete Mode"), role: .destructive) { confirmDelete = true }
+                        .disabled(draft.onKeyboard && keyboardSlotsTaken == 0)
                 }
             }
         }

@@ -1,47 +1,75 @@
 import SwiftUI
 
-/// Home, laid out like the Mac Home: the logo, the import card until it is dismissed,
-/// totals, modes and recent dictation. The voice session runs on its own
-/// while the app is open or in the background, so it has no card here.
+/// Home: the wordmark, the import card until something is synced, totals,
+/// then everything dictated, searchable and grouped by day. The voice
+/// session runs on its own, so it has no card here.
 struct HomeView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var history: HistoryStore
-    @State private var importDismissed = AppSettings.importCardDismissed
     @ObservedObject private var updates = UpdateCheck.shared
+    @ObservedObject private var modes = ModeStore.shared
+    @State private var query = ""
+    @State private var filter: DictationMode?
+
+    private var filtered: [HistoryEntry] {
+        history.entries.filter { entry in
+            (filter == nil || entry.mode == filter)
+                && (query.isEmpty || entry.finalText.localizedCaseInsensitiveContains(query)
+                    || entry.rawText.localizedCaseInsensitiveContains(query))
+        }
+    }
+
+    /// Entries grouped by day, newest day first, keeping the store's order.
+    private var days: [(day: Date, entries: [HistoryEntry])] {
+        var result: [(day: Date, entries: [HistoryEntry])] = []
+        for entry in filtered {
+            let day = Calendar.current.startOfDay(for: entry.date)
+            if result.last?.day == day {
+                result[result.count - 1].entries.append(entry)
+            } else {
+                result.append((day, [entry]))
+            }
+        }
+        return result
+    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                HStack(spacing: 8) {
-                    BrandMark(size: 30)
-                    Text("Type4Me")
-                        .font(.system(size: 21, weight: .bold))
-                        .foregroundStyle(T4.ink)
-                    Spacer()
-                }
-                .padding(.top, 6)
-                .accessibilityElement(children: .combine)
-                .accessibilityAddTraits(.isHeader)
+                Image("Wordmark")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(height: 34)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 6)
+                    .accessibilityLabel("Type4Me")
+                    .accessibilityAddTraits(.isHeader)
 
                 if let update = updates.available {
                     UpdateCard(update: update) { updates.dismiss() }
                 }
-                if !importDismissed {
-                    ImportCard {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { importDismissed = true }
-                        AppSettings.importCardDismissed = true
-                    }
-                    .transition(.asymmetric(insertion: .opacity, removal: .move(edge: .leading).combined(with: .opacity)))
+                if !AppSettings.syncedFromMac {
+                    ImportCard()
                 }
                 StatsCard()
-                ModesCard()
-                RecentCard()
+
+                if history.entries.isEmpty {
+                    EmptyHistoryCard()
+                } else {
+                    searchField
+                    filterChips
+                    results
+                        // A quick cross-fade between filters instead of rows
+                        // sliding in from below.
+                        .id(filter)
+                        .transition(.opacity)
+                }
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 28)
         }
         .scrollIndicators(.hidden)
-        .onAppear { importDismissed = AppSettings.importCardDismissed }
+        .scrollDismissesKeyboard(.immediately)
         // No navigation bar on Home, so supply the soft scroll-edge blur
         // under the status bar ourselves.
         .safeAreaBar(edge: .top) { Color.clear.frame(height: 0) }
@@ -49,15 +77,130 @@ struct HomeView: View {
         .background(DottedCanvas())
         .toolbar(.hidden, for: .navigationBar)
     }
+
+    /// Every day's card, or a note when the search or filter matches nothing.
+    private var results: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            if days.isEmpty {
+                Text(L("没有找到", "No matches")).foregroundStyle(T4.secondary).padding(.top, 40)
+                    .frame(maxWidth: .infinity)
+            }
+            ForEach(days, id: \.day) { group in
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(dayTitle(group.day))
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(T4.tertiary)
+                        .padding(.leading, 4)
+                        .accessibilityAddTraits(.isHeader)
+                    LazyVStack(spacing: 0) {
+                        ForEach(Array(group.entries.enumerated()), id: \.element.id) { index, entry in
+                            if index > 0 { Divider().overlay(T4.border) }
+                            HistoryRow(entry: entry)
+                        }
+                    }
+                    .t4Card(padding: 16)
+                }
+            }
+        }
+    }
+
+    private var searchField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(T4.tertiary)
+            TextField(L("搜索说过的话", "Search your dictation"), text: $query)
+                .textFieldStyle(.plain)
+                .submitLabel(.search)
+            if !query.isEmpty {
+                Button {
+                    query = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(T4.tertiary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(L("清除搜索", "Clear search"))
+            }
+        }
+        .font(.system(size: 16))
+        .padding(.horizontal, 14)
+        .frame(height: 44)
+        // Glass as a sibling layer, not wrapping the field: content
+        // inside glass gets its own appearance, which forced a light
+        // keyboard in dark mode.
+        .background { Color.clear.glassEffect(.regular, in: Capsule()) }
+    }
+
+    private var filterChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            GlassEffectContainer(spacing: 8) {
+                HStack(spacing: 8) {
+                    chip(L("全部", "All"), selected: filter == nil) { filter = nil }
+                    ForEach(DictationMode.allModes) { mode in
+                        chip(mode.title, selected: filter == mode) { filter = mode }
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+        }
+        .scrollClipDisabled()
+    }
+
+    private func chip(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button {
+            withAnimation(.easeOut(duration: 0.15)) { action() }
+        } label: {
+            Text(title)
+                .font(.system(size: 14, weight: selected ? .semibold : .medium))
+                .padding(.horizontal, 16)
+                .frame(height: 34)
+                .foregroundStyle(selected ? T4.background : T4.ink)
+                .glassEffect(selected ? .regular.tint(T4.ink).interactive() : .regular.interactive(), in: Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// 今天, 昨天, then the date; the year only when it isn't this one.
+    private func dayTitle(_ day: Date) -> String {
+        let calendar = Calendar.current
+        if calendar.isDateInToday(day) { return L("今天", "Today") }
+        if calendar.isDateInYesterday(day) { return L("昨天", "Yesterday") }
+        let locale = AppLanguage.current.locale
+        if calendar.isDate(day, equalTo: Date(), toGranularity: .year) {
+            return day.formatted(.dateTime.month(.wide).day().weekday(.abbreviated).locale(locale))
+        }
+        return day.formatted(.dateTime.year().month(.wide).day().locale(locale))
+    }
 }
 
-/// Bringing the Mac setup over is how the iPhone gets its services, so it
-/// sits on Home: scan in-app or paste, and see what was last imported.
-/// Swipe it sideways or tap ✕ to put it away; Settings keeps both imports.
+/// Before the first dictation: where to talk.
+struct EmptyHistoryCard: View {
+    var body: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "keyboard")
+                .font(.system(size: 26, weight: .regular))
+                .foregroundStyle(T4.tertiary)
+            Text(L("还没有说过的话", "Nothing Dictated Yet"))
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(T4.ink)
+            Text(L(
+                "在任意 App 里切到 Type4Me 键盘，按住麦克风说话，记录会出现在这里。",
+                "Switch to the Type4Me keyboard in any app and hold the mic to talk. What you say shows up here."
+            ))
+            .font(.system(size: 14))
+            .foregroundStyle(T4.secondary)
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .t4Card(padding: 20)
+    }
+}
+
+/// Bringing the Mac setup over is how most people get their services, so it
+/// leads Home until something has been synced; Settings keeps the scanner.
 struct ImportCard: View {
     @EnvironmentObject private var model: AppModel
-    let onDismiss: () -> Void
-    @State private var dragX: CGFloat = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -68,25 +211,18 @@ struct ImportCard: View {
                     .frame(width: 44, height: 44)
                     .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(L("从 Mac 同步", "Sync from Mac"))
+                    Text(L("已经在用 Mac 版？", "Already Using Type4Me on Mac?"))
                         .font(.system(size: 17, weight: .bold))
                         .foregroundStyle(T4.ink)
-                    Text(detail)
+                    Text(L(
+                        "扫码就能把识别服务、处理模型、模式和词汇一次同步过来。在 Mac 版侧边栏打开「手机版」，再用下面的按钮扫码。密钥只存在这台 iPhone 的钥匙串里。",
+                        "Scan once to bring over your speech service, text model, modes and vocabulary. Open Mobile in the Mac app's sidebar, then scan with the button below. Keys stay in this iPhone's Keychain."
+                    ))
                         .font(.system(size: 13))
                         .foregroundStyle(T4.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 0)
-                Button(action: onDismiss) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(T4.secondary)
-                        .frame(width: 28, height: 28)
-                        .glassEffect(.regular.interactive(), in: Circle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(L("关闭", "Close"))
-                .accessibilityHint(L("可以在设置 › 识别与处理里继续导入", "You can still import from Settings › Speech & Text"))
             }
 
             Button {
@@ -101,45 +237,6 @@ struct ImportCard: View {
             .tint(T4.ink)
         }
         .t4Card(padding: 18)
-        .offset(x: dragX)
-        .opacity(1 - min(abs(dragX) / 320, 0.6))
-        .simultaneousGesture(
-            // Horizontal only, so vertical scrolling through Home is untouched.
-            DragGesture(minimumDistance: 16)
-                .onChanged { value in
-                    guard abs(value.translation.width) > abs(value.translation.height) else { return }
-                    dragX = value.translation.width
-                }
-                .onEnded { value in
-                    let distance = abs(value.translation.width)
-                    let flung = abs(value.predictedEndTranslation.width) > 220
-                    if distance > 110 || (flung && distance > 40) {
-                        withAnimation(.easeOut(duration: 0.2)) { dragX = value.translation.width > 0 ? 500 : -500 }
-                        onDismiss()
-                    } else {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { dragX = 0 }
-                    }
-                }
-        )
-        .accessibilityAction(named: L("关闭", "Close"), onDismiss)
-    }
-
-    private var detail: String {
-        guard model.hasConfig, let meta = ConfigStore.meta else {
-            return L(
-                "在 Mac 版 Type4Me 的侧边栏打开「手机版」，用下面的按钮扫码。密钥只存在这台 iPhone 的钥匙串里。",
-                "In Type4Me on your Mac, open Mobile in the sidebar, then scan the code with the button below. Keys stay in this iPhone's Keychain."
-            )
-        }
-        let services = [
-            ConfigStore.asr.map { ProviderNames.asr($0.provider) },
-            ConfigStore.llm.map { ProviderNames.llm($0.provider) },
-        ].compactMap { $0 }.joined(separator: " + ")
-        let date = meta.importedAt.formatted(
-            .dateTime.month(.defaultDigits).day().hour().minute().locale(AppLanguage.current.locale)
-        )
-        let source = meta.sourceName ?? "Mac"
-        return "✓ \(services)\n" + L("来自 \(source) · \(date)", "From \(source) · \(date)")
     }
 }
 
@@ -201,114 +298,6 @@ struct StatsCard: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-/// "我的模式": a heading above the card and one selectable row per mode,
-/// the selected one marked like a radio choice.
-struct ModesCard: View {
-    @ObservedObject private var modes = ModeStore.shared
-    @EnvironmentObject private var model: AppModel
-    @State private var selected = SharedSettings.selectedMode
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            SectionHeader(
-                title: L("我的模式", "My Modes"),
-                subtitle: L("键盘默认用哪个，也可以在键盘顶部随时切换", "Choose the keyboard's default. You can switch anytime at the top of the keyboard.")
-            ) {
-                Button(L("管理", "Manage")) { model.showModeSettings() }
-                    .buttonStyle(.glass)
-                    .tint(T4.ink)
-                    .controlSize(.small)
-            }
-            VStack(spacing: 0) {
-                ForEach(Array(DictationMode.keyboardOrder.enumerated()), id: \.element) { index, mode in
-                    if index > 0 { Divider().overlay(T4.border).padding(.leading, 58) }
-                    row(mode)
-                }
-            }
-            .t4Card(padding: 0)
-        }
-        .onAppear { selected = SharedSettings.selectedMode }
-        .onChange(of: modes.modes) { _, _ in selected = SharedSettings.selectedMode }
-    }
-
-    private func row(_ mode: DictationMode) -> some View {
-        let available = !mode.usesLLM || SharedSettings.llmConfigured
-        // The keyboard falls back to 快速 when the text model is missing.
-        let effective = (!selected.usesLLM || SharedSettings.llmConfigured) ? selected : .quick
-        let isSelected = effective == mode
-        return Button {
-            guard available else { return }
-            SharedSettings.selectedMode = mode
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { selected = mode }
-        } label: {
-            HStack(spacing: 12) {
-                Image(systemName: mode.symbol)
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(T4.ink.opacity(available ? 1 : 0.4))
-                    .frame(width: 34, height: 34)
-                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        Text(mode.title)
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(T4.ink.opacity(available ? 1 : 0.4))
-                        T4Badge(text: mode.kind == .custom ? L("自定义", "Custom") : L("内置", "Built-in"))
-                    }
-                    Text(available ? mode.summary : L("需要先导入处理模型", "Import a text model first"))
-                        .font(.system(size: 12))
-                        .foregroundStyle(T4.tertiary)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer(minLength: 8)
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 21))
-                    .foregroundStyle(isSelected ? T4.ink : T4.ink.opacity(0.2))
-                    .contentTransition(.symbolEffect(.replace))
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 12)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(!available)
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
-    }
-}
-
-/// Recent dictation in one bordered list, like the Mac Home feed.
-struct RecentCard: View {
-    @EnvironmentObject private var model: AppModel
-    @EnvironmentObject private var history: HistoryStore
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            SectionHeader(title: L("最近说过的话", "Recent Dictation")) {
-                if !history.entries.isEmpty {
-                    Button(L("全部", "See All")) { model.tab = .history }
-                        .buttonStyle(.glass)
-                        .tint(T4.ink)
-                        .controlSize(.small)
-                }
-            }
-            VStack(alignment: .leading, spacing: 0) {
-                if history.entries.isEmpty {
-                    Text(L("在任意 App 里切到 Type4Me 键盘，按住麦克风说一句试试。", "Switch to the Type4Me keyboard in any app, hold the mic and say something."))
-                        .font(.system(size: 14))
-                        .foregroundStyle(T4.secondary)
-                        .padding(.vertical, 8)
-                } else {
-                    ForEach(Array(history.entries.prefix(5).enumerated()), id: \.element.id) { index, entry in
-                        if index > 0 { Divider().overlay(T4.border) }
-                        HistoryRow(entry: entry)
-                    }
-                }
-            }
-            .t4Card(padding: 16)
-        }
     }
 }
 
@@ -406,102 +395,6 @@ struct HistoryRow: View {
         .padding(.vertical, 12)
         .contentShape(Rectangle())
         .onTapGesture { withAnimation(.easeInOut(duration: 0.15)) { expanded.toggle() } }
-    }
-}
-
-struct HistoryView: View {
-    @EnvironmentObject private var history: HistoryStore
-    @ObservedObject private var modes = ModeStore.shared
-    @State private var query = ""
-    @State private var filter: DictationMode?
-
-    private var filtered: [HistoryEntry] {
-        history.entries.filter { entry in
-            (filter == nil || entry.mode == filter)
-                && (query.isEmpty || entry.finalText.localizedCaseInsensitiveContains(query)
-                    || entry.rawText.localizedCaseInsensitiveContains(query))
-        }
-    }
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                // Same page heading as Home, so the tabs read as one app.
-                Text(L("历史", "History"))
-                    .font(.system(size: 31, weight: .heavy))
-                    .foregroundStyle(T4.ink)
-                    .padding(.top, 6)
-                HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundStyle(T4.tertiary)
-                    TextField(L("搜索说过的话", "Search your dictation"), text: $query)
-                        .textFieldStyle(.plain)
-                        .submitLabel(.search)
-                    if !query.isEmpty {
-                        Button {
-                            query = ""
-                        } label: {
-                            Image(systemName: "xmark.circle.fill").foregroundStyle(T4.tertiary)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(L("清除搜索", "Clear search"))
-                    }
-                }
-                .font(.system(size: 16))
-                .padding(.horizontal, 14)
-                .frame(height: 44)
-                // Glass as a sibling layer, not wrapping the field: content
-                // inside glass gets its own appearance, which forced a light
-                // keyboard in dark mode.
-                .background { Color.clear.glassEffect(.regular, in: Capsule()) }
-                ScrollView(.horizontal, showsIndicators: false) {
-                    GlassEffectContainer(spacing: 8) {
-                        HStack(spacing: 8) {
-                            chip(L("全部", "All"), selected: filter == nil) { filter = nil }
-                            ForEach(DictationMode.allModes) { mode in
-                                chip(mode.title, selected: filter == mode) { filter = mode }
-                            }
-                        }
-                        .padding(.vertical, 2)
-                    }
-                }
-                .scrollClipDisabled()
-                if !filtered.isEmpty {
-                    LazyVStack(spacing: 0) {
-                        ForEach(Array(filtered.enumerated()), id: \.element.id) { index, entry in
-                            if index > 0 { Divider().overlay(T4.border) }
-                            HistoryRow(entry: entry)
-                        }
-                    }
-                    .t4Card(padding: 16)
-                }
-                if filtered.isEmpty {
-                    Text(L("没有找到", "No matches")).foregroundStyle(T4.secondary).padding(.top, 40)
-                        .frame(maxWidth: .infinity)
-                }
-            }
-            .padding(16)
-        }
-        .scrollIndicators(.hidden)
-        .background(DottedCanvas())
-        .scrollDismissesKeyboard(.immediately)
-        .safeAreaBar(edge: .top) { Color.clear.frame(height: 0) }
-        .scrollEdgeEffectStyle(.soft, for: .top)
-        .toolbar(.hidden, for: .navigationBar)
-    }
-
-    private func chip(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
-        Button {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { action() }
-        } label: {
-            Text(title)
-                .font(.system(size: 14, weight: selected ? .semibold : .medium))
-                .padding(.horizontal, 16)
-                .frame(height: 34)
-                .foregroundStyle(selected ? T4.background : T4.ink)
-                .glassEffect(selected ? .regular.tint(T4.ink).interactive() : .regular.interactive(), in: Capsule())
-        }
-        .buttonStyle(.plain)
     }
 }
 
