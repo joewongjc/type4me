@@ -7,6 +7,10 @@ Local ASR: SenseVoice via native sherpa-onnx (streaming) + Qwen3-ASR (final cali
 Cloud ASR: 18 providers implemented (Volcano, StepFun, MiMo batch, OpenAI, Microsoft Azure MAI, Deepgram, Cartesia, AssemblyAI, ElevenLabs, Gemini, Grok, Soniox, Bailian, Baidu, Meta Muse, Groq batch, Mistral AI batch, Tencent Cloud), plus Apple Speech. StepFun, Bailian, Gemini, ElevenLabs, Grok, Microsoft Azure, and Tencent Cloud let users switch between real-time streaming and batch recognition.
 Swift Package Manager project, no Xcode project file. Optional `sherpa-onnx.xcframework` enables local SenseVoice, Silero VAD, and punctuation restoration.
 
+## Machine-Local Agent Notes
+
+A maintainer machine may keep uncommitted notes at `.agents/LOCAL.md` in the main checkout (machine paths, local-only assets, release skills under `.agents/skills/`). Before working, read it if it exists; from a linked worktree, find it next to the main checkout via `git rev-parse --path-format=absolute --git-common-dir`. Never commit `.agents/LOCAL.md`, local skills, or key files such as `*.p8`.
+
 ## Branch Naming and Lifecycle
 
 Use one short-lived branch for one independently reviewable change. Branches must
@@ -86,6 +90,9 @@ The built binary is at `.build/release/Type4Me`.
 - 公证只用登录钥匙串里的 notarytool profile `selectx-notary`（Team `T98LK79X2K` 共用，`scripts/setup-notary-profile.sh` 写入、`scripts/build-dmg.sh` 读取）。代理不得创建、覆盖、改名或删除任何公证 profile；凭据失效时停下，请用户自己运行 setup 脚本。
 - 本地 UI 迭代的测试和实际体验默认交给用户。除非用户明确要求，不自行运行测试套件、操作界面测试、切换设置或启动录音；仅完成必要的编译、签名、备份和安装完整性检查。用户提供的截图和体验反馈是下一轮调整依据。
 - Use `$type4me-deploy` and the current production packaging flow; default to `pure` + universal. Explicit Dev-only requests use `scripts/dev-run.sh`.
+- Build a local install from `main` or an integration branch that contains every feature the user is keeping, never from a single feature branch (that silently drops unmerged work). Tell the user which features the installed build includes.
+- Notarize, staple, and verify both the app and the DMG. Do not reset TCC permissions or modify Keychain ACLs.
+- Outside local UI iteration, run the tests relevant to the change. Before running the full test suite, isolate the Keychain-touching tests; they have affected `login.keychain-db` and the notarization profile.
 - Local deployment does not authorize GitHub publication or the archived `official` subscription variant.
 
 ## Build Variants
@@ -327,6 +334,7 @@ API keys and other secure values are stored in Keychain, not in this file.
 - Add or update automated coverage for language-sensitive behavior, including switching between Chinese and English for changed persistent UI paths. Review both languages before declaring a UI change complete.
 
 ### Git Workflow
+- The main checkout may hold someone else's uncommitted work: check `git status` first, keep unrelated changes, and stage explicit paths only (no `git add -A`).
 - `sherpa-onnx.xcframework` is not committed; `.gitignore` it and build it locally with `scripts/build-sherpa.sh`.
 - Before opening or updating a PR, run `git fetch origin && git rebase origin/main` when the requested workflow calls for a rebase.
 - Resolve conflicts by preserving the intended behavior from both sides and re-run the relevant tests.
