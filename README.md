@@ -53,7 +53,7 @@ iPhone 上的 Type4Me 是一个语音键盘：切到 Type4Me，按住说话、�
 
 <video src="https://github.com/user-attachments/assets/d5ad6da9-b924-4fd6-9812-d0d9868563a4" width="720" controls>Type4Me 演示视频</video>
 
-每个模式可以绑定多个全局快捷键，每个快捷键单独设为「按住说话」或「按一下开关」。
+每个模式可以绑定多个全局快捷键，每个快捷键单独设为「按住说话」或「按一下开关」；单独一个修饰键（如 fn、右 Option）还可以设为「按两下开关」，快速按两下开始，再按两下结束，单按保留系统原有功能。
 
 ## 内置模式 + 自由定义
 
@@ -196,7 +196,7 @@ The keyboard screenshot shows the previous layout; see the app for the 1.1.0 mod
 
 <video src="https://github.com/user-attachments/assets/d5ad6da9-b924-4fd6-9812-d0d9868563a4" width="720" controls>Type4Me demo video</video>
 
-Each mode can have several global hotkeys, and each hotkey can be hold-to-talk or press-to-toggle.
+Each mode can have several global hotkeys, set individually to hold to talk or press once to toggle. A single modifier key, such as fn or Right Option, can also use press twice: tap it twice quickly to start, and twice again to stop. A single tap keeps its normal system behavior.
 
 ## Built-in modes + your own
 
