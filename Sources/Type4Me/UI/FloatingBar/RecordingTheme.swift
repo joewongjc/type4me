@@ -28,11 +28,13 @@ enum RecordingTheme: String, CaseIterable, Identifiable {
 
 /// Native Liquid Glass finish for the recording bar (macOS 26+). `.standard`
 /// keeps the original look; `.enhanced` (the default) drops the contrast floor
-/// for clear, active glass with a drop shadow for depth; `.custom` exposes
-/// every knob.
+/// for clear, active glass with a drop shadow for depth; `.system` uses the
+/// glass of the system's own floating panels (see `SystemGlass`); `.custom`
+/// exposes every knob.
 enum RecordingGlassStyle: String, CaseIterable, Identifiable {
     case standard
     case enhanced
+    case system
     case custom
 
     var id: String { rawValue }
@@ -46,9 +48,16 @@ enum RecordingGlassStyle: String, CaseIterable, Identifiable {
             L("标准", "Standard")
         case .enhanced:
             L("增强", "Enhanced")
+        case .system:
+            L("系统浮窗", "System")
         case .custom:
             L("自定义", "Custom")
         }
+    }
+
+    /// Styles offered in Settings; `.system` needs the private glass settings.
+    static func availableCases(systemGlassAvailable: Bool = SystemGlass.isAvailable) -> [RecordingGlassStyle] {
+        allCases.filter { $0 != .system || systemGlassAvailable }
     }
 }
 
@@ -57,6 +66,7 @@ enum RecordingGlassStyle: String, CaseIterable, Identifiable {
 struct RecordingGlassTuning: Equatable {
     /// Theme-coloured floor beneath the glass. The glass samples it before the
     /// desktop, so this is the main dial between "legible" and "see-through".
+    /// With `usesSystemGlass` the same colour is laid inside the glass instead.
     var floorOpacity: Double
     /// How far in from the rim the floor fades out, letting the edge lens
     /// refract the real background.
@@ -75,6 +85,10 @@ struct RecordingGlassTuning: Equatable {
     /// panel reports an active appearance so the glass stays clear and
     /// refractive, as it looks in a focused window.
     var keepsActiveAppearance: Bool
+    /// Draws `SystemGlass` (Notification Center's glass, never subdued) instead
+    /// of SwiftUI glass. `edgeFade`, `glassTint` and `usesClearGlass` do not
+    /// apply to it.
+    var usesSystemGlass: Bool = false
 
     static let floorRange: ClosedRange<Double> = 0...0.9
     static let edgeFadeRange: ClosedRange<Double> = 0...20
@@ -83,18 +97,25 @@ struct RecordingGlassTuning: Equatable {
     static let shadowStrengthRange: ClosedRange<Double> = 0...1
 
     /// `nil` for `.standard`, which keeps the original surface untouched.
+    /// Without the private glass settings, `.system` falls back to `.enhanced`
+    /// and custom values draw SwiftUI glass.
     static func resolved(
         style: RecordingGlassStyle,
         theme: RecordingTheme,
-        custom: RecordingGlassTuning
+        custom: RecordingGlassTuning,
+        systemGlassAvailable: Bool = SystemGlass.isAvailable
     ) -> RecordingGlassTuning? {
         switch style {
         case .standard:
-            nil
+            return nil
         case .enhanced:
-            enhanced(for: theme)
+            return enhanced(for: theme)
+        case .system:
+            return systemGlassAvailable ? system(for: theme) : enhanced(for: theme)
         case .custom:
-            custom
+            var tuning = custom
+            tuning.usesSystemGlass = custom.usesSystemGlass && systemGlassAvailable
+            return tuning
         }
     }
 
@@ -114,6 +135,24 @@ struct RecordingGlassTuning: Equatable {
         )
     }
 
+    /// Notification Center's glass with the theme colour inside it. That glass
+    /// turns light over bright content and dark over dark content, so a floor
+    /// keeps the theme's text colour readable on both: 25% black under white
+    /// text, and a stronger white under dark text, which the light glass
+    /// otherwise washes out. The glass draws its own rim and depth.
+    static func system(for theme: RecordingTheme) -> RecordingGlassTuning {
+        RecordingGlassTuning(
+            floorOpacity: theme == .dark ? 0.25 : 0.40,
+            edgeFade: 0,
+            rimStrength: 0,
+            glassTint: 0,
+            usesClearGlass: false,
+            shadowStrength: 0,
+            keepsActiveAppearance: true,
+            usesSystemGlass: true
+        )
+    }
+
     /// Custom starts from the enhanced preset. Custom values apply to both
     /// themes, so start from the floorless light variant.
     static let customDefault = enhanced(for: .light)
@@ -126,10 +165,11 @@ struct RecordingGlassTuning: Equatable {
         static let usesClearGlass = "tf_recordingGlassUsesClear"
         static let shadowStrength = "tf_recordingGlassShadowStrength"
         static let keepsActiveAppearance = "tf_recordingGlassKeepsActive"
+        static let usesSystemGlass = "tf_recordingGlassUsesSystem"
 
         static let all = [
             floorOpacity, edgeFade, rimStrength, glassTint, usesClearGlass, shadowStrength,
-            keepsActiveAppearance,
+            keepsActiveAppearance, usesSystemGlass,
         ]
     }
 
@@ -143,6 +183,8 @@ struct RecordingGlassTuning: Equatable {
             return false
         case .enhanced:
             return enhanced(for: .dark).keepsActiveAppearance
+        case .system:
+            return system(for: .dark).keepsActiveAppearance
         case .custom:
             return defaults.object(forKey: StorageKey.keepsActiveAppearance) as? Bool
                 ?? customDefault.keepsActiveAppearance

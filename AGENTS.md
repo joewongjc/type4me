@@ -271,6 +271,7 @@ API keys and other secure values are stored in Keychain, not in this file.
 | `Sources/Type4Me/Services/ModeStorage.swift` | Persistent processing-mode configuration and migration |
 | `Sources/Type4Me/Services/RecordingDisplayProfileStore.swift` | Per-mode recording-display overrides: Follow Global uses live Global Configuration values and disables controls; off copies globals, on removes the override. Preview labels show the selected mode. |
 | `Sources/Type4Me/UI/FloatingBar/FloatingBarView.swift` | Mode/action/transcript bubbles use active frosted blur with a fixed theme tint for contrast across focus changes; the main recording capsule retains native Liquid Glass. |
+| `Sources/Type4Me/UI/FloatingBar/LiquidGlass/SystemGlass.swift` | Notification Center glass for the "System" bar finish: private `NSGlassEffectView` variant 9 with the subdued state held off, the theme floor laid inside it as tint; unavailable private settings fall back to Enhanced |
 | `Sources/Type4Me/UI/TFButtonStyles.swift` | Settings/setup button system: `.tf(role, size:)` text buttons, `.tfIcon(kind)` icon buttons, `TFCloseButton`, `TFSpinner` (foreground-colored loading arc) |
 | `Sources/Type4Me/Services/TextOutputFormatter.swift` | Shared final-output formatting, including punctuation policies |
 | `Sources/Type4Me/Services/ModelManager.swift` | SenseVoice model download, validation, selection |

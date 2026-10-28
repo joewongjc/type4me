@@ -57,6 +57,9 @@ final class RecordingGlassTuningTests: XCTestCase {
         defaults.set(RecordingGlassStyle.enhanced.rawValue, forKey: RecordingGlassStyle.storageKey)
         XCTAssertTrue(RecordingGlassTuning.panelKeepsActiveAppearance(defaults: defaults))
 
+        defaults.set(RecordingGlassStyle.system.rawValue, forKey: RecordingGlassStyle.storageKey)
+        XCTAssertTrue(RecordingGlassTuning.panelKeepsActiveAppearance(defaults: defaults))
+
         defaults.set(RecordingGlassStyle.custom.rawValue, forKey: RecordingGlassStyle.storageKey)
         XCTAssertTrue(RecordingGlassTuning.panelKeepsActiveAppearance(defaults: defaults))
         defaults.set(false, forKey: RecordingGlassTuning.StorageKey.keepsActiveAppearance)
@@ -66,6 +69,65 @@ final class RecordingGlassTuningTests: XCTestCase {
         defaults.set(true, forKey: RecordingGlassTuning.StorageKey.keepsActiveAppearance)
         XCTAssertFalse(RecordingGlassTuning.panelKeepsActiveAppearance(defaults: defaults))
         defaults.removePersistentDomain(forName: "RecordingGlassTuningTests")
+    }
+
+    // MARK: - System glass
+
+    func testSystemGlassKeepsThemeTextReadableOnBothThemes() {
+        for theme in RecordingTheme.allCases {
+            let tuning = RecordingGlassTuning.resolved(
+                style: .system, theme: theme, custom: custom, systemGlassAvailable: true
+            )
+            XCTAssertEqual(tuning, RecordingGlassTuning.system(for: theme))
+            XCTAssertEqual(tuning?.usesSystemGlass, true)
+            // The floorless light preset is what let dark text vanish over dark windows.
+            XCTAssertGreaterThan(tuning?.floorOpacity ?? 0, 0, "\(theme)")
+            XCTAssertTrue(RecordingGlassTuning.floorRange.contains(tuning?.floorOpacity ?? -1))
+        }
+    }
+
+    func testSystemFallsBackToEnhancedWithoutPrivateGlass() {
+        for theme in RecordingTheme.allCases {
+            XCTAssertEqual(
+                RecordingGlassTuning.resolved(style: .system, theme: theme, custom: custom, systemGlassAvailable: false),
+                RecordingGlassTuning.enhanced(for: theme)
+            )
+        }
+        var systemCustom = custom
+        systemCustom.usesSystemGlass = true
+        XCTAssertEqual(
+            RecordingGlassTuning.resolved(style: .custom, theme: .dark, custom: systemCustom, systemGlassAvailable: true)?
+                .usesSystemGlass,
+            true
+        )
+        XCTAssertEqual(
+            RecordingGlassTuning.resolved(style: .custom, theme: .dark, custom: systemCustom, systemGlassAvailable: false)?
+                .usesSystemGlass,
+            false
+        )
+    }
+
+    func testSystemOptionIsOfferedOnlyWithPrivateGlassAndIsNotTheDefault() {
+        XCTAssertEqual(RecordingGlassStyle.defaultValue, .enhanced)
+        XCTAssertFalse(RecordingGlassTuning.customDefault.usesSystemGlass)
+        XCTAssertEqual(RecordingGlassStyle.availableCases(systemGlassAvailable: true), [.standard, .enhanced, .system, .custom])
+        XCTAssertEqual(RecordingGlassStyle.availableCases(systemGlassAvailable: false), [.standard, .enhanced, .custom])
+    }
+
+    func testStyleNamesFollowLanguageSetting() {
+        let defaults = UserDefaults.standard
+        let original = defaults.string(forKey: "tf_language")
+        defer {
+            if let original {
+                defaults.set(original, forKey: "tf_language")
+            } else {
+                defaults.removeObject(forKey: "tf_language")
+            }
+        }
+        defaults.set("zh", forKey: "tf_language")
+        XCTAssertEqual(RecordingGlassStyle.allCases.map(\.displayName), ["标准", "增强", "系统浮窗", "自定义"])
+        defaults.set("en", forKey: "tf_language")
+        XCTAssertEqual(RecordingGlassStyle.allCases.map(\.displayName), ["Standard", "Enhanced", "System", "Custom"])
     }
 
     func testStorageKeysAreDistinct() {

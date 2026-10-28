@@ -316,6 +316,7 @@ struct FloatingBarView<S: FloatingBarState>: View {
     @AppStorage(RecordingGlassTuning.StorageKey.usesClearGlass) private var customGlassUsesClear = RecordingGlassTuning.customDefault.usesClearGlass
     @AppStorage(RecordingGlassTuning.StorageKey.shadowStrength) private var customGlassShadow = RecordingGlassTuning.customDefault.shadowStrength
     @AppStorage(RecordingGlassTuning.StorageKey.keepsActiveAppearance) private var customGlassKeepsActive = RecordingGlassTuning.customDefault.keepsActiveAppearance
+    @AppStorage(RecordingGlassTuning.StorageKey.usesSystemGlass) private var customGlassUsesSystem = RecordingGlassTuning.customDefault.usesSystemGlass
     @AppStorage(RecordingIndicatorStyle.storageKey) private var indicatorStyle = RecordingIndicatorStyle.defaultValue
     @AppStorage(LiveTranscriptDisplayPreference.storageKey) private var showLiveTranscript = LiveTranscriptDisplayPreference.defaultValue
     @AppStorage("tf_hoverTranscriptPreview") private var hoverTranscriptPreview = true
@@ -373,7 +374,8 @@ struct FloatingBarView<S: FloatingBarState>: View {
                 glassTint: customGlassTint,
                 usesClearGlass: customGlassUsesClear,
                 shadowStrength: customGlassShadow,
-                keepsActiveAppearance: customGlassKeepsActive
+                keepsActiveAppearance: customGlassKeepsActive,
+                usesSystemGlass: customGlassUsesSystem
             )
         )
     }
@@ -1875,6 +1877,12 @@ struct RecordingGlassSurface: View {
         min(CGFloat(tuning?.edgeFade ?? 0), cornerRadius * 0.5)
     }
 
+    /// The floor laid inside `SystemGlass`, in the theme's colour.
+    private func systemGlassTint(floor: Double) -> NSColor? {
+        guard floor > 0 else { return nil }
+        return (theme == .dark ? NSColor.black : NSColor.white).withAlphaComponent(floor)
+    }
+
     @available(macOS 26.0, *)
     private var glass: Glass {
         guard let tuning else { return .regular }
@@ -1885,6 +1893,8 @@ struct RecordingGlassSurface: View {
     var body: some View {
         if reduceTransparency {
             shape.fill(theme == .light ? TF.floatingBackgroundLight : TF.floatingBackground)
+        } else if #available(macOS 26.0, *), let tuning, tuning.usesSystemGlass, SystemGlass.isAvailable {
+            SystemGlassBackground(cornerRadius: cornerRadius, tint: systemGlassTint(floor: tuning.floorOpacity))
         } else if #available(macOS 26.0, *) {
             ZStack {
                 shape.fill(themeColor.opacity(contrastFloorOpacity))

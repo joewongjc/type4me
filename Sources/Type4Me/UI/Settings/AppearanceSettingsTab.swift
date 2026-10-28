@@ -38,6 +38,9 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
     @AppStorage(RecordingGlassTuning.StorageKey.keepsActiveAppearance)
     private var customGlassKeepsActive = RecordingGlassTuning.customDefault.keepsActiveAppearance
 
+    @AppStorage(RecordingGlassTuning.StorageKey.usesSystemGlass)
+    private var customGlassUsesSystem = RecordingGlassTuning.customDefault.usesSystemGlass
+
     @AppStorage(RecordingIndicatorStyle.storageKey)
     private var indicatorStyle = RecordingIndicatorStyle.defaultValue
 
@@ -359,17 +362,24 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
 
 
     private var glassStyleRow: some View {
-        settingsOptionRow(
+        let styles = RecordingGlassStyle.availableCases()
+        let systemNote = styles.contains(.system)
+            ? L(
+                "系统浮窗：通知中心那种玻璃，按主题垫一层底色，深浅背景上文字都清楚。",
+                "System uses Notification Center's glass with a theme-coloured backing, so text stays legible over light and dark content. "
+            )
+            : ""
+        return settingsOptionRow(
             L("浮条玻璃质感", "Bar Glass Finish"),
             subtitle: L(
-                "增强（默认）：去掉底色，保持清透、带折射的玻璃，并用外投影显出厚度。标准：原来的样式。自定义：自己调整各项参数。",
-                "Enhanced (default) drops the backing for clear, refractive glass with a drop shadow for depth. Standard is the original look. Custom lets you tune each parameter."
+                "增强（默认）：去掉底色，保持清透、带折射的玻璃，并用外投影显出厚度。\(systemNote)标准：原来的样式。自定义：自己调整各项参数。",
+                "Enhanced (default) drops the backing for clear, refractive glass with a drop shadow for depth. \(systemNote)Standard is the original look. Custom lets you tune each parameter."
             ),
-            controlWidth: SettingsControlWidth.standard
+            controlWidth: styles.count > 3 ? SettingsControlWidth.provider : SettingsControlWidth.standard
         ) {
             settingsInlineSegmentedPicker(
                 selection: $glassStyle,
-                options: RecordingGlassStyle.allCases.map { ($0.rawValue, $0.displayName) }
+                options: styles.map { ($0.rawValue, $0.displayName) }
             )
             .accessibilityLabel(L("浮条玻璃质感", "Bar Glass Finish"))
         }
@@ -383,12 +393,25 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
             glassTint: customGlassTint,
             usesClearGlass: customGlassUsesClear,
             shadowStrength: customGlassShadow,
-            keepsActiveAppearance: customGlassKeepsActive
+            keepsActiveAppearance: customGlassKeepsActive,
+            usesSystemGlass: customGlassUsesSystem
         ) == RecordingGlassTuning.customDefault
     }
 
     @ViewBuilder
     private var customGlassRows: some View {
+        if SystemGlass.isAvailable {
+            SettingsDivider()
+            settingsToggleRow(
+                L("系统浮窗玻璃", "System Glass"),
+                subtitle: L(
+                    "改用通知中心那种玻璃，底色浓度直接染在玻璃上；边缘透光、玻璃着色和玻璃类型对它不生效。",
+                    "Uses Notification Center's glass with the backing laid inside it. Edge Clearance, Glass Tint and Glass Type don't apply to it."
+                ),
+                isOn: $customGlassUsesSystem,
+                isIndented: true
+            )
+        }
         SettingsDivider()
         settingsToggleRow(
             L("清透模式", "Clear Glass"),
@@ -468,6 +491,7 @@ struct AppearanceSettingsTab: View, SettingsCardHelpers {
                 customGlassUsesClear = defaults.usesClearGlass
                 customGlassShadow = defaults.shadowStrength
                 customGlassKeepsActive = defaults.keepsActiveAppearance
+                customGlassUsesSystem = defaults.usesSystemGlass
             }
             .buttonStyle(.tf(.secondary, size: .small))
             .disabled(isCustomGlassDefault)
