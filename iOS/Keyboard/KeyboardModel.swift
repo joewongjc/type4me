@@ -905,11 +905,21 @@ final class KeyboardModel: ObservableObject {
         if recentDeletions.count > Self.deletionMemory { recentDeletions.removeFirst() }
         proxy.deleteBackward()
         invalidateUndo()
+        leaveCorrection()
     }
 
     func returnKey() {
         controller?.proxy.insertText("\n")
         invalidateUndo()
+        leaveCorrection()
+    }
+
+    /// The keyboard's own edits don't reliably reach `textDidChange`, so an
+    /// edit made here drops the correction itself: speaking next inserts at
+    /// the cursor instead of correcting a selection that is gone.
+    private func leaveCorrection() {
+        guard correctionInFlight == nil, correction != .none else { return }
+        exitCorrection()
     }
 
     /// The "4" button next to the modes: more settings live in the app.
