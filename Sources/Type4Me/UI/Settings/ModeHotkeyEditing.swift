@@ -18,6 +18,29 @@ struct RecordingTarget: Identifiable {
     var isManualInput = false
 }
 
+/// Another binding shares keys with the recorded hotkey: one of them is the
+/// other's modifiers plus more keys. Both keep working, so this is a heads-up.
+struct HotkeyPrefixConflict {
+    let mode: ProcessingMode
+    let binding: HotkeyBinding
+    /// True when the recorded hotkey is the shorter one.
+    let recordedIsPrefix: Bool
+
+    /// Names both hotkeys and says which press triggers which mode.
+    func message(recordedKeyCode: Int, recordedModifiers: UInt64?, recordedOwner: String) -> String {
+        let recordedKey = HotkeyRecorderView.keyDisplayName(keyCode: recordedKeyCode, modifiers: recordedModifiers)
+        let otherKey = HotkeyRecorderView.keyDisplayName(keyCode: binding.keyCode, modifiers: binding.modifiers)
+        let otherOwner = mode.localizedDisplayName
+        let (shortKey, shortOwner, longKey, longOwner) = recordedIsPrefix
+            ? (recordedKey, recordedOwner, otherKey, otherOwner)
+            : (otherKey, otherOwner, recordedKey, recordedOwner)
+        return L(
+            "「\(longOwner)」的 \(longKey) 包含 \(shortKey)：单独按 \(shortKey) 触发「\(shortOwner)」，再加按其他键则触发「\(longOwner)」",
+            "\(longKey) for \"\(longOwner)\" includes \(shortKey): press \(shortKey) alone for \"\(shortOwner)\", or add the other keys for \"\(longOwner)\""
+        )
+    }
+}
+
 // MARK: - Drop Delegate
 
 /// Reorders modes as a dragged row passes over its neighbors, persisting via
@@ -107,23 +130,29 @@ enum ModeHotkeyEditing {
         }
     }
 
-    /// Returns a mode whose binding is a modifier prefix of the recorded combo.
+    /// Returns the first binding that shares a modifier prefix with the recorded combo.
     /// Prefix conflict is per-binding: exclude only the binding being edited.
     static func makePrefixConflictCheck(
         in modes: [ProcessingMode],
         target: RecordingTarget
-    ) -> (Int?, UInt64?) -> ProcessingMode? {
+    ) -> (Int?, UInt64?) -> HotkeyPrefixConflict? {
         { code, mods in
             guard let code else { return nil }
-            return modes.first { other in
-                other.allHotkeyBindings.contains { b in
-                    !(other.id == target.modeId && b.id == target.editingBindingId)
-                        && ModeBinding.hasModifierPrefixConflict(
-                            keyCode: code, modifiers: mods,
-                            otherKeyCode: b.keyCode, otherModifiers: b.modifiers
-                        )
+            for other in modes {
+                for b in other.allHotkeyBindings
+                where !(other.id == target.modeId && b.id == target.editingBindingId)
+                    && ModeBinding.hasModifierPrefixConflict(
+                        keyCode: code, modifiers: mods,
+                        otherKeyCode: b.keyCode, otherModifiers: b.modifiers
+                    ) {
+                    let recordedIsPrefix = ModeBinding.modifierBindingIsPrefix(
+                        modifierKeyCode: code, modifierModifiers: mods,
+                        otherKeyCode: b.keyCode, otherModifiers: b.modifiers
+                    )
+                    return HotkeyPrefixConflict(mode: other, binding: b, recordedIsPrefix: recordedIsPrefix)
                 }
             }
+            return nil
         }
     }
 

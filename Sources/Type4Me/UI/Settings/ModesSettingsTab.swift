@@ -951,7 +951,7 @@ struct HotkeySectionView: View, SettingsCardHelpers {
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .help(L("点击编辑 · \(styleLabel(binding.style))", "Click to edit · \(styleLabel(binding.style))"))
+        .help(L("点击编辑 · \(HotkeyRecordingSheet.styleName(binding.style))", "Click to edit · \(HotkeyRecordingSheet.styleName(binding.style))"))
         .overlay(alignment: .topTrailing) {
             if hovered {
                 Button {
@@ -1015,13 +1015,6 @@ struct HotkeySectionView: View, SettingsCardHelpers {
         }
     }
 
-    private func styleLabel(_ style: ProcessingMode.HotkeyStyle) -> String {
-        switch style {
-        case .hold: return L("按住", "Hold")
-        case .toggle: return L("切换", "Toggle")
-        case .doubleTap: return L("双击", "Double-tap")
-        }
-    }
 }
 
 // MARK: - Flow Layout (wrapping HStack)
@@ -1084,7 +1077,7 @@ struct HotkeyRecordingSheet: View {
     let target: RecordingTarget
     let checkConflict: (Int?, UInt64?) -> ProcessingMode?
     let checkDuplicateInMode: (Int?, UInt64?) -> Bool
-    let checkPrefixConflict: (Int?, UInt64?) -> ProcessingMode?
+    let checkPrefixConflict: (Int?, UInt64?) -> HotkeyPrefixConflict?
     let checkReservedConflict: (Int?, UInt64?) -> String?
     let onConfirm: (Int, UInt64?, ProcessingMode.HotkeyStyle) -> Void
     let onCancel: () -> Void
@@ -1102,7 +1095,7 @@ struct HotkeyRecordingSheet: View {
         target: RecordingTarget,
         checkConflict: @escaping (Int?, UInt64?) -> ProcessingMode?,
         checkDuplicateInMode: @escaping (Int?, UInt64?) -> Bool,
-        checkPrefixConflict: @escaping (Int?, UInt64?) -> ProcessingMode?,
+        checkPrefixConflict: @escaping (Int?, UInt64?) -> HotkeyPrefixConflict?,
         checkReservedConflict: ((Int?, UInt64?) -> String?)? = nil,
         onConfirm: @escaping (Int, UInt64?, ProcessingMode.HotkeyStyle) -> Void,
         onCancel: @escaping () -> Void
@@ -1124,20 +1117,41 @@ struct HotkeyRecordingSheet: View {
     @AppStorage("tf_language") private var language = AppLanguage.systemDefault
     private var reservedConflict: String? { checkReservedConflict(capturedKeyCode, capturedModifiers) }
 
-    private var hotkeyStyleOptions: [(value: String, label: String)] {
-        Self.styleOptions(forKeyCode: capturedKeyCode, modifiers: capturedModifiers)
+    /// All three styles are always listed; double-tap is disabled once a captured
+    /// hotkey is not a single modifier (fn, Right Option, …).
+    private var isDoubleTapAvailable: Bool {
+        Self.isDoubleTapAvailable(forKeyCode: capturedKeyCode, modifiers: capturedModifiers)
     }
 
-    /// Double-tap is offered only once a single modifier (fn, Right Option, …) has been captured.
-    static func styleOptions(forKeyCode capturedKeyCode: Int?, modifiers capturedModifiers: UInt64?) -> [(value: String, label: String)] {
-        var options: [(value: String, label: String)] = [
-            (ProcessingMode.HotkeyStyle.hold.rawValue, L("按住录制", "Hold to record")),
-            (ProcessingMode.HotkeyStyle.toggle.rawValue, L("按下切换", "Toggle")),
-        ]
-        if ProcessingMode.HotkeyStyle.isAvailable(.doubleTap, forKeyCode: capturedKeyCode, modifiers: capturedModifiers) {
-            options.append((ProcessingMode.HotkeyStyle.doubleTap.rawValue, L("双击触发", "Double-tap")))
+    static func isDoubleTapAvailable(forKeyCode capturedKeyCode: Int?, modifiers capturedModifiers: UInt64?) -> Bool {
+        guard let capturedKeyCode else { return true }
+        return ProcessingMode.HotkeyStyle.isAvailable(.doubleTap, forKeyCode: capturedKeyCode, modifiers: capturedModifiers)
+    }
+
+    static var styleOptions: [(value: String, label: String)] {
+        ProcessingMode.HotkeyStyle.allCases.map { ($0.rawValue, styleName($0)) }
+    }
+
+    static func styleName(_ style: ProcessingMode.HotkeyStyle) -> String {
+        switch style {
+        case .hold: return L("按住说话", "Hold to talk")
+        case .toggle: return L("按一下开关", "Press once")
+        case .doubleTap: return L("按两下开关", "Press twice")
         }
-        return options
+    }
+
+    static func styleDescription(_ style: ProcessingMode.HotkeyStyle) -> String {
+        switch style {
+        case .hold:
+            return L("按住开始录音，松开结束", "Hold the key to record; release to stop.")
+        case .toggle:
+            return L("按一下开始录音，再按一下结束", "Press once to start recording and once again to stop.")
+        case .doubleTap:
+            return L(
+                "快速按两下开始录音，再按两下结束；只按一下时该键保持原有功能",
+                "Press twice quickly to start recording and twice again to stop. A single press keeps the key's normal behavior."
+            )
+        }
     }
 
     /// Re-recording a combo or a regular key drops an unavailable double-tap back to toggle.
@@ -1159,7 +1173,7 @@ struct HotkeyRecordingSheet: View {
         checkDuplicateInMode(capturedKeyCode, capturedModifiers)
     }
 
-    private var prefixConflict: ProcessingMode? {
+    private var prefixConflict: HotkeyPrefixConflict? {
         guard conflict == nil, !isDuplicateInMode else { return nil }
         return checkPrefixConflict(capturedKeyCode, capturedModifiers)
     }
@@ -1234,17 +1248,18 @@ struct HotkeyRecordingSheet: View {
                 .foregroundStyle(TF.settingsAccentAmber)
             }
 
-            if let prefixConflict {
-                HStack(spacing: 4) {
-                    Image(systemName: "exclamationmark.triangle.fill")
+            if let prefixConflict, let capturedKeyCode {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Image(systemName: "info.circle")
                         .font(.system(size: 10))
-                    Text(L(
-                        "与「\(prefixConflict.localizedDisplayName)」存在前缀冲突；「\(target.modeName)」触发将改为抬起按键时触发，速度稍慢、手感变差",
-                        "Prefix conflict with \"\(prefixConflict.localizedDisplayName)\". \"\(target.modeName)\" will trigger when the key is released, which is slightly slower and less responsive"
+                    Text(prefixConflict.message(
+                        recordedKeyCode: capturedKeyCode,
+                        recordedModifiers: capturedModifiers,
+                        recordedOwner: target.modeName
                     ))
                     .font(.system(size: 11))
                 }
-                .foregroundStyle(TF.settingsAccentAmber)
+                .foregroundStyle(TF.settingsTextSecondary)
                 .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -1263,13 +1278,28 @@ struct HotkeyRecordingSheet: View {
                                 }
                             }
                         ),
-                        options: hotkeyStyleOptions
+                        options: Self.styleOptions,
+                        disabledValues: isDoubleTapAvailable ? [] : [ProcessingMode.HotkeyStyle.doubleTap.rawValue]
                     )
 
-                    if hotkeyStyle == .doubleTap {
+                    // Stack every description so the area keeps the tallest one's height
+                    // and switching styles doesn't shift the rest of the sheet.
+                    ZStack(alignment: .topLeading) {
+                        ForEach(ProcessingMode.HotkeyStyle.allCases, id: \.self) { style in
+                            Text(Self.styleDescription(style))
+                                .font(.system(size: 11))
+                                .foregroundStyle(TF.settingsTextTertiary)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .opacity(style == hotkeyStyle ? 1 : 0)
+                                .accessibilityHidden(style != hotkeyStyle)
+                        }
+                    }
+
+                    if !isDoubleTapAvailable {
                         Text(L(
-                            "快速按两下开始录音，再按两下结束；只按一下时该键保持原有功能",
-                            "Tap twice quickly to start recording and twice again to stop. A single tap keeps the key's normal behavior."
+                            "「按两下开关」仅适用于单独一个修饰键，如 fn、右 ⌥",
+                            "Press twice works only with a single modifier key, such as fn or Right ⌥"
                         ))
                         .font(.system(size: 11))
                         .foregroundStyle(TF.settingsTextTertiary)
@@ -1322,7 +1352,7 @@ struct HotkeyRecordingSheet: View {
                 }
                 .buttonStyle(.tf(.secondary))
 
-                Button(prefixConflict == nil ? L("确认", "Confirm") : L("仍要设置", "Set Anyway")) {
+                Button(L("确认", "Confirm")) {
                     guard let code = capturedKeyCode, !isDuplicateInMode, reservedConflict == nil else { return }
                     cleanup()
                     onConfirm(code, capturedModifiers, hotkeyStyle)

@@ -59,6 +59,100 @@ final class HotkeyConflictTests: XCTestCase {
         )
     }
 
+    func testRightShiftIsNotPrefixOfFnPlusLeftShift() {
+        // Right Shift can never hold Left Shift, so it cannot grow into Fn+Left Shift.
+        XCTAssertFalse(
+            ModeBinding.hasModifierPrefixConflict(
+                keyCode: 60,
+                modifiers: 0,
+                otherKeyCode: 56,
+                otherModifiers: CGEventFlags.maskSecondaryFn.rawValue
+            )
+        )
+    }
+
+    func testSameSideShiftIsPrefixOfFnPlusShift() {
+        XCTAssertTrue(
+            ModeBinding.hasModifierPrefixConflict(
+                keyCode: 56,
+                modifiers: 0,
+                otherKeyCode: 56,
+                otherModifiers: CGEventFlags.maskSecondaryFn.rawValue
+            )
+        )
+    }
+
+    func testEitherSideIsPrefixWhenComboUsesItAsExtraModifier() {
+        // Extra modifiers match either side: Right Ctrl + Left Option still fires Ctrl+Left Option.
+        XCTAssertTrue(
+            ModeBinding.hasModifierPrefixConflict(
+                keyCode: 62,
+                modifiers: 0,
+                otherKeyCode: 58,
+                otherModifiers: CGEventFlags.maskControl.rawValue
+            )
+        )
+    }
+
+    func testOppositeSideComboIsNotPrefix() {
+        // Right Shift+Ctrl vs Ctrl+Option+Left Shift: Right Shift is not part of the longer combo.
+        XCTAssertFalse(
+            ModeBinding.hasModifierPrefixConflict(
+                keyCode: 60,
+                modifiers: CGEventFlags.maskControl.rawValue,
+                otherKeyCode: 56,
+                otherModifiers: CGEventFlags.maskControl.union(.maskAlternate).rawValue
+            )
+        )
+    }
+
+    func testPrefixConflictCheckIgnoresOtherSideAndReportsDirection() throws {
+        let translate = ProcessingMode(
+            id: UUID(), name: "Translate", prompt: "{text}", isBuiltin: false,
+            hotkeyBindings: [HotkeyBinding(keyCode: 56, modifiers: CGEventFlags.maskSecondaryFn.rawValue, style: .toggle)]
+        )
+        let quick = ProcessingMode(id: UUID(), name: "Quick", prompt: "{text}", isBuiltin: false)
+        let target = RecordingTarget(
+            modeId: quick.id, modeName: "Quick", editingBindingId: nil,
+            initialKeyCode: nil, initialModifiers: nil, initialStyle: .toggle
+        )
+        let check = ModeHotkeyEditing.makePrefixConflictCheck(in: [translate, quick], target: target)
+
+        XCTAssertNil(check(60, 0), "Right Shift does not conflict with Fn+Left Shift")
+
+        let shorter = try XCTUnwrap(check(63, 0))
+        XCTAssertEqual(shorter.mode.id, translate.id)
+        XCTAssertTrue(shorter.recordedIsPrefix)
+
+        let longer = try XCTUnwrap(check(56, CGEventFlags.maskSecondaryFn.union(.maskControl).rawValue))
+        XCTAssertFalse(longer.recordedIsPrefix)
+    }
+
+    func testPrefixConflictMessageNamesBothHotkeysInBothLanguages() {
+        let previous = UserDefaults.standard.string(forKey: "tf_language")
+        defer {
+            if let previous { UserDefaults.standard.set(previous, forKey: "tf_language") }
+            else { UserDefaults.standard.removeObject(forKey: "tf_language") }
+        }
+        let fnShift = HotkeyBinding(keyCode: 56, modifiers: CGEventFlags.maskSecondaryFn.rawValue, style: .toggle)
+        let translate = ProcessingMode(
+            id: UUID(), name: "Translate", prompt: "{text}", isBuiltin: false, hotkeyBindings: [fnShift]
+        )
+        let conflict = HotkeyPrefixConflict(mode: translate, binding: fnShift, recordedIsPrefix: true)
+
+        UserDefaults.standard.set("zh", forKey: "tf_language")
+        let fnShiftName = HotkeyRecorderView.keyDisplayName(keyCode: 56, modifiers: fnShift.modifiers)
+        XCTAssertEqual(
+            conflict.message(recordedKeyCode: 63, recordedModifiers: 0, recordedOwner: "Quick"),
+            "「Translate」的 \(fnShiftName) 包含 fn：单独按 fn 触发「Quick」，再加按其他键则触发「Translate」"
+        )
+
+        UserDefaults.standard.set("en", forKey: "tf_language")
+        let message = conflict.message(recordedKeyCode: 63, recordedModifiers: 0, recordedOwner: "Quick")
+        XCTAssertTrue(message.hasPrefix("\(HotkeyRecorderView.keyDisplayName(keyCode: 56, modifiers: fnShift.modifiers)) for \"Translate\" includes fn"))
+        XCTAssertTrue(message.contains("press fn alone for \"Quick\""))
+    }
+
     func testMouseAndMediaKeysAreNotPrefixConflicts() {
         XCTAssertFalse(
             ModeBinding.hasModifierPrefixConflict(

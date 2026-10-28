@@ -282,7 +282,17 @@ struct ModeBinding: Sendable {
         }
 
         if let otherFlags = fullModifierFlags(keyCode: otherKeyCode, modifiers: otherModifiers) {
-            return flags != otherFlags && flags.isSubset(of: otherFlags)
+            guard flags != otherFlags && flags.isSubset(of: otherFlags) else { return false }
+            // Matching is side-aware for the bound key itself (Right Shift never holds
+            // Left Shift) but side-agnostic for the extra modifiers. The shorter binding
+            // is only a real prefix when its own physical key can be part of the combo.
+            if modifierKeyCode == otherKeyCode { return true }
+            guard let ownFlag = modifierEventFlag(for: modifierKeyCode),
+                  let otherOwnFlag = modifierEventFlag(for: otherKeyCode)
+            else { return false }
+            var otherExtras = normalizedModifierFlags(CGEventFlags(rawValue: otherModifiers ?? 0))
+            otherExtras.remove(otherOwnFlag)
+            return otherExtras.contains(ownFlag)
         }
 
         guard let regularFlags = regularKeyModifierFlags(keyCode: otherKeyCode, modifiers: otherModifiers) else {
