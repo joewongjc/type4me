@@ -1003,7 +1003,7 @@ struct HotkeySectionView: View, SettingsCardHelpers {
         switch style {
         case .hold: return "hand.tap.fill"
         case .toggle: return "arrow.triangle.2.circlepath"
-        case .doubleTap: return "hand.tap"
+        case .doubleTap: return "2.circle.fill"
         }
     }
 
@@ -1125,19 +1125,28 @@ struct HotkeyRecordingSheet: View {
     private var reservedConflict: String? { checkReservedConflict(capturedKeyCode, capturedModifiers) }
 
     private var hotkeyStyleOptions: [(value: String, label: String)] {
-        Self.styleOptions(forKeyCode: capturedKeyCode)
+        Self.styleOptions(forKeyCode: capturedKeyCode, modifiers: capturedModifiers)
     }
 
-    /// Double-tap is offered only once a modifier-only hotkey has been captured.
-    static func styleOptions(forKeyCode capturedKeyCode: Int?) -> [(value: String, label: String)] {
+    /// Double-tap is offered only once a single modifier (fn, Right Option, …) has been captured.
+    static func styleOptions(forKeyCode capturedKeyCode: Int?, modifiers capturedModifiers: UInt64?) -> [(value: String, label: String)] {
         var options: [(value: String, label: String)] = [
             (ProcessingMode.HotkeyStyle.hold.rawValue, L("按住录制", "Hold to record")),
             (ProcessingMode.HotkeyStyle.toggle.rawValue, L("按下切换", "Toggle")),
         ]
-        if ProcessingMode.HotkeyStyle.isAvailable(.doubleTap, forKeyCode: capturedKeyCode) {
+        if ProcessingMode.HotkeyStyle.isAvailable(.doubleTap, forKeyCode: capturedKeyCode, modifiers: capturedModifiers) {
             options.append((ProcessingMode.HotkeyStyle.doubleTap.rawValue, L("双击触发", "Double-tap")))
         }
         return options
+    }
+
+    /// Re-recording a combo or a regular key drops an unavailable double-tap back to toggle.
+    /// While nothing is captured yet the choice is kept for the next capture.
+    private func fallBackFromUnavailableStyle() {
+        guard let capturedKeyCode,
+              !ProcessingMode.HotkeyStyle.isAvailable(hotkeyStyle, forKeyCode: capturedKeyCode, modifiers: capturedModifiers)
+        else { return }
+        hotkeyStyle = .toggle
     }
 
     private var isEditing: Bool { target.editingBindingId != nil }
@@ -1267,11 +1276,8 @@ struct HotkeyRecordingSheet: View {
                         .fixedSize(horizontal: false, vertical: true)
                     }
                 }
-                .onChange(of: capturedKeyCode) { _, newKeyCode in
-                    if !ProcessingMode.HotkeyStyle.isAvailable(hotkeyStyle, forKeyCode: newKeyCode) {
-                        hotkeyStyle = .toggle
-                    }
-                }
+                .onChange(of: capturedKeyCode, initial: true) { fallBackFromUnavailableStyle() }
+                .onChange(of: capturedModifiers) { fallBackFromUnavailableStyle() }
 
             }
             if capturedKeyCode == 63 {

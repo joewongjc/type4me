@@ -165,6 +165,46 @@ final class HotkeyDoubleTapTests: XCTestCase {
         XCTAssertEqual(counters.startCount, 0)
     }
 
+    func testFnDoubleTapStartsRecording() {
+        let counters = BindingCounters()
+        let fn = ModeBinding(
+            bindingId: UUID(), modeId: UUID(), keyCode: 63, modifiers: [], style: .doubleTap,
+            onStart: { counters.recordStart() }, onStop: { counters.recordStop() }
+        )
+        XCTAssertEqual(fn.style, .doubleTap)
+        let manager = makeManager(bindings: [fn])
+        let fnRaw = CGEventFlags.maskSecondaryFn.rawValue
+
+        for _ in 0..<2 {
+            manager.simulateModifierFlags(.maskSecondaryFn, rawFlags: fnRaw, keyCode: 63)
+            clock += 0.08
+            manager.simulateModifierFlags([], rawFlags: 0, keyCode: 63)
+            clock += 0.15
+        }
+        XCTAssertEqual(counters.startCount, 1)
+    }
+
+    func testDoubleTapOnModifierComboRunsAsToggle() {
+        let counters = BindingCounters()
+        let ctrlShift = ModeBinding(
+            bindingId: UUID(), modeId: UUID(), keyCode: 56, modifiers: [.maskControl], style: .doubleTap,
+            onStart: { counters.recordStart() }, onStop: { counters.recordStop() }
+        )
+        XCTAssertEqual(ctrlShift.style, .toggle, "A combo must never enter double-tap recognition")
+        let manager = makeManager(bindings: [ctrlShift])
+
+        let ctrlRaw = ModeBinding.deviceLeftControlMask | CGEventFlags.maskControl.rawValue
+        let comboRaw = ctrlRaw | ModeBinding.deviceLeftShiftMask | CGEventFlags.maskShift.rawValue
+        manager.simulateModifierFlags(.maskControl, rawFlags: ctrlRaw, keyCode: 59)
+        let comboPress = manager.simulateModifierFlags([.maskControl, .maskShift], rawFlags: comboRaw, keyCode: 56)
+        manager.simulateModifierFlags(.maskControl, rawFlags: ctrlRaw, keyCode: 56)
+        manager.simulateModifierFlags([], rawFlags: 0, keyCode: 59)
+
+        XCTAssertTrue(comboPress, "Toggle combos keep swallowing their press")
+        XCTAssertEqual(counters.startCount, 1, "One press of the combo toggles, as before")
+        XCTAssertFalse(manager.hasPendingDoubleTap(for: ctrlShift.bindingId))
+    }
+
     func testIntervalCanBeOverridden() {
         UserDefaults.standard.set(0.8, forKey: HotkeyManager.doubleTapIntervalKey)
         let counters = BindingCounters()
@@ -214,15 +254,31 @@ final class HotkeyDoubleTapTests: XCTestCase {
 
     // MARK: - Availability & settings
 
-    func testDoubleTapIsOnlyAvailableForModifierKeys() {
-        XCTAssertTrue(ProcessingMode.HotkeyStyle.isAvailable(.doubleTap, forKeyCode: 61))
-        XCTAssertTrue(ProcessingMode.HotkeyStyle.isAvailable(.doubleTap, forKeyCode: 63))
-        XCTAssertFalse(ProcessingMode.HotkeyStyle.isAvailable(.doubleTap, forKeyCode: 49))
-        XCTAssertFalse(ProcessingMode.HotkeyStyle.isAvailable(.doubleTap, forKeyCode: nil))
-        XCTAssertTrue(ProcessingMode.HotkeyStyle.isAvailable(.toggle, forKeyCode: 49))
+    func testDoubleTapIsOnlyAvailableForSingleModifiers() {
+        typealias Style = ProcessingMode.HotkeyStyle
+        let control = CGEventFlags.maskControl.rawValue
+        let shift = CGEventFlags.maskShift.rawValue
+        let fn = CGEventFlags.maskSecondaryFn.rawValue
+
+        for keyCode in [54, 55, 56, 58, 59, 60, 61, 62, 63] {
+            XCTAssertTrue(Style.isAvailable(.doubleTap, forKeyCode: keyCode, modifiers: 0), "\(keyCode)")
+        }
+        XCTAssertTrue(Style.isAvailable(.doubleTap, forKeyCode: 61, modifiers: nil))
+        // The key's own flag in `modifiers` is not an extra modifier.
+        XCTAssertTrue(Style.isAvailable(.doubleTap, forKeyCode: 61, modifiers: CGEventFlags.maskAlternate.rawValue))
+
+        XCTAssertFalse(Style.isAvailable(.doubleTap, forKeyCode: 56, modifiers: control), "Ctrl+Shift")
+        XCTAssertFalse(Style.isAvailable(.doubleTap, forKeyCode: 56, modifiers: fn), "Fn+Shift")
+        XCTAssertFalse(Style.isAvailable(.doubleTap, forKeyCode: 63, modifiers: shift), "Shift+Fn")
+        XCTAssertFalse(Style.isAvailable(.doubleTap, forKeyCode: 49, modifiers: 0))
+        XCTAssertFalse(Style.isAvailable(.doubleTap, forKeyCode: nil, modifiers: nil))
+
+        XCTAssertTrue(Style.isAvailable(.toggle, forKeyCode: 56, modifiers: control))
+        XCTAssertTrue(Style.isAvailable(.hold, forKeyCode: 56, modifiers: control))
+        XCTAssertTrue(Style.isAvailable(.toggle, forKeyCode: 49, modifiers: 0))
     }
 
-    func testApplyBindingFallsBackToToggleForRegularKeys() {
+    func testApplyBindingFallsBackToToggleForRegularKeysAndCombos() {
         let modeId = UUID()
         var modes = [ProcessingMode(id: modeId, name: "M", prompt: "", isBuiltin: false, processingLabel: "")]
         let target = RecordingTarget(
@@ -231,18 +287,51 @@ final class HotkeyDoubleTapTests: XCTestCase {
         )
 
         ModeHotkeyEditing.applyBinding(keyCode: 49, modifiers: 0, style: .doubleTap, to: &modes, for: target)
+        ModeHotkeyEditing.applyBinding(
+            keyCode: 56, modifiers: CGEventFlags.maskControl.rawValue, style: .doubleTap, to: &modes, for: target
+        )
         ModeHotkeyEditing.applyBinding(keyCode: 61, modifiers: 0, style: .doubleTap, to: &modes, for: target)
 
-        XCTAssertEqual(modes[0].hotkeyBindings.map(\.style), [.toggle, .doubleTap])
+        XCTAssertEqual(modes[0].hotkeyBindings.map(\.style), [.toggle, .toggle, .doubleTap])
+    }
+
+    func testReRecordingAsComboFallsBackToToggle() throws {
+        let modeId = UUID()
+        var modes = [ProcessingMode(id: modeId, name: "M", prompt: "", isBuiltin: false, processingLabel: "")]
+        let add = RecordingTarget(
+            modeId: modeId, modeName: "M", editingBindingId: nil,
+            initialKeyCode: nil, initialModifiers: nil, initialStyle: .toggle
+        )
+        ModeHotkeyEditing.applyBinding(keyCode: 61, modifiers: 0, style: .doubleTap, to: &modes, for: add)
+        let bindingId = try XCTUnwrap(modes[0].hotkeyBindings.first?.id)
+
+        let edit = RecordingTarget(
+            modeId: modeId, modeName: "M", editingBindingId: bindingId,
+            initialKeyCode: 61, initialModifiers: 0, initialStyle: .doubleTap
+        )
+        ModeHotkeyEditing.applyBinding(
+            keyCode: 56, modifiers: CGEventFlags.maskSecondaryFn.rawValue, style: .doubleTap, to: &modes, for: edit
+        )
+
+        XCTAssertEqual(modes[0].hotkeyBindings.count, 1)
+        XCTAssertEqual(modes[0].hotkeyBindings[0].style, .toggle)
     }
 
     func testStyleOptionsOfferDoubleTapInBothLanguages() {
         UserDefaults.standard.set("zh", forKey: "tf_language")
-        XCTAssertEqual(HotkeyRecordingSheet.styleOptions(forKeyCode: 61).map(\.label), ["按住录制", "按下切换", "双击触发"])
-        XCTAssertEqual(HotkeyRecordingSheet.styleOptions(forKeyCode: 49).map(\.label), ["按住录制", "按下切换"])
+        let ctrlShift = CGEventFlags.maskControl.rawValue
+        XCTAssertEqual(HotkeyRecordingSheet.styleOptions(forKeyCode: 61, modifiers: 0).map(\.label), ["按住录制", "按下切换", "双击触发"])
+        XCTAssertEqual(HotkeyRecordingSheet.styleOptions(forKeyCode: 49, modifiers: 0).map(\.label), ["按住录制", "按下切换"])
+        XCTAssertEqual(HotkeyRecordingSheet.styleOptions(forKeyCode: 56, modifiers: ctrlShift).map(\.label), ["按住录制", "按下切换"])
 
         UserDefaults.standard.set("en", forKey: "tf_language")
-        XCTAssertEqual(HotkeyRecordingSheet.styleOptions(forKeyCode: 61).map(\.label), ["Hold to record", "Toggle", "Double-tap"])
-        XCTAssertEqual(HotkeyRecordingSheet.styleOptions(forKeyCode: 61).map(\.value), ["hold", "toggle", "doubleTap"])
+        XCTAssertEqual(HotkeyRecordingSheet.styleOptions(forKeyCode: 61, modifiers: 0).map(\.label), ["Hold to record", "Toggle", "Double-tap"])
+        XCTAssertEqual(HotkeyRecordingSheet.styleOptions(forKeyCode: 61, modifiers: 0).map(\.value), ["hold", "toggle", "doubleTap"])
+        XCTAssertEqual(HotkeyRecordingSheet.styleOptions(forKeyCode: 56, modifiers: ctrlShift).map(\.label), ["Hold to record", "Toggle"])
+    }
+
+    func testDoubleTapBadgeIsDistinctFromHold() {
+        XCTAssertEqual(HotkeySectionView.styleIcon(.doubleTap), "2.circle.fill")
+        XCTAssertNotEqual(HotkeySectionView.styleIcon(.doubleTap), HotkeySectionView.styleIcon(.hold))
     }
 }

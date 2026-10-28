@@ -43,7 +43,9 @@ struct ModeBinding: Sendable {
         self.owner = owner
         self.keyCode = keyCode
         self.modifiers = modifiers
-        self.style = style
+        // A double-tap saved on anything but a single modifier runs as toggle.
+        self.style = HotkeyStyle.isAvailable(style, forKeyCode: Int(keyCode), modifiers: modifiers.rawValue)
+            ? style : .toggle
         self.onStart = onStart
         self.onStop = onStop
         self.onAbort = onAbort ?? { @Sendable in }
@@ -260,6 +262,13 @@ struct ModeBinding: Sendable {
         var flags = normalizedModifierFlags(CGEventFlags(rawValue: modifiers ?? 0))
         flags.insert(ownFlag)
         return flags
+    }
+
+    /// One physical modifier pressed alone, e.g. fn or Right Option. The key's own
+    /// flag may appear in `modifiers`; any other modifier makes it a combo.
+    static func isSingleModifierHotkey(keyCode: Int, modifiers: UInt64?) -> Bool {
+        guard let ownFlag = modifierEventFlag(for: keyCode) else { return false }
+        return fullModifierFlags(keyCode: keyCode, modifiers: modifiers) == ownFlag
     }
 
     static func modifierBindingIsPrefix(

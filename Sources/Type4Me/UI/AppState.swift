@@ -335,14 +335,15 @@ struct ProcessingMode: Codable, Identifiable, Equatable, Hashable {
     enum HotkeyStyle: String, Codable, CaseIterable {
         case hold       // press and hold to record
         case toggle     // press once to start, again to stop
-        case doubleTap  // double-tap a modifier-only hotkey to start, again to stop
+        case doubleTap  // double-tap a single modifier key to start, again to stop
 
-        /// Double-tap is detected from clean modifier taps, so only modifier-only
-        /// hotkeys (fn, Right Option, Ctrl+Shift, …) can use it.
-        static func isAvailable(_ style: HotkeyStyle, forKeyCode keyCode: Int?) -> Bool {
+        /// Double-tap is detected from clean modifier taps and is meant for a single
+        /// physical modifier (fn, Right Option, …). Combos such as Ctrl+Shift already
+        /// resist accidental presses, so they keep hold/toggle only.
+        static func isAvailable(_ style: HotkeyStyle, forKeyCode keyCode: Int?, modifiers: UInt64?) -> Bool {
             guard style == .doubleTap else { return true }
             guard let keyCode else { return false }
-            return ModeBinding.isModifierKeyCode(keyCode)
+            return ModeBinding.isSingleModifierHotkey(keyCode: keyCode, modifiers: modifiers)
         }
     }
 
