@@ -276,6 +276,34 @@ struct HotkeyBinding: Codable, Identifiable, Equatable, Hashable {
         self.modifiers = modifiers
         self.style = style ?? ProcessingMode.defaultHotkeyStyle
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, keyCode, modifiers, style, doubleTap
+    }
+
+    /// Double-tap is persisted as `style: "toggle"` plus `doubleTap: true`.
+    /// modes.json is shared with releases that only know hold/toggle and decode
+    /// the style strictly, so they keep working and treat the binding as toggle.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        keyCode = try container.decode(Int.self, forKey: .keyCode)
+        modifiers = try container.decodeIfPresent(UInt64.self, forKey: .modifiers)
+        let decodedStyle = try container.decode(ProcessingMode.HotkeyStyle.self, forKey: .style)
+        let doubleTap = try container.decodeIfPresent(Bool.self, forKey: .doubleTap) ?? false
+        style = doubleTap ? .doubleTap : decodedStyle
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(keyCode, forKey: .keyCode)
+        try container.encodeIfPresent(modifiers, forKey: .modifiers)
+        try container.encode(style == .doubleTap ? .toggle : style, forKey: .style)
+        if style == .doubleTap {
+            try container.encode(true, forKey: .doubleTap)
+        }
+    }
 }
 
 // MARK: - Processing Mode
@@ -305,8 +333,18 @@ struct ProcessingMode: Codable, Identifiable, Equatable, Hashable {
     var punctuationMode: ModePunctuationMode
 
     enum HotkeyStyle: String, Codable, CaseIterable {
-        case hold    // press and hold to record
-        case toggle  // press once to start, again to stop
+        case hold       // press and hold to record
+        case toggle     // press once to start, again to stop
+        case doubleTap  // double-tap a single modifier key to start, again to stop
+
+        /// Double-tap is detected from clean modifier taps and is meant for a single
+        /// physical modifier (fn, Right Option, …). Combos such as Ctrl+Shift already
+        /// resist accidental presses, so they keep hold/toggle only.
+        static func isAvailable(_ style: HotkeyStyle, forKeyCode keyCode: Int?, modifiers: UInt64?) -> Bool {
+            guard style == .doubleTap else { return true }
+            guard let keyCode else { return false }
+            return ModeBinding.isSingleModifierHotkey(keyCode: keyCode, modifiers: modifiers)
+        }
     }
 
     enum ExecutionKind: String, Codable, Sendable {
@@ -319,7 +357,8 @@ struct ProcessingMode: Codable, Identifiable, Equatable, Hashable {
     static var defaultHotkeyStyle: HotkeyStyle {
         get {
             guard let raw = UserDefaults.standard.string(forKey: "tf_defaultHotkeyStyle"),
-                  let style = HotkeyStyle(rawValue: raw)
+                  let style = HotkeyStyle(rawValue: raw),
+                  style != .doubleTap  // The default applies to any key, not only modifiers.
             else { return .toggle }
             return style
         }
