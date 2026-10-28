@@ -560,7 +560,7 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
     private var reviseHotkeyStyleRow: some View {
         settingsOptionRow(
             L("触发方式", "Trigger Style"),
-            subtitle: L("长按松开结束，或单击开始/结束", "Hold to speak, or tap to toggle"),
+            subtitle: L("按住说话、松开结束，或按一下开始、再按一下结束", "Hold to talk and release to stop, or press once to start and once again to stop"),
             controlWidth: SettingsControlWidth.inlineSegmented
         ) {
             settingsInlineSegmentedPicker(
@@ -574,12 +574,14 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
                         persistReviseSettings()
                     }
                 ),
-                options: [
-                    (HotkeyStyle.hold.rawValue, L("长按", "Hold")),
-                    (HotkeyStyle.toggle.rawValue, L("单击切换", "Toggle")),
-                ]
+                options: Self.reviseHotkeyStyleOptions
             )
         }
+    }
+
+    /// Revise supports hold and toggle only; names match the mode hotkey sheet.
+    static var reviseHotkeyStyleOptions: [(value: String, label: String)] {
+        [HotkeyStyle.hold, .toggle].map { ($0.rawValue, HotkeyRecordingSheet.styleName($0)) }
     }
 
     private func persistReviseSettings() {

@@ -317,17 +317,32 @@ final class HotkeyDoubleTapTests: XCTestCase {
         XCTAssertEqual(modes[0].hotkeyBindings[0].style, .toggle)
     }
 
-    func testStyleOptionsOfferDoubleTapInBothLanguages() {
+    func testStyleOptionsAlwaysListAllThreeInBothLanguages() {
         UserDefaults.standard.set("zh", forKey: "tf_language")
-        let ctrlShift = CGEventFlags.maskControl.rawValue
-        XCTAssertEqual(HotkeyRecordingSheet.styleOptions(forKeyCode: 61, modifiers: 0).map(\.label), ["按住录制", "按下切换", "双击触发"])
-        XCTAssertEqual(HotkeyRecordingSheet.styleOptions(forKeyCode: 49, modifiers: 0).map(\.label), ["按住录制", "按下切换"])
-        XCTAssertEqual(HotkeyRecordingSheet.styleOptions(forKeyCode: 56, modifiers: ctrlShift).map(\.label), ["按住录制", "按下切换"])
+        XCTAssertEqual(HotkeyRecordingSheet.styleOptions.map(\.label), ["按住说话", "按一下开关", "按两下开关"])
+        XCTAssertEqual(HotkeyRecordingSheet.styleDescription(.toggle), "按一下开始录音，再按一下结束")
 
         UserDefaults.standard.set("en", forKey: "tf_language")
-        XCTAssertEqual(HotkeyRecordingSheet.styleOptions(forKeyCode: 61, modifiers: 0).map(\.label), ["Hold to record", "Toggle", "Double-tap"])
-        XCTAssertEqual(HotkeyRecordingSheet.styleOptions(forKeyCode: 61, modifiers: 0).map(\.value), ["hold", "toggle", "doubleTap"])
-        XCTAssertEqual(HotkeyRecordingSheet.styleOptions(forKeyCode: 56, modifiers: ctrlShift).map(\.label), ["Hold to record", "Toggle"])
+        XCTAssertEqual(HotkeyRecordingSheet.styleOptions.map(\.label), ["Hold to talk", "Press once", "Press twice"])
+        XCTAssertEqual(HotkeyRecordingSheet.styleOptions.map(\.value), ["hold", "toggle", "doubleTap"])
+        XCTAssertEqual(HotkeyRecordingSheet.styleDescription(.hold), "Hold the key to record; release to stop.")
+    }
+
+    func testReviseStyleOptionsUseTheSameNames() {
+        UserDefaults.standard.set("zh", forKey: "tf_language")
+        XCTAssertEqual(GeneralSettingsTab.reviseHotkeyStyleOptions.map(\.label), ["按住说话", "按一下开关"])
+
+        UserDefaults.standard.set("en", forKey: "tf_language")
+        XCTAssertEqual(GeneralSettingsTab.reviseHotkeyStyleOptions.map(\.label), ["Hold to talk", "Press once"])
+        XCTAssertEqual(GeneralSettingsTab.reviseHotkeyStyleOptions.map(\.value), ["hold", "toggle"])
+    }
+
+    func testDoubleTapIsEnabledUntilAnIneligibleKeyIsCaptured() {
+        let ctrlShift = CGEventFlags.maskControl.rawValue
+        XCTAssertTrue(HotkeyRecordingSheet.isDoubleTapAvailable(forKeyCode: nil, modifiers: nil), "Nothing captured yet")
+        XCTAssertTrue(HotkeyRecordingSheet.isDoubleTapAvailable(forKeyCode: 60, modifiers: 0))
+        XCTAssertFalse(HotkeyRecordingSheet.isDoubleTapAvailable(forKeyCode: 56, modifiers: ctrlShift))
+        XCTAssertFalse(HotkeyRecordingSheet.isDoubleTapAvailable(forKeyCode: 49, modifiers: 0))
     }
 
     func testDoubleTapBadgeIsDistinctFromHold() {

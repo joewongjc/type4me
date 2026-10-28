@@ -984,15 +984,19 @@ struct SettingsInlineSegmentedPicker: View {
     @Binding var selection: String
     let options: [Option]
     var segmentWidth: CGFloat? = nil
+    /// Values shown dimmed that cannot be selected.
+    var disabledValues: Set<String> = []
 
     init(
         selection: Binding<String>,
         options: [(value: String, label: String)],
-        segmentWidth: CGFloat? = nil
+        segmentWidth: CGFloat? = nil,
+        disabledValues: Set<String> = []
     ) {
         self._selection = selection
         self.options = options.map { Option(value: $0.value, label: $0.label) }
         self.segmentWidth = segmentWidth
+        self.disabledValues = disabledValues
     }
 
     init(
@@ -1013,7 +1017,8 @@ struct SettingsInlineSegmentedPicker: View {
         HStack(spacing: 2) {
             ForEach(options, id: \.value) { option in
                 let isSelected = selection == option.value
-                let isHovered = hoveredValue == option.value
+                let isDisabled = disabledValues.contains(option.value)
+                let isHovered = hoveredValue == option.value && !isDisabled
 
                 Button {
                     guard selection != option.value else { return }
@@ -1036,12 +1041,14 @@ struct SettingsInlineSegmentedPicker: View {
                         }
                     }
                     .foregroundStyle(isSelected ? TF.settingsText : TF.settingsTextSecondary)
+                    .opacity(isDisabled ? 0.4 : 1)
                     .padding(.horizontal, option.icon != nil ? 8 : 12)
                     .padding(.vertical, 5)
                     .frame(width: segmentWidth)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(SettingsSegmentedButtonStyle())
+                .disabled(isDisabled)
                 .settingsTooltip(
                     option.label,
                     isEnabled: option.icon != nil
