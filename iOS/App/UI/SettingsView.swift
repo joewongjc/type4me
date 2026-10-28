@@ -30,6 +30,7 @@ struct SettingsView: View {
     @State private var timeout = AppSettings.sessionTimeoutMinutes
     @State private var keyHaptics = SharedSettings.keyHaptics
     @State private var keySounds = SharedSettings.keySounds
+    @State private var keyboardClipboard = SharedSettings.keyboardClipboard
     @State private var intelliSenseContext = SharedSettings.intelliSenseContext
     @State private var confirmClear = false
     @State private var confirmClearHistory = false
@@ -139,8 +140,29 @@ struct SettingsView: View {
                     .onChange(of: keyHaptics) { _, on in SharedSettings.keyHaptics = on }
                 Toggle(L("按键音", "Key Sounds"), isOn: $keySounds)
                     .onChange(of: keySounds) { _, on in SharedSettings.keySounds = on }
+                Toggle(L("键盘快捷粘贴", "Keyboard Quick Paste"), isOn: $keyboardClipboard)
+                    .onChange(of: keyboardClipboard) { _, on in SharedSettings.keyboardClipboard = on }
             } header: {
                 Text(L("键盘", "Keyboard"))
+            } footer: {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(L(
+                        "复制的文字会出现在键盘顶部，点一下就能粘贴。",
+                        "Copied text appears at the top of the keyboard. Tap it to paste."
+                    ))
+                    // iOS asks before every read until the user allows
+                    // pasting from other apps, a switch only Settings has.
+                    if keyboardClipboard {
+                        Text(L(
+                            "如果每次都弹出「允许粘贴」，请到系统设置里把「从其他 App 粘贴」改为「允许」。",
+                            "If iOS asks to allow pasting every time, set Paste from Other Apps to Allow in Settings."
+                        ))
+                        Button(L("前往设置", "Open Settings")) {
+                            if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+                        }
+                        .font(.footnote.weight(.semibold))
+                    }
+                }
             }
 
             Section {

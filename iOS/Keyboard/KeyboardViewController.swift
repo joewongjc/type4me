@@ -43,12 +43,15 @@ final class KeyboardViewController: UIInputViewController {
     override func selectionDidChange(_ textInput: UITextInput?) {
         super.selectionDidChange(textInput)
         model.refreshSelection()
+        // Copying in the field itself shows up on the next cursor move.
+        model.refreshClipboard()
     }
 
     override func textDidChange(_ textInput: UITextInput?) {
         super.textDidChange(textInput)
         model.refreshReturnKey()
         model.refreshSelection()
+        model.refreshClipboard()
     }
 
     // MARK: - Proxy helpers used by the model

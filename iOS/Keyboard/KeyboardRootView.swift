@@ -15,6 +15,7 @@ struct KeyboardRootView: View {
                         .padding(.horizontal, 8)
                         .animation(.spring(response: 0.32, dampingFraction: 0.86), value: model.phase)
                         .animation(.easeInOut(duration: 0.2), value: model.notice)
+                        .animation(.easeInOut(duration: 0.2), value: model.clipboardSuggestion)
                     micArea
                         .frame(maxHeight: .infinity)
                 }
@@ -82,6 +83,16 @@ struct KeyboardRootView: View {
                 .glassEffect(.regular.tint(KB.keyTint), in: Capsule())
                 .frame(maxWidth: .infinity)
                 .transition(.opacity)
+        } else if model.correction == .none, let text = model.clipboardSuggestion {
+            // Takes the whole row, buttons and all, like the system
+            // keyboard's paste suggestion; typing anything puts it away.
+            ClipboardSuggestionButton(
+                text: text,
+                paste: { model.pasteClipboardSuggestion() },
+                dismiss: { model.dropClipboardSuggestion() }
+            )
+            .padding(.horizontal, 4)
+            .transition(.opacity)
         } else {
             // The dial spans the row; at rest it shows only its middle, and
             // while it turns it widens over the buttons either side, which
@@ -587,6 +598,58 @@ struct OpenAppButton: View {
         .buttonStyle(KeyPressStyle(feedback: .modifier))
         .glassEffect(.regular.tint(KB.functionTint).interactive(), in: Circle())
         .accessibilityLabel(L("打开 Type4Me 设置", "Open Type4Me Settings"))
+    }
+}
+
+/// What was just copied, shown as the system keyboard shows it: the text,
+/// and under it what a tap does. The close button takes the "4" button's
+/// place and its look, so the dial can come back without typing.
+struct ClipboardSuggestionButton: View {
+    let text: String
+    let paste: () -> Void
+    let dismiss: () -> Void
+
+    var body: some View {
+        // Side by side, not stacked, so neither steals the other's taps; the
+        // empty slot on the left keeps the text centred.
+        HStack(spacing: 0) {
+            Color.clear
+                .frame(width: 44, height: 44)
+            Button(action: paste) {
+                VStack(spacing: 2) {
+                    Text(preview)
+                        .font(.system(size: 17))
+                        .foregroundStyle(KB.ink)
+                        .lineLimit(1)
+                    Text(L("点按粘贴", "Tap to paste"))
+                        .font(.system(size: 12))
+                        .foregroundStyle(KB.secondary)
+                }
+                .padding(.horizontal, 8)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(KeyPressStyle(feedback: .character))
+            .accessibilityLabel(L("粘贴：\(preview)", "Paste: \(preview)"))
+            Button(action: dismiss) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(KB.ink)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(KeyPressStyle(feedback: .modifier))
+            .glassEffect(.regular.tint(KB.functionTint).interactive(), in: Circle())
+            .accessibilityLabel(L("不显示剪贴板内容", "Dismiss clipboard"))
+        }
+    }
+
+    /// One line however the copy was laid out; a long copy only needs as
+    /// much as fits.
+    private var preview: String {
+        String(text.prefix(200))
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
     }
 }
 

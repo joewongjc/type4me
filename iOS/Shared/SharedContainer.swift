@@ -59,6 +59,14 @@ enum SharedSettings {
         static let keySounds = "keySounds"
         static let fullWidthPunctuation = "fullWidthPunctuation"
         static let intelliSenseContext = "intelliSenseContext"
+        static let keyboardClipboard = "keyboardClipboard"
+    }
+
+    /// The keyboard offers what was just copied. Off by default: until the
+    /// user allows pasting from other apps, iOS asks on every read.
+    static var keyboardClipboard: Bool {
+        get { SharedContainer.defaults?.bool(forKey: Key.keyboardClipboard) ?? false }
+        set { SharedContainer.defaults?.set(newValue, forKey: Key.keyboardClipboard) }
     }
 
     /// Intelli Sense reads the text around the cursor and sends it to the

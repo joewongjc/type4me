@@ -75,6 +75,12 @@ final class KeyboardModel: ObservableObject {
 
     @Published private(set) var correction: Correction = .none
 
+    /// Text copied a moment ago, offered in the top bar the way the system
+    /// keyboard offers it.
+    @Published private(set) var clipboardSuggestion: String?
+    /// The pasteboard change the suggestion came from.
+    private var clipboardSuggestionCount: Int?
+
     private weak var controller: KeyboardViewController?
     private var pendingPing: UUID?
     private var requestID: UUID?
@@ -151,6 +157,7 @@ final class KeyboardModel: ObservableObject {
         }
         ping()
         refreshSelection()
+        refreshClipboard()
     }
 
     func disappeared() {
@@ -159,6 +166,9 @@ final class KeyboardModel: ObservableObject {
         }
         resetToIdle()
         correction = .none
+        // Not handled: the same copy is offered again while it is recent.
+        clipboardSuggestion = nil
+        clipboardSuggestionCount = nil
     }
 
     func refreshReturnKey() {
@@ -358,6 +368,7 @@ final class KeyboardModel: ObservableObject {
     }
 
     private func startRecording() {
+        dropClipboardSuggestion()
         #if DEBUG
         if SharedSettings.keyboardDemo { startDemo(); return }
         #endif
@@ -498,6 +509,7 @@ final class KeyboardModel: ObservableObject {
             // The user switched fields while we were processing; never type
             // into a place they did not dictate into.
             UIPasteboard.general.string = text
+            ClipboardMemory.handledCount = UIPasteboard.general.changeCount
             DictationChannel.send(KeyboardCommand(kind: .delivered, requestID: requestID, mode: mode, delivery: .copied))
             show(L("输入框已变，文字已复制到剪贴板", "The text field changed, so the text was copied"), kind: .success)
         }
@@ -578,6 +590,7 @@ final class KeyboardModel: ObservableObject {
             : proxy.selectedText == old
         guard proxy.documentIdentifier == startDocumentID, inPlace else {
             UIPasteboard.general.string = new
+            ClipboardMemory.handledCount = UIPasteboard.general.changeCount
             show(L("选中的位置变了，结果已复制", "The selection changed, so the result was copied"), kind: .success)
             correction = .none
             return
@@ -880,6 +893,7 @@ final class KeyboardModel: ObservableObject {
     func insert(_ text: String) {
         controller?.proxy.insertText(text)
         invalidateUndo()
+        dropClipboardSuggestion()
     }
 
     /// The punctuation key's mark, then what a long press offers.
@@ -906,12 +920,119 @@ final class KeyboardModel: ObservableObject {
         proxy.deleteBackward()
         invalidateUndo()
         leaveCorrection()
+        dropClipboardSuggestion()
     }
 
     func returnKey() {
         controller?.proxy.insertText("\n")
         invalidateUndo()
         leaveCorrection()
+        dropClipboardSuggestion()
+    }
+
+    // MARK: - Clipboard
+
+    /// Only the change count is read until there is a new copy to offer:
+    /// it reads no content, so it never brings up the paste prompt.
+    func refreshClipboard() {
+        guard SharedSettings.keyboardClipboard, hasFullAccess, phase == .idle else {
+            clipboardSuggestion = nil
+            clipboardSuggestionCount = nil
+            return
+        }
+        let pasteboard = UIPasteboard.general
+        let count = pasteboard.changeCount
+        guard count != clipboardSuggestionCount else { return }
+        clipboardSuggestion = nil
+        clipboardSuggestionCount = nil
+        guard let handled = ClipboardMemory.handledCount else {
+            // First run: whatever is already on the clipboard is old.
+            ClipboardMemory.handledCount = count
+            return
+        }
+        guard count != handled else { return }
+        if ClipboardMemory.seenCount != count {
+            ClipboardMemory.seenCount = count
+            ClipboardMemory.seenAt = Date()
+        }
+        guard let seenAt = ClipboardMemory.seenAt, Date().timeIntervalSince(seenAt) < Self.clipboardFreshness,
+              !isSensitiveField
+        else { return }
+        let text: String
+        if let cached = Self.clipboardCache, cached.count == count {
+            text = cached.text
+        } else {
+            // Each read may bring up the paste prompt, so a copy is read
+            // once; if the extension was relaunched since, it is let go.
+            guard ClipboardMemory.readCount != count, pasteboard.hasStrings,
+                  // Password managers mark what they copy.
+                  !pasteboard.types.contains("org.nspasteboard.ConcealedType")
+            else { return }
+            ClipboardMemory.readCount = count
+            guard let read = pasteboard.string else { return }
+            Self.clipboardCache = (count, read)
+            text = read
+        }
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        clipboardSuggestion = text
+        clipboardSuggestionCount = count
+    }
+
+    func pasteClipboardSuggestion() {
+        guard let text = clipboardSuggestion, let proxy = controller?.proxy else { return }
+        let replaced = proxy.selectedText
+        dropClipboardSuggestion()
+        proxy.insertText(text)
+        recordInsertion(text, replacing: replaced)
+        leaveCorrection()
+    }
+
+    /// Typing, dictating, pasting or the close button puts the copy away
+    /// for good.
+    func dropClipboardSuggestion() {
+        guard let count = clipboardSuggestionCount else { return }
+        ClipboardMemory.handledCount = count
+        Self.clipboardCache = nil
+        clipboardSuggestion = nil
+        clipboardSuggestionCount = nil
+    }
+
+    /// Like the system keyboard, only a recent copy is offered.
+    private static let clipboardFreshness: TimeInterval = 180
+
+    /// The copy as last read, kept in memory only, for as long as the
+    /// extension's process lives.
+    private static var clipboardCache: (count: Int, text: String)?
+
+    /// Survives the extension being relaunched each time it appears.
+    private enum ClipboardMemory {
+        private static let handledKey = "keyboardClipboardHandled"
+        private static let seenCountKey = "keyboardClipboardSeenCount"
+        private static let seenAtKey = "keyboardClipboardSeenAt"
+        private static let readCountKey = "keyboardClipboardReadCount"
+
+        /// The last change already pasted, put away or written by us.
+        static var handledCount: Int? {
+            get { SharedContainer.defaults?.object(forKey: handledKey) as? Int }
+            set { SharedContainer.defaults?.set(newValue, forKey: handledKey) }
+        }
+
+        static var seenCount: Int? {
+            get { SharedContainer.defaults?.object(forKey: seenCountKey) as? Int }
+            set { SharedContainer.defaults?.set(newValue, forKey: seenCountKey) }
+        }
+
+        /// The last change whose text was read; never the text itself.
+        static var readCount: Int? {
+            get { SharedContainer.defaults?.object(forKey: readCountKey) as? Int }
+            set { SharedContainer.defaults?.set(newValue, forKey: readCountKey) }
+        }
+
+        /// When the keyboard first noticed `seenCount`.
+        static var seenAt: Date? {
+            get { SharedContainer.defaults?.object(forKey: seenAtKey) as? Date }
+            set { SharedContainer.defaults?.set(newValue, forKey: seenAtKey) }
+        }
     }
 
     /// The keyboard's own edits don't reliably reach `textDidChange`, so an
