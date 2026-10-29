@@ -20,6 +20,7 @@ final class PiPKeeper: NSObject {
     /// the log shows when the glass endpoints could have come back.
     private var contentTypeWatch: Task<Void, Never>?
     private var lastLoggedContentType: Int?
+    private var lastLoggedActive: Bool?
     private var notificationObservers: [NSObjectProtocol] = []
 
     func prepare() {
@@ -55,6 +56,7 @@ final class PiPKeeper: NSObject {
         sourceView.displayLayer.sampleBufferRenderer.enqueue(buffer)
         logContentType(L("画中画已创建", "PiP controller created"))
         observeSystemEvents()
+        watchContentType()
     }
 
     // MARK: - Diagnostics
@@ -82,6 +84,7 @@ final class PiPKeeper: NSObject {
         guard let controller else { return }
         let type = currentContentType(controller)
         lastLoggedContentType = type
+        lastLoggedActive = controller.isPictureInPictureActive
         let typeText = type.map(String.init) ?? L("读不到", "unreadable")
         let warning = controller.isPictureInPictureActive && type != -1 ? "⚠️ " : ""
         let app = UIApplication.shared.applicationState == .active ? L("前台", "foreground") : L("后台", "background")
@@ -91,17 +94,23 @@ final class PiPKeeper: NSObject {
         ))
     }
 
-    /// Checks every two seconds while PiP is on and logs only a change, so
-    /// a reset by AVKit shows up within a couple of seconds of happening.
+    /// For the session to mark its own steps (mic on, mic off) in the log.
+    func logState(_ moment: String) {
+        logContentType(moment)
+    }
+
+    /// Checks every second for as long as the controller lives, PiP on or
+    /// off, and logs only a change, so a reset by AVKit shows up within a
+    /// second of happening.
     private func watchContentType() {
         contentTypeWatch?.cancel()
         contentTypeWatch = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(2))
-                guard !Task.isCancelled, let self, let controller = self.controller,
-                      controller.isPictureInPictureActive else { return }
-                if self.currentContentType(controller) != self.lastLoggedContentType {
-                    self.logContentType(L("ContentType 变了", "ContentType changed"))
+                try? await Task.sleep(for: .seconds(1))
+                guard !Task.isCancelled, let self, let controller = self.controller else { return }
+                if self.currentContentType(controller) != self.lastLoggedContentType
+                    || controller.isPictureInPictureActive != self.lastLoggedActive {
+                    self.logContentType(L("轮询发现变化", "poll saw a change"))
                 }
             }
         }
@@ -268,7 +277,6 @@ extension PiPKeeper: AVPictureInPictureControllerDelegate {
             guard self.controller === controller else { return }
             self.isActive = true
             self.logContentType(L("已开启", "started"))
-            self.watchContentType()
             self.settledStateTask?.cancel()
             // Starting PiP updates AVKit's routing/playback state. Reapply once
             // after that transition, as in the successful device experiment.
@@ -291,8 +299,6 @@ extension PiPKeeper: AVPictureInPictureControllerDelegate {
             guard self.controller === controller else { return }
             self.settledStateTask?.cancel()
             self.settledStateTask = nil
-            self.contentTypeWatch?.cancel()
-            self.contentTypeWatch = nil
             self.isActive = false
             self.logContentType(L("已关闭", "stopped"))
         }

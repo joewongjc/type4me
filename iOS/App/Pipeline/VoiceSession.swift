@@ -162,6 +162,7 @@ final class VoiceSession: ObservableObject {
         guard current == nil, microphone.isRunning else { return }
         microphone.stopEngine()
         log.add(L("麦克风已关闭", "Microphone closed"))
+        pip.logState(L("麦克风关闭后", "after the mic closed"))
     }
 
     // MARK: - Commands
@@ -249,6 +250,7 @@ final class VoiceSession: ObservableObject {
                     "\(where_)开启麦克风成功（\(microphone.lastStartNotes)，画中画\(pipState)），用时 \(Int(Date().timeIntervalSince(started) * 1000)) ms",
                     "Mic started in the \(where_) (\(microphone.lastStartNotes), PiP \(pipState)) in \(Int(Date().timeIntervalSince(started) * 1000)) ms"
                 ))
+                pip.logState(L("麦克风开启后", "after the mic started"))
             } catch {
                 // Never fall back to an always-on microphone by ourselves; the
                 // user only wants it on while dictating. Record why iOS said no.
