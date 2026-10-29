@@ -16,6 +16,11 @@ final class PiPKeeper: NSObject {
     private var controller: AVPictureInPictureController?
     private var possibleObservation: NSKeyValueObservation?
     private var settledStateTask: Task<Void, Never>?
+    /// Test-period diagnostics: watches the content type while PiP runs, so
+    /// the log shows when the glass endpoints could have come back.
+    private var contentTypeWatch: Task<Void, Never>?
+    private var lastLoggedContentType: Int?
+    private var notificationObservers: [NSObjectProtocol] = []
 
     func prepare() {
         guard controller == nil else { return }
@@ -48,11 +53,94 @@ final class PiPKeeper: NSObject {
         // A single frame fixes the aspect ratio. No periodic renderer updates
         // are needed, and no malformed frame or user stash gesture is involved.
         sourceView.displayLayer.sampleBufferRenderer.enqueue(buffer)
+        logContentType(L("画中画已创建", "PiP controller created"))
+        observeSystemEvents()
+    }
+
+    // MARK: - Diagnostics
+
+    /// The content type AVKit hands Pegasus: -1 hides the glass endpoints,
+    /// anything else (VideoOnDemand by default) draws them.
+    private func currentContentType(_ controller: AVPictureInPictureController) -> Int? {
+        func object(_ receiver: NSObject, _ name: String) -> NSObject? {
+            let selector = NSSelectorFromString(name)
+            guard receiver.responds(to: selector) else { return nil }
+            return receiver.perform(selector)?.takeUnretainedValue() as? NSObject
+        }
+        let getType = NSSelectorFromString("contentType")
+        guard let adapter = object(controller, "platformAdapter"),
+              let proxy = object(adapter, "pegasusProxy"),
+              let state = object(proxy, "playbackState"),
+              state.responds(to: getType) else { return nil }
+        typealias GetType = @convention(c) (AnyObject, Selector) -> Int
+        return unsafeBitCast(state.method(for: getType), to: GetType.self)(state, getType)
+    }
+
+    /// One line with the moment and what PiP looks like then. A type other
+    /// than -1 while PiP is on means the endpoints are likely on screen.
+    private func logContentType(_ moment: String) {
+        guard let controller else { return }
+        let type = currentContentType(controller)
+        lastLoggedContentType = type
+        let typeText = type.map(String.init) ?? L("读不到", "unreadable")
+        let warning = controller.isPictureInPictureActive && type != -1 ? "⚠️ " : ""
+        let app = UIApplication.shared.applicationState == .active ? L("前台", "foreground") : L("后台", "background")
+        onLog?(L(
+            "\(warning)画中画 \(moment)：ContentType = \(typeText)，\(controller.isPictureInPictureActive ? "开着" : "没开")，\(controller.isPictureInPicturePossible ? "可开" : "不可开")，App 在\(app)",
+            "\(warning)PiP \(moment): ContentType = \(typeText), \(controller.isPictureInPictureActive ? "on" : "off"), \(controller.isPictureInPicturePossible ? "possible" : "not possible"), app in the \(app)"
+        ))
+    }
+
+    /// Checks every two seconds while PiP is on and logs only a change, so
+    /// a reset by AVKit shows up within a couple of seconds of happening.
+    private func watchContentType() {
+        contentTypeWatch?.cancel()
+        contentTypeWatch = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                guard !Task.isCancelled, let self, let controller = self.controller,
+                      controller.isPictureInPictureActive else { return }
+                if self.currentContentType(controller) != self.lastLoggedContentType {
+                    self.logContentType(L("ContentType 变了", "ContentType changed"))
+                }
+            }
+        }
+    }
+
+    /// The events suspected of resetting the content type.
+    private func observeSystemEvents() {
+        guard notificationObservers.isEmpty else { return }
+        let center = NotificationCenter.default
+        let events: [(Notification.Name, (Notification) -> String)] = [
+            (AVAudioSession.routeChangeNotification, { note in
+                let raw = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt ?? 0
+                return L("音频线路变化（原因 \(raw)）", "audio route changed (reason \(raw))")
+            }),
+            (AVAudioSession.interruptionNotification, { note in
+                let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt ?? 0
+                return raw == AVAudioSession.InterruptionType.began.rawValue
+                    ? L("音频打断开始", "audio interruption began")
+                    : L("音频打断结束", "audio interruption ended")
+            }),
+            (AVAudioSession.mediaServicesWereResetNotification, { _ in L("媒体服务重置", "media services reset") }),
+            (UIApplication.didEnterBackgroundNotification, { _ in L("App 进入后台", "app entered the background") }),
+            (UIApplication.willEnterForegroundNotification, { _ in L("App 回到前台", "app returning to the foreground") }),
+        ]
+        notificationObservers = events.map { name, describe in
+            center.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in
+                let moment = describe(note)
+                MainActor.assumeIsolated { self?.logContentType(moment) }
+            }
+        }
     }
 
     func tearDown() {
         settledStateTask?.cancel()
         settledStateTask = nil
+        contentTypeWatch?.cancel()
+        contentTypeWatch = nil
+        notificationObservers.forEach { NotificationCenter.default.removeObserver($0) }
+        notificationObservers = []
         possibleObservation = nil
         let oldController = controller
         controller = nil
@@ -74,6 +162,7 @@ final class PiPKeeper: NSObject {
             tearDown()
             return
         }
+        logContentType(L("由 App 启动前", "about to be started by the app"))
         controller.startPictureInPicture()
     }
 
@@ -158,10 +247,28 @@ final class PiPKeeper: NSObject {
 }
 
 extension PiPKeeper: AVPictureInPictureControllerDelegate {
+    /// Also reached when iOS starts PiP on its own as the app leaves, which
+    /// skips `ensureRunning()`.
+    nonisolated func pictureInPictureControllerWillStartPictureInPicture(_ controller: AVPictureInPictureController) {
+        // Read synchronously when on the main thread, so the line shows the
+        // type PiP is about to appear with.
+        let log = { @MainActor in
+            guard self.controller === controller else { return }
+            self.logContentType(L("即将开启", "about to start"))
+        }
+        if Thread.isMainThread {
+            MainActor.assumeIsolated { log() }
+        } else {
+            Task { @MainActor in log() }
+        }
+    }
+
     nonisolated func pictureInPictureControllerDidStartPictureInPicture(_ controller: AVPictureInPictureController) {
         Task { @MainActor in
             guard self.controller === controller else { return }
             self.isActive = true
+            self.logContentType(L("已开启", "started"))
+            self.watchContentType()
             self.settledStateTask?.cancel()
             // Starting PiP updates AVKit's routing/playback state. Reapply once
             // after that transition, as in the successful device experiment.
@@ -174,7 +281,7 @@ extension PiPKeeper: AVPictureInPictureControllerDelegate {
                     owner.tearDown()
                     return
                 }
-                owner.onLog?(L("画中画已开启，ContentType = invalid (-1)", "Picture in Picture on, ContentType = invalid (-1)"))
+                owner.logContentType(L("开启 1 秒后补设", "reapplied 1 s after starting"))
             }
         }
     }
@@ -184,8 +291,10 @@ extension PiPKeeper: AVPictureInPictureControllerDelegate {
             guard self.controller === controller else { return }
             self.settledStateTask?.cancel()
             self.settledStateTask = nil
+            self.contentTypeWatch?.cancel()
+            self.contentTypeWatch = nil
             self.isActive = false
-            self.onLog?(L("画中画已关闭", "Picture in Picture stopped"))
+            self.logContentType(L("已关闭", "stopped"))
         }
     }
 

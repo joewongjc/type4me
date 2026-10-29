@@ -60,12 +60,6 @@ struct KeyboardRootView: View {
         .onChange(of: model.notice) { _, notice in
             if notice != nil { modeBarOpen = false }
         }
-        // Test-period diagnostics: what the top bar shows, and whether the
-        // two round glass buttons in its corners are meant to be visible,
-        // so stray dots on screen can be matched to a state in the log.
-        .onChange(of: topBarDiagnostic, initial: true) { _, new in
-            model.diag("顶栏：\(new.zh)", "Top bar: \(new.en)")
-        }
         .id(model.language)
         // Transparent on purpose: iOS 26 draws the keyboard plate (with its
         // rounded top) behind the extension, and painting our own grey on
@@ -121,46 +115,12 @@ struct KeyboardRootView: View {
                 .opacity(modeBarOpen ? 0 : 1)
                 .scaleEffect(modeBarOpen ? 0.8 : 1)
                 .allowsHitTesting(!modeBarOpen)
-                // Removal fades out over the bar's transition, so the
-                // glass can linger a moment after this line.
-                .onAppear { model.diag("角落按钮挂载", "Corner buttons mounted") }
-                .onDisappear { model.diag("角落按钮移除", "Corner buttons unmounted") }
             }
             .animation(ModePicker.widen, value: modeBarOpen)
             .animation(.easeInOut(duration: 0.2), value: model.correction == .none)
             .padding(.horizontal, 4)
             .transition(.opacity)
         }
-    }
-
-    struct TopBarDiagnostic: Equatable {
-        var zh: String
-        var en: String
-    }
-
-    /// Mirrors the branches of `topBar`, plus the corner buttons' state.
-    private var topBarDiagnostic: TopBarDiagnostic {
-        guard model.hasFullAccess else { return TopBarDiagnostic(zh: "未开完全访问", en: "no full access") }
-        if let captionPhase {
-            let what: (String, String)
-            switch captionPhase {
-            case .recording(_, let locked): what = locked ? ("锁定录音", "recording, locked") : ("录音", "recording")
-            case .processing: what = ("处理", "processing")
-            case .done: what = ("完成", "done")
-            case .error: what = ("错误", "error")
-            }
-            return TopBarDiagnostic(zh: "字幕（\(what.0)），角落按钮已移除", en: "caption (\(what.1)), corner buttons removed")
-        }
-        if let notice = model.notice, notice.kind == .info {
-            return TopBarDiagnostic(zh: "提示条，角落按钮已移除", en: "notice, corner buttons removed")
-        }
-        if model.correction == .none, model.clipboardSuggestion != nil {
-            return TopBarDiagnostic(zh: "剪贴板建议（右侧为关闭按钮），角落按钮已移除", en: "clipboard suggestion (close button on the right), corner buttons removed")
-        }
-        let centre = model.correction == .none ? ("模式拨盘", "mode dial") : ("纠正条", "correction chip")
-        return modeBarOpen
-            ? TopBarDiagnostic(zh: "\(centre.0)展开，角落按钮淡出（透明度 0、缩放 0.8）", en: "\(centre.1) expanded, corner buttons faded (opacity 0, scale 0.8)")
-            : TopBarDiagnostic(zh: "\(centre.0)，角落按钮显示", en: "\(centre.1), corner buttons shown")
     }
 
     /// Recording and processing always show the caption; afterwards it stays
