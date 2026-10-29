@@ -1,10 +1,10 @@
 {
   "testflight": {
-    "version": "1.0.0",
-    "build": 2,
+    "version": "1.1.0",
+    "build": 3,
     "url": "https://testflight.apple.com/join/57f5897s",
-    "notesZh": "第一个测试版。",
-    "notesEn": "First beta."
+    "notesZh": "新的模式拨盘、录音手势和键盘操作；智能感知和语音纠错来到 iPhone；可从 Mac 同步设置。",
+    "notesEn": "A new mode dial, recording gestures and keyboard controls; Intelli Sense and voice correction on iPhone; sync settings from your Mac."
   },
   "appStore": {
     "version": "1.0.0",
