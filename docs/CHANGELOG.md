@@ -1,6 +1,6 @@
 # Changelog
 
-## v3.1.0 — iPhone 键盘升级与智能感知 (2026-10-27)
+## v3.1.0 — iPhone 键盘升级与智能感知 (2026-10-28)
 
 本次 GitHub 版本包含 iPhone 版 1.1.0 的键盘与智能感知升级，以及 Mac 版修饰键双击触发和录音条可读性改进。iPhone 版通过 TestFlight 或 App Store 分发，具体可用版本以对应渠道为准。
 
