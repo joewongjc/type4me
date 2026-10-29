@@ -410,21 +410,85 @@ struct MyModesSection: View {
 struct DiagnosticsView: View {
     @EnvironmentObject private var log: DiagnosticsLog
 
+    enum Source: Hashable { case app, all }
+
+    @State private var source: Source = .all
+    /// The shared file's lines, newest first; both processes write to it.
+    @State private var sharedLines: [String] = []
+    /// The whole shared file as last read, for copy and share.
+    @State private var sharedText = ""
+    @State private var confirmsClear = false
+
     var body: some View {
         List {
-            ForEach(log.lines) { line in
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(line.date, style: .time).font(.system(size: 11)).foregroundStyle(T4.secondary)
-                    Text(line.text).font(.system(size: 14))
+            Section {
+                Picker(L("来源", "Source"), selection: $source) {
+                    Text(L("全部（含键盘）", "All (with keyboard)")).tag(Source.all)
+                    Text(L("仅本次 App", "This app run")).tag(Source.app)
+                }
+                .pickerStyle(.segmented)
+                .listRowBackground(Color.clear)
+            }
+            switch source {
+            case .app:
+                ForEach(log.lines) { line in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(line.date, style: .time).font(.system(size: 11)).foregroundStyle(T4.secondary)
+                        Text(line.text).font(.system(size: 14))
+                    }
+                }
+            case .all:
+                ForEach(Array(sharedLines.enumerated()), id: \.offset) { _, line in
+                    Text(line)
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundStyle(line.contains("⚠️") ? Color.orange : Color.primary)
+                        .textSelection(.enabled)
                 }
             }
         }
         .navigationTitle(L("诊断记录", "Diagnostics"))
         .toolbar {
-            Button(L("复制", "Copy")) { UIPasteboard.general.string = log.exportText }
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Menu {
+                    Button(L("复制", "Copy"), systemImage: "doc.on.doc") {
+                        reload()
+                        UIPasteboard.general.string = source == .app ? log.exportText : sharedText
+                    }
+                    ShareLink(item: source == .app ? log.exportText : sharedText) {
+                        Label(L("分享", "Share"), systemImage: "square.and.arrow.up")
+                    }
+                    Button(L("刷新", "Refresh"), systemImage: "arrow.clockwise") { reload() }
+                    Button(L("清空键盘与 App 记录", "Clear keyboard and app log"), systemImage: "trash", role: .destructive) {
+                        confirmsClear = true
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+            }
         }
+        .confirmationDialog(L("清空诊断记录？", "Clear the diagnostics log?"), isPresented: $confirmsClear, titleVisibility: .visible) {
+            Button(L("清空", "Clear"), role: .destructive) {
+                SharedLog.clear()
+                reload()
+            }
+        }
+        .refreshable { reload() }
+        .onAppear { reload() }
         .overlay {
-            if log.lines.isEmpty { Text(L("还没有记录", "Nothing logged yet")).foregroundStyle(T4.secondary) }
+            if (source == .app ? log.lines.isEmpty : sharedLines.isEmpty) {
+                Text(L("还没有记录", "Nothing logged yet")).foregroundStyle(T4.secondary)
+            }
         }
+    }
+
+    private func reload() {
+        // The last 1,500 lines are plenty to read on a phone; copy and share
+        // carry the whole file.
+        sharedText = SharedLog.readAll()
+        sharedLines = sharedText
+            .split(separator: "\n", omittingEmptySubsequences: true)
+            .suffix(1_500)
+            .reversed()
+            .map(String.init)
     }
 }

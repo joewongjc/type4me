@@ -170,7 +170,18 @@ final class VoiceSession: ObservableObject {
         for command in DictationChannel.drainCommands() {
             // Ignore anything that sat in the queue for long; the user has
             // moved on and acting on it now would surprise them.
-            guard Date().timeIntervalSince(command.sentAt) < 20 else { continue }
+            let age = Date().timeIntervalSince(command.sentAt)
+            guard age < 20 else {
+                log.add(L("丢弃过期的键盘指令 \(command.kind.rawValue)（\(Int(age))s 前）", "Dropped a stale keyboard command \(command.kind.rawValue) (\(Int(age))s old)"))
+                continue
+            }
+            if command.kind == .start || command.kind == .stop || command.kind == .cancel {
+                let id = command.requestID.map { String($0.uuidString.prefix(8)) } ?? "-"
+                log.add(L(
+                    "收到键盘指令 \(command.kind.rawValue) \(id)（延迟 \(Int(age * 1000)) ms，当前\(status)）",
+                    "Keyboard command \(command.kind.rawValue) \(id) (\(Int(age * 1000)) ms late, now \(status))"
+                ))
+            }
             handle(command)
         }
     }
