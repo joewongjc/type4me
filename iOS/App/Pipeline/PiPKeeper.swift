@@ -1,21 +1,30 @@
 import AVKit
-import CoreMedia
 import UIKit
 
 /// Keeps the PiP session needed to open the microphone from the background,
-/// without leaving a visible window. iOS 27 draws two glass endpoints for
-/// its default content type; they stay. Forcing the type to -1 through
+/// without leaving a visible window: a video-call PiP 0.1 pt tall, the way
+/// WeChat's input method does it (seen in a device log on iOS 27.0.1).
+///
+/// The earlier sample-buffer PiP got the video-on-demand content type, for
+/// which iOS 27 draws two glass endpoints; forcing the type to -1 through
 /// private Pegasus API hid them but crashed SpringBoard (an out-of-range
-/// lookup in `pegasusMetricsForContentType:`), restarting the phone.
+/// lookup in `pegasusMetricsForContentType:`). The video-call source is
+/// public API and a real content type, so nothing is patched.
 /// AudioSessionKeeper owns the silent output; PiP never opens the microphone.
 @MainActor
 final class PiPKeeper: NSObject {
     var onLog: ((String) -> Void)?
     private(set) var isActive = false
 
-    private let sourceView = SampleBufferView(
-        frame: CGRect(x: 0, y: 0, width: 369, height: 0.1)
-    )
+    /// Where the PiP animates from; never drawn.
+    private let sourceView = UIView(frame: CGRect(x: 0, y: 0, width: 300, height: 0.1))
+    /// The PiP window's content: empty, and as flat as WeChat's.
+    private let callViewController: AVPictureInPictureVideoCallViewController = {
+        let controller = AVPictureInPictureVideoCallViewController()
+        controller.preferredContentSize = CGSize(width: 300, height: 0.1)
+        controller.view.backgroundColor = .clear
+        return controller
+    }()
     private var controller: AVPictureInPictureController?
     private var possibleObservation: NSKeyValueObservation?
     /// Test-period diagnostics: watches the content type and on/off state
@@ -31,19 +40,17 @@ final class PiPKeeper: NSObject {
             onLog?(L("这台设备不支持画中画", "Picture in Picture isn't available on this device"))
             return
         }
-        guard attachSourceView(), let buffer = Self.makeStillFrame() else {
-            sourceView.removeFromSuperview()
+        guard attachSourceView() else {
             onLog?(L("画中画准备失败", "Couldn't prepare Picture in Picture"))
             return
         }
         let source = AVPictureInPictureController.ContentSource(
-            sampleBufferDisplayLayer: sourceView.displayLayer,
-            playbackDelegate: self
+            activeVideoCallSourceView: sourceView,
+            contentViewController: callViewController
         )
         let controller = AVPictureInPictureController(contentSource: source)
         controller.delegate = self
         controller.canStartPictureInPictureAutomaticallyFromInline = true
-        controller.requiresLinearPlayback = true
         self.controller = controller
         let controllerID = ObjectIdentifier(controller)
         possibleObservation = controller.observe(\.isPictureInPicturePossible, options: [.initial, .new]) { [weak self] _, change in
@@ -53,9 +60,6 @@ final class PiPKeeper: NSObject {
                 if possible { self.ensureRunning() }
             }
         }
-        // A single frame fixes the aspect ratio. No periodic renderer updates
-        // are needed, and no malformed frame or user stash gesture is involved.
-        sourceView.displayLayer.sampleBufferRenderer.enqueue(buffer)
         logContentType(L("画中画已创建", "PiP controller created"))
         observeSystemEvents()
         watchContentType()
@@ -155,7 +159,6 @@ final class PiPKeeper: NSObject {
         oldController?.delegate = nil
         oldController?.stopPictureInPicture()
         sourceView.removeFromSuperview()
-        sourceView.displayLayer.sampleBufferRenderer.flush(removingDisplayedImage: true, completionHandler: nil)
     }
 
     func ensureRunning() {
@@ -175,43 +178,6 @@ final class PiPKeeper: NSObject {
         sourceView.isUserInteractionEnabled = false
         window.insertSubview(sourceView, at: 0)
         return true
-    }
-
-    private static func makeStillFrame() -> CMSampleBuffer? {
-        var pixelBuffer: CVPixelBuffer?
-        let attributes = [kCVPixelBufferIOSurfacePropertiesKey: [:]] as CFDictionary
-        guard CVPixelBufferCreate(kCFAllocatorDefault, 5_040, 1, kCVPixelFormatType_32BGRA,
-                                  attributes, &pixelBuffer) == kCVReturnSuccess,
-              let pixelBuffer else { return nil }
-        CVPixelBufferLockBaseAddress(pixelBuffer, [])
-        if let base = CVPixelBufferGetBaseAddress(pixelBuffer) {
-            memset(base, 0, CVPixelBufferGetDataSize(pixelBuffer))
-            let pixels = base.assumingMemoryBound(to: UInt8.self)
-            for x in 0..<5_040 { pixels[x * 4 + 3] = 255 }
-        }
-        CVPixelBufferUnlockBaseAddress(pixelBuffer, [])
-        var format: CMVideoFormatDescription?
-        guard CMVideoFormatDescriptionCreateForImageBuffer(
-            allocator: kCFAllocatorDefault, imageBuffer: pixelBuffer, formatDescriptionOut: &format
-        ) == noErr, let format else { return nil }
-        var timing = CMSampleTimingInfo(
-            duration: .invalid,
-            presentationTimeStamp: CMClockGetTime(CMClockGetHostTimeClock()),
-            decodeTimeStamp: .invalid
-        )
-        var buffer: CMSampleBuffer?
-        guard CMSampleBufferCreateReadyWithImageBuffer(
-            allocator: kCFAllocatorDefault, imageBuffer: pixelBuffer, formatDescription: format,
-            sampleTiming: &timing, sampleBufferOut: &buffer
-        ) == noErr, let buffer else { return nil }
-        if let attachments = CMSampleBufferGetSampleAttachmentsArray(buffer, createIfNecessary: true),
-           CFArrayGetCount(attachments) > 0 {
-            let dictionary = unsafeBitCast(CFArrayGetValueAtIndex(attachments, 0), to: CFMutableDictionary.self)
-            CFDictionarySetValue(dictionary,
-                Unmanaged.passUnretained(kCMSampleAttachmentKey_DisplayImmediately).toOpaque(),
-                Unmanaged.passUnretained(kCFBooleanTrue).toOpaque())
-        }
-        return buffer
     }
 }
 
@@ -256,18 +222,4 @@ extension PiPKeeper: AVPictureInPictureControllerDelegate {
             self.onLog?(L("画中画开启失败：\((error as NSError).domain) \((error as NSError).code)", "Picture in Picture failed: \((error as NSError).domain) \((error as NSError).code)"))
         }
     }
-}
-
-extension PiPKeeper: AVPictureInPictureSampleBufferPlaybackDelegate {
-    nonisolated func pictureInPictureController(_ controller: AVPictureInPictureController, setPlaying playing: Bool) {}
-    nonisolated func pictureInPictureControllerTimeRangeForPlayback(_ controller: AVPictureInPictureController) -> CMTimeRange { .invalid }
-    nonisolated func pictureInPictureControllerIsPlaybackPaused(_ controller: AVPictureInPictureController) -> Bool { false }
-    nonisolated func pictureInPictureController(_ controller: AVPictureInPictureController, didTransitionToRenderSize newRenderSize: CMVideoDimensions) {}
-    nonisolated func pictureInPictureController(_ controller: AVPictureInPictureController, skipByInterval skipInterval: CMTime,
-                                               completion completionHandler: @escaping () -> Void) { completionHandler() }
-}
-
-private final class SampleBufferView: UIView {
-    override class var layerClass: AnyClass { AVSampleBufferDisplayLayer.self }
-    var displayLayer: AVSampleBufferDisplayLayer { layer as! AVSampleBufferDisplayLayer }
 }
