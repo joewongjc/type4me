@@ -3,7 +3,10 @@ import CoreMedia
 import UIKit
 
 /// Keeps the PiP session needed to open the microphone from the background,
-/// without leaving a visible window or the two glass endpoints on iOS 27.2.
+/// without leaving a visible window. iOS 27 draws two glass endpoints for
+/// its default content type; they stay. Forcing the type to -1 through
+/// private Pegasus API hid them but crashed SpringBoard (an out-of-range
+/// lookup in `pegasusMetricsForContentType:`), restarting the phone.
 /// AudioSessionKeeper owns the silent output; PiP never opens the microphone.
 @MainActor
 final class PiPKeeper: NSObject {
@@ -15,9 +18,8 @@ final class PiPKeeper: NSObject {
     )
     private var controller: AVPictureInPictureController?
     private var possibleObservation: NSKeyValueObservation?
-    private var settledStateTask: Task<Void, Never>?
-    /// Test-period diagnostics: watches the content type while PiP runs, so
-    /// the log shows when the glass endpoints could have come back.
+    /// Test-period diagnostics: watches the content type and on/off state
+    /// while the controller lives.
     private var contentTypeWatch: Task<Void, Never>?
     private var lastLoggedContentType: Int?
     private var lastLoggedActive: Bool?
@@ -61,8 +63,8 @@ final class PiPKeeper: NSObject {
 
     // MARK: - Diagnostics
 
-    /// The content type AVKit hands Pegasus: -1 hides the glass endpoints,
-    /// anything else (VideoOnDemand by default) draws them.
+    /// The content type AVKit hands Pegasus, read only (VideoOnDemand by
+    /// default). Never written: see the type's comment.
     private func currentContentType(_ controller: AVPictureInPictureController) -> Int? {
         func object(_ receiver: NSObject, _ name: String) -> NSObject? {
             let selector = NSSelectorFromString(name)
@@ -78,19 +80,17 @@ final class PiPKeeper: NSObject {
         return unsafeBitCast(state.method(for: getType), to: GetType.self)(state, getType)
     }
 
-    /// One line with the moment and what PiP looks like then. A type other
-    /// than -1 while PiP is on means the endpoints are likely on screen.
+    /// One line with the moment and what PiP looks like then.
     private func logContentType(_ moment: String) {
         guard let controller else { return }
         let type = currentContentType(controller)
         lastLoggedContentType = type
         lastLoggedActive = controller.isPictureInPictureActive
         let typeText = type.map(String.init) ?? L("读不到", "unreadable")
-        let warning = controller.isPictureInPictureActive && type != -1 ? "⚠️ " : ""
         let app = UIApplication.shared.applicationState == .active ? L("前台", "foreground") : L("后台", "background")
         onLog?(L(
-            "\(warning)画中画 \(moment)：ContentType = \(typeText)，\(controller.isPictureInPictureActive ? "开着" : "没开")，\(controller.isPictureInPicturePossible ? "可开" : "不可开")，App 在\(app)",
-            "\(warning)PiP \(moment): ContentType = \(typeText), \(controller.isPictureInPictureActive ? "on" : "off"), \(controller.isPictureInPicturePossible ? "possible" : "not possible"), app in the \(app)"
+            "画中画 \(moment)：ContentType = \(typeText)，\(controller.isPictureInPictureActive ? "开着" : "没开")，\(controller.isPictureInPicturePossible ? "可开" : "不可开")，App 在\(app)",
+            "PiP \(moment): ContentType = \(typeText), \(controller.isPictureInPictureActive ? "on" : "off"), \(controller.isPictureInPicturePossible ? "possible" : "not possible"), app in the \(app)"
         ))
     }
 
@@ -144,8 +144,6 @@ final class PiPKeeper: NSObject {
     }
 
     func tearDown() {
-        settledStateTask?.cancel()
-        settledStateTask = nil
         contentTypeWatch?.cancel()
         contentTypeWatch = nil
         notificationObservers.forEach { NotificationCenter.default.removeObserver($0) }
@@ -164,46 +162,8 @@ final class PiPKeeper: NSObject {
         guard let controller,
               !controller.isPictureInPictureActive,
               controller.isPictureInPicturePossible else { return }
-        // AVKit initially supplies VideoOnDemand even for an invalid time
-        // range. Pegasus draws glass endpoints for that content type.
-        guard useUnspecifiedContentType(controller) else {
-            onLog?(L("当前系统不支持隐藏画中画", "This iOS version can't hide Picture in Picture"))
-            tearDown()
-            return
-        }
         logContentType(L("由 App 启动前", "about to be started by the app"))
         controller.startPictureInPicture()
-    }
-
-    /// Private Pegasus integration, verified on iOS 27.2 (24B5099f).
-    /// 0 means Unknown; -1 is the unspecified/invalid content type that removes
-    /// the glass endpoints while preserving the active PiP audio eligibility.
-    /// Guard every selector: unsupported systems must not silently show dots.
-    @discardableResult
-    private func useUnspecifiedContentType(_ controller: AVPictureInPictureController) -> Bool {
-        func object(_ receiver: NSObject, _ name: String) -> NSObject? {
-            let selector = NSSelectorFromString(name)
-            guard receiver.responds(to: selector) else { return nil }
-            return receiver.perform(selector)?.takeUnretainedValue() as? NSObject
-        }
-        guard let adapter = object(controller, "platformAdapter"),
-              let proxy = object(adapter, "pegasusProxy"),
-              let state = object(proxy, "playbackState") else { return false }
-        let update = NSSelectorFromString("updatePlaybackStateUsingBlock:")
-        let setType = NSSelectorFromString("setContentType:")
-        let getType = NSSelectorFromString("contentType")
-        guard proxy.responds(to: update), state.responds(to: setType), state.responds(to: getType) else { return false }
-        typealias SetType = @convention(c) (AnyObject, Selector, Int) -> Void
-        typealias GetType = @convention(c) (AnyObject, Selector) -> Int
-        typealias Update = @convention(c) (AnyObject, Selector, AnyObject) -> Void
-        let block: @convention(block) (NSObject) -> Void = { mutableState in
-            guard mutableState.responds(to: setType) else { return }
-            unsafeBitCast(mutableState.method(for: setType), to: SetType.self)(mutableState, setType, -1)
-        }
-        unsafeBitCast(proxy.method(for: update), to: Update.self)(proxy, update, block as AnyObject)
-        guard let updatedState = object(proxy, "playbackState"),
-              updatedState.responds(to: getType) else { return false }
-        return unsafeBitCast(updatedState.method(for: getType), to: GetType.self)(updatedState, getType) == -1
     }
 
     private func attachSourceView() -> Bool {
@@ -277,28 +237,12 @@ extension PiPKeeper: AVPictureInPictureControllerDelegate {
             guard self.controller === controller else { return }
             self.isActive = true
             self.logContentType(L("已开启", "started"))
-            self.settledStateTask?.cancel()
-            // Starting PiP updates AVKit's routing/playback state. Reapply once
-            // after that transition, as in the successful device experiment.
-            self.settledStateTask = Task { [weak owner = self, weak runningController = controller] in
-                try? await Task.sleep(for: .seconds(1))
-                guard !Task.isCancelled, let owner, let runningController,
-                      owner.controller === runningController, owner.isActive else { return }
-                guard owner.useUnspecifiedContentType(runningController) else {
-                    owner.onLog?(L("画中画隐藏状态设置失败", "Couldn't hide Picture in Picture"))
-                    owner.tearDown()
-                    return
-                }
-                owner.logContentType(L("开启 1 秒后补设", "reapplied 1 s after starting"))
-            }
         }
     }
 
     nonisolated func pictureInPictureControllerDidStopPictureInPicture(_ controller: AVPictureInPictureController) {
         Task { @MainActor in
             guard self.controller === controller else { return }
-            self.settledStateTask?.cancel()
-            self.settledStateTask = nil
             self.isActive = false
             self.logContentType(L("已关闭", "stopped"))
         }
