@@ -87,6 +87,8 @@ final class KeyboardModel: ObservableObject {
     @Published private(set) var clipboardSuggestion: String?
     /// The pasteboard change the suggestion came from.
     private var clipboardSuggestionCount: Int?
+    /// Between `appeared` and `disappeared`.
+    private var onScreen = false
 
     private weak var controller: KeyboardViewController?
     private var pendingPing: UUID?
@@ -211,9 +213,12 @@ final class KeyboardModel: ObservableObject {
         ping()
         refreshSelection()
         refreshClipboard()
+        onScreen = true
     }
 
     func disappeared() {
+        onScreen = false
+        ClipboardMemory.hiddenAt = Date()
         if case .recording = phase, let requestID {
             diag("键盘消失，取消录音 \(KeyboardDiagnostics.short(requestID))", "Keyboard went away, cancelling \(KeyboardDiagnostics.short(requestID))")
             DictationChannel.send(KeyboardCommand(kind: .cancel, requestID: requestID))
@@ -1046,6 +1051,17 @@ final class KeyboardModel: ObservableObject {
         }
         guard count != handled else { return }
         if ClipboardMemory.seenCount != count {
+            // iOS doesn't say when something was copied, only that the
+            // clipboard changed. Copied while the keyboard was up, or since
+            // it was put away a moment ago, is recent; after a longer
+            // absence it may be old, and is let go.
+            let recent = onScreen || ClipboardMemory.hiddenAt.map {
+                Date().timeIntervalSince($0) < Self.clipboardFreshness
+            } ?? false
+            guard recent else {
+                ClipboardMemory.handledCount = count
+                return
+            }
             ClipboardMemory.seenCount = count
             ClipboardMemory.seenAt = Date()
         }
@@ -1104,6 +1120,7 @@ final class KeyboardModel: ObservableObject {
         private static let seenCountKey = "keyboardClipboardSeenCount"
         private static let seenAtKey = "keyboardClipboardSeenAt"
         private static let readCountKey = "keyboardClipboardReadCount"
+        private static let hiddenAtKey = "keyboardClipboardHiddenAt"
 
         /// The last change already pasted, put away or written by us.
         static var handledCount: Int? {
@@ -1120,6 +1137,12 @@ final class KeyboardModel: ObservableObject {
         static var readCount: Int? {
             get { SharedContainer.defaults?.object(forKey: readCountKey) as? Int }
             set { SharedContainer.defaults?.set(newValue, forKey: readCountKey) }
+        }
+
+        /// When the keyboard was last put away.
+        static var hiddenAt: Date? {
+            get { SharedContainer.defaults?.object(forKey: hiddenAtKey) as? Date }
+            set { SharedContainer.defaults?.set(newValue, forKey: hiddenAtKey) }
         }
 
         /// When the keyboard first noticed `seenCount`.
