@@ -13,9 +13,15 @@ final class AudioSessionKeeper {
     private var player = AVAudioPlayerNode()
     private var isGraphReady = false
     private(set) var isActive = false
+    /// A call or another app that took the session and hasn't given it back.
+    /// The microphone can't open while it lasts.
+    private(set) var busyInterruption: MicrophoneBusy?
+    /// Why the silent output last failed to restart ('!pri' during a call).
+    private(set) var lastSilenceError: Error?
 
     var onInterruptionEnded: ((Bool) -> Void)?
-    var onInterruptionBegan: (() -> Void)?
+    /// Receives the notification's userInfo, which says why.
+    var onInterruptionBegan: (([AnyHashable: Any]?) -> Void)?
 
     init() {
         NotificationCenter.default.addObserver(
@@ -75,6 +81,7 @@ final class AudioSessionKeeper {
             rebuildOutputOnly()
             throw error
         }
+        busyInterruption = nil
         logger.info("input opened on the shared engine")
         return format
     }
@@ -93,10 +100,12 @@ final class AudioSessionKeeper {
         engine = AVAudioEngine()
         player = AVAudioPlayerNode()
         isGraphReady = false
+        lastSilenceError = nil
         guard isActive else { return }
         do {
             try startSilence()
         } catch {
+            lastSilenceError = error
             logger.error("silence restart failed: \(error.localizedDescription, privacy: .public)")
             onLog?(L("静音输出没能重新开始：\(MicrophoneCapture.describe(error))，App 在后台可能会被挂起", "Silent output didn't restart: \(MicrophoneCapture.describe(error)). The app may be suspended in the background."))
         }
@@ -152,8 +161,10 @@ final class AudioSessionKeeper {
         switch type {
         case .began:
             logger.info("interruption began")
-            onInterruptionBegan?()
+            busyInterruption = MicrophoneBusy.reason(forInterruption: info)
+            onInterruptionBegan?(info)
         case .ended:
+            busyInterruption = nil
             // Try to get the session back even without `shouldResume`: a
             // phone call ending is exactly when the user wants to dictate again.
             var resumed = false

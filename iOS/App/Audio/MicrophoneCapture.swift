@@ -38,6 +38,9 @@ final class MicrophoneCapture {
     private(set) var activePath: Path?
     /// What happened on the way in, for the diagnostics log.
     private(set) var lastStartNotes = ""
+    /// The errors behind the last failed start, so the caller can tell
+    /// "another app holds the mic" from other failures.
+    private(set) var lastStartErrors: [Error] = []
 
     init(keeper: AudioSessionKeeper) {
         self.keeper = keeper
@@ -50,6 +53,7 @@ final class MicrophoneCapture {
     func startEngine() throws {
         guard activePath == nil else { return }
         var notes: [String] = []
+        lastStartErrors = []
         do {
             let format = try keeper.startInput { [weak self] buffer in self?.handle(buffer) }
             converter = AVAudioConverter(from: format, to: targetFormat)
@@ -57,6 +61,8 @@ final class MicrophoneCapture {
             lastStartNotes = Path.shared.title
             return
         } catch {
+            lastStartErrors.append(error)
+            if let silenceError = keeper.lastSilenceError { lastStartErrors.append(silenceError) }
             notes.append(L("\(Path.shared.title)失败 \(Self.describe(error))", "\(Path.shared.title) failed: \(Self.describe(error))"))
         }
         do {
@@ -65,6 +71,7 @@ final class MicrophoneCapture {
             notes.append(L("\(Path.separate.title)成功", "\(Path.separate.title) succeeded"))
             lastStartNotes = notes.joined(separator: "；")
         } catch {
+            lastStartErrors.append(error)
             notes.append(L("\(Path.separate.title)失败 \(Self.describe(error))", "\(Path.separate.title) failed: \(Self.describe(error))"))
             lastStartNotes = notes.joined(separator: "；")
             throw NSError(domain: "Type4Me", code: 2, userInfo: [NSLocalizedDescriptionKey: lastStartNotes])
