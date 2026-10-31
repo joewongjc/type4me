@@ -27,8 +27,15 @@ final class KeyboardModel: ObservableObject {
         case processing
     }
 
-    @Published var liveness: Liveness = .checking
-    @Published var phase: Phase = .idle
+    @Published var liveness: Liveness = .checking {
+        didSet {
+            guard liveness != oldValue else { return }
+            diag("连接状态 \(oldValue) → \(liveness)", "Liveness \(oldValue) → \(liveness)")
+        }
+    }
+    @Published var phase: Phase = .idle {
+        didSet { phaseDidChange(from: oldValue) }
+    }
     @Published var liveText = ""
     @Published var level: Float = 0
     @Published var notice: KeyboardNotice?
@@ -129,9 +136,55 @@ final class KeyboardModel: ObservableObject {
     private var watchdog: Task<Void, Never>?
     private var noticeTask: Task<Void, Never>?
     private var observing = false
+    /// What the app last reported, so the log only notes changes.
+    private var loggedAppPhase: DictationState.Phase?
+    private var loggedAppInstance: UUID?
+    /// The field changed under a run in flight; logged once per run.
+    private var loggedFieldChange = false
 
     init(controller: KeyboardViewController) {
         self.controller = controller
+    }
+
+    // MARK: - Diagnostics
+
+    /// One line in the shared log, tagged with this keyboard instance.
+    func diag(_ zh: String, _ en: String) {
+        let tag = controller?.instance ?? "?"
+        KeyboardDiagnostics.log(L("键盘#\(tag) \(zh)", "Keyboard #\(tag) \(en)"))
+    }
+
+    var phaseDescription: String {
+        switch phase {
+        case .idle: return L("空闲", "idle")
+        case .recording(let locked): return locked ? L("锁定录音中", "recording, locked") : L("录音中", "recording")
+        case .processing: return L("处理中", "processing")
+        }
+    }
+
+    private func phaseDidChange(from old: Phase) {
+        guard phase != old else { return }
+        let instance = controller?.instance ?? "?"
+        switch phase {
+        case .recording where old == .idle:
+            if let requestID { KeyboardDiagnostics.recordingBegan(instance: instance, requestID: requestID) }
+        case .processing:
+            KeyboardDiagnostics.phaseChanged(to: "processing")
+        case .idle:
+            KeyboardDiagnostics.recordingEnded()
+            loggedAppPhase = nil
+        default:
+            break
+        }
+    }
+
+    /// The host field changed while a run is in flight; the result will go
+    /// to the clipboard instead, which is worth knowing when it happens.
+    func noteFieldChange() {
+        guard phase != .idle, !loggedFieldChange, let proxy = controller?.proxy,
+              proxy.documentIdentifier != startDocumentID else { return }
+        loggedFieldChange = true
+        diag("录音或处理中输入框变了（\(phaseDescription)）", "The text field changed mid-run (\(phaseDescription))")
     }
 
     // MARK: - Lifecycle
@@ -162,6 +215,7 @@ final class KeyboardModel: ObservableObject {
 
     func disappeared() {
         if case .recording = phase, let requestID {
+            diag("键盘消失，取消录音 \(KeyboardDiagnostics.short(requestID))", "Keyboard went away, cancelling \(KeyboardDiagnostics.short(requestID))")
             DictationChannel.send(KeyboardCommand(kind: .cancel, requestID: requestID))
         }
         resetToIdle()
@@ -194,6 +248,7 @@ final class KeyboardModel: ObservableObject {
             try? await Task.sleep(for: .milliseconds(450))
             if pendingPing == command.id {
                 // A suspended or killed app never answers.
+                diag("App 450 ms 内没回应 ping", "The app didn't answer a ping within 450 ms")
                 pendingPing = nil
                 liveness = .needsApp
             }
@@ -263,6 +318,7 @@ final class KeyboardModel: ObservableObject {
 
     func micPressed() {
         guard hasFullAccess else { return }
+        diag("按下麦克风（\(phaseDescription)，\(liveness)）", "Mic pressed (\(phaseDescription), \(liveness))")
         switch phase {
         case .idle:
             if liveness == .ready {
@@ -272,7 +328,7 @@ final class KeyboardModel: ObservableObject {
                 canRedo = false
                 startRecording()
             } else {
-                openApp()
+                openApp(reason: L("会话未就绪", "session not ready"))
             }
         case .recording(locked: true):
             stopRecording()
@@ -283,6 +339,10 @@ final class KeyboardModel: ObservableObject {
 
     func micReleased(cancelled: Bool, locked: Bool) {
         guard case .recording(let wasLocked) = phase, !wasLocked else { return }
+        diag(
+            "松开麦克风（\(cancelled ? "取消" : locked ? "锁定" : "结束")）",
+            "Mic released (\(cancelled ? "cancel" : locked ? "lock" : "finish"))"
+        )
         if cancelled {
             cancelRecording()
         } else if locked {
@@ -347,6 +407,7 @@ final class KeyboardModel: ObservableObject {
     /// The lock key that replaces delete while the mic is held.
     func lockFromKey() {
         guard phase == .recording(locked: false) else { return }
+        diag("点了锁定键", "Lock key tapped")
         phase = .recording(locked: true)
         holdZone = .none
         holdPull = 0
@@ -355,12 +416,14 @@ final class KeyboardModel: ObservableObject {
     /// The done key that replaces lock once recording is locked.
     func finishFromKey() {
         guard phase == .recording(locked: true) else { return }
+        diag("点了完成键", "Done key tapped")
         stopRecording()
     }
 
     /// The cancel key that replaces undo while recording.
     func cancelFromKey() {
         guard case .recording = phase else { return }
+        diag("点了取消键", "Cancel key tapped")
         #if DEBUG
         if SharedSettings.keyboardDemo { demoTask?.cancel(); resetToIdle(); return }
         #endif
@@ -380,6 +443,11 @@ final class KeyboardModel: ObservableObject {
         liveText = ""
         level = 0
         notice = nil
+        loggedFieldChange = false
+        diag(
+            "开始录音 \(KeyboardDiagnostics.short(id))（\(mode.rawValue)\(correctionInFlight == nil ? "" : "，纠正")）",
+            "Recording \(KeyboardDiagnostics.short(id)) (\(mode.rawValue)\(correctionInFlight == nil ? "" : ", correction"))"
+        )
         phase = .recording(locked: false)
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         DictationChannel.send(KeyboardCommand(
@@ -392,9 +460,10 @@ final class KeyboardModel: ObservableObject {
         watchdog = Task {
             try? await Task.sleep(for: .milliseconds(1_200))
             guard !Task.isCancelled, requestID == id, case .recording = phase, !acknowledged else { return }
+            diag("App 1.2 秒内没确认录音 \(KeyboardDiagnostics.short(id))", "The app didn't confirm \(KeyboardDiagnostics.short(id)) within 1.2 s")
             resetToIdle()
             liveness = .needsApp
-            openApp()
+            openApp(reason: L("App 没确认录音", "the app didn't confirm"))
         }
         acknowledged = false
     }
@@ -406,6 +475,7 @@ final class KeyboardModel: ObservableObject {
         if SharedSettings.keyboardDemo { stopDemo(); return }
         #endif
         guard let requestID else { return }
+        diag("结束录音 \(KeyboardDiagnostics.short(requestID))，等结果", "Stopped \(KeyboardDiagnostics.short(requestID)), waiting for the result")
         phase = .processing
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         // Read again on release, as the Mac refreshes before processing.
@@ -414,6 +484,7 @@ final class KeyboardModel: ObservableObject {
         watchdog = Task {
             try? await Task.sleep(for: .seconds(30))
             guard !Task.isCancelled, self.requestID == requestID else { return }
+            diag("等结果 30 秒超时 \(KeyboardDiagnostics.short(requestID))", "Timed out after 30 s waiting for \(KeyboardDiagnostics.short(requestID))")
             resetToIdle()
             show(L("处理超时，没有拿到结果", "Timed out waiting for the result"), kind: .error)
         }
@@ -421,6 +492,7 @@ final class KeyboardModel: ObservableObject {
 
     private func cancelRecording() {
         guard let requestID else { return }
+        diag("取消录音 \(KeyboardDiagnostics.short(requestID))", "Cancelled \(KeyboardDiagnostics.short(requestID))")
         DictationChannel.send(KeyboardCommand(kind: .cancel, requestID: requestID))
         // Like the Mac bar: cancelling simply puts the keyboard back.
         resetToIdle()
@@ -436,7 +508,8 @@ final class KeyboardModel: ObservableObject {
         meter.current = 0
     }
 
-    private func openApp() {
+    private func openApp(reason: String) {
+        diag("跳转到 App：\(reason)", "Opening the app: \(reason)")
         controller?.openContainingApp(SharedContainer.Link.startSession)
     }
 
@@ -444,6 +517,23 @@ final class KeyboardModel: ObservableObject {
 
     private func stateDidChange() {
         guard let state = DictationChannel.readState() else { return }
+        if state.instanceID != loggedAppInstance {
+            if loggedAppInstance != nil {
+                diag("App 重新启动过（会话\(state.sessionActive ? "开" : "关")）", "The app restarted (session \(state.sessionActive ? "on" : "off"))")
+            }
+            loggedAppInstance = state.instanceID
+        }
+        if let requestID, state.requestID == requestID, state.phase != loggedAppPhase {
+            loggedAppPhase = state.phase
+            var extra = ""
+            if state.phase == .done { extra = L("，\(state.finalText?.count ?? 0) 字", ", \(state.finalText?.count ?? 0) characters") }
+            if state.needsForeground { extra += L("，需要前台", ", needs the foreground") }
+            if state.errorMessage != nil { extra += L("，带错误信息", ", with an error message") }
+            diag(
+                "App 报告 \(KeyboardDiagnostics.short(requestID))：\(state.phase.rawValue)\(extra)",
+                "App reports \(KeyboardDiagnostics.short(requestID)): \(state.phase.rawValue)\(extra)"
+            )
+        }
         if let ping = pendingPing, state.pongFor == ping {
             pendingPing = nil
         }
@@ -485,7 +575,7 @@ final class KeyboardModel: ObservableObject {
             resetToIdle()
             if state.needsForeground {
                 liveness = .needsApp
-                openApp()
+                openApp(reason: L("App 需要回到前台", "the app needs the foreground"))
             } else if let message = state.errorMessage {
                 show(message, kind: .error)
             }
@@ -497,6 +587,10 @@ final class KeyboardModel: ObservableObject {
     private func deliver(_ text: String, note: String?) {
         guard let controller, let requestID else { return }
         let sameField = controller.proxy.documentIdentifier == startDocumentID
+        diag(
+            "交付 \(KeyboardDiagnostics.short(requestID))：\(text.count) 字，\(sameField ? "插入" : "输入框已变，复制")",
+            "Delivering \(KeyboardDiagnostics.short(requestID)): \(text.count) characters, \(sameField ? "inserted" : "field changed, copied")"
+        )
         if sameField {
             // Inserting types over a selection; read it right before, as
             // that is exactly what gets replaced.
@@ -1045,14 +1139,17 @@ final class KeyboardModel: ObservableObject {
 
     /// The "4" button next to the modes: more settings live in the app.
     func openSettings() {
+        diag("点了「4」按钮打开设置", "The \"4\" button opened Settings")
         controller?.openContainingApp(SharedContainer.Link.settings)
     }
 
     func dismissKeyboard() {
+        diag("点了收起键盘", "Hide keyboard tapped")
         controller?.dismissKeyboard()
     }
 
     func nextKeyboard() {
+        diag("点了地球键，切换到下一个键盘（\(phaseDescription)）", "Globe key tapped, switching keyboards (\(phaseDescription))")
         controller?.advanceToNextInputMode()
     }
 

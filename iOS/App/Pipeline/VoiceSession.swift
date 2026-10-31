@@ -162,6 +162,7 @@ final class VoiceSession: ObservableObject {
         guard current == nil, microphone.isRunning else { return }
         microphone.stopEngine()
         log.add(L("麦克风已关闭", "Microphone closed"))
+        pip.logState(L("麦克风关闭后", "after the mic closed"))
     }
 
     // MARK: - Commands
@@ -170,7 +171,18 @@ final class VoiceSession: ObservableObject {
         for command in DictationChannel.drainCommands() {
             // Ignore anything that sat in the queue for long; the user has
             // moved on and acting on it now would surprise them.
-            guard Date().timeIntervalSince(command.sentAt) < 20 else { continue }
+            let age = Date().timeIntervalSince(command.sentAt)
+            guard age < 20 else {
+                log.add(L("丢弃过期的键盘指令 \(command.kind.rawValue)（\(Int(age))s 前）", "Dropped a stale keyboard command \(command.kind.rawValue) (\(Int(age))s old)"))
+                continue
+            }
+            if command.kind == .start || command.kind == .stop || command.kind == .cancel {
+                let id = command.requestID.map { String($0.uuidString.prefix(8)) } ?? "-"
+                log.add(L(
+                    "收到键盘指令 \(command.kind.rawValue) \(id)（延迟 \(Int(age * 1000)) ms，当前\(status)）",
+                    "Keyboard command \(command.kind.rawValue) \(id) (\(Int(age * 1000)) ms late, now \(status))"
+                ))
+            }
             handle(command)
         }
     }
@@ -238,6 +250,7 @@ final class VoiceSession: ObservableObject {
                     "\(where_)开启麦克风成功（\(microphone.lastStartNotes)，画中画\(pipState)），用时 \(Int(Date().timeIntervalSince(started) * 1000)) ms",
                     "Mic started in the \(where_) (\(microphone.lastStartNotes), PiP \(pipState)) in \(Int(Date().timeIntervalSince(started) * 1000)) ms"
                 ))
+                pip.logState(L("麦克风开启后", "after the mic started"))
             } catch {
                 // Never fall back to an always-on microphone by ourselves; the
                 // user only wants it on while dictating. Record why iOS said no.

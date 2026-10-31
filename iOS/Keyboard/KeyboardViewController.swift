@@ -5,9 +5,12 @@ final class KeyboardViewController: UIInputViewController {
     private var model: KeyboardModel!
     private var host: UIHostingController<KeyboardRootView>?
     private var heightConstraint: NSLayoutConstraint?
+    /// Tells this controller's lines apart from an earlier or later one's.
+    let instance = String(UUID().uuidString.prefix(4))
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        KeyboardDiagnostics.controllerLoaded(instance, needsGlobe: needsInputModeSwitchKey, fullAccess: hasFullAccess)
         model = KeyboardModel(controller: self)
         let root = KeyboardRootView(model: model)
         let host = UIHostingController(rootView: root)
@@ -32,12 +35,23 @@ final class KeyboardViewController: UIInputViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        KeyboardDiagnostics.log(L("键盘#\(instance) 出现", "Keyboard #\(instance) appearing"))
         model.appeared()
     }
 
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
+        KeyboardDiagnostics.log(L("键盘#\(instance) 消失（\(model.phaseDescription)）", "Keyboard #\(instance) disappeared (\(model.phaseDescription))"))
         model.disappeared()
+    }
+
+    override func didReceiveMemoryWarning() {
+        super.didReceiveMemoryWarning()
+        KeyboardDiagnostics.memoryWarning(instance)
+    }
+
+    deinit {
+        SharedLog.add(L("键盘#\(instance) 释放", "Keyboard #\(instance) released"))
     }
 
     override func selectionDidChange(_ textInput: UITextInput?) {
@@ -49,6 +63,7 @@ final class KeyboardViewController: UIInputViewController {
 
     override func textDidChange(_ textInput: UITextInput?) {
         super.textDidChange(textInput)
+        model.noteFieldChange()
         model.refreshReturnKey()
         model.refreshSelection()
         model.refreshClipboard()

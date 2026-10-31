@@ -16,6 +16,7 @@ struct Type4MeApp: App {
                 .environmentObject(model.log)
                 .onOpenURL { model.handle(url: $0) }
                 .onChange(of: scenePhase) { _, phase in
+                    model.log.add(L("App 状态：\(phase)（会话\(model.session.status)）", "App state: \(phase) (session \(model.session.status))"))
                     if phase == .active { model.didBecomeActive() }
                     // The go-back screen has done its job once the user
                     // has left; next time the app opens on Home.
@@ -55,7 +56,14 @@ final class AppModel: ObservableObject {
         // Before the keyboard next reads the library.
         ModeLibrary.addIntelliSenseIfNeeded()
         DarwinNotifier.shared.observe(DarwinName.keyboardAppeared) { [weak self] in
-            self?.keyboardSeen = true
+            guard let self else { return }
+            self.keyboardSeen = true
+            // A keyboard that shows up mid-run is usually a new keyboard
+            // process after the old one died.
+            let status = self.session.status
+            if status == .recording || status == .processing {
+                self.log.add(L("\(status) 时键盘重新出现了", "The keyboard reappeared while \(status)"))
+            }
         }
         #if DEBUG
         DemoSeed.apply(to: self)
