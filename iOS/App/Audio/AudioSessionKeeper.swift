@@ -15,7 +15,8 @@ final class AudioSessionKeeper {
     private(set) var isActive = false
 
     var onInterruptionEnded: ((Bool) -> Void)?
-    var onInterruptionBegan: (() -> Void)?
+    /// Receives the notification's userInfo, which says why.
+    var onInterruptionBegan: (([AnyHashable: Any]?) -> Void)?
 
     init() {
         NotificationCenter.default.addObserver(
@@ -152,7 +153,7 @@ final class AudioSessionKeeper {
         switch type {
         case .began:
             logger.info("interruption began")
-            onInterruptionBegan?()
+            onInterruptionBegan?(info)
         case .ended:
             // Try to get the session back even without `shouldResume`: a
             // phone call ending is exactly when the user wants to dictate again.

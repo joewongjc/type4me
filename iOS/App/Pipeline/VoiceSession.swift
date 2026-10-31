@@ -76,9 +76,11 @@ final class VoiceSession: ObservableObject {
         }
         keeper.onLog = { [weak log] in log?.add($0) }
         pip.onLog = { [weak log] in log?.add($0) }
-        keeper.onInterruptionBegan = { [weak self] in
-            self?.log.add(L("音频被打断（来电或其他 App 占用）", "Audio interrupted (a call or another app took over)"))
-            self?.cancelCurrent(reason: L("录音被系统打断", "Recording interrupted by the system"))
+        keeper.onInterruptionBegan = { [weak self] info in
+            guard let self else { return }
+            let busy = MicrophoneBusy.reason(forInterruption: info)
+            self.log.add(L("音频被打断（来电或其他 App 占用）", "Audio interrupted (a call or another app took over)"))
+            self.cancelCurrent(reason: busy?.interruptedMessage ?? L("录音被系统打断", "Recording interrupted by the system"))
         }
         keeper.onInterruptionEnded = { [weak self] resumed in
             guard let self else { return }
@@ -122,6 +124,12 @@ final class VoiceSession: ObservableObject {
             log.add(L("会话开启（\(trigger)）", "Session started (\(trigger))"))
             publishState()
         } catch {
+            if let busy = MicrophoneBusy.reason(for: [error], inForeground: true) {
+                lastError = busy.message
+                log.add(L("开启语音会话失败：\(MicrophoneCapture.describe(error))", "Couldn't start the voice session: \(MicrophoneCapture.describe(error))"))
+                endSession(reason: nil)
+                return
+            }
             lastError = L("开启语音会话失败：\(error.localizedDescription)", "Couldn't start the voice session: \(error.localizedDescription)")
             log.add(lastError!)
             endSession(reason: nil)
@@ -258,7 +266,19 @@ final class VoiceSession: ObservableObject {
                     "\(where_)开启麦克风失败：\(microphone.lastStartNotes)；画中画\(pipState)；\(keeper.diagnostics)",
                     "Mic failed to start in the \(where_): \(microphone.lastStartNotes); PiP \(pipState); \(keeper.diagnostics)"
                 ))
-                fail(requestID: requestID, mode: mode, message: L("系统没让 Type4Me 在后台开麦克风，原因见诊断记录", "iOS didn't let Type4Me use the mic in the background. See Diagnostics."), needsForeground: false)
+                // Another app holding the mic (a call, a recorder) gets a plain
+                // explanation, like other keyboards give; the rest stays a
+                // pointer to the diagnostics.
+                let message: String
+                if let busy = MicrophoneBusy.reason(for: microphone.lastStartErrors, inForeground: !inBackground) {
+                    log.add(L("麦克风被占用：\(busy.message)", "Microphone busy: \(busy.message)"))
+                    message = busy.message
+                } else if inBackground {
+                    message = L("系统没让 Type4Me 在后台开麦克风，原因见诊断记录", "iOS didn't let Type4Me use the mic in the background. See Diagnostics.")
+                } else {
+                    message = L("麦克风没能开启，原因见诊断记录", "The mic didn't start. See Diagnostics.")
+                }
+                fail(requestID: requestID, mode: mode, message: message, needsForeground: false)
                 return
             }
         }
