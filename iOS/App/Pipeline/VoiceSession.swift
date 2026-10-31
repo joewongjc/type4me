@@ -270,7 +270,9 @@ final class VoiceSession: ObservableObject {
                 // explanation, like other keyboards give; the rest stays a
                 // pointer to the diagnostics.
                 let message: String
-                if let busy = MicrophoneBusy.reason(for: microphone.lastStartErrors, inForeground: !inBackground) {
+                // During a call the input reports 0 Hz rather than a busy code,
+                // so an interruption that hasn't ended counts too.
+                if let busy = MicrophoneBusy.reason(for: microphone.lastStartErrors, inForeground: !inBackground) ?? keeper.busyInterruption {
                     log.add(L("麦克风被占用：\(busy.message)", "Microphone busy: \(busy.message)"))
                     message = busy.message
                 } else if inBackground {

@@ -62,6 +62,7 @@ final class MicrophoneCapture {
             return
         } catch {
             lastStartErrors.append(error)
+            if let silenceError = keeper.lastSilenceError { lastStartErrors.append(silenceError) }
             notes.append(L("\(Path.shared.title)失败 \(Self.describe(error))", "\(Path.shared.title) failed: \(Self.describe(error))"))
         }
         do {
