@@ -8,7 +8,10 @@ public enum LLMPricingCatalog {
 
     public static let seedEntries: [ModelPriceEntry] = [
         // OpenAI
-        ModelPriceEntry(key: "gpt-6-luna", inputPricePerMTok: 0.20, outputPricePerMTok: 1.20),
+        ModelPriceEntry(key: "gpt-6-astra", inputPricePerMTok: 10.00, outputPricePerMTok: 50.00),
+        ModelPriceEntry(key: "gpt-6.1-sol", inputPricePerMTok: 2.00, outputPricePerMTok: 10.00),
+        ModelPriceEntry(key: "gpt-6.1-terra", inputPricePerMTok: 1.00, outputPricePerMTok: 5.00),
+        ModelPriceEntry(key: "gpt-6-luna", inputPricePerMTok: 0.10, outputPricePerMTok: 0.50),
         ModelPriceEntry(key: "gpt-5.6-luna", inputPricePerMTok: 0.20, outputPricePerMTok: 1.20),
         ModelPriceEntry(key: "gpt-5.6-sol", inputPricePerMTok: 2.00, outputPricePerMTok: 10.00),
         ModelPriceEntry(key: "gpt-5.6-terra", inputPricePerMTok: 2.00, outputPricePerMTok: 12.00),
@@ -21,6 +24,11 @@ public enum LLMPricingCatalog {
         ModelPriceEntry(key: "gpt-4o", inputPricePerMTok: 2.50, outputPricePerMTok: 10.00),
         ModelPriceEntry(key: "gpt-4o-mini", inputPricePerMTok: 0.15, outputPricePerMTok: 0.60),
         // Anthropic
+        ModelPriceEntry(key: "claude-haiku-5-5", inputPricePerMTok: 0.10, outputPricePerMTok: 0.50),
+        ModelPriceEntry(key: "claude-sonnet-5-5", inputPricePerMTok: 2.00, outputPricePerMTok: 10.00),
+        ModelPriceEntry(key: "claude-opus-5-5", inputPricePerMTok: 4.00, outputPricePerMTok: 20.00),
+        ModelPriceEntry(key: "claude-fable-5-1", inputPricePerMTok: 10.00, outputPricePerMTok: 50.00),
+        ModelPriceEntry(key: "claude-haiku-4-5", inputPricePerMTok: 1.00, outputPricePerMTok: 5.00),
         ModelPriceEntry(key: "claude-sonnet-5", inputPricePerMTok: 2.00, outputPricePerMTok: 10.00),
         ModelPriceEntry(key: "claude-opus-5", inputPricePerMTok: 5.00, outputPricePerMTok: 25.00),
         ModelPriceEntry(key: "claude-fable-5", inputPricePerMTok: 10.00, outputPricePerMTok: 50.00),
@@ -48,10 +56,15 @@ public enum LLMPricingCatalog {
         ModelPriceEntry(key: "qwen3.7-plus", inputPricePerMTok: 0.32, outputPricePerMTok: 1.28),
         ModelPriceEntry(key: "qwen3.7-flash", inputPricePerMTok: 0.03, outputPricePerMTok: 0.13),
         ModelPriceEntry(key: "minimax-m3", inputPricePerMTok: 0.30, outputPricePerMTok: 1.20),
+        ModelPriceEntry(key: "minimax-m3.1-flash", inputPricePerMTok: 0.15, outputPricePerMTok: 0.60),
         // Google Gemini
+        ModelPriceEntry(key: "gemini-4-argon", inputPricePerMTok: 2.00, outputPricePerMTok: 10.00),
+        ModelPriceEntry(key: "gemini-3.8-flash", inputPricePerMTok: 0.75, outputPricePerMTok: 3.75),
+        ModelPriceEntry(key: "gemini-3.6-flash", inputPricePerMTok: 0.75, outputPricePerMTok: 3.75),
         ModelPriceEntry(key: "gemini-3.7-flash", inputPricePerMTok: 0.75, outputPricePerMTok: 3.75),
         ModelPriceEntry(key: "gemini-3.5-flash", inputPricePerMTok: 1.50, outputPricePerMTok: 9.00),
         ModelPriceEntry(key: "gemini-3.5-flash-lite", inputPricePerMTok: 0.30, outputPricePerMTok: 2.50),
+        ModelPriceEntry(key: "gemini-3.1-flash-lite", inputPricePerMTok: 0.25, outputPricePerMTok: 1.50),
         // ByteDance Doubao Seed (normalized keys, prefix stripped)
         ModelPriceEntry(key: "seed-2-1-turbo", inputPricePerMTok: 0.50, outputPricePerMTok: 2.50),
         ModelPriceEntry(key: "seed-2.0-code", inputPricePerMTok: 0.50, outputPricePerMTok: 3.00),

@@ -306,6 +306,61 @@ final class DoubaoChatClientTests: XCTestCase {
         XCTAssertNil(json["reasoning_split"])
     }
 
+    func testClaudeRequestSendsModelSpecificThinkingOff() async throws {
+        let bodies = NSMutableArray()
+        MockStreamProtocol.setHandler { request in
+            if let stream = request.httpBodyStream {
+                stream.open()
+                var data = Data()
+                var buffer = [UInt8](repeating: 0, count: 4096)
+                while stream.hasBytesAvailable {
+                    let read = stream.read(&buffer, maxLength: buffer.count)
+                    if read <= 0 { break }
+                    data.append(buffer, count: read)
+                }
+                stream.close()
+                bodies.add(data)
+            } else {
+                bodies.add(request.httpBody ?? Data())
+            }
+            let sse = """
+            data: {"type":"content_block_delta","delta":{"text":"ok"}}
+            data: {"type":"message_stop"}
+
+            """
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil,
+                                           headerFields: ["Content-Type": "text/event-stream"])!
+            return (response, Data(sse.utf8))
+        }
+        defer { MockStreamProtocol.clearHandler() }
+
+        let defaults = UserDefaults.standard
+        let previous = defaults.object(forKey: "tf_disableThinking")
+        defaults.set(true, forKey: "tf_disableThinking")
+        defer {
+            if let previous { defaults.set(previous, forKey: "tf_disableThinking") }
+            else { defaults.removeObject(forKey: "tf_disableThinking") }
+        }
+
+        let client = ClaudeChatClient(customSession: makeMockSession())
+        for model in ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"] {
+            _ = try await client.process(
+                text: "hi", prompt: "{text}",
+                config: LLMConfig(apiKey: "test", model: model, baseURL: LLMProvider.claude.defaultBaseURL),
+                inputBoundary: .inline
+            )
+        }
+
+        let json = try bodies.map { body -> [String: Any] in
+            let data = try XCTUnwrap(body as? Data)
+            return try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        }
+        XCTAssertEqual(json.count, 3)
+        XCTAssertEqual((json[0]["thinking"] as? [String: String])?["type"], "disabled")
+        XCTAssertEqual((json[1]["thinking"] as? [String: String])?["type"], "between_tools")
+        XCTAssertNil(json[2]["thinking"])
+    }
+
     // MARK: - Custom Provider Reasoning Effort
 
     private func sentRequestBody(

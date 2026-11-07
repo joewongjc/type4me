@@ -121,6 +121,10 @@ struct ChatClient: Sendable {
             "messages": [["role": "user", "content": user]],
         ]
         if let system { body["system"] = system }
+        if config.thinkingOff != nil,
+           let thinkingType = LLMProvider.claudeThinkingOffType(for: config.model) {
+            body["thinking"] = ["type": thinkingType]
+        }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await URLSession.shared.data(for: request)

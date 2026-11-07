@@ -18,7 +18,7 @@ final class CodexCLIClientTests: XCTestCase {
     func testProviderExposesSparkAndDisablesRequiresAPIKey() {
         XCTAssertEqual(LLMProvider.codexCLI.modelOptions.first?.value, "gpt-6-luna")
         XCTAssertTrue(LLMProvider.codexCLI.modelOptions.contains { $0.value == "gpt-5.6-luna" })
-        XCTAssertTrue(LLMProvider.codexCLI.modelOptions.contains { $0.value == "gpt-5.3-codex-spark" })
+        XCTAssertTrue(LLMProvider.codexCLI.modelOptions.contains { $0.value == "gpt-6.1-terra" })
         XCTAssertFalse(LLMProvider.codexCLI.requiresAPIKey)
     }
 
@@ -27,7 +27,7 @@ final class CodexCLIClientTests: XCTestCase {
         XCTAssertEqual(CodexCLILLMConfig.normalizeModel("6luna"), "gpt-6-luna")
         XCTAssertEqual(CodexCLILLMConfig.normalizeModel("5.6-luna"), "gpt-5.6-luna")
         XCTAssertEqual(CodexCLILLMConfig.normalizeModel("5.6luna"), "gpt-5.6-luna")
-        XCTAssertEqual(CodexCLILLMConfig.normalizeModel("5.3-codex-spark"), "gpt-5.3-codex-spark")
+        XCTAssertEqual(CodexCLILLMConfig.normalizeModel("6.1-terra"), "gpt-6.1-terra")
         XCTAssertEqual(CodexCLILLMConfig.normalizeModel("custom-model"), "custom-model")
     }
 
@@ -115,7 +115,7 @@ final class CodexCLIClientTests: XCTestCase {
         let schema = workspace.appendingPathComponent("schema.json")
         let output = workspace.appendingPathComponent("output.json")
         let arguments = CodexCLIInvocation.arguments(
-            model: "gpt-5.3-codex-spark",
+            model: "gpt-6.1-terra",
             workspaceURL: workspace,
             schemaURL: schema,
             outputURL: output,
@@ -127,7 +127,7 @@ final class CodexCLIClientTests: XCTestCase {
         XCTAssertTrue(arguments.contains("--ephemeral"))
         XCTAssertTrue(arguments.contains("read-only"))
         XCTAssertTrue(arguments.contains("model_reasoning_effort=\"low\""))
-        XCTAssertTrue(arguments.contains("gpt-5.3-codex-spark"))
+        XCTAssertTrue(arguments.contains("gpt-6.1-terra"))
     }
 
     func testPromptTreatsTranscriptAsUntrustedData() {
@@ -240,7 +240,7 @@ final class CodexCLIClientTests: XCTestCase {
             throw XCTSkip("Set TYPE4ME_LIVE_CODEX_TEST=1 to use the signed-in Codex account")
         }
 
-        for model in ["gpt-6-luna", "gpt-5.6-luna", "gpt-5.3-codex-spark"] {
+        for model in ["gpt-6-luna", "gpt-6.1-terra", "gpt-5.6-luna"] {
             let marker = "TYPE4ME_CODEX_RUNTIME_OK_\(model)"
             let result = try await CodexCLIClient().process(
                 text: marker,

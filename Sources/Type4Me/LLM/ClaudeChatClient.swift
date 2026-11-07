@@ -115,12 +115,16 @@ actor ClaudeChatClient: LLMClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.timeoutInterval = 30
 
+        let thinkingOffType = LLMThinkingPreference.isDisabled(for: .claude)
+            ? LLMProvider.claudeThinkingOffType(for: config.model)
+            : nil
         let body = ClaudeRequest(
             model: config.model,
             max_tokens: 4096,
             system: preparedPrompt.system,
             messages: [ClaudeMessage(role: "user", content: preparedPrompt.user)],
-            stream: true
+            stream: true,
+            thinking: thinkingOffType.map(ClaudeThinking.init(type:))
         )
         request.httpBody = try JSONEncoder().encode(body)
 
@@ -244,6 +248,11 @@ private struct ClaudeRequest: Encodable, Sendable {
     let system: String?
     let messages: [ClaudeMessage]
     let stream: Bool
+    let thinking: ClaudeThinking?
+}
+
+private struct ClaudeThinking: Encodable, Sendable {
+    let type: String
 }
 
 private struct ClaudeMessage: Encodable, Sendable {
