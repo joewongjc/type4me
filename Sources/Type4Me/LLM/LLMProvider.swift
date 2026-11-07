@@ -70,68 +70,69 @@ enum LLMProvider: String, CaseIterable, Codable, Sendable {
         case .doubao:
             return [
                 FieldOption(value: "doubao-seed-2-1-turbo-260628", label: "doubao-seed-2-1-turbo-260628"),
+                FieldOption(value: "doubao-seed-2-1-lite-260915", label: "doubao-seed-2-1-lite-260915"),
+                FieldOption(value: "doubao-seed-2-1-pro-260915", label: "doubao-seed-2-1-pro-260915"),
                 FieldOption(value: "doubao-seed-2-1-pro-260628", label: "doubao-seed-2-1-pro-260628"),
-                FieldOption(value: "doubao-seed-2-0-lite-260428", label: "doubao-seed-2-0-lite-260428"),
                 FieldOption(value: "doubao-seed-2-0-mini-260428", label: "doubao-seed-2-0-mini-260428"),
-                FieldOption(value: "doubao-seed-2-0-pro-260215", label: "doubao-seed-2-0-pro-260215"),
+                FieldOption(value: "doubao-seed-2-0-lite-260428", label: "doubao-seed-2-0-lite-260428"),
             ]
         case .minimaxCN, .minimaxIntl:
             return [
                 FieldOption(value: "MiniMax-M3", label: "MiniMax-M3"),
-                FieldOption(value: "MiniMax-M2.7", label: "MiniMax-M2.7"),
-                FieldOption(value: "MiniMax-M2.7-highspeed", label: "MiniMax-M2.7-highspeed"),
-                FieldOption(value: "MiniMax-M2.5", label: "MiniMax-M2.5"),
-                FieldOption(value: "MiniMax-M2.5-highspeed", label: "MiniMax-M2.5-highspeed"),
-                FieldOption(value: "MiniMax-M2.1", label: "MiniMax-M2.1"),
-                FieldOption(value: "MiniMax-M2.1-highspeed", label: "MiniMax-M2.1-highspeed"),
-                FieldOption(value: "MiniMax-M2", label: "MiniMax-M2"),
+                FieldOption(value: "MiniMax-M3.1-Flash", label: "MiniMax-M3.1-Flash"),
             ]
         case .bailian:
             return [
                 FieldOption(value: "qwen3.7-plus", label: "qwen3.7-plus"),
+                FieldOption(value: "qwen3.8-flash", label: "qwen3.8-flash"),
+                FieldOption(value: "qwen3.7-flash", label: "qwen3.7-flash"),
+                FieldOption(value: "qwen3.8-max", label: "qwen3.8-max"),
                 FieldOption(value: "qwen3.7-max", label: "qwen3.7-max"),
                 FieldOption(value: "qwen3.6-flash", label: "qwen3.6-flash"),
                 FieldOption(value: "qwen-plus", label: "qwen-plus"),
-                FieldOption(value: "qwen-turbo", label: "qwen-turbo"),
+                FieldOption(value: "qwen-flash", label: "qwen-flash"),
                 FieldOption(value: "qwen-long", label: "qwen-long"),
             ]
         case .kimi:
             return [
+                FieldOption(value: "kimi-k3.1-pro-highspeed", label: "kimi-k3.1-pro-highspeed"),
+                FieldOption(value: "kimi-k3.1-pro", label: "kimi-k3.1-pro"),
+                FieldOption(value: "kimi-k3", label: "kimi-k3"),
                 FieldOption(value: "kimi-k2.6", label: "kimi-k2.6"),
                 FieldOption(value: "kimi-k2.7-code-highspeed", label: "kimi-k2.7-code-highspeed"),
                 FieldOption(value: "kimi-k2.7-code", label: "kimi-k2.7-code"),
-                FieldOption(value: "kimi-k2.5", label: "kimi-k2.5"),
-                FieldOption(value: "moonshot-v1-128k", label: "moonshot-v1-128k"),
-                FieldOption(value: "moonshot-v1-32k", label: "moonshot-v1-32k"),
-                FieldOption(value: "moonshot-v1-8k", label: "moonshot-v1-8k"),
             ]
         case .openai:
             return [
-                FieldOption(value: "gpt-5.4-mini", label: "gpt-5.4-mini"),
+                FieldOption(value: "gpt-6-luna", label: "gpt-6-luna"),
+                FieldOption(value: "gpt-6.1-terra", label: "gpt-6.1-terra"),
+                FieldOption(value: "gpt-6.1-sol", label: "gpt-6.1-sol"),
+                FieldOption(value: "gpt-6-astra", label: "gpt-6-astra"),
+                FieldOption(value: "gpt-5.6-luna", label: "gpt-5.6-luna"),
+                FieldOption(value: "gpt-5.6-terra", label: "gpt-5.6-terra"),
                 FieldOption(value: "gpt-5.5", label: "gpt-5.5"),
-                FieldOption(value: "gpt-5.5-pro", label: "gpt-5.5-pro"),
-                FieldOption(value: "gpt-5.4", label: "gpt-5.4"),
-                FieldOption(value: "gpt-5.4-pro", label: "gpt-5.4-pro"),
-                FieldOption(value: "gpt-5.4-nano", label: "gpt-5.4-nano"),
+                FieldOption(value: "gpt-5.4-mini", label: "gpt-5.4-mini"),
             ]
         case .gemini:
             return [
-                FieldOption(value: "gemini-3.5-flash", label: "gemini-3.5-flash"),
-                FieldOption(value: "gemini-3.1-flash-lite", label: "gemini-3.1-flash-lite"),
+                FieldOption(value: "gemini-3.5-flash-lite", label: "gemini-3.5-flash-lite"),
+                FieldOption(value: "gemini-3.8-flash", label: "gemini-3.8-flash"),
+                FieldOption(value: "gemini-3.6-flash", label: "gemini-3.6-flash"),
+                FieldOption(value: "gemini-4-argon", label: "gemini-4-argon"),
                 FieldOption(value: "gemini-3.1-pro-preview", label: "gemini-3.1-pro-preview"),
-                FieldOption(value: "gemini-3-flash-preview", label: "gemini-3-flash-preview"),
-                FieldOption(value: "gemini-2.5-flash", label: "gemini-2.5-flash"),
-                FieldOption(value: "gemini-2.5-pro", label: "gemini-2.5-pro"),
-                FieldOption(value: "gemini-2.5-flash-lite", label: "gemini-2.5-flash-lite"),
+                FieldOption(value: "gemini-3.1-flash-lite", label: "gemini-3.1-flash-lite"),
             ]
         case .deepseek:
             return [
-                FieldOption(value: "deepseek-v4-flash", label: "deepseek-v4-flash"),
+                FieldOption(value: "deepseek-flash", label: "deepseek-flash"),
                 FieldOption(value: "deepseek-v4-pro", label: "deepseek-v4-pro"),
             ]
         case .zhipu:
             return [
                 FieldOption(value: "glm-5.2", label: "glm-5.2"),
+                FieldOption(value: "glm-5.3", label: "glm-5.3"),
+                FieldOption(value: "glm-5.3-flashx", label: "glm-5.3-flashx"),
+                FieldOption(value: "glm-5.3-flash", label: "glm-5.3-flash"),
                 FieldOption(value: "glm-5.1", label: "glm-5.1"),
                 FieldOption(value: "glm-5", label: "glm-5"),
                 FieldOption(value: "glm-5-turbo", label: "glm-5-turbo"),
@@ -147,20 +148,22 @@ enum LLMProvider: String, CaseIterable, Codable, Sendable {
                 FieldOption(value: "mimo-v2.6-flash", label: "mimo-v2.6-flash"),
                 FieldOption(value: "mimo-v2.6-pro", label: "mimo-v2.6-pro"),
                 FieldOption(value: "mimo-v2.6-pro-ultraspeed", label: "mimo-v2.6-pro-ultraspeed"),
-                FieldOption(value: "mimo-v2.5-pro", label: "mimo-v2.5-pro"),
             ]
         case .claude:
             return [
-                FieldOption(value: "claude-sonnet-5", label: "claude-sonnet-5"),
-                FieldOption(value: "claude-fable-5", label: "claude-fable-5"),
-                FieldOption(value: "claude-opus-4-8", label: "claude-opus-4-8"),
-                FieldOption(value: "claude-haiku-4-5-20251001", label: "claude-haiku-4-5-20251001"),
+                FieldOption(value: "claude-haiku-5-5", label: "claude-haiku-5-5"),
+                FieldOption(value: "claude-sonnet-5-5", label: "claude-sonnet-5-5"),
+                FieldOption(value: "claude-opus-5-5", label: "claude-opus-5-5"),
+                FieldOption(value: "claude-fable-5-1", label: "claude-fable-5-1"),
+                FieldOption(value: "claude-haiku-4-5", label: "claude-haiku-4-5"),
             ]
         case .codexCLI:
             return [
                 FieldOption(value: "gpt-6-luna", label: L("GPT-6 Luna（推荐）", "GPT-6 Luna (Recommended)")),
+                FieldOption(value: "gpt-6.1-terra", label: "GPT-6.1 Terra"),
+                FieldOption(value: "gpt-6.1-sol", label: "GPT-6.1 Sol"),
+                FieldOption(value: "gpt-6-astra", label: "GPT-6 Astra"),
                 FieldOption(value: "gpt-5.6-luna", label: "GPT-5.6 Luna"),
-                FieldOption(value: "gpt-5.3-codex-spark", label: L("GPT-5.3 Codex Spark（极速实验）", "GPT-5.3 Codex Spark (Fast, Experimental)")),
             ]
         case .openrouter, .ollama, .magpie, .custom:
             return []
@@ -190,13 +193,14 @@ enum LLMProvider: String, CaseIterable, Codable, Sendable {
     }
 
     func thinkingDisableField(for model: String?) -> ThinkingDisableField? {
+        let normalizedModel = (model ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         switch self {
         case .doubao, .deepseek, .mimo:
             // thinking: { type: "disabled" }
             return .thinking
         case .kimi:
-            let normalizedModel = (model ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            if normalizedModel.hasPrefix("kimi-k2.7-code") {
+            // K3 and K2.7 Code always think and reject the parameter.
+            if normalizedModel.hasPrefix("kimi-k3") || normalizedModel.hasPrefix("kimi-k2.7-code") {
                 return nil
             }
             // thinking: { type: "disabled" }
@@ -205,8 +209,20 @@ enum LLMProvider: String, CaseIterable, Codable, Sendable {
             // enable_thinking: false (Qwen models)
             return .enableThinking
         case .zhipu:
+            // GLM-5.3 always thinks; sending thinking: disabled fails the request.
+            if normalizedModel.hasPrefix("glm-5.3") {
+                return nil
+            }
             // thinking: { type: "disabled" } (GLM-5.x / GLM-4.7)
             return .thinking
+        case .openai:
+            // reasoning_effort: "none"; GPT-6 Luna and most GPT-5.x default to medium.
+            return Self.openAIModelsAcceptingNoReasoning.contains(where: {
+                Self.modelID(normalizedModel, matches: $0)
+            }) ? .reasoningEffort : nil
+        case .claude:
+            // thinking: { type: <claudeThinkingOffType> }
+            return Self.claudeThinkingOffType(for: model) == nil ? nil : .thinking
         case .openrouter:
             // reasoning: { effort: "none" }
             return .reasoning
@@ -217,11 +233,44 @@ enum LLMProvider: String, CaseIterable, Codable, Sendable {
             // reasoning_effort: <lowest level supported by model>
             return .lowestReasoningEffort
         default:
-            // OpenAI: defaults to none already for GPT-5.2+, risky for o3
-            // Gemini: OpenAI-compat layer doesn't reliably support it
+            // Gemini: OpenAI-compat layer can't turn thinking off on 3.x models
             // MiniMax: API doesn't support disabling reasoning (use needsReasoningSplit instead)
             return nil
         }
+    }
+
+    /// `thinking.type` that turns Claude's thinking off for `model`, or nil
+    /// when the model rejects every off switch (Opus 5.5, Fable) or is unknown.
+    static func claudeThinkingOffType(for model: String?) -> String? {
+        let normalizedModel = (model ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        // Sonnet 5.5 rejects "disabled"; "between_tools" keeps it from thinking without tools.
+        if modelID(normalizedModel, matches: "claude-sonnet-5-5") {
+            return "between_tools"
+        }
+        return claudeModelsAcceptingDisabledThinking.contains(where: {
+            modelID(normalizedModel, matches: $0)
+        }) ? "disabled" : nil
+    }
+
+    private static let claudeModelsAcceptingDisabledThinking = [
+        "claude-haiku-5-5", "claude-haiku-4-5",
+        "claude-sonnet-5", "claude-opus-5",
+        "claude-opus-4-8", "claude-opus-4-7", "claude-opus-4-6", "claude-opus-4-5",
+        "claude-sonnet-4-6", "claude-sonnet-4-5",
+    ]
+
+    private static let openAIModelsAcceptingNoReasoning = [
+        "gpt-6-luna", "gpt-6.1-terra", "gpt-6-sol",
+        "gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol",
+        "gpt-5.5", "gpt-5.4-mini",
+    ]
+
+    /// Exact ID or a dated snapshot of it (`claude-haiku-4-5-20251001`,
+    /// `gpt-5.5-2026-04-23`), but not a sibling such as `-pro` or `-5-5`.
+    private static func modelID(_ normalizedModel: String, matches id: String) -> Bool {
+        guard normalizedModel.hasPrefix(id) else { return false }
+        let suffix = normalizedModel.dropFirst(id.count)
+        return suffix.isEmpty || (suffix.first == "-" && suffix.dropFirst().first?.isNumber == true && suffix.dropFirst().count >= 4)
     }
 
     /// MiniMax M2+ models always reason and can't be turned off.

@@ -36,8 +36,8 @@ struct CodexCLILLMConfig: LLMProviderConfig, Sendable {
             return "gpt-6-luna"
         case "5.6-luna", "5.6luna":
             return "gpt-5.6-luna"
-        case "5.3-codex-spark", "5.3-spark", "spark":
-            return "gpt-5.3-codex-spark"
+        case "6.1-terra", "6.1terra":
+            return "gpt-6.1-terra"
         default:
             return trimmed
         }

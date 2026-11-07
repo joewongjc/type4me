@@ -550,9 +550,18 @@ struct LLMProviderDetailView: View, SettingsCardHelpers {
     }
 
     private var thinkingToggleDescription: String {
-        if provider == .kimi,
-           selectedLLMModel.lowercased().hasPrefix("kimi-k2.7-code") {
-            return L("K2.7 始终思考，不发送 thinking 参数", "K2.7 always thinks; no thinking parameter is sent")
+        let model = selectedLLMModel.lowercased()
+        if provider == .kimi, model.hasPrefix("kimi-k3") || model.hasPrefix("kimi-k2.7-code") {
+            return L("该模型始终思考，不发送 thinking 参数", "This model always thinks; no thinking parameter is sent")
+        }
+        if provider == .zhipu, model.hasPrefix("glm-5.3") {
+            return L("GLM-5.3 始终思考，不发送 thinking 参数", "GLM-5.3 always thinks; no thinking parameter is sent")
+        }
+        if provider == .claude {
+            guard let type = LLMProvider.claudeThinkingOffType(for: selectedLLMModel) else {
+                return L("该模型无法关闭思考，不发送 thinking 参数", "This model can't turn thinking off; no thinking parameter is sent")
+            }
+            return L("发送 thinking: \(type)", "Sends thinking: \(type)")
         }
 
         switch selectedThinkingDisableField {
