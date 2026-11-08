@@ -1,5 +1,14 @@
 # Changelog
 
+## v3.2.0 — 文本处理模型更新与 Claude 关闭思考 (2026-11-07)
+
+本次更新刷新了 Mac 版文本处理的可选模型，并让「禁用思考」开关按模型判断：Claude 现在也能关闭思考。
+
+- **模型列表刷新 (#407)**：豆包、MiniMax、阿里云百炼、Kimi、OpenAI、Gemini、DeepSeek、智谱、小米 MiMo、Claude 和 Codex CLI 的模型下拉换成当前提供的模型，默认模型同步更新，例如 Claude 默认 Haiku 5.5、OpenAI 和 Codex CLI 默认 GPT-6 Luna、Kimi 默认 K3.1 Pro 高速版。Codex CLI 不再列出 GPT-5.3 Codex Spark。
+- **Claude 可关闭思考 (#407)**：开启「禁用思考」后，Haiku 5.5、Haiku 4.5、Sonnet 5、Opus 5 等发送 `thinking: disabled`；Sonnet 5.5 不支持完全关闭，改用最低档 `between_tools`；Opus 5.5 和 Fable 无法关闭思考，开关下方会说明，不发送参数。
+- **思考开关按模型判断 (#407)**：OpenAI 只对支持的模型发送 `reasoning_effort: none`；Kimi K3、K2.7 Code 和 GLM-5.3 始终思考，不再发送会导致请求失败的参数。
+- **费用估算 (#407)**：内置价格表补充新增模型的价格。
+
 ## v3.1.0 — iPhone 键盘升级与智能感知 (2026-10-28)
 
 本次 GitHub 版本包含 iPhone 版 1.1.0 的键盘与智能感知升级，以及 Mac 版修饰键双击触发和录音条可读性改进。iPhone 版通过 TestFlight 或 App Store 分发，具体可用版本以对应渠道为准。

@@ -1,6 +1,17 @@
 {
-  "latest": "3.1.0",
+  "latest": "3.2.0",
   "releases": [
+    {
+      "version": "3.2.0",
+      "date": "2026-11-07",
+      "notes": "本次更新刷新了 Mac 版文本处理的可选模型，并让「禁用思考」开关按模型判断：Claude 现在也能关闭思考。\n\n- **模型列表刷新 (#407)**：豆包、MiniMax、阿里云百炼、Kimi、OpenAI、Gemini、DeepSeek、智谱、小米 MiMo、Claude 和 Codex CLI 的模型下拉换成当前提供的模型，默认模型同步更新，例如 Claude 默认 Haiku 5.5、OpenAI 和 Codex CLI 默认 GPT-6 Luna、Kimi 默认 K3.1 Pro 高速版。Codex CLI 不再列出 GPT-5.3 Codex Spark。\n- **Claude 可关闭思考 (#407)**：开启「禁用思考」后，Haiku 5.5、Haiku 4.5、Sonnet 5、Opus 5 等发送 `thinking: disabled`；Sonnet 5.5 不支持完全关闭，改用最低档 `between_tools`；Opus 5.5 和 Fable 无法关闭思考，开关下方会说明，不发送参数。\n- **思考开关按模型判断 (#407)**：OpenAI 只对支持的模型发送 `reasoning_effort: none`；Kimi K3、K2.7 Code 和 GLM-5.3 始终思考，不再发送会导致请求失败的参数。\n- **费用估算 (#407)**：内置价格表补充新增模型的价格。",
+      "cloud_dmg_url": "https://github.com/joewongjc/type4me/releases/download/v3.2.0/Type4Me-v3.2.0-cloud.dmg",
+      "cloud_dmg_size": 17418818,
+      "cloud_dmg_sha256": "c07cceb0e47ee78feac326e1200674197bfb93c7e495a57eb3acd627ad1f6e5a",
+      "local_dmg_url": "https://github.com/joewongjc/type4me/releases/download/v3.2.0/Type4Me-v3.2.0-local-apple-silicon.dmg",
+      "local_dmg_size": 719148107,
+      "local_dmg_sha256": "df28c013c9584dc864ca7de224ca06f9613bb01d2427bdab922d765d7df0c025"
+    },
     {
       "version": "3.1.0",
       "date": "2026-10-28",
