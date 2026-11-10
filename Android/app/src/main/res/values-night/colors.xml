@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="screen_bg">#1A1A1A</color>
+    <color name="card_bg">#292929</color>
+    <color name="card_alt">#333333</color>
+    <color name="ink">#F0F0F0</color>
+    <color name="ink_secondary">#C7C7C7</color>
+    <color name="ink_tertiary">#ABABAB</color>
+    <color name="divider">#13FFFFFF</color>
+    <color name="control_bg">#333333</color>
+    <color name="tab_selected_content">#1A1A1A</color>
+
+    <color name="success">#75D182</color>
+
+    <color name="keyboard_bg">#1C1C1E</color>
+    <color name="key_fill">#3A3A3C</color>
+    <color name="key_function">#2C2C2E</color>
+    <color name="key_text">#FFFFFF</color>
+    <color name="mic_fill">#FFFFFF</color>
+    <color name="mic_fill_top">#FFFFFF</color>
+    <color name="mic_fill_bottom">#E2E2E6</color>
+    <color name="mic_stroke">#1A000000</color>
+    <color name="mic_record_top">#F06A78</color>
+    <color name="mic_record_bottom">#C22C40</color>
+    <color name="mic_icon">#111113</color>
+    <color name="key_side">#24FFFFFF</color>
+    <color name="dial_bg">#1FFFFFFF</color>
+    <color name="dial_selected">#33FFFFFF</color>
+    <color name="transcript_placeholder">#C7C7C7</color>
+    <color name="ripple">#33FFFFFF</color>
+</resources>

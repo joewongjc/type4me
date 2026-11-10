@@ -17,6 +17,17 @@ xcuserdata/
 .devlead/
 .context/
 
+# Android
+Android/.gradle/
+Android/.kotlin/
+Android/**/build/
+Android/local.properties
+Android/.idea/
+Android/*.iml
+Android/keystore.properties
+Android/*.jks
+Android/*.keystore
+
 # macOS
 .DS_Store
 

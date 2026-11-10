@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- App surfaces, mirroring the iOS T4 palette. -->
+    <color name="screen_bg">#F6F6F6</color>
+    <color name="card_bg">#FFFFFF</color>
+    <color name="card_alt">#EEEEEE</color>
+    <color name="ink">#131313</color>
+    <color name="ink_secondary">#4D4D4D</color>
+    <color name="ink_tertiary">#7A7A7A</color>
+    <color name="divider">#13000000</color>
+    <color name="control_bg">#F1F1F1</color>
+    <color name="tab_selected_content">#F6F6F6</color>
+
+    <color name="brand_red">#D6574A</color>
+    <color name="success">#4D9E59</color>
+
+    <!-- Keyboard -->
+    <color name="keyboard_bg">#D8DAE0</color>
+    <color name="key_fill">#FFFFFF</color>
+    <color name="key_function">#B9BCC4</color>
+    <color name="key_text">#111113</color>
+    <color name="mic_fill">#111113</color>
+    <color name="mic_fill_top">#35353B</color>
+    <color name="mic_fill_bottom">#08080A</color>
+    <color name="mic_stroke">#26FFFFFF</color>
+    <color name="mic_record_top">#E8606F</color>
+    <color name="mic_record_bottom">#B3263A</color>
+    <color name="mic_icon">#FFFFFF</color>
+    <color name="key_side">#4DFFFFFF</color>
+    <color name="dial_bg">#66FFFFFF</color>
+    <color name="dial_selected">#F2FFFFFF</color>
+    <color name="transcript_placeholder">#4D4D4D</color>
+    <color name="ripple">#1F000000</color>
+    <color name="ic_launcher_background">#E4E4E4</color>
+</resources>
