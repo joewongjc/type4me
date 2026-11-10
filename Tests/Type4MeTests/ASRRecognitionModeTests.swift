@@ -112,10 +112,10 @@ final class ASRRecognitionModeTests: XCTestCase {
         let config = try XCTUnwrap(ElevenLabsASRConfig(credentials: [
             "apiKey": "k",
             "recognitionMode": "batch",
-            "model": "scribe_v2_realtime",
+            "model": "scribe_v3_live",
         ]))
         XCTAssertEqual(config.recognitionMode, .batch)
-        XCTAssertEqual(config.model, "scribe_v2_realtime")
+        XCTAssertEqual(config.model, "scribe_v3_live")
         XCTAssertEqual(config.batchModel, "scribe_v2")
         XCTAssertEqual(config.toCredentials()["recognitionMode"], "batch")
         XCTAssertTrue(config.isValid)

@@ -10,7 +10,7 @@ final class ElevenLabsASRConfigTests: XCTestCase {
 
         XCTAssertEqual(config.apiKey, "eleven_test_key")
         XCTAssertEqual(config.model, ElevenLabsASRConfig.defaultModel)
-        XCTAssertEqual(config.model, "scribe_v2_realtime")
+        XCTAssertEqual(config.model, "scribe_v3_live")
         XCTAssertEqual(config.language, "")
         XCTAssertTrue(config.isValid)
     }
@@ -18,7 +18,7 @@ final class ElevenLabsASRConfigTests: XCTestCase {
     func testCredentialFieldsExposeRealtimeModelPicker() throws {
         let modelField = try XCTUnwrap(ElevenLabsASRConfig.credentialFields.first { $0.key == "model" })
 
-        XCTAssertEqual(modelField.defaultValue, "scribe_v2_realtime")
-        XCTAssertEqual(modelField.options.map(\.value), ["scribe_v2_realtime"])
+        XCTAssertEqual(modelField.defaultValue, "scribe_v3_live")
+        XCTAssertEqual(modelField.options.map(\.value), ["scribe_v2_realtime", "scribe_v3_live"])
     }
 }
