@@ -19,6 +19,6 @@ final class ElevenLabsASRConfigTests: XCTestCase {
         let modelField = try XCTUnwrap(ElevenLabsASRConfig.credentialFields.first { $0.key == "model" })
 
         XCTAssertEqual(modelField.defaultValue, "scribe_v3_live")
-        XCTAssertEqual(modelField.options.map(\.value), ["scribe_v3_live"])
+        XCTAssertEqual(modelField.options.map(\.value), ["scribe_v2_realtime", "scribe_v3_live"])
     }
 }

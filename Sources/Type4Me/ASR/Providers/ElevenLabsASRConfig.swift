@@ -6,6 +6,7 @@ struct ElevenLabsASRConfig: ASRRecognitionModeConfigurable, Sendable {
     static let displayName = "ElevenLabs"
     static let defaultModel = "scribe_v3_live"
     static let supportedModels = [
+        "scribe_v2_realtime",
         "scribe_v3_live",
     ]
     static let defaultBatchModel = "scribe_v2"
