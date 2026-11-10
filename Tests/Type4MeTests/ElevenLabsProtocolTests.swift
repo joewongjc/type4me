@@ -6,7 +6,7 @@ final class ElevenLabsProtocolTests: XCTestCase {
     func testBuildWebSocketURL_includesNoVerbatimAndModel() throws {
         let config = try XCTUnwrap(ElevenLabsASRConfig(credentials: [
             "apiKey": "eleven_test_key",
-            "model": "scribe_v2_realtime",
+            "model": "scribe_v3_live",
             "language": "en",
         ]))
         let url = try ElevenLabsProtocol.buildWebSocketURL(config: config, options: .init())
@@ -15,7 +15,7 @@ final class ElevenLabsProtocolTests: XCTestCase {
 
         XCTAssertEqual(components.host, "api.elevenlabs.io")
         XCTAssertEqual(components.path, "/v1/speech-to-text/realtime")
-        XCTAssertEqual(items.value(for: "model_id"), "scribe_v2_realtime")
+        XCTAssertEqual(items.value(for: "model_id"), "scribe_v3_live")
         XCTAssertEqual(items.value(for: "audio_format"), "pcm_16000")
         XCTAssertEqual(items.value(for: "no_verbatim"), "true")
         XCTAssertEqual(items.value(for: "language_code"), "en")
