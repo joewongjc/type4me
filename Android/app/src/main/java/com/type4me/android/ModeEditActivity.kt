@@ -2,6 +2,7 @@ package com.type4me.android
 
 import android.os.Bundle
 import android.text.InputType
+import android.view.MotionEvent
 import android.view.View
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
@@ -14,6 +15,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.AppCompatSpinner
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
@@ -112,7 +114,7 @@ class ModeEditActivity : AppCompatActivity() {
 
         targetSection = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         targetSection.addView(sectionLabel(R.string.mode_translate_target))
-        target = Spinner(this).apply {
+        target = AppCompatSpinner(this).apply {
             adapter = simple(TranslateTarget.entries.map { it.label(this@ModeEditActivity) })
             setSelection(mode.translationTarget.ordinal, false)
         }
@@ -124,9 +126,38 @@ class ModeEditActivity : AppCompatActivity() {
         promptSection.addView(sectionLabel(R.string.mode_prompt))
         prompt = EditText(this).apply {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
-            minLines = if (mode.isBuiltIn && mode.kind == Mode.AGENT) 14 else 6
-            maxLines = 24
+            minLines = if (mode.isBuiltIn && mode.kind == Mode.AGENT) 12 else 6
+            maxLines = 16
             gravity = android.view.Gravity.TOP
+            // Long prompts scroll inside the box; the page around it still scrolls.
+            isVerticalScrollBarEnabled = true
+            scrollBarStyle = View.SCROLLBARS_INSIDE_INSET
+            var downY = 0f
+            setOnTouchListener { view, event ->
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        downY = event.y
+                        view.parent.requestDisallowInterceptTouchEvent(false)
+                    }
+
+                    MotionEvent.ACTION_MOVE -> {
+                        val upward = event.y < downY
+                        val contentHeight = layout?.height ?: 0
+                        val canScroll = if (upward) {
+                            scrollY + height < contentHeight
+                        } else {
+                            scrollY > 0
+                        }
+                        // The surrounding ScrollView would otherwise take every drag that
+                        // starts on the prompt, leaving its hidden lines unreachable.
+                        view.parent.requestDisallowInterceptTouchEvent(canScroll)
+                    }
+
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL ->
+                        view.parent.requestDisallowInterceptTouchEvent(false)
+                }
+                false
+            }
             setText(
                 when {
                     mode.prompt.isNotBlank() -> mode.prompt
@@ -153,14 +184,14 @@ class ModeEditActivity : AppCompatActivity() {
         }
 
         content.addView(sectionLabel(R.string.mode_punctuation))
-        punctuation = Spinner(this).apply {
+        punctuation = AppCompatSpinner(this).apply {
             adapter = simple(ModePunctuation.entries.map { punctuationLabel(it) })
             setSelection(mode.punctuation.ordinal, false)
         }
         content.addView(punctuation, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(48)))
 
         content.addView(sectionLabel(R.string.mode_short_text))
-        shortText = Spinner(this).apply {
+        shortText = AppCompatSpinner(this).apply {
             adapter = simple(shortValues.map { value ->
                 if (value == 0) getString(R.string.mode_short_off)
                 else getString(R.string.mode_short_under, value)
