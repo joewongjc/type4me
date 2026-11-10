@@ -64,6 +64,7 @@ class KeyboardView @JvmOverloads constructor(
         fun onPunctuation(text: String)
         fun onTogglePunctuationWidth()
         fun onEnter()
+        fun onNewline()
         fun onGlobe()
         fun onHideKeyboard()
         fun onSettings()
@@ -961,6 +962,14 @@ class KeyboardView @JvmOverloads constructor(
         enterKey = textKey(context.getString(R.string.key_enter), function = true) {
             tapFeedback()
             listener?.onEnter()
+        }
+        // Fields that declare Send/Search/Done etc. still need a way to insert a line break.
+        enterKey.setOnLongClickListener {
+            if (AppSettings.keyHaptics(context)) {
+                performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+            }
+            listener?.onNewline()
+            true
         }
         bar.addView(enterKey, keyParams(2.0f))
 

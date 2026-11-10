@@ -17,7 +17,7 @@
     <!-- Keyboard -->
     <color name="keyboard_bg">#D8DAE0</color>
     <color name="key_fill">#FFFFFF</color>
-    <color name="key_function">#B9BCC4</color>
+    <color name="key_function">@color/key_fill</color>
     <color name="key_text">#111113</color>
     <color name="mic_fill">#111113</color>
     <color name="mic_fill_top">#35353B</color>
@@ -26,7 +26,7 @@
     <color name="mic_record_top">#E8606F</color>
     <color name="mic_record_bottom">#B3263A</color>
     <color name="mic_icon">#FFFFFF</color>
-    <color name="key_side">#4DFFFFFF</color>
+    <color name="key_side">@color/key_fill</color>
     <color name="dial_bg">#66FFFFFF</color>
     <color name="dial_selected">#F2FFFFFF</color>
     <color name="transcript_placeholder">#4D4D4D</color>

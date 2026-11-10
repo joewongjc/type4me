@@ -984,6 +984,11 @@ class VoiceImeService : InputMethodService(), KeyboardView.Listener {
         updateUndoState()
     }
 
+    override fun onNewline() {
+        // commitText inserts a literal newline even when the field's IME action is Send/Search/Done.
+        commitTyping("\n")
+    }
+
     override fun onGlobe() {
         val switched = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P &&
             switchToNextInputMethod(false)

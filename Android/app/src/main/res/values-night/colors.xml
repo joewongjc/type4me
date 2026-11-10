@@ -14,7 +14,7 @@
 
     <color name="keyboard_bg">#1C1C1E</color>
     <color name="key_fill">#3A3A3C</color>
-    <color name="key_function">#2C2C2E</color>
+    <color name="key_function">@color/key_fill</color>
     <color name="key_text">#FFFFFF</color>
     <color name="mic_fill">#FFFFFF</color>
     <color name="mic_fill_top">#FFFFFF</color>
@@ -23,7 +23,7 @@
     <color name="mic_record_top">#F06A78</color>
     <color name="mic_record_bottom">#C22C40</color>
     <color name="mic_icon">#111113</color>
-    <color name="key_side">#24FFFFFF</color>
+    <color name="key_side">@color/key_fill</color>
     <color name="dial_bg">#1FFFFFFF</color>
     <color name="dial_selected">#33FFFFFF</color>
     <color name="transcript_placeholder">#C7C7C7</color>
