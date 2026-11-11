@@ -1,0 +1,40 @@
+name: Android
+
+on:
+  push:
+    paths:
+      - "Android/**"
+      - ".github/workflows/android.yml"
+  pull_request:
+    paths:
+      - "Android/**"
+      - ".github/workflows/android.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Android
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Unit tests and debug APK
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon testDebugUnitTest lintDebug assembleDebug
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: type4me-android-debug
+          path: Android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error

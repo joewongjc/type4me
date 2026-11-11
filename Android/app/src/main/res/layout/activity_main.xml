@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/screen_bg">
+
+    <FrameLayout
+        android:id="@+id/content"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- The switcher floats above the content instead of occupying a solid
+         strip at the bottom, so pages scroll behind it. -->
+    <FrameLayout
+        android:id="@+id/tabBarHost"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:paddingStart="17.6dp"
+        android:paddingTop="6.6dp"
+        android:paddingEnd="17.6dp"
+        android:paddingBottom="15.4dp">
+
+        <LinearLayout
+            android:id="@+id/tabBar"
+            android:layout_width="wrap_content"
+            android:layout_height="55dp"
+            android:background="@drawable/surface_tab_bar"
+            android:elevation="10dp"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:padding="4.4dp">
+
+            <LinearLayout
+                android:id="@+id/tabHome"
+                android:layout_width="77dp"
+                android:layout_height="match_parent"
+                android:background="?attr/selectableItemBackground"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <ImageView
+                    android:id="@+id/tabHomeIcon"
+                    android:layout_width="19.8dp"
+                    android:layout_height="19.8dp"
+                    android:contentDescription="@null"
+                    android:src="@drawable/ic_home"
+                    app:tint="@color/ink_secondary" />
+
+                <TextView
+                    android:id="@+id/tabHomeLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2.2dp"
+                    android:text="@string/tab_home"
+                    android:textColor="@color/ink_secondary"
+                    android:textSize="9.9sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/tabSettings"
+                android:layout_width="77dp"
+                android:layout_height="match_parent"
+                android:background="?attr/selectableItemBackground"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <ImageView
+                    android:id="@+id/tabSettingsIcon"
+                    android:layout_width="19.8dp"
+                    android:layout_height="19.8dp"
+                    android:contentDescription="@null"
+                    android:src="@drawable/ic_gear"
+                    app:tint="@color/ink_secondary" />
+
+                <TextView
+                    android:id="@+id/tabSettingsLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2.2dp"
+                    android:text="@string/tab_settings"
+                    android:textColor="@color/ink_secondary"
+                    android:textSize="9.9sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </LinearLayout>
+    </FrameLayout>
+</FrameLayout>

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_ime_settings"
+        android:shortcutId="ime_settings"
+        android:shortcutLongLabel="@string/shortcut_ime_settings"
+        android:shortcutShortLabel="@string/shortcut_ime_settings_short">
+        <intent android:action="android.settings.INPUT_METHOD_SETTINGS" />
+    </shortcut>
+
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_settings"
+        android:shortcutId="app_settings"
+        android:shortcutLongLabel="@string/shortcut_app_settings"
+        android:shortcutShortLabel="@string/shortcut_app_settings_short">
+        <intent
+            android:action="android.intent.action.MAIN"
+            android:targetClass="com.type4me.android.MainActivity"
+            android:targetPackage="com.type4me.android" />
+    </shortcut>
+</shortcuts>

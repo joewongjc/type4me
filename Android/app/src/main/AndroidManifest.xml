@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <uses-feature
+        android:name="android.hardware.camera.any"
+        android:required="false" />
+
+    <application
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="false"
+        android:enableOnBackInvokedCallback="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:localeConfig="@xml/locales_config"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Type4Me"
+        android:usesCleartextTraffic="true">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="type4me" android:host="import" />
+            </intent-filter>
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+        </activity>
+
+        <activity
+            android:name=".SpeechServiceActivity"
+            android:exported="false"
+            android:label="@string/speech_service"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:name=".TextModelActivity"
+            android:exported="false"
+            android:label="@string/text_model"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:name=".ModesActivity"
+            android:exported="false"
+            android:label="@string/modes_title" />
+
+        <activity
+            android:name=".ModeEditActivity"
+            android:exported="false"
+            android:label="@string/modes_title"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:name=".DiagnosticsActivity"
+            android:exported="false"
+            android:label="@string/diagnostics" />
+
+        <activity
+            android:name=".OnboardingActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Type4Me" />
+
+        <activity
+            android:name=".ImportActivity"
+            android:exported="false"
+            android:label="@string/import_title" />
+
+        <activity
+            android:name=".HotwordsActivity"
+            android:exported="false"
+            android:label="@string/hotwords"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:name=".SnippetsActivity"
+            android:exported="false"
+            android:label="@string/snippets"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:name=".ScanActivity"
+            android:exported="false"
+            android:label="@string/scan_title"
+            android:theme="@style/Theme.Type4Me" />
+
+        <service
+            android:name=".VoiceTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_mic"
+            android:label="@string/tile_label"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <service
+            android:name=".ime.VoiceImeService"
+            android:exported="true"
+            android:label="@string/ime_name"
+            android:permission="android.permission.BIND_INPUT_METHOD">
+            <intent-filter>
+                <action android:name="android.view.InputMethod" />
+            </intent-filter>
+            <meta-data
+                android:name="android.view.im"
+                android:resource="@xml/method" />
+        </service>
+    </application>
+</manifest>
