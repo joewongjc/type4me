@@ -18,24 +18,24 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|center_horizontal"
-        android:paddingStart="16dp"
-        android:paddingTop="6dp"
-        android:paddingEnd="16dp"
-        android:paddingBottom="14dp">
+        android:paddingStart="17.6dp"
+        android:paddingTop="6.6dp"
+        android:paddingEnd="17.6dp"
+        android:paddingBottom="15.4dp">
 
         <LinearLayout
             android:id="@+id/tabBar"
             android:layout_width="wrap_content"
-            android:layout_height="50dp"
+            android:layout_height="55dp"
             android:background="@drawable/surface_tab_bar"
             android:elevation="10dp"
             android:gravity="center"
             android:orientation="horizontal"
-            android:padding="4dp">
+            android:padding="4.4dp">
 
             <LinearLayout
                 android:id="@+id/tabHome"
-                android:layout_width="70dp"
+                android:layout_width="77dp"
                 android:layout_height="match_parent"
                 android:background="?attr/selectableItemBackground"
                 android:clickable="true"
@@ -45,8 +45,8 @@
 
                 <ImageView
                     android:id="@+id/tabHomeIcon"
-                    android:layout_width="18dp"
-                    android:layout_height="18dp"
+                    android:layout_width="19.8dp"
+                    android:layout_height="19.8dp"
                     android:contentDescription="@null"
                     android:src="@drawable/ic_home"
                     app:tint="@color/ink_secondary" />
@@ -55,16 +55,16 @@
                     android:id="@+id/tabHomeLabel"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
+                    android:layout_marginTop="2.2dp"
                     android:text="@string/tab_home"
                     android:textColor="@color/ink_secondary"
-                    android:textSize="9sp"
+                    android:textSize="9.9sp"
                     android:textStyle="bold" />
             </LinearLayout>
 
             <LinearLayout
                 android:id="@+id/tabSettings"
-                android:layout_width="70dp"
+                android:layout_width="77dp"
                 android:layout_height="match_parent"
                 android:background="?attr/selectableItemBackground"
                 android:clickable="true"
@@ -74,8 +74,8 @@
 
                 <ImageView
                     android:id="@+id/tabSettingsIcon"
-                    android:layout_width="18dp"
-                    android:layout_height="18dp"
+                    android:layout_width="19.8dp"
+                    android:layout_height="19.8dp"
                     android:contentDescription="@null"
                     android:src="@drawable/ic_gear"
                     app:tint="@color/ink_secondary" />
@@ -84,10 +84,10 @@
                     android:id="@+id/tabSettingsLabel"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
+                    android:layout_marginTop="2.2dp"
                     android:text="@string/tab_settings"
                     android:textColor="@color/ink_secondary"
-                    android:textSize="9sp"
+                    android:textSize="9.9sp"
                     android:textStyle="bold" />
             </LinearLayout>
         </LinearLayout>
