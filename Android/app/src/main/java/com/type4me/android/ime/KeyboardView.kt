@@ -1,6 +1,5 @@
 package com.type4me.android.ime
 
-import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.res.ColorStateList
@@ -18,8 +17,8 @@ import android.view.Gravity
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
+import android.view.View.MeasureSpec
 import android.view.WindowInsets
-import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.ImageView
@@ -37,10 +36,9 @@ import com.type4me.android.pipeline.ModeDefinition
 import com.type4me.android.pipeline.ModeLibrary
 
 /**
- * The keyboard surface, laid out like the iOS one: a mode dial in the top
- * bar, an undo key, the mic and a delete key in the middle, then globe,
- * punctuation, space and return. The live transcript gets its own scrollable
- * band above the mic so long partials never clip against the keys.
+ * The keyboard surface has a mode dial in the top bar, an undo key, the mic
+ * and a delete key in the middle, then globe, punctuation, space and return.
+ * While recording, the top bar's controls step aside for a live transcript.
  */
 @SuppressLint("ClickableViewAccessibility")
 class KeyboardView @JvmOverloads constructor(
@@ -50,11 +48,17 @@ class KeyboardView @JvmOverloads constructor(
 
     interface Listener {
         fun onMicDown()
-        fun onMicMove(cancelArmed: Boolean, lockArmed: Boolean)
-        fun onMicUp(cancelArmed: Boolean, lockArmed: Boolean, quickTap: Boolean)
+        fun onMicMove(cancelArmed: Boolean, lockArmed: Boolean, sendArmed: Boolean)
+        fun onMicUp(
+            cancelArmed: Boolean,
+            lockArmed: Boolean,
+            sendArmed: Boolean,
+            quickTap: Boolean,
+        )
         fun onCancelRecording()
         fun onLockRecording()
         fun onFinishRecording()
+        fun onSendRecording()
         fun onDelete()
         fun onClear()
         fun onUndo()
@@ -76,6 +80,11 @@ class KeyboardView @JvmOverloads constructor(
 
     var listener: Listener? = null
 
+    private lateinit var topHost: FrameLayout
+    private lateinit var topControls: FrameLayout
+    private lateinit var topCaptionScroll: ScrollView
+    private lateinit var topPartialText: TextView
+    private lateinit var topPlaceholderText: TextView
     private lateinit var modeDial: ModeDialView
     private lateinit var correctionChip: TextView
     private lateinit var statusText: TextView
@@ -87,10 +96,9 @@ class KeyboardView @JvmOverloads constructor(
     private lateinit var clipboardLabel: TextView
     private lateinit var micFrame: FrameLayout
     private lateinit var micCircle: View
-    private lateinit var micGlow: View
-    private lateinit var micIcon: ImageView
-    private lateinit var micWaveform: MicWaveformView
+    private lateinit var micGlyph: RecordingMicView
     private lateinit var micProgress: ProgressBar
+    private lateinit var sendButton: LinearLayout
     private lateinit var leftKey: SideKeyView
     private lateinit var rightKey: SideKeyView
     private lateinit var enterKey: TextView
@@ -109,15 +117,22 @@ class KeyboardView @JvmOverloads constructor(
     private var locked = false
     private var cancelArmed = false
     private var lockArmed = false
+    private var sendArmed = false
+    private var sendSupported = false
     private var correctionAvailable = false
     private var downX = 0f
+    private var downY = 0f
     private var downAt = 0L
     private var navigationInset = 0
     private var canUndo = false
     private var canRedo = false
     private var clipboardText: String? = null
-    private var glowPulse: ValueAnimator? = null
     private var processingLabel = R.string.kb_processing
+
+    // Regular Chinese glyphs at 15sp looked washed out; Noto Sans at medium
+    // gives the keyboard labels a firmer Android-native rhythm.
+    private val regularTypeface by lazy { Typeface.create("sans-serif", Typeface.NORMAL) }
+    private val mediumTypeface by lazy { Typeface.create("sans-serif-medium", Typeface.NORMAL) }
 
     private val repeatHandler = Handler(Looper.getMainLooper())
     private val audioManager by lazy { context.getSystemService(AudioManager::class.java) }
@@ -178,7 +193,6 @@ class KeyboardView @JvmOverloads constructor(
     }
 
     override fun onDetachedFromWindow() {
-        stopGlowPulse()
         repeatingDelete = false
         repeatHandler.removeCallbacks(deleteStart)
         repeatHandler.removeCallbacks(repeatDelete)
@@ -194,11 +208,13 @@ class KeyboardView @JvmOverloads constructor(
         hasMicrophone: Boolean,
         hasTextModel: Boolean,
         enterLabel: Int,
+        sendSupported: Boolean,
         correction: String?,
     ) {
         hasMic = hasMicrophone
         hasLlm = hasTextModel
         ready = hasService && hasMicrophone
+        this.sendSupported = sendSupported
         setModes(modes, mode)
         setEnterLabel(enterLabel)
         setCorrection(correction)
@@ -257,6 +273,10 @@ class KeyboardView @JvmOverloads constructor(
 
     fun setPartial(text: String) {
         partialText.text = text
+        topPartialText.text = text
+        topPartialText.visibility = if (text.isNotBlank()) View.VISIBLE else View.GONE
+        topPlaceholderText.visibility =
+            if (text.isBlank() && (recording || processing)) View.VISIBLE else View.GONE
         if (processing && text.isNotBlank() && statusText.text.isBlank()) {
             statusText.setText(processingLabel)
             statusText.setTextColor(color(R.color.ink_secondary))
@@ -264,6 +284,7 @@ class KeyboardView @JvmOverloads constructor(
         updateTranscript()
         if (text.isNotBlank()) {
             transcriptScroll.post { transcriptScroll.fullScroll(View.FOCUS_DOWN) }
+            topCaptionScroll.post { topCaptionScroll.fullScroll(View.FOCUS_DOWN) }
         }
     }
 
@@ -298,25 +319,34 @@ class KeyboardView @JvmOverloads constructor(
     fun setRecording(seconds: Int, level: Float, isLocked: Boolean) {
         recording = true
         processing = false
+        micGlyph.setLevel(level)
         locked = isLocked
         cancelArmed = false
         lockArmed = false
+        sendArmed = false
         cancelDeleteRepeat()
         hideClipboardSuggestion()
 
-        statusText.setText(if (isLocked) R.string.kb_locked else R.string.kb_gesture_hint)
+        statusText.setText(
+            when {
+                isLocked -> R.string.kb_locked
+                sendSupported -> R.string.kb_gesture_send_hint
+                else -> R.string.kb_gesture_hint
+            },
+        )
+        if (::sendButton.isInitialized) sendButton.visibility = View.GONE
         statusText.setTextColor(color(R.color.ink_secondary))
         timerText.text = formatDuration(seconds)
         timerText.visibility = View.VISIBLE
         placeholderText.setTextColor(color(R.color.transcript_placeholder))
         placeholderText.setText(R.string.kb_recording)
+        topPlaceholderText.setText(R.string.kb_recording)
+        topPlaceholderText.visibility =
+            if (topPartialText.text.isBlank()) View.VISIBLE else View.GONE
 
-        micIcon.visibility = View.INVISIBLE
-        micWaveform.visibility = View.VISIBLE
-        micWaveform.start()
+        micGlyph.visibility = View.VISIBLE
+        micGlyph.start()
         micProgress.visibility = View.GONE
-        micGlow.setBackgroundResource(R.drawable.mic_glow)
-        micGlow.visibility = View.VISIBLE
         setMicAppearance(recording = true)
         updateMicDescription()
 
@@ -337,6 +367,7 @@ class KeyboardView @JvmOverloads constructor(
         locked = false
         cancelArmed = false
         lockArmed = false
+        sendArmed = false
         cancelDeleteRepeat()
 
         // With no partial yet the label belongs in the transcript band; a
@@ -346,15 +377,11 @@ class KeyboardView @JvmOverloads constructor(
         timerText.visibility = View.GONE
         placeholderText.setTextColor(color(R.color.transcript_placeholder))
         placeholderText.setText(label)
+        topPlaceholderText.setText(label)
+        topPlaceholderText.visibility =
+            if (topPartialText.text.isBlank()) View.VISIBLE else View.GONE
 
-        micGlow.setBackgroundResource(R.drawable.mic_glow_processing)
-        micGlow.visibility = View.VISIBLE
-        micWaveform.stop()
-        micWaveform.visibility = View.INVISIBLE
-        micIcon.visibility = View.INVISIBLE
-        micProgress.visibility = View.VISIBLE
-        setMicAppearance(recording = false)
-        startGlowPulse()
+        setMicProcessingAppearance()
         updateMicDescription()
 
         applyProcessingSideKeys()
@@ -406,6 +433,7 @@ class KeyboardView @JvmOverloads constructor(
         locked = false
         cancelArmed = false
         lockArmed = false
+        sendArmed = false
         cancelDeleteRepeat()
         restoreMic()
         timerText.visibility = View.GONE
@@ -433,30 +461,45 @@ class KeyboardView @JvmOverloads constructor(
 
     fun setLevel(level: Float) {
         if (!recording) return
-        val glowAlpha = (0.25f + level * 0.55f).coerceIn(0f, 1f)
-        micGlow.alpha = glowAlpha
-        val scale = 0.96f + level * 0.06f
-        micGlow.scaleX = scale
-        micGlow.scaleY = scale
-        micCircle.scaleX = 1f + level * 0.04f
-        micCircle.scaleY = 1f + level * 0.04f
-        micWaveform.setLevel(level)
+        micGlyph.setLevel(level)
     }
 
     fun setCancelArmed(armed: Boolean) {
         if (!recording) return
-        setHoldZones(armed, if (armed) false else lockArmed)
+        setHoldZones(armed, if (armed) false else lockArmed, if (armed) false else sendArmed)
     }
 
-    private fun setHoldZones(cancel: Boolean, lock: Boolean) {
-        if (cancelArmed == cancel && lockArmed == lock) return
+    private fun setHoldZones(cancel: Boolean, lock: Boolean, send: Boolean) {
+        if (cancelArmed == cancel && lockArmed == lock && sendArmed == send) return
         cancelArmed = cancel
         lockArmed = lock
+        sendArmed = send
         if (::leftKey.isInitialized) leftKey.setDanger(cancel)
-        if (::rightKey.isInitialized && !locked) rightKey.setDanger(lock)
+        if (::rightKey.isInitialized) {
+            rightKey.setContent(
+                if (locked) R.drawable.ic_check else R.drawable.ic_lock,
+                if (locked) R.string.key_done else R.string.key_lock,
+            )
+            rightKey.setDanger(lock)
+        }
+        if (::sendButton.isInitialized) {
+            sendButton.visibility = if (send) View.VISIBLE else View.GONE
+            if (send) sendButton.bringToFront()
+            sendButton.animate()
+                .scaleX(if (send) 1f else 0.82f)
+                .scaleY(if (send) 1f else 0.82f)
+                .alpha(if (send) 1f else 0f)
+                .setDuration(120L)
+                .start()
+        }
         when {
             cancel -> {
                 statusText.setText(R.string.kb_cancel_release)
+                statusText.setTextColor(color(R.color.brand_red))
+            }
+
+            send -> {
+                statusText.setText(R.string.kb_send_release)
                 statusText.setTextColor(color(R.color.brand_red))
             }
 
@@ -466,7 +509,13 @@ class KeyboardView @JvmOverloads constructor(
             }
 
             recording -> {
-                statusText.setText(if (locked) R.string.kb_locked else R.string.kb_gesture_hint)
+                statusText.setText(
+                    when {
+                        locked -> R.string.kb_locked
+                        sendSupported -> R.string.kb_gesture_send_hint
+                        else -> R.string.kb_gesture_hint
+                    },
+                )
                 statusText.setTextColor(color(R.color.ink_secondary))
             }
         }
@@ -490,12 +539,12 @@ class KeyboardView @JvmOverloads constructor(
         // settings button visually aligned and equally tall. The bar itself
         // is a little taller so each block's drop shadow has room to draw.
         val barHeight = topBarHeight - dp(4)
-        val bar = LinearLayout(context).apply {
-            orientation = HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dp(1), 0, dp(3))
-            // Child shadows draw into the bar's padding; the default clip
-            // would cut every shadow off at the keys' edge.
+        topHost = FrameLayout(context).apply {
+            clipChildren = false
+            clipToPadding = false
+        }
+        topControls = FrameLayout(context).apply {
+            clipChildren = false
             clipToPadding = false
         }
 
@@ -511,9 +560,19 @@ class KeyboardView @JvmOverloads constructor(
                 listener?.onHideKeyboard()
             }
         }
-        bar.addView(hideKey, LayoutParams(barHeight, barHeight))
+        topControls.addView(
+            hideKey,
+            FrameLayout.LayoutParams(
+                barHeight,
+                barHeight,
+                Gravity.START or Gravity.CENTER_VERTICAL,
+            ),
+        )
 
-        val host = FrameLayout(context).apply { clipChildren = false }
+        val host = CappedFrameLayout(context).apply {
+            maxWidth = dp(if (compact) 170 else 200)
+            clipChildren = false
+        }
         modeDial = ModeDialView(context).apply {
             setBackgroundResource(R.drawable.dial_background)
             elevation = dp(2).toFloat()
@@ -542,8 +601,10 @@ class KeyboardView @JvmOverloads constructor(
 
         correctionChip = TextView(context).apply {
             textSize = 14f
+            typeface = mediumTypeface
             gravity = Gravity.CENTER
             includeFontPadding = false
+            letterSpacing = 0.01f
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
             setPadding(dp(16), 0, dp(16), 0)
@@ -551,23 +612,155 @@ class KeyboardView @JvmOverloads constructor(
             setBackgroundResource(R.drawable.dial_background)
             visibility = View.GONE
         }
-        host.addView(
+        // A narrower dial than the old full-width one; the two corner keys
+        // keep their places on either side of the middle.
+        topControls.addView(
+            host,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                barHeight,
+                Gravity.CENTER,
+            ).apply {
+                marginStart = barHeight + dp(6)
+                marginEnd = barHeight + dp(6)
+            },
+        )
+        // The correction chip keeps the old wide band; it only shares the
+        // row with the dial for a moment and needs room for the words.
+        topControls.addView(
             correctionChip,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                barHeight,
+                Gravity.CENTER,
+            ).apply {
+                marginStart = barHeight + dp(6)
+                marginEnd = barHeight + dp(6)
+            },
+        )
+        topControls.addView(
+            buildBrandButton(),
+            FrameLayout.LayoutParams(
+                barHeight,
+                barHeight,
+                Gravity.END or Gravity.CENTER_VERTICAL,
+            ),
+        )
+
+        topHost.addView(
+            topControls,
             FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT,
             ),
         )
 
-        bar.addView(
-            host,
-            LayoutParams(0, barHeight, 1f).apply {
-                marginStart = dp(6)
-                marginEnd = dp(6)
-            },
+        // While recording, the controls step out and the top band carries
+        // the live transcript, the way the iOS caption does.
+        topCaptionScroll = ScrollView(context).apply {
+            isFillViewport = true
+            isVerticalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+            clipToPadding = false
+            setPadding(dp(4), dp(2), dp(4), dp(2))
+            visibility = View.GONE
+        }
+        val captionHost = LinearLayout(context).apply {
+            orientation = VERTICAL
+            gravity = Gravity.CENTER
+        }
+        topPartialText = TextView(context).apply {
+            textSize = if (compact) 14f else 16f
+            typeface = mediumTypeface
+            gravity = Gravity.CENTER
+            setTextColor(color(R.color.key_text))
+            includeFontPadding = false
+            letterSpacing = 0.01f
+            setLineSpacing(dp(3).toFloat(), 1f)
+            setPadding(dp(18), dp(1), dp(18), dp(1))
+            visibility = View.GONE
+        }
+        captionHost.addView(
+            topPartialText,
+            LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT),
         )
-        bar.addView(buildBrandButton(), LayoutParams(barHeight, barHeight))
-        return bar
+        topPlaceholderText = TextView(context).apply {
+            textSize = if (compact) 13f else 14f
+            typeface = mediumTypeface
+            gravity = Gravity.CENTER
+            setTextColor(color(R.color.transcript_placeholder))
+            includeFontPadding = false
+            letterSpacing = 0.01f
+            visibility = View.GONE
+        }
+        captionHost.addView(
+            topPlaceholderText,
+            LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT),
+        )
+        topCaptionScroll.addView(
+            captionHost,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+            ),
+        )
+        topHost.addView(
+            topCaptionScroll,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+            ),
+        )
+
+        // The transient send affordance overlays the caption band. It is
+        // independent of both the scrolling transcript and the mic row, so
+        // it cannot cover the recording disc.
+        sendButton = LinearLayout(context).apply {
+            orientation = HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(dp(14), 0, dp(16), 0)
+            setBackgroundResource(R.drawable.send_button_background)
+            elevation = dp(6).toFloat()
+            isClickable = true
+            isFocusable = true
+            visibility = View.GONE
+            alpha = 0f
+            scaleX = 0.82f
+            scaleY = 0.82f
+            contentDescription = context.getString(R.string.kb_send_release)
+            setOnClickListener {
+                tapFeedback()
+                listener?.onSendRecording()
+            }
+
+            val icon = ImageView(context).apply {
+                setImageResource(R.drawable.ic_send)
+                imageTintList = ColorStateList.valueOf(Color.WHITE)
+            }
+            addView(icon, LayoutParams(dp(16), dp(16)))
+            addView(
+                TextView(context).apply {
+                    text = context.getString(R.string.key_send)
+                    textSize = 13f
+                    typeface = mediumTypeface
+                    gravity = Gravity.CENTER
+                    includeFontPadding = false
+                    setTextColor(Color.WHITE)
+                },
+                LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT).apply {
+                    marginStart = dp(6)
+                },
+            )
+        }
+        topHost.addView(
+            sendButton,
+            FrameLayout.LayoutParams(
+                dp(88),
+                dp(38),
+                Gravity.CENTER,
+            ),
+        )
+        return topHost
     }
 
     private fun buildBrandButton(): View {
@@ -601,8 +794,12 @@ class KeyboardView @JvmOverloads constructor(
     }
 
     private fun buildCenter(): View {
-        val center = LinearLayout(context).apply {
-            orientation = VERTICAL
+        // The mic row is pinned to the bottom of this area. Recording swaps
+        // the top controls for a taller caption, which changes the space
+        // above the mic; it must not change the mic row's anchor.
+        val center = FrameLayout(context).apply {
+            clipChildren = false
+            clipToPadding = false
         }
 
         clipboardBar = LinearLayout(context).apply {
@@ -649,9 +846,12 @@ class KeyboardView @JvmOverloads constructor(
         clipboardBar.addView(clipboardClose, LayoutParams(dp(36), dp(36)))
         center.addView(
             clipboardBar,
-            LayoutParams(LayoutParams.MATCH_PARENT, dp(38)).apply {
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                dp(38),
+                Gravity.TOP,
+            ).apply {
                 topMargin = dp(4)
-                bottomMargin = dp(2)
             },
         )
 
@@ -667,11 +867,13 @@ class KeyboardView @JvmOverloads constructor(
             gravity = Gravity.CENTER
         }
         partialText = TextView(context).apply {
-            textSize = if (compact) 15f else 17f
+            textSize = if (compact) 14f else 16f
+            typeface = mediumTypeface
+            letterSpacing = 0.01f
             gravity = Gravity.CENTER
             setTextColor(color(R.color.key_text))
             includeFontPadding = false
-            setLineSpacing(dp(2).toFloat(), 1f)
+            setLineSpacing(dp(3).toFloat(), 1f)
             setPadding(dp(18), dp(2), dp(18), dp(2))
             visibility = View.GONE
         }
@@ -705,46 +907,77 @@ class KeyboardView @JvmOverloads constructor(
         )
         center.addView(
             transcriptScroll,
-            LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f),
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                Gravity.TOP,
+            ).apply {
+                bottomMargin = micRowHeight
+            },
         )
+
         center.addView(
             buildMicRow(),
-            LayoutParams(LayoutParams.MATCH_PARENT, micRowHeight),
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                micRowHeight,
+                Gravity.BOTTOM,
+            ),
         )
         return center
     }
 
     private fun buildMicRow(): View {
-        val row = LinearLayout(context).apply {
-            orientation = HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dp(2), 0, dp(2))
+        val row = FrameLayout(context).apply {
+            clipChildren = false
+            clipToPadding = false
         }
+        val sideTop = (micFrameSize - sideKeyHeight) / 2
 
         leftKey = SideKeyView(context)
-        row.addView(leftKey, LayoutParams(sideKeyWidth, sideKeyHeight))
+        row.addView(
+            leftKey,
+            FrameLayout.LayoutParams(
+                sideKeyWidth,
+                sideKeyHeight,
+                Gravity.START or Gravity.TOP,
+            ).apply { topMargin = sideTop },
+        )
 
-        val column = LinearLayout(context).apply {
-            orientation = VERTICAL
-            gravity = Gravity.CENTER
-        }
-        row.addView(column, LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
-        column.addView(buildMic(), LayoutParams(micFrameSize, micFrameSize))
+        row.addView(
+            buildMic(),
+            FrameLayout.LayoutParams(
+                micFrameSize,
+                micFrameSize,
+                Gravity.TOP or Gravity.CENTER_HORIZONTAL,
+            ),
+        )
 
-        val caption = LinearLayout(context).apply {
-            orientation = HORIZONTAL
-            gravity = Gravity.CENTER
-            setPadding(dp(4), dp(2), dp(4), 0)
+        // The hint and timer sit below the side keys and may use the whole
+        // row, so the timer never takes width away from the hint.
+        val caption = FrameLayout(context).apply {
+            setPadding(dp(4), 0, dp(4), 0)
         }
         statusText = TextView(context).apply {
             textSize = 12f
+            typeface = mediumTypeface
+            letterSpacing = 0.01f
             gravity = Gravity.CENTER
-            maxLines = 2
+            maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
             setTextColor(color(R.color.ink_secondary))
             includeFontPadding = false
+            // Keep the centered hint clear of the right-side clock.
+            setPadding(dp(42), 0, dp(42), 0)
         }
-        caption.addView(statusText, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
+        caption.addView(
+            statusText,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                Gravity.CENTER,
+            ),
+        )
         timerText = TextView(context).apply {
             textSize = 12f
             typeface = Typeface.MONOSPACE
@@ -754,14 +987,32 @@ class KeyboardView @JvmOverloads constructor(
         }
         caption.addView(
             timerText,
-            LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
-                marginStart = dp(6)
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                Gravity.END or Gravity.CENTER_VERTICAL,
+            ).apply {
+                marginEnd = dp(2)
             },
         )
-        column.addView(caption, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+        row.addView(
+            caption,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                micRowHeight - micFrameSize,
+                Gravity.TOP,
+            ).apply { topMargin = micFrameSize },
+        )
 
         rightKey = SideKeyView(context)
-        row.addView(rightKey, LayoutParams(sideKeyWidth, sideKeyHeight))
+        row.addView(
+            rightKey,
+            FrameLayout.LayoutParams(
+                sideKeyWidth,
+                sideKeyHeight,
+                Gravity.END or Gravity.TOP,
+            ).apply { topMargin = sideTop },
+        )
         return row
     }
 
@@ -773,23 +1024,9 @@ class KeyboardView @JvmOverloads constructor(
             contentDescription = context.getString(R.string.kb_idle_ready)
             setOnClickListener {
                 listener?.onMicDown()
-                listener?.onMicUp(false, false, true)
+                listener?.onMicUp(false, false, false, true)
             }
         }
-        micGlow = View(context).apply {
-            setBackgroundResource(R.drawable.mic_glow)
-            alpha = 0f
-            visibility = View.INVISIBLE
-        }
-        micFrame.addView(
-            micGlow,
-            FrameLayout.LayoutParams(
-                micFrameSize + dp(12),
-                micFrameSize + dp(12),
-                Gravity.CENTER,
-            ),
-        )
-
         micCircle = View(context).apply {
             setBackgroundResource(R.drawable.mic_circle)
             elevation = dp(5).toFloat()
@@ -799,24 +1036,15 @@ class KeyboardView @JvmOverloads constructor(
             FrameLayout.LayoutParams(micCircleSize, micCircleSize, Gravity.CENTER),
         )
 
-        micIcon = ImageView(context).apply {
-            setImageResource(R.drawable.ic_mic)
-            imageTintList = ColorStateList.valueOf(color(R.color.mic_icon))
-            // The mic disc has elevation for its shadow; the glyph has to
-            // sit above it or the disc paints over the icon.
+        micGlyph = RecordingMicView(context).apply {
+            idleTint = color(R.color.mic_icon)
+            activeTint = color(R.color.mic_record_icon)
+            capsuleSurfaceColor = color(R.color.mic_record_surface)
+            levelFillColor = color(R.color.mic_record_fill)
             elevation = dp(6).toFloat()
         }
         micFrame.addView(
-            micIcon,
-            FrameLayout.LayoutParams(micIconSize, micIconSize, Gravity.CENTER),
-        )
-
-        micWaveform = MicWaveformView(context).apply {
-            elevation = dp(6).toFloat()
-            visibility = View.INVISIBLE
-        }
-        micFrame.addView(
-            micWaveform,
+            micGlyph,
             FrameLayout.LayoutParams(micIconSize, micIconSize, Gravity.CENTER),
         )
 
@@ -831,15 +1059,16 @@ class KeyboardView @JvmOverloads constructor(
         }
         micFrame.addView(
             micProgress,
-            FrameLayout.LayoutParams(dp(28), dp(28), Gravity.CENTER),
+            FrameLayout.LayoutParams(dp(44), dp(44), Gravity.CENTER),
         )
 
         micFrame.setOnTouchListener { _, event ->
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     downX = event.rawX
+                    downY = event.rawY
                     downAt = SystemClock.elapsedRealtime()
-                    setHoldZones(false, false)
+                    setHoldZones(false, false, false)
                     listener?.onMicDown()
                     true
                 }
@@ -847,26 +1076,29 @@ class KeyboardView @JvmOverloads constructor(
                 MotionEvent.ACTION_MOVE -> {
                     if (!recording) return@setOnTouchListener true
                     val dx = event.rawX - downX
-                    val cancel = dx < -dp(56)
-                    val lock = !locked && dx > dp(56)
-                    if (cancel != cancelArmed || lock != lockArmed) {
+                    val dy = downY - event.rawY
+                    val send =
+                        sendSupported && dy > dp(56) && dy > kotlin.math.abs(dx)
+                    val cancel = !send && dx < -dp(56)
+                    val lock = !send && !locked && dx > dp(56)
+                    if (cancel != cancelArmed || lock != lockArmed || send != sendArmed) {
                         tapFeedback()
-                        setHoldZones(cancel, lock)
-                        listener?.onMicMove(cancel, lock)
+                        setHoldZones(cancel, lock, send)
+                        listener?.onMicMove(cancel, lock, send)
                     }
                     true
                 }
 
                 MotionEvent.ACTION_UP -> {
                     val quick = SystemClock.elapsedRealtime() - downAt < 250
-                    listener?.onMicUp(cancelArmed, lockArmed, quick)
-                    setHoldZones(false, false)
+                    listener?.onMicUp(cancelArmed, lockArmed, sendArmed, quick)
+                    setHoldZones(false, false, false)
                     true
                 }
 
                 MotionEvent.ACTION_CANCEL -> {
-                    listener?.onMicUp(true, false, false)
-                    setHoldZones(false, false)
+                    listener?.onMicUp(true, false, false, false)
+                    setHoldZones(false, false, false)
                     true
                 }
 
@@ -930,7 +1162,13 @@ class KeyboardView @JvmOverloads constructor(
                     if (!tracking && kotlin.math.abs(event.rawX - spaceDownX) > dp(12)) {
                         tracking = true
                         anchor = event.rawX
-                        spaceKey.text = "↔"
+                        spaceKey.text = null
+                        spaceKey.setCompoundDrawablesWithIntrinsicBounds(
+                            R.drawable.ic_cursor_move,
+                            0,
+                            0,
+                            0,
+                        )
                     }
                     if (tracking) {
                         val steps = ((event.rawX - anchor) / dp(9)).toInt()
@@ -946,13 +1184,13 @@ class KeyboardView @JvmOverloads constructor(
                     if (spacePressed && !tracking) listener?.onSpace()
                     spacePressed = false
                     tracking = false
-                    spaceKey.text = spaceLabel
+                    restoreSpaceLabel()
                 }
 
                 MotionEvent.ACTION_CANCEL -> {
                     spacePressed = false
                     tracking = false
-                    spaceKey.text = spaceLabel
+                    restoreSpaceLabel()
                 }
             }
             true
@@ -974,6 +1212,11 @@ class KeyboardView @JvmOverloads constructor(
         bar.addView(enterKey, keyParams(2.0f))
 
         return bar
+    }
+
+    private fun restoreSpaceLabel() {
+        spaceKey.setCompoundDrawablesWithIntrinsicBounds(0, 0, 0, 0)
+        spaceKey.text = spaceLabel
     }
 
     private fun punctuationLabel(): String =
@@ -1052,7 +1295,9 @@ class KeyboardView @JvmOverloads constructor(
     private fun textKey(label: String, function: Boolean, onClick: () -> Unit): TextView =
         TextView(context).apply {
             text = label
-            textSize = 15f
+            textSize = 16f
+            typeface = regularTypeface
+            letterSpacing = 0.01f
             gravity = Gravity.CENTER
             includeFontPadding = false
             setTextColor(color(R.color.key_text))
@@ -1113,6 +1358,7 @@ class KeyboardView @JvmOverloads constructor(
 
         if (locked) {
             rightKey.setContent(R.drawable.ic_check, R.string.key_done)
+            rightKey.setDanger(false)
             rightKey.setOnClickListener {
                 tapFeedback()
                 listener?.onFinishRecording()
@@ -1201,6 +1447,7 @@ class KeyboardView @JvmOverloads constructor(
         locked = false
         cancelArmed = false
         lockArmed = false
+        sendArmed = false
         cancelDeleteRepeat()
         restoreMic()
         setPartial("")
@@ -1217,14 +1464,30 @@ class KeyboardView @JvmOverloads constructor(
         partialText.visibility = if (hasText) View.VISIBLE else View.GONE
         placeholderText.visibility =
             if (!hasText && (recording || processing)) View.VISIBLE else View.GONE
+        // Kept in the layout while recording so its weight still holds the
+        // mic row against the bottom keys; the live words are up top now.
+        transcriptScroll.visibility =
+            if (recording || processing) View.INVISIBLE else View.VISIBLE
     }
 
     private fun updateTopBar() {
-        if (!::modeDial.isInitialized) return
+        if (!::modeDial.isInitialized || !::topHost.isInitialized) return
         val idle = !recording && !processing
         val showCorrection = idle && correctionAvailable
         modeDial.visibility = if (idle && !showCorrection) View.VISIBLE else View.GONE
         correctionChip.visibility = if (showCorrection) View.VISIBLE else View.GONE
+        topControls.visibility = if (idle) View.VISIBLE else View.GONE
+        topCaptionScroll.visibility = if (idle) View.GONE else View.VISIBLE
+
+        // The caption band is taller than the button bar: with the controls
+        // gone it can hold three lines of live text. The mic row sits below
+        // it and does not move when the band grows.
+        val target = if (idle) topBarHeight else topCaptionHeight
+        val params = topHost.layoutParams
+        if (params.height != target) {
+            params.height = target
+            topHost.layoutParams = params
+        }
     }
 
     private fun updateMicDescription() {
@@ -1239,43 +1502,19 @@ class KeyboardView @JvmOverloads constructor(
         )
     }
 
-    private fun startGlowPulse() {
-        glowPulse?.cancel()
-        glowPulse = ValueAnimator.ofFloat(0.45f, 0.85f).apply {
-            duration = 900
-            repeatMode = ValueAnimator.REVERSE
-            repeatCount = ValueAnimator.INFINITE
-            interpolator = AccelerateDecelerateInterpolator()
-            addUpdateListener { animation ->
-                micGlow.alpha = animation.animatedValue as Float
-            }
-            start()
-        }
-    }
-
-    private fun stopGlowPulse() {
-        glowPulse?.cancel()
-        glowPulse = null
-    }
-
     private fun restoreMic() {
-        stopGlowPulse()
-        if (::micGlow.isInitialized) {
-            micGlow.visibility = View.INVISIBLE
-            micGlow.alpha = 0f
-            micGlow.scaleX = 1f
-            micGlow.scaleY = 1f
-            micGlow.setBackgroundResource(R.drawable.mic_glow)
-        }
-        if (::micIcon.isInitialized) {
-            micIcon.visibility = View.VISIBLE
-            micIcon.imageTintList = ColorStateList.valueOf(color(R.color.mic_icon))
-        }
-        if (::micWaveform.isInitialized) {
-            micWaveform.stop()
-            micWaveform.visibility = View.INVISIBLE
+        if (::micGlyph.isInitialized) {
+            micGlyph.visibility = View.VISIBLE
+            micGlyph.iconTint = color(R.color.mic_icon)
+            micGlyph.stop()
         }
         if (::micProgress.isInitialized) micProgress.visibility = View.GONE
+        if (::sendButton.isInitialized) {
+            sendButton.visibility = View.GONE
+            sendButton.alpha = 0f
+            sendButton.scaleX = 0.82f
+            sendButton.scaleY = 0.82f
+        }
         if (::micCircle.isInitialized) {
             micCircle.setBackgroundResource(R.drawable.mic_circle)
             micCircle.scaleX = 1f
@@ -1284,15 +1523,45 @@ class KeyboardView @JvmOverloads constructor(
         if (::micFrame.isInitialized) micFrame.alpha = 1f
         cancelArmed = false
         lockArmed = false
+        sendArmed = false
     }
 
     private fun setMicAppearance(recording: Boolean) {
+        // Keep the disc mounted and use a complete palette swap so crossing a
+        // gesture zone can never leave the control half-painted.
+        micCircle.visibility = View.VISIBLE
         micCircle.setBackgroundResource(
             if (recording) R.drawable.mic_circle_recording else R.drawable.mic_circle,
         )
-        micIcon.imageTintList = ColorStateList.valueOf(
-            if (recording) Color.WHITE else color(R.color.mic_icon),
-        )
+        micGlyph.visibility = View.VISIBLE
+        micGlyph.iconTint =
+            color(if (recording) R.color.mic_record_icon else R.color.mic_icon)
+        if (recording) micGlyph.start() else micGlyph.stop()
+        micProgress.visibility = View.GONE
+        updateMicLayerOrder()
+    }
+
+    private fun setMicProcessingAppearance() {
+        micCircle.visibility = View.VISIBLE
+        micCircle.setBackgroundResource(R.drawable.mic_circle_processing)
+        micGlyph.stop()
+        micGlyph.iconTint = color(R.color.mic_processing_icon)
+        micGlyph.visibility = View.VISIBLE
+        micProgress.indeterminateTintList =
+            ColorStateList.valueOf(color(R.color.mic_processing_spinner))
+        micProgress.visibility = View.VISIBLE
+        updateMicLayerOrder()
+    }
+
+    private fun updateMicLayerOrder() {
+        if (!::micCircle.isInitialized || !::micGlyph.isInitialized) {
+            return
+        }
+        // The progress ring sits behind the mic so the familiar recording
+        // glyph remains readable while transcription is running.
+        micCircle.bringToFront()
+        if (::micProgress.isInitialized) micProgress.bringToFront()
+        micGlyph.bringToFront()
     }
 
     private fun resetDeleteVisual() {
@@ -1336,20 +1605,25 @@ class KeyboardView @JvmOverloads constructor(
     private val topBarHeight: Int
         get() = dp(if (compact) 38 else 42)
 
+    /** Room for three lines of live text while the controls step aside. */
+    private val topCaptionHeight: Int
+        get() = dp(if (compact) 64 else 78)
+
+    /** The touch target plus a compact one-line caption underneath. */
     private val micRowHeight: Int
-        get() = dp(if (compact) 70 else 84)
+        get() = micFrameSize + dp(if (compact) 24 else 28)
 
     private val bottomBarHeight: Int
-        get() = dp(if (compact) 56 else 60)
+        get() = dp(if (compact) 50 else 54)
 
     private val micFrameSize: Int
-        get() = dp(if (compact) 48 else 62)
+        get() = dp(if (compact) 76 else 96)
 
     private val micCircleSize: Int
-        get() = dp(if (compact) 38 else 52)
+        get() = dp(if (compact) 64 else 80)
 
     private val micIconSize: Int
-        get() = dp(if (compact) 18 else 23)
+        get() = dp(if (compact) 25 else 31)
 
     private val sideKeyWidth: Int
         get() = dp(if (compact) 50 else 60)
@@ -1397,5 +1671,19 @@ class KeyboardView @JvmOverloads constructor(
     private companion object {
         /** Free strip under the keys for the system's own keyboard switcher. */
         const val SYSTEM_TOOLS_ROOM_DP = 14
+    }
+}
+
+/** A frame that asks for its parent's width but refuses to grow past a cap. */
+@SuppressLint("ViewConstructor")
+private class CappedFrameLayout(context: Context) : FrameLayout(context) {
+    var maxWidth: Int = Int.MAX_VALUE
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val width = minOf(MeasureSpec.getSize(widthMeasureSpec), maxWidth)
+        super.onMeasure(
+            MeasureSpec.makeMeasureSpec(width, MeasureSpec.AT_MOST),
+            heightMeasureSpec,
+        )
     }
 }

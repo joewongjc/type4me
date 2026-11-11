@@ -57,6 +57,7 @@ class ModeDialView @JvmOverloads constructor(
     private var scrollToken = 0
     private var lastTouchAt = 0L
     private var tickedModeId: String? = null
+    private val regularTypeface by lazy { Typeface.create("sans-serif", Typeface.NORMAL) }
 
     private val settle = Runnable { commitNearest() }
 
@@ -147,6 +148,8 @@ class ModeDialView @JvmOverloads constructor(
             val chip = TextView(context).apply {
                 text = candidate.label(context)
                 textSize = 14f
+                typeface = regularTypeface
+                letterSpacing = 0.01f
                 gravity = Gravity.CENTER
                 includeFontPadding = false
                 maxLines = 1
@@ -250,7 +253,7 @@ class ModeDialView @JvmOverloads constructor(
             chip.setBackgroundResource(R.drawable.dial_chip)
             // Fake bold keeps each name's measured width fixed, so the
             // centred name cannot nudge sideways as it takes the middle.
-            chip.typeface = Typeface.DEFAULT
+            chip.typeface = regularTypeface
             chip.paint.isFakeBoldText = isSelected
             chip.setTextColor(
                 ContextCompat.getColor(

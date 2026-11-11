@@ -232,16 +232,22 @@ class VoiceImeService : InputMethodService(), KeyboardView.Listener {
         }
     }
 
-    override fun onMicMove(cancelArmed: Boolean, lockArmed: Boolean) {
+    override fun onMicMove(cancelArmed: Boolean, lockArmed: Boolean, sendArmed: Boolean) {
         if (phase == Phase.RECORDING || phase == Phase.LOCKED) {
             keyboard?.setCancelArmed(cancelArmed)
         }
     }
 
-    override fun onMicUp(cancelArmed: Boolean, lockArmed: Boolean, quickTap: Boolean) {
+    override fun onMicUp(
+        cancelArmed: Boolean,
+        lockArmed: Boolean,
+        sendArmed: Boolean,
+        quickTap: Boolean,
+    ) {
         when (phase) {
             Phase.RECORDING -> when {
                 cancelArmed -> cancelRecording()
+                sendArmed -> finishRecording(sendAfterDelivery = true)
                 lockArmed || quickTap -> {
                     locked = true
                     phase = Phase.LOCKED
@@ -253,10 +259,10 @@ class VoiceImeService : InputMethodService(), KeyboardView.Listener {
             }
 
             Phase.LOCKED -> {
-                if (cancelArmed) {
-                    cancelRecording()
-                } else if (pendingLockedTap) {
-                    finishRecording()
+                when {
+                    cancelArmed -> cancelRecording()
+                    sendArmed -> finishRecording(sendAfterDelivery = true)
+                    pendingLockedTap -> finishRecording()
                 }
                 pendingLockedTap = false
             }
@@ -280,6 +286,12 @@ class VoiceImeService : InputMethodService(), KeyboardView.Listener {
 
     override fun onFinishRecording() {
         if (phase == Phase.LOCKED) finishRecording()
+    }
+
+    override fun onSendRecording() {
+        if (phase == Phase.RECORDING || phase == Phase.LOCKED) {
+            finishRecording(sendAfterDelivery = true)
+        }
     }
 
     private fun beginRecording() {
@@ -399,7 +411,7 @@ class VoiceImeService : InputMethodService(), KeyboardView.Listener {
         }
     }
 
-    private fun finishRecording() {
+    private fun finishRecording(sendAfterDelivery: Boolean = false) {
         val record = recorder ?: return
         recorder = null
         ticker?.cancel()
@@ -463,6 +475,7 @@ class VoiceImeService : InputMethodService(), KeyboardView.Listener {
                         mode.punctuation,
                     )
                     val delivered = deliver(output)
+                    if (delivered && sendAfterDelivery) performSendAction()
                     withContext(Dispatchers.IO) {
                         HistoryStore.add(
                             this@VoiceImeService,
@@ -483,8 +496,15 @@ class VoiceImeService : InputMethodService(), KeyboardView.Listener {
                     )
                 }
                 phase = Phase.IDLE
-                // Leave a correction result up long enough to tap Remember.
-                scheduleIdle(if (correction != null) 5_000 else 1_200)
+                // Correction needs a window for the Remember action. Normal
+                // dictation returns to the idle hint immediately, without a
+                // transient "Done" state delaying the next action.
+                if (correction != null) {
+                    scheduleIdle(5_000)
+                } else {
+                    refreshKeyboard(currentInputEditorInfo)
+                    refreshSelection()
+                }
             } catch (error: CancellationException) {
                 // The service is going away; do not report this as a failure
                 // or write into an input connection that may be gone.
@@ -733,6 +753,24 @@ class VoiceImeService : InputMethodService(), KeyboardView.Listener {
         return true
     }
 
+    private fun performSendAction() {
+        val connection = currentInputConnection ?: return
+        val action = currentInputEditorInfo?.imeOptions
+            ?.and(EditorInfo.IME_MASK_ACTION)
+            ?: EditorInfo.IME_ACTION_NONE
+        if (action != EditorInfo.IME_ACTION_NONE &&
+            action != EditorInfo.IME_ACTION_UNSPECIFIED
+        ) {
+            connection.performEditorAction(action)
+        } else {
+            connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
+            connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER))
+        }
+        editHistory.invalidate()
+        recentDeletions.clear()
+        updateUndoState()
+    }
+
     private fun cancelRecording() {
         val record = recorder ?: return
         recorder = null
@@ -967,6 +1005,13 @@ class VoiceImeService : InputMethodService(), KeyboardView.Listener {
     }
 
     override fun onEnter() {
+        // In a send-capable chat field, tapping the main Send key while the
+        // mic is locked should finish the current recording first, then deliver
+        // its transcript and trigger the editor action as one operation.
+        if (phase == Phase.LOCKED && enterLabel(currentInputEditorInfo) == R.string.key_send) {
+            finishRecording(sendAfterDelivery = true)
+            return
+        }
         val connection = currentInputConnection ?: return
         val action = currentInputEditorInfo?.imeOptions
             ?.and(EditorInfo.IME_MASK_ACTION)
@@ -1050,6 +1095,7 @@ class VoiceImeService : InputMethodService(), KeyboardView.Listener {
             hasMicrophone = hasMicrophone(),
             hasTextModel = ConfigStore.llm(this) != null,
             enterLabel = enterLabel(info),
+            sendSupported = enterLabel(info) == R.string.key_send,
             correction = selectedText,
         )
         updateUndoState()

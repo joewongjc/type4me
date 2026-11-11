@@ -3,6 +3,7 @@ package com.type4me.android.ime
 import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Color
+import android.graphics.Typeface
 import android.util.AttributeSet
 import android.view.Gravity
 import android.widget.ImageView
@@ -36,6 +37,8 @@ class SideKeyView @JvmOverloads constructor(
 
         label.apply {
             textSize = 11f
+            typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+            letterSpacing = 0.01f
             gravity = Gravity.CENTER
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
