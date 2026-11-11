@@ -87,6 +87,7 @@ class VoiceImeService : InputMethodService(), KeyboardView.Listener {
     private var pendingLockedTap = false
     private var startPackage: String? = null
     private var startFieldId = -1
+    private var startSendSupported = false
     private var recordingMode = ModeDefinition.builtIn(Mode.QUICK)
     private var recordingHotwords: List<String> = emptyList()
     private var recordingConfig: AsrConfig? = null
@@ -338,6 +339,7 @@ class VoiceImeService : InputMethodService(), KeyboardView.Listener {
         recordingConfig = config
         startPackage = currentInputEditorInfo?.packageName?.toString()
         startFieldId = currentInputEditorInfo?.fieldId ?: -1
+        startSendSupported = ChatSendPolicy.canSwipeSend(currentInputEditorInfo)
         streamError = null
         streamPartial = ""
         keyboard?.setPartial("")
@@ -755,17 +757,8 @@ class VoiceImeService : InputMethodService(), KeyboardView.Listener {
 
     private fun performSendAction() {
         val connection = currentInputConnection ?: return
-        val action = currentInputEditorInfo?.imeOptions
-            ?.and(EditorInfo.IME_MASK_ACTION)
-            ?: EditorInfo.IME_ACTION_NONE
-        if (action != EditorInfo.IME_ACTION_NONE &&
-            action != EditorInfo.IME_ACTION_UNSPECIFIED
-        ) {
-            connection.performEditorAction(action)
-        } else {
-            connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
-            connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER))
-        }
+        val action = ChatSendPolicy.sendAction(currentInputEditorInfo, startSendSupported) ?: return
+        connection.performEditorAction(action)
         editHistory.invalidate()
         recentDeletions.clear()
         updateUndoState()
@@ -1095,7 +1088,7 @@ class VoiceImeService : InputMethodService(), KeyboardView.Listener {
             hasMicrophone = hasMicrophone(),
             hasTextModel = ConfigStore.llm(this) != null,
             enterLabel = enterLabel(info),
-            sendSupported = enterLabel(info) == R.string.key_send,
+            sendSupported = ChatSendPolicy.canSwipeSend(info),
             correction = selectedText,
         )
         updateUndoState()
