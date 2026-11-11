@@ -9,6 +9,8 @@
     <color name="divider">#13FFFFFF</color>
     <color name="control_bg">#333333</color>
     <color name="tab_selected_content">#1A1A1A</color>
+    <color name="tab_selected_bg">#3A3A3A</color>
+    <color name="tab_selected_icon">#F7F7F7</color>
 
     <color name="success">#75D182</color>
 
@@ -22,6 +24,14 @@
     <color name="mic_stroke">#1A000000</color>
     <color name="mic_record_top">#F06A78</color>
     <color name="mic_record_bottom">#C22C40</color>
+    <color name="mic_record_surface">#4A2B2D</color>
+    <color name="mic_record_stroke">#66FFB4BD</color>
+    <color name="mic_record_icon">#FFE0E2</color>
+    <color name="mic_record_fill">#F06A78</color>
+    <color name="mic_processing_surface">#E8F2FF</color>
+    <color name="mic_processing_stroke">#66366F9F</color>
+    <color name="mic_processing_icon">#17406D</color>
+    <color name="mic_processing_spinner">#2E6DA4</color>
     <color name="mic_icon">#111113</color>
     <color name="key_side">@color/key_fill</color>
     <color name="dial_bg">#1FFFFFFF</color>

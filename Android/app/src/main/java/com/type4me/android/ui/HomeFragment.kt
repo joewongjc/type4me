@@ -13,9 +13,9 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import androidx.core.widget.doAfterTextChanged
 import androidx.core.view.isVisible
 import androidx.core.view.updatePadding
+import androidx.core.widget.doAfterTextChanged
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.card.MaterialCardView
@@ -41,27 +41,29 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * The Mac Home page: wordmark, the import card until a service is set up,
- * totals, then every dictation grouped by day with search and mode filters.
+ * The app overview: wordmark, service setup, totals across every dictation,
+ * then searchable records. The record list defaults to today; its date scope
+ * is independent from the all-time statistics above it.
  */
 class HomeFragment : Fragment(R.layout.fragment_home) {
+
+    private enum class DateRange { TODAY, SEVEN_DAYS, THIRTY_DAYS, ALL }
 
     private var binding: FragmentHomeBinding? = null
     private var entries: List<HistoryEntry> = emptyList()
     private var query = ""
-    private var filter: ModeDefinition? = null
+    private var modeFilter: ModeDefinition? = null
+    private var dateRange = DateRange.TODAY
     private val expanded = mutableSetOf<Long>()
-    private val chips = LinkedHashMap<ModeDefinition?, TextView>()
+    private val modeChips = LinkedHashMap<ModeDefinition?, TextView>()
+    private val dateChips = LinkedHashMap<DateRange, TextView>()
     private var reloadJob: Job? = null
-    /** Mode ids and labels the chips were built from, in library order. */
     private var chipSignature: List<Pair<String, String>> = emptyList()
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         val b = FragmentHomeBinding.bind(view)
         binding = b
-        // Do not let the search field take first focus and pop the keyboard
-        // every time the app opens.
         b.root.isFocusableInTouchMode = true
         b.root.requestFocus()
         b.searchInput.clearFocus()
@@ -72,7 +74,6 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             insets
         }
         ViewCompat.requestApplyInsets(view)
-
         b.importScan.setOnClickListener {
             (activity as? MainActivity)?.openScanner()
         }
@@ -82,6 +83,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             b.clearSearch.isVisible = query.isNotEmpty()
             renderHistory()
         }
+        buildDateChips()
         reload()
     }
 
@@ -91,8 +93,10 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
     }
 
     override fun onDestroyView() {
+        reloadJob?.cancel()
         binding = null
-        chips.clear()
+        modeChips.clear()
+        dateChips.clear()
         chipSignature = emptyList()
         super.onDestroyView()
     }
@@ -106,7 +110,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             if (binding == null) return@launch
             entries = loaded
             expanded.retainAll(entries.mapTo(HashSet()) { it.id })
-            syncChips()
+            syncModeChips()
             updateStats()
             b.importCard.isVisible = !ConfigStore.hasAsrConfig(requireContext())
             b.emptyCard.isVisible = entries.isEmpty()
@@ -115,6 +119,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         }
     }
 
+    /** Statistics deliberately use every record, regardless of list filters. */
     private fun updateStats() {
         val b = binding ?: return
         val todayStart = Calendar.getInstance().apply {
@@ -138,35 +143,88 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         }
     }
 
-    /**
-     * Rebuilds the filter chips only when the library's ids or labels
-     * changed, which happens after editing modes elsewhere in the app.
-     */
-    private fun syncChips() {
+    private fun buildDateChips() {
+        val b = binding ?: return
+        DateRange.entries.forEach { range ->
+            val chip = historyChip(dateLabel(range)) {
+                if (dateRange == range) return@historyChip
+                dateRange = range
+                updateDateChips()
+                renderHistory()
+            }
+            b.dateChips.addView(chip)
+            dateChips[range] = chip
+        }
+        updateDateChips()
+    }
+
+    private fun dateLabel(range: DateRange): String = getString(
+        when (range) {
+            DateRange.TODAY -> R.string.history_range_today
+            DateRange.SEVEN_DAYS -> R.string.history_range_seven_days
+            DateRange.THIRTY_DAYS -> R.string.history_range_month
+            DateRange.ALL -> R.string.history_range_all
+        },
+    )
+
+    private fun updateDateChips() {
+        val context = requireContext()
+        dateChips.forEach { (range, chip) ->
+            val selected = range == dateRange
+            chip.setBackgroundResource(
+                if (selected) R.drawable.app_chip_selected else R.drawable.app_chip_normal,
+            )
+            chip.setTextColor(context.color(if (selected) R.color.tab_selected_content else R.color.ink))
+            chip.typeface = Typeface.create(Typeface.DEFAULT, if (selected) Typeface.BOLD else Typeface.NORMAL)
+        }
+    }
+
+    private fun syncModeChips() {
         val context = requireContext()
         val modes = ModeLibrary.all(context)
         val signature = modes.map { it.id to it.label(context) }
         if (signature == chipSignature) return
         chipSignature = signature
-        filter = filter?.let { current -> modes.firstOrNull { it.id == current.id } }
-        buildChips(modes)
-    }
-
-    private fun buildChips(modes: List<ModeDefinition>) {
-        val b = binding ?: return
-        val container = b.filterChips
+        modeFilter = modeFilter?.let { current -> modes.firstOrNull { it.id == current.id } }
+        val container = binding?.modeChips ?: return
         container.removeAllViews()
-        chips.clear()
-        addChip(container, null, getString(R.string.filter_all))
-        modes.forEach { mode ->
-            addChip(container, mode, mode.label(requireContext()))
+        modeChips.clear()
+        val allChip = historyChip(getString(R.string.filter_all)) {
+            if (modeFilter == null) return@historyChip
+            modeFilter = null
+            updateModeChips()
+            renderHistory()
         }
-        updateChips()
+        container.addView(allChip)
+        modeChips[null] = allChip
+        modes.forEach { mode ->
+            val chip = historyChip(mode.label(context)) {
+                if (modeFilter?.id == mode.id) return@historyChip
+                modeFilter = mode
+                updateModeChips()
+                renderHistory()
+            }
+            container.addView(chip)
+            modeChips[mode] = chip
+        }
+        updateModeChips()
     }
 
-    private fun addChip(container: LinearLayout, mode: ModeDefinition?, label: String) {
+    private fun updateModeChips() {
         val context = requireContext()
-        val chip = TextView(context).apply {
+        modeChips.forEach { (mode, chip) ->
+            val selected = if (mode == null) modeFilter == null else modeFilter?.id == mode.id
+            chip.setBackgroundResource(
+                if (selected) R.drawable.app_chip_selected else R.drawable.app_chip_normal,
+            )
+            chip.setTextColor(context.color(if (selected) R.color.tab_selected_content else R.color.ink))
+            chip.typeface = Typeface.create(Typeface.DEFAULT, if (selected) Typeface.BOLD else Typeface.NORMAL)
+        }
+    }
+
+    private fun historyChip(label: String, onClick: () -> Unit): TextView {
+        val context = requireContext()
+        return TextView(context).apply {
             text = label
             textSize = 14f
             gravity = Gravity.CENTER
@@ -177,36 +235,17 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             ).apply { marginEnd = context.dp(8) }
             isClickable = true
             isFocusable = true
-            setOnClickListener {
-                if (filter == mode) return@setOnClickListener
-                filter = mode
-                updateChips()
-                renderHistory()
-            }
-        }
-        container.addView(chip)
-        chips[mode] = chip
-    }
-
-    private fun updateChips() {
-        val context = requireContext()
-        chips.forEach { (mode, chip) ->
-            val selected = if (mode == null) filter == null else filter?.id == mode.id
-            chip.setBackgroundResource(
-                if (selected) R.drawable.app_chip_selected else R.drawable.app_chip_normal,
-            )
-            chip.setTextColor(
-                context.color(if (selected) R.color.tab_selected_content else R.color.ink),
-            )
-            chip.typeface = Typeface.create(Typeface.DEFAULT, if (selected) Typeface.BOLD else Typeface.NORMAL)
+            setOnClickListener { onClick() }
         }
     }
 
     private fun renderHistory() {
         val b = binding ?: return
         val needle = query.trim()
+        val cutoff = rangeCutoff()
         val filtered = entries.filter { entry ->
-            (filter == null || entry.mode == filter!!.id) &&
+            (entry.createdAt >= cutoff) &&
+                (modeFilter == null || entry.mode == modeFilter!!.id) &&
                 (needle.isEmpty() ||
                     entry.finalText.contains(needle, ignoreCase = true) ||
                     entry.rawText.contains(needle, ignoreCase = true))
@@ -225,6 +264,22 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             }
             addRow(card ?: return@forEach, entry)
         }
+    }
+
+    private fun rangeCutoff(): Long {
+        val start = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        when (dateRange) {
+            DateRange.TODAY -> Unit
+            DateRange.SEVEN_DAYS -> start.add(Calendar.DAY_OF_YEAR, -6)
+            DateRange.THIRTY_DAYS -> start.add(Calendar.DAY_OF_YEAR, -29)
+            DateRange.ALL -> return Long.MIN_VALUE
+        }
+        return start.timeInMillis
     }
 
     private fun addDay(title: String): LinearLayout {
@@ -250,9 +305,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                 LinearLayout.LayoutParams.WRAP_CONTENT,
             ).apply { topMargin = context.dp(8) }
         }
-        val inner = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-        }
+        val inner = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         card.addView(
             inner,
             android.widget.FrameLayout.LayoutParams(
@@ -277,7 +330,6 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         }
         val row = ItemHomeHistoryBinding.inflate(layoutInflater, card, false)
         card.addView(row.root)
-
         row.text.text = entry.finalText
         val mode = ModeLibrary.byId(context, entry.mode)?.label(context)
             ?: runCatching { Mode.valueOf(entry.mode).label(context) }.getOrDefault(entry.mode)
@@ -299,7 +351,6 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             row.actions.isVisible = open
         }
         applyExpanded()
-
         row.row.setOnClickListener {
             if (!expanded.add(entry.id)) expanded.remove(entry.id)
             applyExpanded()
@@ -314,8 +365,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             row.copy.imageTintList = ColorStateList.valueOf(context.color(R.color.success))
             row.copy.postDelayed({
                 row.copy.setImageResource(R.drawable.ic_copy)
-                row.copy.imageTintList =
-                    ColorStateList.valueOf(context.color(R.color.ink_secondary))
+                row.copy.imageTintList = ColorStateList.valueOf(context.color(R.color.ink_secondary))
             }, 1_500)
         }
         row.delete.setOnClickListener {

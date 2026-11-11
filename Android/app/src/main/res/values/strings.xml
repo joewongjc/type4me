@@ -134,10 +134,12 @@
     <string name="kb_idle_no_mic">Allow the microphone in Type4Me first</string>
     <string name="kb_recording">Listening…</string>
     <string name="kb_gesture_hint">← Cancel · Release · Lock →</string>
+    <string name="kb_gesture_send_hint">← Cancel · Release · Send ↑</string>
     <string name="kb_locked">Locked · Tap the mic or Done</string>
     <string name="kb_cancel_hint">← Cancel</string>
     <string name="kb_cancel_release">Release to cancel</string>
     <string name="kb_lock_release">Release to lock</string>
+    <string name="kb_send_release">Release and send</string>
     <string name="kb_processing">Transcribing…</string>
     <string name="kb_processing_polish">Polishing…</string>
     <string name="kb_correcting">Correcting…</string>
@@ -271,6 +273,10 @@
     <string name="search_dictation">Search your dictation</string>
     <string name="clear_search">Clear search</string>
     <string name="filter_all">All</string>
+    <string name="history_range_today">Today</string>
+    <string name="history_range_seven_days">Last 7 days</string>
+    <string name="history_range_month">Last 30 days</string>
+    <string name="history_range_all">All time</string>
     <string name="no_matches">No matches</string>
     <string name="today">Today</string>
     <string name="yesterday">Yesterday</string>

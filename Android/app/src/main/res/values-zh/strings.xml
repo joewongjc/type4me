@@ -134,10 +134,12 @@
     <string name="kb_idle_no_mic">先在 Type4Me 里授权麦克风</string>
     <string name="kb_recording">正在聆听…</string>
     <string name="kb_gesture_hint">← 取消 · 松手出字 · 锁定 →</string>
+    <string name="kb_gesture_send_hint">← 取消 · 松手出字 · 上滑发送</string>
     <string name="kb_locked">已锁定 · 点麦克风或完成结束</string>
     <string name="kb_cancel_hint">← 取消</string>
     <string name="kb_cancel_release">松开取消</string>
     <string name="kb_lock_release">松开锁定</string>
+    <string name="kb_send_release">松开并发送</string>
     <string name="kb_processing">正在转写…</string>
     <string name="kb_processing_polish">正在整理…</string>
     <string name="kb_correcting">正在纠正…</string>
@@ -271,6 +273,10 @@
     <string name="search_dictation">搜索说过的话</string>
     <string name="clear_search">清除搜索</string>
     <string name="filter_all">全部</string>
+    <string name="history_range_today">今天</string>
+    <string name="history_range_seven_days">近 7 天</string>
+    <string name="history_range_month">近 1 个月</string>
+    <string name="history_range_all">所有</string>
     <string name="no_matches">没有找到</string>
     <string name="today">今天</string>
     <string name="yesterday">昨天</string>

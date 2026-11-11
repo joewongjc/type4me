@@ -23,7 +23,7 @@ import com.type4me.android.ui.SettingsFragment
 
 /**
  * The app shell: the Mac window's sidebar, as a bottom tab bar. Home holds
- * the wordmark, totals and every dictation; Settings mirrors the Mac's
+ * the wordmark, totals and dictation records; Settings mirrors the Mac's
  * grouped pages.
  */
 class MainActivity : AppCompatActivity() {
@@ -165,8 +165,8 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 else -> {
-                    settings?.let(::show)
                     home?.let(::hide)
+                    settings?.let(::show)
                 }
             }
         }.commitNow()
@@ -187,7 +187,7 @@ class MainActivity : AppCompatActivity() {
             this,
             if (home) R.drawable.tab_item_normal else R.drawable.tab_item_selected,
         )
-        val selected = ContextCompat.getColor(this, R.color.tab_selected_content)
+        val selected = ContextCompat.getColor(this, R.color.tab_selected_icon)
         val plain = ContextCompat.getColor(this, R.color.ink_secondary)
         binding.tabHomeIcon.imageTintList = ColorStateList.valueOf(if (home) selected else plain)
         binding.tabHomeLabel.setTextColor(if (home) selected else plain)
