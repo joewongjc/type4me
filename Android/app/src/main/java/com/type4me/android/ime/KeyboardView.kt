@@ -105,7 +105,7 @@ class KeyboardView @JvmOverloads constructor(
     private lateinit var punctuationKey: TextView
     private lateinit var hideKey: ImageButton
     private lateinit var globeKey: ImageButton
-    private lateinit var spaceKey: TextView
+    private lateinit var spaceKey: CenterGlyphTextView
     private lateinit var brandKey: FrameLayout
 
     private var selectedMode = ModeDefinition.builtIn(Mode.QUICK)
@@ -140,14 +140,22 @@ class KeyboardView @JvmOverloads constructor(
     private var deleteDownY = 0f
     private var deleteArmed = false
     private var deleteRepeated = false
+    private var deletePressed = false
+    private var deleteRepeatBeganAt = 0L
+    private var spacePressed = false
+    private var spaceTracking = false
+    private var spaceRepeated = false
+    private var repeatingSpace = false
+    private var spaceRepeatBeganAt = 0L
 
     private val deleteStart = object : Runnable {
         override fun run() {
             if (deleteArmed) return
             deleteRepeated = true
             repeatingDelete = true
+            deleteRepeatBeganAt = SystemClock.uptimeMillis()
             listener?.onDelete()
-            repeatHandler.postDelayed(repeatDelete, 70)
+            repeatHandler.postDelayed(repeatDelete, repeatInterval(deleteRepeatBeganAt))
         }
     }
 
@@ -155,13 +163,36 @@ class KeyboardView @JvmOverloads constructor(
         override fun run() {
             if (!repeatingDelete) return
             listener?.onDelete()
-            repeatHandler.postDelayed(this, 70)
+            repeatHandler.postDelayed(this, repeatInterval(deleteRepeatBeganAt))
+        }
+    }
+
+    private val spaceStart = object : Runnable {
+        override fun run() {
+            if (!spacePressed || spaceTracking) return
+            spaceRepeated = true
+            repeatingSpace = true
+            spaceRepeatBeganAt = SystemClock.uptimeMillis()
+            listener?.onSpace()
+            repeatHandler.postDelayed(spaceRepeat, repeatInterval(spaceRepeatBeganAt))
+        }
+    }
+
+    private val spaceRepeat = object : Runnable {
+        override fun run() {
+            if (!repeatingSpace || !spacePressed || spaceTracking) return
+            listener?.onSpace()
+            repeatHandler.postDelayed(this, repeatInterval(spaceRepeatBeganAt))
         }
     }
 
     init {
         orientation = VERTICAL
         setBackgroundColor(color(R.color.keyboard_bg))
+        // Key shadows draw into the side and bottom insets, so the padding
+        // must not also act as a clip rect for the bars.
+        clipChildren = false
+        clipToPadding = false
         applyInsetPadding()
         addView(buildTopBar(), LayoutParams(LayoutParams.MATCH_PARENT, topBarHeight))
         addView(buildCenter(), LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f))
@@ -193,9 +224,8 @@ class KeyboardView @JvmOverloads constructor(
     }
 
     override fun onDetachedFromWindow() {
-        repeatingDelete = false
-        repeatHandler.removeCallbacks(deleteStart)
-        repeatHandler.removeCallbacks(repeatDelete)
+        cancelDeleteRepeat()
+        cancelSpaceRepeat()
         super.onDetachedFromWindow()
     }
 
@@ -246,7 +276,7 @@ class KeyboardView @JvmOverloads constructor(
         }
         if (::spaceKey.isInitialized) {
             spaceKey.contentDescription = res.getString(R.string.key_space_trackpad)
-            spaceKey.text = res.getString(R.string.key_space)
+            if (!spaceTracking) spaceKey.text = res.getString(R.string.key_space)
         }
         if (::brandKey.isInitialized) {
             brandKey.contentDescription = res.getString(R.string.settings)
@@ -325,6 +355,7 @@ class KeyboardView @JvmOverloads constructor(
         lockArmed = false
         sendArmed = false
         cancelDeleteRepeat()
+        cancelSpaceRepeat()
         hideClipboardSuggestion()
 
         statusText.setText(
@@ -369,6 +400,7 @@ class KeyboardView @JvmOverloads constructor(
         lockArmed = false
         sendArmed = false
         cancelDeleteRepeat()
+        cancelSpaceRepeat()
 
         // With no partial yet the label belongs in the transcript band; a
         // blank caption keeps the mic from jumping when words arrive.
@@ -434,7 +466,8 @@ class KeyboardView @JvmOverloads constructor(
         cancelArmed = false
         lockArmed = false
         sendArmed = false
-        cancelDeleteRepeat()
+        // Every deletion moves the selection, which lands here. Cancelling the
+        // repeat from this path stops a held delete after its first character.
         restoreMic()
         timerText.visibility = View.GONE
         setPartial("")
@@ -1116,6 +1149,9 @@ class KeyboardView @JvmOverloads constructor(
             // bottom edge so their drop shadow is fully visible.
             setPadding(0, dp(1), 0, dp(11))
             clipToPadding = false
+            // The outer keys sit on the bar's edges; their side shadows use
+            // the keyboard's horizontal padding.
+            clipChildren = false
         }
 
         globeKey = ImageButton(context).apply {
@@ -1141,57 +1177,78 @@ class KeyboardView @JvmOverloads constructor(
         punctuationKey.setOnTouchListener(punctuationTouch())
         bar.addView(punctuationKey, keyParams(1.0f))
 
-        spaceKey = textKey(spaceLabel, function = false) { listener?.onSpace() }
+        spaceKey = styledTextKey(
+            CenterGlyphTextView(context),
+            spaceLabel,
+            function = false,
+        ) { listener?.onSpace() }
         spaceKey.contentDescription = context.getString(R.string.key_space_trackpad)
-        var spacePressed = false
-        var tracking = false
         var spaceDownX = 0f
-        var anchor = 0f
+        var lastX = 0f
+        var pendingTravel = 0f
         spaceKey.setOnTouchListener { _, event ->
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     spacePressed = true
-                    tracking = false
+                    spaceTracking = false
+                    spaceRepeated = false
+                    repeatingSpace = false
                     spaceDownX = event.rawX
-                    anchor = spaceDownX
+                    lastX = spaceDownX
+                    pendingTravel = 0f
+                    repeatHandler.removeCallbacks(spaceStart)
+                    repeatHandler.removeCallbacks(spaceRepeat)
+                    repeatHandler.postDelayed(spaceStart, KEY_REPEAT_DELAY_MS)
                     tapFeedback()
                 }
 
                 MotionEvent.ACTION_MOVE -> {
                     if (!spacePressed) return@setOnTouchListener true
-                    if (!tracking && kotlin.math.abs(event.rawX - spaceDownX) > dp(12)) {
-                        tracking = true
-                        anchor = event.rawX
+                    if (!spaceTracking && kotlin.math.abs(event.rawX - spaceDownX) > dp(12)) {
+                        spaceTracking = true
+                        lastX = event.rawX
+                        pendingTravel = 0f
+                        repeatHandler.removeCallbacks(spaceStart)
+                        repeatHandler.removeCallbacks(spaceRepeat)
+                        repeatingSpace = false
                         spaceKey.text = null
-                        spaceKey.setCompoundDrawablesWithIntrinsicBounds(
+                        spaceKey.showGlyph(
                             R.drawable.ic_cursor_move,
-                            0,
-                            0,
-                            0,
+                            dp(22),
+                            color(R.color.key_text),
                         )
                     }
-                    if (tracking) {
-                        val steps = ((event.rawX - anchor) / dp(9)).toInt()
+                    if (spaceTracking) {
+                        val step = dp(CURSOR_STEP_DP).toFloat()
+                        pendingTravel += event.rawX - lastX
+                        lastX = event.rawX
+                        val steps = (pendingTravel / step).toInt().coerceIn(
+                            -MAX_CURSOR_STEPS_PER_EVENT,
+                            MAX_CURSOR_STEPS_PER_EVENT,
+                        )
                         if (steps != 0) {
                             listener?.onCursorMove(steps)
-                            anchor += steps * dp(9)
-                            tapFeedback()
+                            pendingTravel = (pendingTravel - steps * step)
+                                .coerceIn(-step, step)
+                            detentFeedback()
                         }
                     }
                 }
 
                 MotionEvent.ACTION_UP -> {
-                    if (spacePressed && !tracking) listener?.onSpace()
+                    repeatHandler.removeCallbacks(spaceStart)
+                    repeatHandler.removeCallbacks(spaceRepeat)
+                    val wasTracking = spaceTracking
+                    val wasRepeated = spaceRepeated
                     spacePressed = false
-                    tracking = false
+                    spaceTracking = false
+                    spaceRepeated = false
+                    repeatingSpace = false
                     restoreSpaceLabel()
+                    if (!wasTracking && !wasRepeated) listener?.onSpace()
                 }
 
-                MotionEvent.ACTION_CANCEL -> {
-                    spacePressed = false
-                    tracking = false
-                    restoreSpaceLabel()
-                }
+                MotionEvent.ACTION_CANCEL -> cancelSpaceRepeat()
             }
             true
         }
@@ -1215,7 +1272,8 @@ class KeyboardView @JvmOverloads constructor(
     }
 
     private fun restoreSpaceLabel() {
-        spaceKey.setCompoundDrawablesWithIntrinsicBounds(0, 0, 0, 0)
+        if (!::spaceKey.isInitialized) return
+        spaceKey.clearGlyph()
         spaceKey.text = spaceLabel
     }
 
@@ -1293,23 +1351,30 @@ class KeyboardView @JvmOverloads constructor(
     }
 
     private fun textKey(label: String, function: Boolean, onClick: () -> Unit): TextView =
-        TextView(context).apply {
-            text = label
-            textSize = 16f
-            typeface = regularTypeface
-            letterSpacing = 0.01f
-            gravity = Gravity.CENTER
-            includeFontPadding = false
-            setTextColor(color(R.color.key_text))
-            setBackgroundResource(
-                if (function) R.drawable.key_function_background else R.drawable.key_background,
-            )
-            // A soft drop shadow lifts the key off the keyboard surface.
-            elevation = dp(2).toFloat()
-            isClickable = true
-            isFocusable = true
-            setOnClickListener { onClick() }
-        }
+        styledTextKey(TextView(context), label, function, onClick)
+
+    private fun <T : TextView> styledTextKey(
+        view: T,
+        label: String,
+        function: Boolean,
+        onClick: () -> Unit,
+    ): T = view.apply {
+        text = label
+        textSize = 16f
+        typeface = regularTypeface
+        letterSpacing = 0.01f
+        gravity = Gravity.CENTER
+        includeFontPadding = false
+        setTextColor(color(R.color.key_text))
+        setBackgroundResource(
+            if (function) R.drawable.key_function_background else R.drawable.key_background,
+        )
+        // A soft drop shadow lifts the key off the keyboard surface.
+        elevation = dp(2).toFloat()
+        isClickable = true
+        isFocusable = true
+        setOnClickListener { onClick() }
+    }
 
     private fun keyParams(weight: Float, first: Boolean = false): LayoutParams =
         LayoutParams(0, LayoutParams.MATCH_PARENT, weight).apply {
@@ -1334,6 +1399,9 @@ class KeyboardView @JvmOverloads constructor(
         }
         leftKey.setOnTouchListener(null)
 
+        // Undo state is refreshed after every deletion; leave the pressed key
+        // and its armed swipe-up state alone until the finger lifts.
+        if (deletePressed) return
         rightKey.setContent(R.drawable.ic_delete, R.string.key_delete)
         rightKey.setDanger(false)
         rightKey.setEnabledState(interactive)
@@ -1387,12 +1455,13 @@ class KeyboardView @JvmOverloads constructor(
             if (recording || processing) return@OnTouchListener false
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
+                    deletePressed = true
                     rightKey.isPressed = true
                     deleteArmed = false
                     deleteRepeated = false
                     deleteDownY = event.rawY
                     repeatHandler.removeCallbacks(deleteStart)
-                    repeatHandler.postDelayed(deleteStart, 420)
+                    repeatHandler.postDelayed(deleteStart, KEY_REPEAT_DELAY_MS)
                     tapFeedback()
                 }
 
@@ -1413,6 +1482,7 @@ class KeyboardView @JvmOverloads constructor(
                     repeatHandler.removeCallbacks(deleteStart)
                     repeatHandler.removeCallbacks(repeatDelete)
                     repeatingDelete = false
+                    deletePressed = false
                     rightKey.isPressed = false
                     val armed = deleteArmed
                     val repeated = deleteRepeated
@@ -1424,6 +1494,7 @@ class KeyboardView @JvmOverloads constructor(
                     repeatHandler.removeCallbacks(deleteStart)
                     repeatHandler.removeCallbacks(repeatDelete)
                     repeatingDelete = false
+                    deletePressed = false
                     rightKey.isPressed = false
                     resetDeleteVisual()
                 }
@@ -1434,10 +1505,24 @@ class KeyboardView @JvmOverloads constructor(
     private fun cancelDeleteRepeat() {
         repeatingDelete = false
         deleteArmed = false
+        deletePressed = false
         repeatHandler.removeCallbacks(deleteStart)
         repeatHandler.removeCallbacks(repeatDelete)
         resetDeleteVisual()
     }
+
+    private fun cancelSpaceRepeat() {
+        repeatingSpace = false
+        spacePressed = false
+        spaceTracking = false
+        spaceRepeated = false
+        repeatHandler.removeCallbacks(spaceStart)
+        repeatHandler.removeCallbacks(spaceRepeat)
+        restoreSpaceLabel()
+    }
+
+    private fun repeatInterval(startedAt: Long): Long =
+        KeyRepeatTiming.interval(SystemClock.uptimeMillis() - startedAt)
 
     // MARK: - Helpers
 
@@ -1671,6 +1756,13 @@ class KeyboardView @JvmOverloads constructor(
     private companion object {
         /** Free strip under the keys for the system's own keyboard switcher. */
         const val SYSTEM_TOOLS_ROOM_DP = 14
+
+        /** Hold this long before delete or space starts repeating. */
+        const val KEY_REPEAT_DELAY_MS = 400L
+
+        /** One character per this much sideways travel on the space bar. */
+        const val CURSOR_STEP_DP = 18
+        const val MAX_CURSOR_STEPS_PER_EVENT = 3
     }
 }
 

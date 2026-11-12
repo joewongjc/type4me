@@ -959,9 +959,32 @@ class VoiceImeService : InputMethodService(), KeyboardView.Listener {
     }
 
     override fun onCursorMove(step: Int) {
+        if (step == 0) return
         val connection = currentInputConnection ?: return
-        val key = if (step < 0) KeyEvent.KEYCODE_DPAD_LEFT else KeyEvent.KEYCODE_DPAD_RIGHT
-        repeat(kotlin.math.abs(step)) {
+        // Stop at the field edges; arrow keys sent past the last character can
+        // move focus out of the editor or make the caret disappear. A selection
+        // still needs the first arrow to collapse instead of being clamped away.
+        var offset = step
+        val hasSelection = runCatching {
+            connection.getSelectedText(0)?.isNotEmpty() == true
+        }.getOrDefault(false)
+        if (!hasSelection && offset < 0) {
+            val available = runCatching {
+                connection.getTextBeforeCursor(-offset, 0)?.length
+            }.getOrNull()
+            if (available != null) offset = maxOf(offset, -available)
+        } else if (!hasSelection) {
+            val available = runCatching {
+                connection.getTextAfterCursor(offset, 0)?.length
+            }.getOrNull()
+            if (available != null) offset = minOf(offset, available)
+        }
+        if (offset == 0) {
+            recentDeletions.clear()
+            return
+        }
+        val key = if (offset < 0) KeyEvent.KEYCODE_DPAD_LEFT else KeyEvent.KEYCODE_DPAD_RIGHT
+        repeat(kotlin.math.abs(offset)) {
             connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, key))
             connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, key))
         }
