@@ -4,7 +4,6 @@ import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
-import android.util.Log
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -20,20 +19,14 @@ object SecureStore {
     private const val KEY_ALIAS = "type4me_secrets_key"
     private const val TRANSFORMATION = "AES/GCM/NoPadding"
     private const val IV_BYTES = 12
-    private const val TAG = "SecureStore"
 
-    /** Most recent keystore failure, for diagnostics; never holds a secret value. */
-    @Volatile
-    var lastError: String? = null
-        private set
-
-    fun put(context: Context, key: String, value: String) {
+    fun put(context: Context, key: String, value: String): Boolean {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         if (value.isEmpty()) {
             prefs.edit().remove(key).apply()
-            return
+            return true
         }
-        runCatching {
+        return runCatching {
             val cipher = Cipher.getInstance(TRANSFORMATION)
             cipher.init(Cipher.ENCRYPT_MODE, secretKey())
             val encrypted = cipher.doFinal(value.toByteArray(Charsets.UTF_8))
@@ -41,7 +34,8 @@ object SecureStore {
             prefs.edit()
                 .putString(key, Base64.encodeToString(payload, Base64.NO_WRAP))
                 .apply()
-        }.onFailure { fail("put $key", it) }
+            true
+        }.getOrDefault(false)
     }
 
     fun get(context: Context, key: String): String {
@@ -53,16 +47,7 @@ object SecureStore {
             val cipher = Cipher.getInstance(TRANSFORMATION)
             cipher.init(Cipher.DECRYPT_MODE, secretKey(), GCMParameterSpec(128, iv))
             String(cipher.doFinal(payload.copyOfRange(IV_BYTES, payload.size)), Charsets.UTF_8)
-        }.getOrElse {
-            fail("get $key", it)
-            ""
-        }
-    }
-
-    private fun fail(action: String, error: Throwable) {
-        val message = "$action failed: ${error.javaClass.simpleName}: ${error.message}"
-        lastError = message
-        Log.e(TAG, message)
+        }.getOrDefault("")
     }
 
     private fun secretKey(): SecretKey {

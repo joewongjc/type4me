@@ -23,13 +23,14 @@ class GeminiSession(
     private val finished = CompletableDeferred<String>()
     private val error = AtomicReference<Throwable?>(null)
     private val lock = Any()
+    private val audioLock = Any()
     private val confirmed = mutableListOf<String>()
     private var partial = ""
     private var lastEmitted = ""
     private var residual = ByteArray(0)
     private var hotwords: List<String> = emptyList()
     @Volatile private var sentEnd = false
-    @Volatile private var didStartActivity = false
+    private var didStartActivity = false
     private var socket: WebSocket? = null
 
     override suspend fun connect(config: AsrConfig, hotwords: List<String>) {
@@ -49,6 +50,7 @@ class GeminiSession(
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                if (finished.isCompleted) return
                 val detail = response?.let {
                     runCatching { it.body?.string() }.getOrNull()?.take(200)
                 }
@@ -56,10 +58,9 @@ class GeminiSession(
                     listOfNotNull(t.message, detail).joinToString(": ")
                         .ifBlank { "Gemini connection failed" },
                 )
-                error.compareAndSet(null, failure)
+                reportSessionFailure(onError, error, failure)
                 if (!opening.isCompleted) opening.completeExceptionally(failure)
                 if (!setup.isCompleted) setup.completeExceptionally(failure)
-                onError(failure)
                 if (!finished.isCompleted) finished.complete(currentText())
             }
 
@@ -74,8 +75,7 @@ class GeminiSession(
                         "Gemini connection closed before the transcript finished ($code)" +
                             if (reason.isBlank()) "" else ": $reason",
                     )
-                    error.compareAndSet(null, failure)
-                    onError(failure)
+                    reportSessionFailure(onError, error, failure)
                     finished.complete(currentText())
                 }
             }
@@ -89,43 +89,46 @@ class GeminiSession(
     override suspend fun send(pcm: ByteArray) {
         if (pcm.isEmpty()) return
         val webSocket = socket ?: return
-        residual += pcm
-        if (!didStartActivity) {
-            webSocket.send(GeminiProtocol.activityStartMessage())
-            didStartActivity = true
-        }
-        val (payloads, rest) = GeminiProtocol.sliceAudioPayloads(residual)
-        residual = rest
-        for (payload in payloads) {
-            webSocket.send(GeminiProtocol.audioChunkMessage(payload))
+        synchronized(audioLock) {
+            residual += pcm
+            if (!didStartActivity) {
+                webSocket.send(GeminiProtocol.activityStartMessage())
+                didStartActivity = true
+            }
+            val (chunks, rest) = GeminiProtocol.sliceAudioPayloads(residual)
+            residual = rest
+            for (payload in chunks) {
+                webSocket.send(GeminiProtocol.audioChunkMessage(payload))
+            }
         }
     }
 
     override suspend fun finish(): String {
         val webSocket = socket
-        GeminiProtocol.flushResidualAudio(residual)?.let { tail ->
-            residual = ByteArray(0)
-            if (!didStartActivity) {
-                webSocket?.send(GeminiProtocol.activityStartMessage())
-                didStartActivity = true
+        val started = synchronized(audioLock) {
+            GeminiProtocol.flushResidualAudio(residual)?.let { tail ->
+                residual = ByteArray(0)
+                if (!didStartActivity) {
+                    webSocket?.send(GeminiProtocol.activityStartMessage())
+                    didStartActivity = true
+                }
+                webSocket?.send(GeminiProtocol.audioChunkMessage(tail))
             }
-            webSocket?.send(GeminiProtocol.audioChunkMessage(tail))
+            didStartActivity
         }
         // No audio ever reached the server: nothing to finalize.
-        if (!didStartActivity || webSocket == null) {
+        if (!started || webSocket == null) {
             val text = currentText()
             socket?.cancel()
             socket = null
-            return text
+            return sessionResult(text, error.get())
         }
         sentEnd = true
         webSocket.send(GeminiProtocol.activityEndMessage())
         val text = withTimeoutOrNull(12_000) { finished.await() } ?: currentText()
         webSocket.cancel()
         socket = null
-        val failure = error.get()
-        if (text.isBlank() && failure != null) throw failure
-        return text
+        return sessionResult(text, error.get())
     }
 
     override suspend fun cancel() {
@@ -138,8 +141,7 @@ class GeminiSession(
         val update = runCatching {
             GeminiProtocol.parse(message, snapshot(), sentEnd, hotwords)
         }.getOrElse { failure ->
-            error.compareAndSet(null, failure)
-            onError(failure)
+            reportSessionFailure(onError, error, failure)
             if (!setup.isCompleted) setup.completeExceptionally(failure)
             if (!finished.isCompleted) finished.complete(currentText())
             return

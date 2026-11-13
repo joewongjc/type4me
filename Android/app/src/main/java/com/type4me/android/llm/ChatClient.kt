@@ -141,12 +141,37 @@ class ChatClient(
         return trimmed + path
     }
 
-    private fun errorMessage(code: Int, body: String): String {
+    /** Only a short provider message, never the raw response, reaches diagnostics. */
+    internal fun errorMessage(code: Int, body: String): String {
         val json = runCatching { JSONObject(body) }.getOrNull()
         val detail = json?.optJSONObject("error")?.optString("message")?.takeIf { it.isNotBlank() }
             ?: json?.optString("message")?.takeIf { it.isNotBlank() }
-            ?: body.take(160).takeIf { it.isNotBlank() }
-        return "HTTP $code" + (detail?.let { ": $it" } ?: "")
+        return "HTTP $code" + (detail?.let { ": ${redact(it.take(160))}" } ?: "")
+    }
+
+    private fun redact(message: String): String {
+        val named = message
+            .replace(Regex("""(?i)\bBearer\s+\S+"""), "Bearer [REDACTED]")
+            .replace(
+                Regex(
+                    """(?i)\b(?:x-)?(?:api[_-]?key|app[_-]?key|intl[_-]?api[_-]?key|""" +
+                        """access[_-]?key|secret[_-]?id|access[_-]?token|refresh[_-]?token|""" +
+                        """client[_-]?secret|secret|token|password|authorization)\b""" +
+                        """(\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,;]+)""",
+                ),
+            ) { match ->
+                val key = match.value.substring(
+                    0,
+                    match.value.length - match.groupValues[1].length - match.groupValues[2].length,
+                )
+                "$key${match.groupValues[1]}[REDACTED]"
+            }
+        return named
+            .replace(
+                Regex("""\b(?:sk-|xox[baprs]-|ghp_|github_pat_|AKIA|ASIA|AIza)[A-Za-z0-9_\-./+=]+\b"""),
+                "[REDACTED]",
+            )
+            .replace(Regex("""\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b"""), "[REDACTED]")
     }
 
     companion object {

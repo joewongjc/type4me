@@ -18,10 +18,10 @@ internal object ChatSendPolicy {
     private const val TYPE_TEXT_FLAG_MULTI_LINE = 0x00020000
 
     fun canSwipeSend(info: EditorInfo?): Boolean =
-        canSwipeSend(info?.packageName?.toString(), action(info), inputType(info))
+        resolve(info?.packageName?.toString(), action(info), inputType(info)) != null
 
     fun sendAction(info: EditorInfo?, wasSendSupportedAtStart: Boolean): Int? =
-        sendAction(
+        resolve(
             info?.packageName?.toString(),
             action(info),
             inputType(info),
@@ -32,7 +32,7 @@ internal object ChatSendPolicy {
         packageName: String?,
         action: Int,
         inputType: Int = TYPE_TEXT_FLAG_MULTI_LINE,
-    ): Boolean = sendAction(packageName, action, inputType) != null
+    ): Boolean = resolve(packageName, action, inputType) != null
 
     internal fun sendAction(
         packageName: String?,
@@ -41,7 +41,7 @@ internal object ChatSendPolicy {
         wasSendSupportedAtStart: Boolean = false,
     ): Int? = resolve(packageName, action, inputType, wasSendSupportedAtStart)
 
-    internal fun resolve(
+    private fun resolve(
         packageName: String?,
         action: Int,
         inputType: Int,

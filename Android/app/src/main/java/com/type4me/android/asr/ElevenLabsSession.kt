@@ -26,6 +26,7 @@ class ElevenLabsSession(
     private var partial = ""
     private var lastEmitted = ""
     @Volatile private var sentEnd = false
+    private var receivedFinal = false
     @Volatile private var languageCode = ""
     private var socket: WebSocket? = null
 
@@ -47,7 +48,7 @@ class ElevenLabsSession(
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                if (sentEnd) {
+                if (sentEnd && receivedFinal) {
                     if (!finished.isCompleted) finished.complete(currentText())
                     return
                 }
@@ -58,13 +59,22 @@ class ElevenLabsSession(
                     listOfNotNull(t.message, detail).joinToString(": ")
                         .ifBlank { "ElevenLabs connection failed" },
                 )
-                error.compareAndSet(null, failure)
-                onError(failure)
+                reportSessionFailure(onError, error, failure)
                 if (!opening.isCompleted) opening.completeExceptionally(failure)
                 if (!finished.isCompleted) finished.complete(currentText())
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                if (!receivedFinal) {
+                    reportSessionFailure(
+                        onError,
+                        error,
+                        AsrException(
+                            "ElevenLabs closed before the transcript finished ($code)" +
+                                if (reason.isBlank()) "" else ": $reason",
+                        ),
+                    )
+                }
                 if (!finished.isCompleted) finished.complete(currentText())
             }
         }
@@ -85,9 +95,7 @@ class ElevenLabsSession(
         val text = withTimeoutOrNull(12_000) { finished.await() } ?: currentText()
         socket?.cancel()
         socket = null
-        val failure = error.get()
-        if (text.isBlank() && failure != null) throw failure
-        return text
+        return sessionResult(text, error.get())
     }
 
     override suspend fun cancel() {
@@ -100,8 +108,7 @@ class ElevenLabsSession(
         val update = runCatching {
             ElevenLabsProtocol.parse(message, snapshot(), sentEnd, languageCode)
         }.getOrElse { failure ->
-            error.compareAndSet(null, failure)
-            onError(failure)
+            reportSessionFailure(onError, error, failure)
             if (!finished.isCompleted) finished.complete(currentText())
             return
         } ?: return
@@ -116,7 +123,10 @@ class ElevenLabsSession(
             lastEmitted = current
             onPartial(current)
         }
-        if (update.isFinal && sentEnd && !finished.isCompleted) finished.complete(current)
+        if (update.isFinal && sentEnd) {
+            receivedFinal = true
+            if (!finished.isCompleted) finished.complete(current)
+        }
     }
 
     private fun snapshot(): List<String> = synchronized(lock) { confirmed.toList() }

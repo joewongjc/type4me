@@ -30,11 +30,14 @@ object CustomHttpProtocol {
     )
 
     fun settings(config: AsrConfig): Settings {
+        // Mac exports keep the custom endpoint in an extra field.
         val endpoint = config.baseUrl.trim()
+            .ifBlank { config.extra["endpointURL"].orEmpty().trim() }
         if (!endpoint.startsWith("http://") && !endpoint.startsWith("https://")) {
             throw AsrException("Invalid endpoint URL; it must start with http:// or https://")
         }
         val templateText = config.extra["bodyTemplate"].orEmpty().trim()
+            .ifBlank { config.extra["jsonTemplate"].orEmpty().trim() }
         if (templateText.isEmpty()) {
             throw AsrException("The custom ASR body template is empty")
         }
@@ -84,9 +87,6 @@ object CustomHttpProtocol {
         }
         return null
     }
-
-    fun resultPath(config: AsrConfig): String =
-        config.extra["resultPath"].orEmpty().trim().ifBlank { DEFAULT_RESULT_PATH }
 
     fun contains(node: Any?, placeholder: String): Boolean = when (node) {
         is String -> node.contains(placeholder)

@@ -5,14 +5,11 @@ import java.nio.ByteOrder
 
 /** Wraps 16-bit PCM in the 44-byte WAV header every transcription API accepts. */
 object WavEncoder {
-    fun encode(
-        pcm: ByteArray,
-        sampleRate: Int = 16_000,
-        channels: Int = 1,
-        bitsPerSample: Int = 16,
-    ): ByteArray {
+    fun encode(pcm: ByteArray): ByteArray {
+        val channels = 1
+        val bitsPerSample = 16
         val blockAlign = channels * bitsPerSample / 8
-        val byteRate = sampleRate * blockAlign
+        val byteRate = SAMPLE_RATE * blockAlign
         val output = ByteArray(44 + pcm.size)
         val buffer = ByteBuffer.wrap(output).order(ByteOrder.LITTLE_ENDIAN)
 
@@ -23,7 +20,7 @@ object WavEncoder {
         buffer.putInt(16)
         buffer.putShort(1)
         buffer.putShort(channels.toShort())
-        buffer.putInt(sampleRate)
+        buffer.putInt(SAMPLE_RATE)
         buffer.putInt(byteRate)
         buffer.putShort(blockAlign.toShort())
         buffer.putShort(bitsPerSample.toShort())
@@ -33,4 +30,6 @@ object WavEncoder {
 
         return output
     }
+
+    private const val SAMPLE_RATE = 16_000
 }

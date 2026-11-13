@@ -27,7 +27,6 @@ object AssemblyAIProtocol {
         val turnOrder: Int,
         val finalizedText: String,
         val displayText: String,
-        val authoritativeText: String,
         val isFinal: Boolean,
         val isFormatted: Boolean,
     )
@@ -100,7 +99,6 @@ object AssemblyAIProtocol {
             turnOrder = json.optInt("turn_order", 0),
             finalizedText = finalizedText,
             displayText = displayText,
-            authoritativeText = if (endOfTurn) displayText else finalizedText,
             isFinal = endOfTurn,
             isFormatted = json.optBoolean("turn_is_formatted", false),
         )

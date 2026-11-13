@@ -53,7 +53,7 @@ class TencentSession(
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                if (sentEnd || receivedFinal) {
+                if (sentEnd && receivedFinal) {
                     if (!finished.isCompleted) finished.complete(transcriptText())
                     return
                 }
@@ -69,6 +69,16 @@ class TencentSession(
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                if (!receivedFinal) {
+                    reportSessionFailure(
+                        onError,
+                        error,
+                        AsrException(
+                            "Tencent Cloud closed before the transcript finished ($code)" +
+                                if (reason.isBlank()) "" else ": $reason",
+                        ),
+                    )
+                }
                 if (!finished.isCompleted) finished.complete(transcriptText())
             }
         }
@@ -95,9 +105,7 @@ class TencentSession(
         val text = withTimeoutOrNull(15_000) { finished.await() } ?: transcriptText()
         socket?.cancel()
         socket = null
-        val failure = error.get()
-        if (text.isBlank() && failure != null) throw failure
-        return text.trim()
+        return sessionResult(text.trim(), error.get())
     }
 
     override suspend fun cancel() {
@@ -133,7 +141,7 @@ class TencentSession(
         if (parsed.updates.isNotEmpty()) onPartial(text)
 
         if (parsed.final) {
-            receivedFinal = true
+            if (sentEnd) receivedFinal = true
             val finalText = synchronized(stateLock) {
                 state.markFinal()
                 state.text
@@ -146,8 +154,7 @@ class TencentSession(
     private fun transcriptText(): String = synchronized(stateLock) { state.text }
 
     private fun fail(failure: Throwable) {
-        error.compareAndSet(null, failure)
-        onError(failure)
+        reportSessionFailure(onError, error, failure)
         if (!handshake.isCompleted) handshake.completeExceptionally(failure)
         if (!finished.isCompleted) finished.complete(transcriptText())
     }

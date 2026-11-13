@@ -28,6 +28,7 @@ class GrokSession(
     private var partial = ""
     private var lastEmitted = ""
     @Volatile private var sentEnd = false
+    private var receivedFinal = false
     private var socket: WebSocket? = null
 
     override suspend fun connect(config: AsrConfig, hotwords: List<String>) {
@@ -48,7 +49,7 @@ class GrokSession(
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                if (sentEnd) {
+                if (sentEnd && receivedFinal) {
                     if (!finished.isCompleted) finished.complete(currentText())
                     return
                 }
@@ -65,14 +66,23 @@ class GrokSession(
                             .ifBlank { "Grok connection failed" }
                     },
                 )
-                error.compareAndSet(null, failure)
+                reportSessionFailure(onError, error, failure)
                 if (!opening.isCompleted) opening.completeExceptionally(failure)
                 if (!ready.isCompleted) ready.completeExceptionally(failure)
-                onError(failure)
                 if (!finished.isCompleted) finished.complete(currentText())
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                if (!receivedFinal) {
+                    reportSessionFailure(
+                        onError,
+                        error,
+                        AsrException(
+                            "Grok closed before the transcript finished ($code)" +
+                                if (reason.isBlank()) "" else ": $reason",
+                        ),
+                    )
+                }
                 if (!finished.isCompleted) finished.complete(currentText())
             }
         }
@@ -96,9 +106,7 @@ class GrokSession(
         val text = withTimeoutOrNull(12_000) { finished.await() } ?: currentText()
         socket?.cancel()
         socket = null
-        val failure = error.get()
-        if (text.isBlank() && failure != null) throw failure
-        return text
+        return sessionResult(text, error.get())
     }
 
     override suspend fun cancel() {
@@ -112,8 +120,7 @@ class GrokSession(
         val update = runCatching {
             GrokProtocol.parse(message, snapshot(), sentEnd)
         }.getOrElse { failure ->
-            error.compareAndSet(null, failure)
-            onError(failure)
+            reportSessionFailure(onError, error, failure)
             if (!ready.isCompleted) ready.completeExceptionally(failure)
             if (!finished.isCompleted) finished.complete(currentText())
             return
@@ -126,6 +133,7 @@ class GrokSession(
 
         val proposed = (update.state.joinedConfirmed + update.partial).trim()
         val completes = update.isFinal && sentEnd
+        if (completes) receivedFinal = true
         if (proposed == lastEmitted && !completes) return
 
         synchronized(lock) {

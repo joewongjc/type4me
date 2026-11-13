@@ -36,6 +36,7 @@ class RecordingMicView @JvmOverloads constructor(
     private var geometrySize = 0f
 
     private var animator: ValueAnimator? = null
+    private var recording = false
     private var targetLevel = 0f
     private var level = 0f
     private var elapsed = 0f
@@ -78,14 +79,15 @@ class RecordingMicView @JvmOverloads constructor(
         // quiet speech produce a visible fill without making loud syllables
         // jump immediately from empty to full.
         targetLevel = kotlin.math.sqrt(value.coerceIn(0f, 1f))
-        if (animator == null) {
+        if (animator == null || !ValueAnimator.areAnimatorsEnabled()) {
             level = targetLevel
             invalidate()
         }
     }
 
     fun start() {
-        if (animator != null) return
+        if (recording) return
+        recording = true
         targetLevel = 0f
         level = 0f
         elapsed = 0f
@@ -117,6 +119,7 @@ class RecordingMicView @JvmOverloads constructor(
     }
 
     fun stop() {
+        recording = false
         animator?.cancel()
         animator = null
         targetLevel = 0f
@@ -136,7 +139,7 @@ class RecordingMicView @JvmOverloads constructor(
         if (size <= 0f) return
         buildGeometry(size)
 
-        val active = animator != null
+        val active = recording
         fillPaint.color = if (active) activeTint else (iconTint ?: idleTint)
         // The supplied SVG is a filled compound path, not a collection of
         // approximated strokes. Drawing that parsed path preserves its exact

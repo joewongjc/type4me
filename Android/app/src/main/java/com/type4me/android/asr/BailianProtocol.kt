@@ -236,9 +236,6 @@ object BailianProtocol {
         if (raw.isBlank()) return null
         return runCatching { java.net.URI(raw.trim()).host }.getOrNull()?.takeIf { it.isNotBlank() }
     }
-
-    private fun isCjk(char: Char): Boolean =
-        char.code in 0x3400..0x4DBF || char.code in 0x4E00..0x9FFF || char.code in 0xF900..0xFAFF
 }
 
 /**

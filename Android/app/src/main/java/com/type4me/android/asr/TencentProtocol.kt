@@ -25,7 +25,6 @@ object TencentProtocol {
     data class RealtimeMessage(
         val code: Int,
         val message: String?,
-        val voiceId: String?,
         val updates: List<SentenceUpdate>,
         val final: Boolean,
     )
@@ -52,11 +51,9 @@ object TencentProtocol {
             }
         }
         val message = if (root.isNull("message")) null else root.optString("message").takeIf { it.isNotBlank() }
-        val voiceId = if (root.isNull("voice_id")) null else root.optString("voice_id").takeIf { it.isNotBlank() }
         return RealtimeMessage(
             code = root.optInt("code", 0),
             message = message,
-            voiceId = voiceId,
             updates = updates,
             final = root.optInt("final", 0) == 1,
         )

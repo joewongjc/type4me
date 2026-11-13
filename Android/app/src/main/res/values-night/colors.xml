@@ -18,12 +18,9 @@
     <color name="key_fill">#3A3A3C</color>
     <color name="key_function">@color/key_fill</color>
     <color name="key_text">#FFFFFF</color>
-    <color name="mic_fill">#FFFFFF</color>
     <color name="mic_fill_top">#FFFFFF</color>
     <color name="mic_fill_bottom">#E2E2E6</color>
     <color name="mic_stroke">#1A000000</color>
-    <color name="mic_record_top">#F06A78</color>
-    <color name="mic_record_bottom">#C22C40</color>
     <color name="mic_record_surface">#4A2B2D</color>
     <color name="mic_record_stroke">#66FFB4BD</color>
     <color name="mic_record_icon">#FFE0E2</color>
@@ -38,4 +35,5 @@
     <color name="dial_selected">#33FFFFFF</color>
     <color name="transcript_placeholder">#C7C7C7</color>
     <color name="ripple">#33FFFFFF</color>
+    <color name="on_scan_overlay">#FFFFFF</color>
 </resources>

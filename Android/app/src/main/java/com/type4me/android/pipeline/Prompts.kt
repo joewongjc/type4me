@@ -1,6 +1,5 @@
 package com.type4me.android.pipeline
 
-import android.content.Context
 import com.type4me.android.data.TranslateTarget
 
 /**
@@ -12,7 +11,6 @@ object Prompts {
     data class Request(val system: String?, val user: String)
 
     fun request(
-        context: Context? = null,
         mode: ModeDefinition,
         text: String,
         field: FieldContext? = null,
@@ -24,7 +22,7 @@ object Prompts {
             user = translatePrompt(mode.translationTarget, text),
         )
         Mode.AGENT -> render(mode.prompt.ifBlank { agentTemplate }, text)
-        Mode.INTELLI_SENSE -> IntelliSense.request(text, field ?: FieldContext(), mode)
+        Mode.INTELLI_SENSE -> IntelliSense.request(text, field ?: FieldContext())
         Mode.CUSTOM -> renderCustom(mode.prompt, text)
     }
 

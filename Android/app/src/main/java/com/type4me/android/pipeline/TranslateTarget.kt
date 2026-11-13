@@ -53,14 +53,5 @@ enum class TranslateTarget(
     companion object {
         fun byCode(code: String?): TranslateTarget =
             entries.firstOrNull { it.code == code } ?: ENGLISH
-
-        /** Old stored values used the language name or a short code. */
-        fun migrate(value: String?): TranslateTarget = when (value) {
-            "en", "ENGLISH" -> ENGLISH
-            "zh", "zh-CN", "CHINESE" -> SIMPLIFIED_CHINESE
-            "ja", "JAPANESE" -> JAPANESE
-            "ko", "KOREAN" -> KOREAN
-            else -> byCode(value)
-        }
     }
 }

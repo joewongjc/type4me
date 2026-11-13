@@ -188,5 +188,6 @@ internal fun AsrConfig.firstExtraValue(vararg keys: String): String {
 internal fun AsrConfig.resolvedModel(default: String): String =
     model.trim().ifEmpty { extraValue("model") }.ifEmpty { default }
 
+/** Batch models saved by the settings UI or a Mac transfer live in `config.model`. */
 internal fun AsrConfig.resolvedBatchModel(default: String): String =
-    extraValue("batchModel").ifEmpty { default }
+    extraValue("batchModel").ifEmpty { model.trim() }.ifEmpty { default }

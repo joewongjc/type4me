@@ -45,7 +45,6 @@ import com.type4me.android.data.HistoryStore
 import com.type4me.android.data.Presets
 import com.type4me.android.data.TextOutputStore
 import com.type4me.android.data.TrailingPunctuation
-import com.type4me.android.data.TranslateTarget
 import com.type4me.android.data.VocabularyStore
 import com.type4me.android.databinding.FragmentSettingsBinding
 import com.type4me.android.databinding.ItemSettingsRowBinding
@@ -621,8 +620,6 @@ class SettingsFragment : Fragment(R.layout.fragment_settings) {
         Mode.AGENT -> R.drawable.ic_agent
         Mode.CUSTOM -> R.drawable.ic_wand
     }
-
-    private fun targetName(target: TranslateTarget): String = target.label(requireContext())
 
     private fun spacingName(mode: CjkSpacing): String = getString(
         when (mode) {

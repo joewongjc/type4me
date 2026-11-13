@@ -15,7 +15,7 @@ data class CorrectionRequest(
 data class CorrectionOccurrence(
     /** 1-based, in reading order; the number the prompt marks it with. */
     val number: Int,
-    /** Characters from the start of the selection, negative before it. */
+    /** UTF-16 positions from the start of the selection, negative before it. */
     val offset: Int,
 )
 
@@ -89,24 +89,39 @@ object Correction {
     fun markedText(request: CorrectionRequest): String {
         val length = request.selected.length
         val occurrences = occurrences(request.before, request.selected, request.after)
-        var before = request.before
-        var after = request.after
-        for (occurrence in occurrences.reversed()) {
-            val open = "⟦${occurrence.number}⟧"
-            val close = "⟦/${occurrence.number}⟧"
-            if (occurrence.offset < 0) {
-                val start = (before.length + occurrence.offset).coerceIn(0, before.length)
-                before = before.substring(0, start) + open +
-                    before.substring(start, (start + length).coerceAtMost(before.length)) + close +
-                    before.substring((start + length).coerceAtMost(before.length))
-            } else {
-                val start = (occurrence.offset - length).coerceIn(0, after.length)
-                after = after.substring(0, start) + open +
-                    after.substring(start, (start + length).coerceAtMost(after.length)) + close +
-                    after.substring((start + length).coerceAtMost(after.length))
-            }
-        }
+        val before = markSide(
+            request.before,
+            occurrences.filter { it.offset < 0 }.map {
+                it.number to (request.before.length + it.offset).coerceIn(0, request.before.length)
+            },
+            length,
+        )
+        val after = markSide(
+            request.after,
+            occurrences.filter { it.offset >= 0 }.map {
+                it.number to (it.offset - length).coerceIn(0, request.after.length)
+            },
+            length,
+        )
         return before + "⟦*⟧" + request.selected + "⟦/*⟧" + after
+    }
+
+    private fun markSide(text: String, positions: List<Pair<Int, Int>>, length: Int): String {
+        val tags = mutableListOf<Pair<Int, String>>()
+        for ((number, start) in positions) {
+            val end = (start + length).coerceAtMost(text.length)
+            tags += start to "⟦$number⟧"
+            tags += end to "⟦/$number⟧"
+        }
+        val result = StringBuilder(text)
+        // Positions come from the unmodified text; insert back to front so
+        // earlier offsets stay valid. At a shared boundary the opening tag
+        // goes in first, leaving its neighbour's closing tag to its left.
+        tags.sortedWith(
+            compareByDescending<Pair<Int, String>> { it.first }
+                .thenBy { if (it.second.startsWith("⟦/")) 1 else 0 },
+        ).forEach { (offset, tag) -> result.insert(offset, tag) }
+        return result.toString()
     }
 
     private fun userText(request: CorrectionRequest, spoken: String, chinese: Boolean): String {

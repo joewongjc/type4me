@@ -32,10 +32,10 @@ class VolcSessionTest {
                     val header = VolcProtocol.decodeHeader(data)
                     when {
                         header.messageType == 1 ->
-                            webSocket.send(serverFrame("你好", final = false).toByteString())
+                            webSocket.send(volcServerFrame("你好", final = false).toByteString())
 
                         header.flags == 2 ->
-                            webSocket.send(serverFrame("你好，世界。", final = true).toByteString())
+                            webSocket.send(volcServerFrame("你好，世界。", final = true).toByteString())
                     }
                 }
 
@@ -68,20 +68,5 @@ class VolcSessionTest {
         } finally {
             server.shutdown()
         }
-    }
-
-    private fun serverFrame(text: String, final: Boolean): ByteArray {
-        val payload = """{"result":{"text":"$text"}}""".toByteArray()
-        val message = ByteArray(8 + payload.size)
-        message[0] = 0x11
-        message[1] = ((9 shl 4) or (if (final) 4 else 0)).toByte()
-        message[2] = 0x10
-        message[3] = 0
-        message[4] = (payload.size ushr 24).toByte()
-        message[5] = (payload.size ushr 16).toByte()
-        message[6] = (payload.size ushr 8).toByte()
-        message[7] = payload.size.toByte()
-        payload.copyInto(message, 8)
-        return message
     }
 }

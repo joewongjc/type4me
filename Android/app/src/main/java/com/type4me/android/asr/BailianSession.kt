@@ -28,6 +28,7 @@ class BailianSession(
     private val transcriptLock = Any()
     private var taskId = ""
     @Volatile private var sentFinish = false
+    private var receivedFinal = false
     private var socket: WebSocket? = null
 
     override suspend fun connect(config: AsrConfig, hotwords: List<String>) {
@@ -48,7 +49,7 @@ class BailianSession(
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                if (sentFinish) {
+                if (sentFinish && receivedFinal) {
                     if (!finished.isCompleted) finished.complete(transcriptText())
                     return
                 }
@@ -63,7 +64,7 @@ class BailianSession(
             }
 
             override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
-                if (!opening.isCompleted) {
+                if (!opening.isCompleted && !receivedFinal) {
                     fail(
                         AsrException(
                             "Alibaba Cloud Bailian closed before the task started ($code)" +
@@ -74,6 +75,16 @@ class BailianSession(
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                if (!receivedFinal) {
+                    reportSessionFailure(
+                        onError,
+                        error,
+                        AsrException(
+                            "Alibaba Cloud Bailian closed before the transcript finished ($code)" +
+                                if (reason.isBlank()) "" else ": $reason",
+                        ),
+                    )
+                }
                 if (!finished.isCompleted) finished.complete(transcriptText())
             }
         }
@@ -100,9 +111,7 @@ class BailianSession(
         val text = withTimeoutOrNull(12_000) { finished.await() } ?: transcriptText()
         socket?.cancel()
         socket = null
-        val failure = error.get()
-        if (text.isBlank() && failure != null) throw failure
-        return text.trim()
+        return sessionResult(text.trim(), error.get())
     }
 
     override suspend fun cancel() {
@@ -124,7 +133,10 @@ class BailianSession(
                 applySentence(event.sentence)?.let { onPartial(it) }
             }
 
-            BailianProtocol.Event.Finished -> if (!finished.isCompleted) finished.complete(transcriptText())
+            BailianProtocol.Event.Finished -> {
+                if (sentFinish) receivedFinal = true
+                if (!finished.isCompleted) finished.complete(transcriptText())
+            }
 
             is BailianProtocol.Event.Failed -> {
                 val detail = listOfNotNull(
@@ -156,8 +168,7 @@ class BailianSession(
     private fun transcriptText(): String = synchronized(transcriptLock) { transcript.text }
 
     private fun fail(failure: Throwable) {
-        error.compareAndSet(null, failure)
-        onError(failure)
+        reportSessionFailure(onError, error, failure)
         if (!opening.isCompleted) opening.completeExceptionally(failure)
         if (!finished.isCompleted) finished.complete(transcriptText())
     }

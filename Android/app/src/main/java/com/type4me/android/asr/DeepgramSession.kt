@@ -27,6 +27,7 @@ class DeepgramSession(
     private var confirmed: List<String> = emptyList()
     private var lastText = ""
     @Volatile private var sentEnd = false
+    private var receivedFinal = false
     private var socket: WebSocket? = null
 
     override suspend fun connect(config: AsrConfig, hotwords: List<String>) {
@@ -51,7 +52,7 @@ class DeepgramSession(
             override fun onMessage(webSocket: WebSocket, text: String) = handle(text)
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                if (sentEnd) {
+                if (sentEnd && receivedFinal) {
                     complete(currentText())
                     return
                 }
@@ -75,9 +76,8 @@ class DeepgramSession(
                     )
                     return
                 }
-                // A close before CloseStream lost the recording's tail; report it instead
-                // of returning a silently truncated transcript.
-                if (!sentEnd) {
+                // A close without a settled final result lost the recording's tail.
+                if (!sentEnd || !receivedFinal) {
                     if (error.get() == null) {
                         report(
                             AsrException(
@@ -111,9 +111,7 @@ class DeepgramSession(
         val text = withTimeoutOrNull(15_000) { finished.await() } ?: currentText()
         socket?.cancel()
         socket = null
-        val failure = error.get()
-        if (text.isBlank() && failure != null) throw failure
-        return text
+        return sessionResult(text, error.get())
     }
 
     override suspend fun cancel() {
@@ -137,12 +135,14 @@ class DeepgramSession(
         onPartial(update.text)
         // After CloseStream the server's last final result settles the tail;
         // treating it as completion avoids waiting for the socket close frame.
-        if (sentEnd && update.final) complete(currentText())
+        if (sentEnd && update.final) {
+            receivedFinal = true
+            complete(currentText())
+        }
     }
 
     private fun report(failure: Throwable) {
-        error.compareAndSet(null, failure)
-        onError(failure)
+        reportSessionFailure(onError, error, failure)
         fail(failure)
     }
 

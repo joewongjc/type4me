@@ -26,6 +26,7 @@ class AssemblyAISession(
     private val accumulator = AssemblyAITranscriptAccumulator()
     private val lock = Any()
     @Volatile private var sentTerminate = false
+    private var receivedFinal = false
     private var socket: WebSocket? = null
 
     override suspend fun connect(config: AsrConfig, hotwords: List<String>) {
@@ -40,6 +41,10 @@ class AssemblyAISession(
             override fun onMessage(webSocket: WebSocket, text: String) = handle(text)
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                if (sentTerminate && receivedFinal) {
+                    complete(currentText())
+                    return
+                }
                 val detail = response?.let {
                     runCatching { it.body?.string() }.getOrNull()?.take(200)
                 }
@@ -56,10 +61,8 @@ class AssemblyAISession(
                     fail(AsrException(message))
                     return
                 }
-                if (!sentTerminate) {
-                    val failure = AsrException(message)
-                    error.compareAndSet(null, failure)
-                    onError(failure)
+                if (!sentTerminate || !receivedFinal) {
+                    reportSessionFailure(onError, error, AsrException(message))
                 }
                 complete(currentText())
             }
@@ -83,9 +86,7 @@ class AssemblyAISession(
         val text = withTimeoutOrNull(15_000) { finished.await() } ?: currentText()
         socket?.cancel()
         socket = null
-        val failure = error.get()
-        if (text.isBlank() && failure != null) throw failure
-        return text
+        return sessionResult(text, error.get())
     }
 
     override suspend fun cancel() {
@@ -111,7 +112,10 @@ class AssemblyAISession(
                 onPartial(transcript.authoritativeText)
             }
 
-            AssemblyAIProtocol.Event.Termination -> complete(currentText())
+            AssemblyAIProtocol.Event.Termination -> {
+                if (sentTerminate) receivedFinal = true
+                complete(currentText())
+            }
 
             AssemblyAIProtocol.Event.SpeechStarted -> Unit
         }
@@ -121,8 +125,7 @@ class AssemblyAISession(
         config.extra["format_turns"]?.equals("false", ignoreCase = true) != true
 
     private fun report(failure: Throwable) {
-        error.compareAndSet(null, failure)
-        onError(failure)
+        reportSessionFailure(onError, error, failure)
         fail(failure)
     }
 

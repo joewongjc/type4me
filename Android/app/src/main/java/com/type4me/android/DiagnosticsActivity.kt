@@ -4,9 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
 import android.os.Bundle
-import android.view.Gravity
 import android.widget.LinearLayout
-import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
@@ -14,12 +12,17 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
+import androidx.lifecycle.lifecycleScope
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.type4me.android.ui.applyNavBarTopInset
 import com.type4me.android.data.Diagnostics
 import com.type4me.android.ui.color
 import com.type4me.android.ui.dp
+import com.type4me.android.ui.pageToolbar
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** Settings › Diagnostics: the last dictations, copyable for an issue report. */
 class DiagnosticsActivity : AppCompatActivity() {
@@ -33,35 +36,7 @@ class DiagnosticsActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(color(R.color.screen_bg))
         }
-        val toolbar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(4), 0, dp(12), 0)
-        }
-        toolbar.addView(
-            TextView(this).apply {
-                text = "‹"
-                textSize = 30f
-                gravity = Gravity.CENTER
-                setTextColor(color(R.color.ink))
-                isClickable = true
-                contentDescription = getString(R.string.back)
-                setOnClickListener { finish() }
-            },
-            LinearLayout.LayoutParams(dp(48), dp(56)),
-        )
-        toolbar.addView(
-            TextView(this).apply {
-                text = getString(R.string.diagnostics)
-                textSize = 18f
-                setTypeface(typeface, android.graphics.Typeface.BOLD)
-                setTextColor(color(R.color.ink))
-                gravity = android.view.Gravity.CENTER_VERTICAL
-                maxLines = 1
-                ellipsize = android.text.TextUtils.TruncateAt.END
-            },
-            LinearLayout.LayoutParams(0, dp(56), 1f),
-        )
+        val toolbar = pageToolbar(R.string.diagnostics) { finish() }
         root.addView(toolbar)
 
         val actions = LinearLayout(this).apply {
@@ -92,7 +67,7 @@ class DiagnosticsActivity : AppCompatActivity() {
         )
         root.addView(actions)
 
-        val scroll = ScrollView(this)
+        val scroll = android.widget.ScrollView(this)
         text = TextView(this).apply {
             textSize = 12f
             setTextColor(color(R.color.ink_secondary))
@@ -114,22 +89,30 @@ class DiagnosticsActivity : AppCompatActivity() {
     }
 
     private fun reload() {
-        val value = Diagnostics.read(this)
-        text.text = value.ifBlank { getString(R.string.diagnostics_empty) }
+        lifecycleScope.launch {
+            val value = withContext(Dispatchers.IO) { Diagnostics.read(this@DiagnosticsActivity) }
+            text.text = value.ifBlank { getString(R.string.diagnostics_empty) }
+        }
     }
 
     private fun copy() {
-        val clipboard = getSystemService(ClipboardManager::class.java)
-        clipboard.setPrimaryClip(ClipData.newPlainText(getString(R.string.diagnostics), Diagnostics.read(this)))
-        Toast.makeText(this, R.string.history_copied, Toast.LENGTH_SHORT).show()
+        lifecycleScope.launch {
+            val value = withContext(Dispatchers.IO) { Diagnostics.read(this@DiagnosticsActivity) }
+            val clipboard = getSystemService(ClipboardManager::class.java)
+            clipboard.setPrimaryClip(ClipData.newPlainText(getString(R.string.diagnostics), value))
+            Toast.makeText(this@DiagnosticsActivity, R.string.history_copied, Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun share() {
-        val intent = Intent(Intent.ACTION_SEND).apply {
-            type = "text/plain"
-            putExtra(Intent.EXTRA_TEXT, Diagnostics.read(this@DiagnosticsActivity))
+        lifecycleScope.launch {
+            val value = withContext(Dispatchers.IO) { Diagnostics.read(this@DiagnosticsActivity) }
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, value)
+            }
+            startActivity(Intent.createChooser(intent, getString(R.string.diagnostics_share)))
         }
-        startActivity(Intent.createChooser(intent, getString(R.string.diagnostics_share)))
     }
 
     private fun confirmClear() {

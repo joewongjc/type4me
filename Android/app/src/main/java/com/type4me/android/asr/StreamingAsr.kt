@@ -29,15 +29,28 @@ interface StreamingAsrSession {
     suspend fun cancel()
 }
 
+/** A recorded failure outranks a partial transcript, even when the text is non-empty. */
+internal fun sessionResult(text: String, failure: Throwable?): String {
+    if (failure != null) throw failure
+    return text
+}
+
+/** Surfaces a socket failure or premature close through onError and the stored failure. */
+internal fun reportSessionFailure(
+    onError: (Throwable) -> Unit,
+    error: AtomicReference<Throwable?>,
+    failure: Throwable,
+) {
+    if (error.compareAndSet(null, failure)) onError(failure)
+}
+
 object StreamingAsr {
     fun create(
         config: AsrConfig,
         onPartial: (String) -> Unit,
         onError: (Throwable) -> Unit,
     ): StreamingAsrSession? {
-        PortableStreamingA.create(config.providerId, onPartial, onError)?.let { return it }
-        PortableStreamingB.create(config.providerId, onPartial, onError)?.let { return it }
-        PortableStreamingC.create(config.providerId, onPartial, onError)?.let { return it }
+        StreamingAsrProviders.create(config.providerId, onPartial, onError)?.let { return it }
         return when (config.kind) {
             AsrKind.VOLCANO -> VolcSession(onPartial, onError)
             AsrKind.SONIOX -> SonioxSession(onPartial, onError)
@@ -81,6 +94,7 @@ internal class SonioxSession(
     private val confirmed = StringBuilder()
     private var partial = ""
     @Volatile private var sentEnd = false
+    private var receivedFinal = false
     private var socket: WebSocket? = null
 
     override suspend fun connect(config: AsrConfig, hotwords: List<String>) {
@@ -96,7 +110,7 @@ internal class SonioxSession(
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                if (sentEnd) {
+                if (sentEnd && receivedFinal) {
                     if (!finished.isCompleted) finished.complete(currentText())
                     return
                 }
@@ -106,13 +120,22 @@ internal class SonioxSession(
                 val failure = AsrException(
                     listOfNotNull(t.message, detail).joinToString(": ").ifBlank { "Soniox connection failed" },
                 )
-                error.compareAndSet(null, failure)
-                onError(failure)
+                reportSessionFailure(onError, error, failure)
                 if (!opening.isCompleted) opening.completeExceptionally(failure)
                 if (!finished.isCompleted) finished.complete(currentText())
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                if (!receivedFinal) {
+                    reportSessionFailure(
+                        onError,
+                        error,
+                        AsrException(
+                            "Soniox closed before the transcript finished ($code)" +
+                                if (reason.isBlank()) "" else ": $reason",
+                        ),
+                    )
+                }
                 if (!finished.isCompleted) finished.complete(currentText())
             }
         }
@@ -133,9 +156,7 @@ internal class SonioxSession(
         // socket (and its OkHttp connection) alive after teardown.
         socket?.cancel()
         socket = null
-        val failure = error.get()
-        if (text.isBlank() && failure != null) throw failure
-        return text
+        return sessionResult(text, error.get())
     }
 
     override suspend fun cancel() {
@@ -146,8 +167,7 @@ internal class SonioxSession(
 
     private fun handle(text: String) {
         val update = runCatching { SonioxProtocol.parse(text) }.getOrElse {
-            error.compareAndSet(null, it)
-            onError(it)
+            reportSessionFailure(onError, error, it)
             if (!finished.isCompleted) finished.complete(currentText())
             return
         }
@@ -159,6 +179,7 @@ internal class SonioxSession(
         }
         val current = currentText()
         onPartial(current)
+        if (update.finished && sentEnd) receivedFinal = true
         if (update.finished && !finished.isCompleted) finished.complete(current)
     }
 
@@ -178,6 +199,7 @@ internal class VolcSession(
     private val lock = Any()
     private var lastText = ""
     @Volatile private var sentEnd = false
+    private var receivedFinal = false
     private var socket: WebSocket? = null
 
     override suspend fun connect(config: AsrConfig, hotwords: List<String>) {
@@ -207,7 +229,7 @@ internal class VolcSession(
             override fun onMessage(webSocket: WebSocket, text: String) = Unit
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                if (sentEnd) {
+                if (sentEnd && receivedFinal) {
                     if (!finished.isCompleted) finished.complete(currentText())
                     return
                 }
@@ -217,13 +239,22 @@ internal class VolcSession(
                 val failure = AsrException(
                     listOfNotNull(t.message, detail).joinToString(": ").ifBlank { "Volcengine connection failed" },
                 )
-                error.compareAndSet(null, failure)
-                onError(failure)
+                reportSessionFailure(onError, error, failure)
                 if (!opening.isCompleted) opening.completeExceptionally(failure)
                 if (!finished.isCompleted) finished.complete(currentText())
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                if (!receivedFinal) {
+                    reportSessionFailure(
+                        onError,
+                        error,
+                        AsrException(
+                            "Volcengine closed before the transcript finished ($code)" +
+                                if (reason.isBlank()) "" else ": $reason",
+                        ),
+                    )
+                }
                 if (!finished.isCompleted) finished.complete(currentText())
             }
         }
@@ -244,9 +275,7 @@ internal class VolcSession(
         val text = withTimeoutOrNull(12_000) { finished.await() } ?: currentText()
         socket?.cancel()
         socket = null
-        val failure = error.get()
-        if (text.isBlank() && failure != null) throw failure
-        return text
+        return sessionResult(text, error.get())
     }
 
     override suspend fun cancel() {
@@ -258,19 +287,18 @@ internal class VolcSession(
     private fun handle(data: ByteArray, webSocket: WebSocket) {
         if (VolcProtocol.isError(data)) {
             val message = VolcProtocol.extractError(data)
-            if (!message.isNullOrBlank()) {
-                val failure = AsrException(message)
-                error.compareAndSet(null, failure)
-                onError(failure)
-            }
+            reportSessionFailure(
+                onError,
+                error,
+                AsrException(message?.takeIf { it.isNotBlank() } ?: "Volcengine recognition failed"),
+            )
             if (!finished.isCompleted) finished.complete(currentText())
             webSocket.close(1000, null)
             return
         }
 
         val response = runCatching { VolcProtocol.decode(data) }.getOrElse {
-            error.compareAndSet(null, it)
-            onError(it)
+            reportSessionFailure(onError, error, it)
             if (!finished.isCompleted) finished.complete(currentText())
             return
         }
@@ -279,6 +307,7 @@ internal class VolcSession(
         }
         val current = currentText()
         onPartial(current)
+        if (response.final && sentEnd) receivedFinal = true
         if (response.final && !finished.isCompleted) finished.complete(current)
     }
 

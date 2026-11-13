@@ -51,10 +51,7 @@ class SideKeyView @JvmOverloads constructor(
     }
 
     fun setContent(iconRes: Int, labelRes: Int) {
-        setContent(iconRes, context.getString(labelRes))
-    }
-
-    fun setContent(iconRes: Int, text: String) {
+        val text = context.getString(labelRes)
         icon.setImageResource(iconRes)
         label.text = text
         contentDescription = text

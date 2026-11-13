@@ -29,7 +29,7 @@ class ChatClientThinkingTest {
     }
 
     @Test
-    fun `switching thinking off omits the field`() = runBlocking {
+    fun `leaving thinking on omits the field`() = runBlocking {
         val server = MockWebServer()
         server.enqueue(json("""{"choices":[{"message":{"content":"OK"}}]}"""))
         try {

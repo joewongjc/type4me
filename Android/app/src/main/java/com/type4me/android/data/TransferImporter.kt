@@ -52,7 +52,8 @@ object TransferImporter {
         selection: ImportSelection = ImportSelection.all(payload),
     ): ImportResult {
         val asrEndpoints = payload.allAsrs.filter { it.provider in selection.asrs }
-        val importedAsrs = asrEndpoints.mapNotNull { asrConfig(it) }
+        val parsedAsrs = asrEndpoints.map { it to asrConfig(it) }
+        val importedAsrs = parsedAsrs.mapNotNull { (_, config) -> config }
         importedAsrs.forEach { (presetId, config) ->
             ConfigStore.saveAsr(context, presetId, config)
         }
@@ -86,9 +87,10 @@ object TransferImporter {
                     ?: imported.prompt,
                 onKeyboard = true,
                 translateTarget = incoming.targetLanguage ?: existing?.translateTarget,
-                punctuation = incoming.punctuation?.let {
-                    runCatching { ModePunctuation.valueOf(it) }.getOrNull()
-                } ?: existing?.punctuation ?: ModePunctuation.INHERIT,
+                punctuation = incoming.punctuation
+                    ?.let { raw -> punctuationMode(raw) ?: existing?.punctuation }
+                    ?: existing?.punctuation
+                    ?: ModePunctuation.INHERIT,
                 shortTextExemption = incoming.shortTextExemption
                     ?: existing?.shortTextExemption
                     ?: 0,
@@ -150,7 +152,7 @@ object TransferImporter {
             }
         }
 
-        val skippedAsr = asrEndpoints.filter { asrConfig(it) == null }.map { it.provider }
+        val skippedAsr = parsedAsrs.filter { (_, config) -> config == null }.map { it.first.provider }
         val skippedLlm = payload.allLlms
             .filter { it.provider in selection.llms }
             .filter { endpoint -> llms.none { it.first == endpoint.provider } }
@@ -166,6 +168,16 @@ object TransferImporter {
             skippedLlm = skippedLlm,
         )
     }
+
+    private fun punctuationMode(raw: String): ModePunctuation? =
+        runCatching { ModePunctuation.valueOf(raw) }.getOrNull() ?: when (raw) {
+            "inherit" -> ModePunctuation.INHERIT
+            "preserve" -> ModePunctuation.PRESERVE
+            "stripTrailing" -> ModePunctuation.STRIP_TRAILING
+            "questionsAndExclamationsOnly" -> ModePunctuation.QUESTIONS_AND_EXCLAMATIONS
+            "removeAll" -> ModePunctuation.REMOVE_ALL
+            else -> null
+        }
 
     private fun asrConfig(endpoint: TransferEndpoint): Pair<String, AsrConfig>? {
         val fields = endpoint.fields
@@ -252,11 +264,18 @@ object TransferImporter {
     }
 
     private fun customHttpConfig(fields: Map<String, String>): Pair<String, AsrConfig>? {
-        val url = fields["baseURL"].orEmpty().ifBlank { fields["url"].orEmpty() }
+        val url = fields["baseURL"].orEmpty()
+            .ifBlank { fields["url"].orEmpty() }
+            .ifBlank { fields["endpointURL"].orEmpty() }
         if (url.isBlank()) return null
-        val hasTemplate = !fields["bodyTemplate"].isNullOrBlank() ||
-            !fields["jsonTemplate"].isNullOrBlank() ||
-            !fields["headers"].isNullOrBlank()
+        val bodyTemplate = fields["bodyTemplate"].orEmpty()
+            .ifBlank { fields["jsonTemplate"].orEmpty() }
+        val customFields = fields.toMutableMap().apply {
+            if (get("bodyTemplate").isNullOrBlank() && bodyTemplate.isNotBlank()) {
+                put("bodyTemplate", bodyTemplate)
+            }
+        }
+        val hasTemplate = bodyTemplate.isNotBlank() || !fields["headers"].isNullOrBlank()
         if (!hasTemplate) {
             // An older OpenAI-compatible custom endpoint.
             return "custom" to AsrConfig(
@@ -273,7 +292,7 @@ object TransferImporter {
             baseUrl = url,
             model = fields["model"].orEmpty(),
             apiKey = fields["apiKey"].orEmpty(),
-            extra = fields,
+            extra = customFields,
         )
     }
 

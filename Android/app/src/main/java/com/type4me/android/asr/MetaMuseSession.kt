@@ -28,6 +28,7 @@ class MetaMuseSession(
     private var partial = ""
     private var lastEmitted = ""
     @Volatile private var sentEnd = false
+    private var receivedFinal = false
     private var socket: WebSocket? = null
 
     override suspend fun connect(config: AsrConfig, hotwords: List<String>) {
@@ -47,7 +48,7 @@ class MetaMuseSession(
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                if (sentEnd) {
+                if (sentEnd && receivedFinal) {
                     if (!finished.isCompleted) finished.complete(currentText())
                     return
                 }
@@ -58,14 +59,23 @@ class MetaMuseSession(
                     listOfNotNull(t.message, detail).joinToString(": ")
                         .ifBlank { "Meta Muse connection failed" },
                 )
-                error.compareAndSet(null, failure)
+                reportSessionFailure(onError, error, failure)
                 if (!opening.isCompleted) opening.completeExceptionally(failure)
                 if (!ready.isCompleted) ready.completeExceptionally(failure)
-                onError(failure)
                 if (!finished.isCompleted) finished.complete(currentText())
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                if (!receivedFinal) {
+                    reportSessionFailure(
+                        onError,
+                        error,
+                        AsrException(
+                            "Meta Muse closed before the transcript finished ($code)" +
+                                if (reason.isBlank()) "" else ": $reason",
+                        ),
+                    )
+                }
                 if (!finished.isCompleted) finished.complete(currentText())
             }
         }
@@ -94,9 +104,7 @@ class MetaMuseSession(
         val text = withTimeoutOrNull(12_000) { finished.await() } ?: currentText()
         socket?.cancel()
         socket = null
-        val failure = error.get()
-        if (text.isBlank() && failure != null) throw failure
-        return text
+        return sessionResult(text, error.get())
     }
 
     override suspend fun cancel() {
@@ -110,8 +118,7 @@ class MetaMuseSession(
         val event = runCatching {
             MetaMuseProtocol.parse(message)
         }.getOrElse { failure ->
-            error.compareAndSet(null, failure)
-            onError(failure)
+            reportSessionFailure(onError, error, failure)
             if (!ready.isCompleted) ready.completeExceptionally(failure)
             if (!finished.isCompleted) finished.complete(currentText())
             return
@@ -124,8 +131,7 @@ class MetaMuseSession(
 
             is MetaMuseProtocol.Event.Failed -> {
                 val failure = AsrException(event.message)
-                error.compareAndSet(null, failure)
-                onError(failure)
+                reportSessionFailure(onError, error, failure)
                 if (!ready.isCompleted) ready.completeExceptionally(failure)
                 if (!finished.isCompleted) finished.complete(currentText())
             }
@@ -135,6 +141,7 @@ class MetaMuseSession(
     }
 
     private fun applyTranscript(text: String, isFinal: Boolean) {
+        if (isFinal && sentEnd) receivedFinal = true
         synchronized(lock) {
             if (isFinal) {
                 if (text.isNotEmpty() && confirmed.lastOrNull() != text) confirmed += text

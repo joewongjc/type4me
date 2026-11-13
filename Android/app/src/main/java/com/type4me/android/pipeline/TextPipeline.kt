@@ -14,13 +14,14 @@ object TextPipeline {
      */
     fun applySnippets(text: String, snippets: List<Snippet>): String =
         snippets.fold(text) { result, snippet ->
-            val trigger = snippet.trigger.filterNot { it.isWhitespace() }
+            val trigger = codePoints(snippet.trigger)
+                .filterNot { Character.isWhitespace(it.codePointAt(0)) }
             if (trigger.isEmpty()) return@fold result
             val pattern = buildString {
                 append("(?<![A-Za-z0-9])")
-                trigger.forEachIndexed { index, char ->
+                trigger.forEachIndexed { index, codePoint ->
                     if (index > 0) append("\\s*")
-                    append(Regex.escape(char.toString()))
+                    append(Regex.escape(codePoint))
                 }
                 append("(?![A-Za-z0-9])")
             }
@@ -29,6 +30,15 @@ object TextPipeline {
                     .replace(result) { snippet.replacement }
             }.getOrDefault(result)
         }
+
+    private fun codePoints(text: String): List<String> = buildList {
+        var index = 0
+        while (index < text.length) {
+            val codePoint = text.codePointAt(index)
+            add(String(Character.toChars(codePoint)))
+            index += Character.charCount(codePoint)
+        }
+    }
 
     fun clean(text: String): String = text.trim()
 
@@ -57,7 +67,9 @@ object TextPipeline {
     ): String {
         var result = text
         if (cornerQuotes) {
-            result = result.replace('‘', '『').replace('’', '』')
+            result = result
+                .replace('‘', '『').replace('’', '』')
+                .replace('“', '「').replace('”', '」')
         }
         when (spacing) {
             CjkSpacing.PANGU -> result = spaceBetweenHanAndLatin(result)
@@ -68,8 +80,8 @@ object TextPipeline {
             ModePunctuation.INHERIT -> applyPunctuation(result, punctuation)
             ModePunctuation.PRESERVE -> result
             ModePunctuation.STRIP_TRAILING -> result.replace(TRAILING_PUNCTUATION, "")
-            ModePunctuation.QUESTIONS_AND_EXCLAMATIONS -> result.replace(KEEP_QUESTIONS, "")
-            ModePunctuation.REMOVE_ALL -> result.replace(ALL_PUNCTUATION, "")
+            ModePunctuation.QUESTIONS_AND_EXCLAMATIONS -> removeSymbols(result, keepQuestions = true)
+            ModePunctuation.REMOVE_ALL -> removeSymbols(result, keepQuestions = false)
         }
         return result.trim()
     }
@@ -81,8 +93,22 @@ object TextPipeline {
             TrailingPunctuation.ALL -> text.replace(TRAILING_PUNCTUATION, "")
         }
 
-    private val KEEP_QUESTIONS = Regex("[，。、；：,.;:]+\\s*$")
-    private val ALL_PUNCTUATION = Regex("[\\p{P}\\p{S}]")
+    private fun removeSymbols(text: String, keepQuestions: Boolean): String {
+        val out = StringBuilder(text.length)
+        var index = 0
+        while (index < text.length) {
+            val codePoint = text.codePointAt(index)
+            val symbol = PUNCTUATION_OR_SYMBOL.matches(String(Character.toChars(codePoint)))
+            if (!symbol || (keepQuestions && codePoint in QUESTION_OR_EXCLAMATION)) {
+                out.appendCodePoint(codePoint)
+            }
+            index += Character.charCount(codePoint)
+        }
+        return out.toString()
+    }
+
+    private val PUNCTUATION_OR_SYMBOL = Regex("[\\p{P}\\p{S}]")
+    private val QUESTION_OR_EXCLAMATION = setOf('!'.code, '?'.code, '！'.code, '？'.code)
 
     private val TRAILING_PERIOD = Regex("[。.]+\\s*$")
     private val TRAILING_PUNCTUATION = Regex("[，。！？；：、,.!?;:]+\\s*$")

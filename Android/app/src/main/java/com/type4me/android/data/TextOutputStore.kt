@@ -16,7 +16,6 @@ enum class TrailingPunctuation {
 
 /** Text cleanup shared by every dictation, applied just before insertion. */
 object TextOutputStore {
-    private const val PREFS = "type4me_prefs"
     private const val KEY_SPACING = "text.spacing"
     private const val KEY_PUNCTUATION = "text.punctuation"
     private const val KEY_CORNER_QUOTES = "text.cornerQuotes"
@@ -46,6 +45,5 @@ object TextOutputStore {
         prefs(context).edit().putBoolean(KEY_CORNER_QUOTES, enabled).apply()
     }
 
-    private fun prefs(context: Context) =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    private fun prefs(context: Context) = AppPrefs.get(context)
 }

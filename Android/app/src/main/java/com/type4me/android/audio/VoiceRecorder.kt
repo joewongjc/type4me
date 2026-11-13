@@ -5,10 +5,12 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.Process
 import androidx.core.content.ContextCompat
+import com.type4me.android.data.AppPrefs
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.sqrt
@@ -20,13 +22,22 @@ import kotlin.math.sqrt
  */
 class VoiceRecorder(
     private val context: Context,
-    private val maxDurationMs: Long = 60_000,
     private val onLevel: (Float) -> Unit,
     private val onLimitReached: () -> Unit,
     private val onAudio: (ByteArray) -> Unit = {},
 ) {
+    private val audioManager by lazy { context.getSystemService(AudioManager::class.java) }
+    private val prefs by lazy { AppPrefs.get(context) }
+    private var previousMusicVolume: Int? = null
+
+    init {
+        // If the IME process was killed while ducked, put the volume back.
+        restoreMediaVolume()
+    }
+
     private val reading = AtomicBoolean(false)
     private val output = ByteArrayOutputStream()
+    private val outputLock = Any()
     private var record: AudioRecord? = null
     private var thread: Thread? = null
     private var startedAt = 0L
@@ -77,8 +88,9 @@ class VoiceRecorder(
             return false
         }
 
+        duckMediaVolume()
         record = audioRecord
-        output.reset()
+        synchronized(outputLock) { output.reset() }
         stopped = false
         reading.set(true)
         startedAt = System.currentTimeMillis()
@@ -90,6 +102,7 @@ class VoiceRecorder(
             reading.set(false)
             audioRecord.release()
             record = null
+            restoreMediaVolume()
             return false
         }
 
@@ -102,13 +115,14 @@ class VoiceRecorder(
                 while (reading.get()) {
                     val read = audioRecord.read(buffer, 0, buffer.size)
                     if (read > 0) {
-                        output.write(buffer, 0, read)
-                        onAudio(buffer.copyOf(read))
-                        onLevel(levelOf(buffer, read))
+                        val chunk = buffer.copyOf(read)
+                        synchronized(outputLock) { output.write(chunk, 0, chunk.size) }
+                        onAudio(chunk)
+                        onLevel(levelOf(chunk, chunk.size))
                     } else if (read < 0) {
                         break
                     }
-                    if (System.currentTimeMillis() - startedAt >= maxDurationMs) {
+                    if (System.currentTimeMillis() - startedAt >= MAX_DURATION_MS) {
                         onLimitReached()
                         break
                     }
@@ -130,15 +144,51 @@ class VoiceRecorder(
         if (stopped) return ByteArray(0)
         stopped = true
         reading.set(false)
-        // Stop first so a read blocked on the microphone returns, then join
-        // before reading the buffer: nothing may write after this point.
+        // Stop first so a read blocked on the microphone returns. A timed-out
+        // join leaves the writer alive, so the buffer stays synchronized.
         record?.let { runCatching { it.stop() } }
-        thread?.join(800)
+        val writer = thread
+        writer?.join(800)
+        if (writer?.isAlive == true) writer.interrupt()
         thread = null
         record?.release()
         record = null
+        restoreMediaVolume()
         onLevel(0f)
-        return output.toByteArray()
+        return synchronized(outputLock) { output.toByteArray() }
+    }
+
+    /** Silences media without pausing playback. */
+    private fun duckMediaVolume() {
+        val manager = audioManager ?: return
+        val max = runCatching { manager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) }
+            .getOrNull() ?: return
+        val saved = runCatching { manager.getStreamVolume(AudioManager.STREAM_MUSIC) }
+            .getOrNull() ?: return
+        val ducked = MediaVolumeDucking.duckedLevel(saved, max) ?: return
+        previousMusicVolume = saved
+        // Persist the value in case the service is killed before stop() runs.
+        prefs.edit()
+            .putInt(PREF_SAVED_MUSIC_VOLUME, saved)
+            .putBoolean(PREF_DUCKING_MUSIC, true)
+            .apply()
+        runCatching { manager.setStreamVolume(AudioManager.STREAM_MUSIC, ducked, 0) }
+    }
+
+    private fun restoreMediaVolume() {
+        val saved = previousMusicVolume
+            ?: prefs.takeIf { it.getBoolean(PREF_DUCKING_MUSIC, false) }
+                ?.getInt(PREF_SAVED_MUSIC_VOLUME, -1)
+                ?.takeIf { it >= 0 }
+            ?: return
+        previousMusicVolume = null
+        prefs.edit()
+            .remove(PREF_SAVED_MUSIC_VOLUME)
+            .remove(PREF_DUCKING_MUSIC)
+            .apply()
+        runCatching {
+            audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, saved, 0)
+        }
     }
 
     private fun levelOf(buffer: ByteArray, length: Int): Float {
@@ -158,5 +208,8 @@ class VoiceRecorder(
 
     companion object {
         const val SAMPLE_RATE = 16_000
+        private const val MAX_DURATION_MS = 60_000L
+        private const val PREF_SAVED_MUSIC_VOLUME = "audio.savedMusicVolume"
+        private const val PREF_DUCKING_MUSIC = "audio.duckingMusic"
     }
 }

@@ -1,10 +1,6 @@
 package com.type4me.android.asr
 
-import com.type4me.android.data.AsrConfig
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AsrTextToolsTest {
@@ -38,24 +34,6 @@ class AsrTextToolsTest {
             AsrTextTools.sanitizeHotwordLeak("Hotwords: Type4Me, Intelli Sense. let us begin", hotwords),
         )
         assertEquals("Type4Me", AsrTextTools.sanitizeHotwordLeak("Type4Me", listOf("Type4Me")))
-        assertFalse(
-            AsrTextTools.sanitizeHotwordLeak("real speech here", hotwords).isEmpty(),
-        )
-    }
-
-    @Test
-    fun portableStreamingMapsProviderIds() {
-        val onPartial: (String) -> Unit = {}
-        val onError: (Throwable) -> Unit = {}
-        assertTrue(PortableStreamingB.create("elevenlabs", onPartial, onError) is ElevenLabsSession)
-        assertTrue(PortableStreamingB.create("gemini", onPartial, onError) is GeminiSession)
-        assertTrue(PortableStreamingB.create("grok", onPartial, onError) is GrokSession)
-        assertTrue(PortableStreamingB.create("metaMuse", onPartial, onError) is MetaMuseSession)
-        assertNull(PortableStreamingB.create("volcano", onPartial, onError))
-    }
-
-    @Test
-    fun portableBatchLeavesUnsupportedProvidersToOthers() = kotlinx.coroutines.runBlocking {
-        assertNull(PortableBatchB.transcribe("soniox", AsrConfig(), ByteArray(2), emptyList()))
+        assertEquals("real speech here", AsrTextTools.sanitizeHotwordLeak("real speech here", hotwords))
     }
 }

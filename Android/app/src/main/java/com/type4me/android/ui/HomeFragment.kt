@@ -29,6 +29,7 @@ import com.type4me.android.databinding.ItemHomeHistoryBinding
 import com.type4me.android.pipeline.Mode
 import com.type4me.android.pipeline.ModeDefinition
 import com.type4me.android.pipeline.ModeLibrary
+import java.lang.ref.WeakReference
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -60,13 +61,29 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
     private var reloadJob: Job? = null
     private var chipSignature: List<Pair<String, String>> = emptyList()
 
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        savedInstanceState?.let { state ->
+            query = state.getString(KEY_QUERY).orEmpty()
+            dateRange = runCatching {
+                DateRange.valueOf(state.getString(KEY_DATE_RANGE).orEmpty())
+            }.getOrDefault(DateRange.TODAY)
+            state.getString(KEY_MODE_FILTER)?.let { savedId ->
+                modeFilter = ModeLibrary.byId(requireContext().applicationContext, savedId)
+                    ?: runCatching { Mode.valueOf(savedId) }.getOrNull()
+                        ?.let { ModeDefinition.builtIn(it) }
+            }
+        }
+    }
+
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        val b = FragmentHomeBinding.bind(view)
-        binding = b
-        b.root.isFocusableInTouchMode = true
-        b.root.requestFocus()
-        b.searchInput.clearFocus()
+        val binding = FragmentHomeBinding.bind(view)
+        this.binding = binding
+        binding.root.isFocusableInTouchMode = true
+        binding.root.requestFocus()
+        binding.searchInput.setText(query)
+        binding.clearSearch.isVisible = query.isNotEmpty()
         view.background = DotGridDrawable(requireContext())
         ViewCompat.setOnApplyWindowInsetsListener(view) { target, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
@@ -74,13 +91,13 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             insets
         }
         ViewCompat.requestApplyInsets(view)
-        b.importScan.setOnClickListener {
+        binding.importScan.setOnClickListener {
             (activity as? MainActivity)?.openScanner()
         }
-        b.clearSearch.setOnClickListener { b.searchInput.setText("") }
-        b.searchInput.doAfterTextChanged { editable ->
+        binding.clearSearch.setOnClickListener { binding.searchInput.setText("") }
+        binding.searchInput.doAfterTextChanged { editable ->
             query = editable?.toString().orEmpty()
-            b.clearSearch.isVisible = query.isNotEmpty()
+            binding.clearSearch.isVisible = query.isNotEmpty()
             renderHistory()
         }
         buildDateChips()
@@ -90,6 +107,13 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
     override fun onResume() {
         super.onResume()
         reload()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putString(KEY_QUERY, query)
+        outState.putString(KEY_DATE_RANGE, dateRange.name)
+        outState.putString(KEY_MODE_FILTER, modeFilter?.id)
     }
 
     override fun onDestroyView() {
@@ -102,26 +126,26 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
     }
 
     fun reload() {
-        val b = binding ?: return
+        val binding = binding ?: return
         val context = requireContext().applicationContext
         reloadJob?.cancel()
         reloadJob = viewLifecycleOwner.lifecycleScope.launch {
             val loaded = withContext(Dispatchers.IO) { HistoryStore.all(context) }
-            if (binding == null) return@launch
+            if (this@HomeFragment.binding !== binding) return@launch
             entries = loaded
             expanded.retainAll(entries.mapTo(HashSet()) { it.id })
             syncModeChips()
             updateStats()
-            b.importCard.isVisible = !ConfigStore.hasAsrConfig(requireContext())
-            b.emptyCard.isVisible = entries.isEmpty()
-            b.historyArea.isVisible = entries.isNotEmpty()
+            binding.importCard.isVisible = !ConfigStore.hasAsrConfig(requireContext())
+            binding.emptyCard.isVisible = entries.isEmpty()
+            binding.historyArea.isVisible = entries.isNotEmpty()
             renderHistory()
         }
     }
 
     /** Statistics deliberately use every record, regardless of list filters. */
     private fun updateStats() {
-        val b = binding ?: return
+        val binding = binding ?: return
         val todayStart = Calendar.getInstance().apply {
             set(Calendar.HOUR_OF_DAY, 0)
             set(Calendar.MINUTE, 0)
@@ -133,10 +157,10 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         val minutes = (totalChars * (1.0 / 40 - 1.0 / 200)).roundToInt()
         val number = NumberFormat.getIntegerInstance()
 
-        b.statTodayValue.text = getString(R.string.chars_format, number.format(todayChars))
-        b.statTotalValue.text = getString(R.string.chars_format, number.format(totalChars))
-        b.statCountValue.text = getString(R.string.times_format, number.format(entries.size))
-        b.statSavedValue.text = when {
+        binding.statTodayValue.text = getString(R.string.chars_format, number.format(todayChars))
+        binding.statTotalValue.text = getString(R.string.chars_format, number.format(totalChars))
+        binding.statCountValue.text = getString(R.string.times_format, number.format(entries.size))
+        binding.statSavedValue.text = when {
             minutes < 60 -> getString(R.string.minutes_format, minutes)
             minutes % 60 == 0 -> getString(R.string.hours_format, minutes / 60)
             else -> getString(R.string.hours_minutes_format, minutes / 60, minutes % 60)
@@ -144,7 +168,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
     }
 
     private fun buildDateChips() {
-        val b = binding ?: return
+        val binding = binding ?: return
         DateRange.entries.forEach { range ->
             val chip = historyChip(dateLabel(range)) {
                 if (dateRange == range) return@historyChip
@@ -152,7 +176,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                 updateDateChips()
                 renderHistory()
             }
-            b.dateChips.addView(chip)
+            binding.dateChips.addView(chip)
             dateChips[range] = chip
         }
         updateDateChips()
@@ -240,7 +264,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
     }
 
     private fun renderHistory() {
-        val b = binding ?: return
+        val binding = binding ?: return
         val needle = query.trim()
         val cutoff = rangeCutoff()
         val filtered = entries.filter { entry ->
@@ -250,9 +274,9 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                     entry.finalText.contains(needle, ignoreCase = true) ||
                     entry.rawText.contains(needle, ignoreCase = true))
         }
-        b.dayList.removeAllViews()
-        b.noMatches.isVisible = filtered.isEmpty()
-        b.dayList.isVisible = filtered.isNotEmpty()
+        binding.dayList.removeAllViews()
+        binding.noMatches.isVisible = filtered.isEmpty()
+        binding.dayList.isVisible = filtered.isNotEmpty()
 
         var day = ""
         var card: LinearLayout? = null
@@ -284,7 +308,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
 
     private fun addDay(title: String): LinearLayout {
         val context = requireContext()
-        val b = binding ?: return LinearLayout(context)
+        val binding = binding ?: return LinearLayout(context)
         val heading = TextView(context).apply {
             text = title
             textSize = 13f
@@ -292,7 +316,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             setTextColor(context.color(R.color.ink_tertiary))
             setPadding(context.dp(4), context.dp(14), 0, context.dp(2))
         }
-        b.dayList.addView(heading)
+        binding.dayList.addView(heading)
 
         val card = MaterialCardView(context).apply {
             radius = context.dp(20).toFloat()
@@ -313,7 +337,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                 android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
             ),
         )
-        b.dayList.addView(card)
+        binding.dayList.addView(card)
         return inner
     }
 
@@ -363,9 +387,12 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             Toast.makeText(context, R.string.history_copied, Toast.LENGTH_SHORT).show()
             row.copy.setImageResource(R.drawable.ic_check)
             row.copy.imageTintList = ColorStateList.valueOf(context.color(R.color.success))
+            val icon = WeakReference(row.copy)
             row.copy.postDelayed({
-                row.copy.setImageResource(R.drawable.ic_copy)
-                row.copy.imageTintList = ColorStateList.valueOf(context.color(R.color.ink_secondary))
+                icon.get()?.takeIf { it.isAttachedToWindow }?.let { view ->
+                    view.setImageResource(R.drawable.ic_copy)
+                    view.imageTintList = ColorStateList.valueOf(context.color(R.color.ink_secondary))
+                }
             }, 1_500)
         }
         row.delete.setOnClickListener {
@@ -396,5 +423,11 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             if (sameYear) "MMM d, EEE" else "MMM d, yyyy, EEE"
         }
         return SimpleDateFormat(pattern, locale).format(Date(millis))
+    }
+
+    private companion object {
+        const val KEY_QUERY = "home.query"
+        const val KEY_MODE_FILTER = "home.modeFilter"
+        const val KEY_DATE_RANGE = "home.dateRange"
     }
 }

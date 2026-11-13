@@ -4,11 +4,9 @@ import android.os.Bundle
 import android.view.View
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
-import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.doOnLayout
@@ -18,6 +16,9 @@ import androidx.core.widget.doAfterTextChanged
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.type4me.android.ui.applyNavBarTopInset
+import com.type4me.android.ui.formText
+import com.type4me.android.ui.shortError
+import com.type4me.android.ui.showFormResult
 import com.type4me.android.data.ConfigStore
 import com.type4me.android.data.LlmConfig
 import com.type4me.android.data.Presets
@@ -26,6 +27,8 @@ import com.type4me.android.llm.ChatClient
 import com.type4me.android.llm.ThinkingField
 import com.type4me.android.llm.ThinkingPolicy
 import com.type4me.android.llm.ThinkingUnavailable
+import java.lang.ref.WeakReference
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 class TextModelActivity : AppCompatActivity() {
@@ -120,8 +123,8 @@ class TextModelActivity : AppCompatActivity() {
     }
 
     private fun saveLlm() {
-        val baseUrl = text(binding.llmBaseUrl)
-        val model = text(binding.llmModel)
+        val baseUrl = formText(binding.llmBaseUrl)
+        val model = formText(binding.llmModel)
         if (baseUrl.isEmpty() && model.isEmpty()) {
             ConfigStore.deleteLlmProfile(this, selectedPresetId())
             Toast.makeText(this, R.string.llm_cleared, Toast.LENGTH_SHORT).show()
@@ -132,32 +135,45 @@ class TextModelActivity : AppCompatActivity() {
             Toast.makeText(this, R.string.asr_required, Toast.LENGTH_SHORT).show()
             return
         }
-        ConfigStore.saveLlm(
-            this,
-            selectedPresetId(),
-            currentConfig(),
-        )
+        val saved = runCatching {
+            ConfigStore.saveLlm(
+                this,
+                selectedPresetId(),
+                currentConfig(),
+            )
+        }.isSuccess
+        if (!saved) {
+            Toast.makeText(this, R.string.save_failed, Toast.LENGTH_SHORT).show()
+            return
+        }
         Toast.makeText(this, R.string.saved, Toast.LENGTH_SHORT).show()
         finish()
     }
 
     private fun testLlm() {
-        val baseUrl = text(binding.llmBaseUrl)
-        val model = text(binding.llmModel)
+        val baseUrl = formText(binding.llmBaseUrl)
+        val model = formText(binding.llmModel)
         if (baseUrl.isEmpty() || model.isEmpty()) {
             Toast.makeText(this, R.string.asr_required, Toast.LENGTH_SHORT).show()
             return
         }
         val config = currentConfig()
-        binding.testLlm.isEnabled = false
+        val testButton = binding.testLlm
+        testButton.isEnabled = false
+        val buttonRef = WeakReference(testButton)
         showResult(getString(R.string.testing), error = false)
         lifecycleScope.launch {
-            runCatching { chatClient.test(config) }
-                .onSuccess { ms -> showResult(getString(R.string.test_ok, ms), error = false) }
-                .onFailure { error ->
-                    showResult(getString(R.string.test_failed, short(error)), error = true)
-                }
-            binding.testLlm.isEnabled = true
+            try {
+                val outcome = runCatching { chatClient.test(config) }
+                if (!isActive) return@launch
+                outcome
+                    .onSuccess { ms -> showResult(getString(R.string.test_ok, ms), error = false) }
+                    .onFailure { error ->
+                        showResult(getString(R.string.test_failed, shortError(error)), error = true)
+                    }
+            } finally {
+                buttonRef.get()?.takeIf { it.isAttachedToWindow }?.isEnabled = true
+            }
         }
     }
 
@@ -176,7 +192,17 @@ class TextModelActivity : AppCompatActivity() {
             .setNegativeButton(R.string.cancel, null)
             .setPositiveButton(R.string.remove) { _, _ ->
                 ConfigStore.deleteLlmProfile(this, presetId)
-                finish()
+                if (active) {
+                    finish()
+                } else {
+                    val preset = Presets.llmById(presetId)
+                    binding.llmBaseUrl.setText(preset.baseUrl)
+                    binding.llmModel.setText(preset.model)
+                    binding.llmApiKey.setText("")
+                    binding.llmThinking.isChecked = ThinkingPolicy.defaultDisabled(preset.id)
+                    updateThinkingAvailability()
+                    binding.deleteLlm.isVisible = false
+                }
             }
             .show()
     }
@@ -187,9 +213,9 @@ class TextModelActivity : AppCompatActivity() {
     private fun currentConfig(): LlmConfig {
         val preset = selectedPreset()
         return LlmConfig(
-            baseUrl = text(binding.llmBaseUrl),
-            model = text(binding.llmModel),
-            apiKey = text(binding.llmApiKey),
+            baseUrl = formText(binding.llmBaseUrl),
+            model = formText(binding.llmModel),
+            apiKey = formText(binding.llmApiKey),
             providerId = preset.id,
             thinkingOff = preset.thinkingOff,
             reasoningSplit = preset.reasoningSplit,
@@ -202,7 +228,7 @@ class TextModelActivity : AppCompatActivity() {
 
     private fun updateThinkingAvailability() {
         val preset = selectedPreset()
-        val supported = ThinkingPolicy.supports(preset.id, text(binding.llmModel))
+        val supported = ThinkingPolicy.supports(preset.id, formText(binding.llmModel))
         binding.llmThinking.isEnabled = supported
         if (!supported) binding.llmThinking.isChecked = false
         updateThinkingHint()
@@ -210,7 +236,7 @@ class TextModelActivity : AppCompatActivity() {
 
     private fun updateThinkingHint() {
         val preset = selectedPreset()
-        val model = text(binding.llmModel)
+        val model = formText(binding.llmModel)
         val reason = ThinkingPolicy.unavailableReason(preset.id, model)
         if (reason != null) {
             binding.llmThinkingHint.setText(
@@ -246,16 +272,6 @@ class TextModelActivity : AppCompatActivity() {
         }
     }
 
-    private fun text(view: TextView): String = view.text?.toString()?.trim().orEmpty()
-
-    private fun showResult(message: String, error: Boolean) {
-        binding.llmResult.visibility = View.VISIBLE
-        binding.llmResult.text = message
-        binding.llmResult.setTextColor(
-            ContextCompat.getColor(this, if (error) R.color.brand_red else R.color.success),
-        )
-    }
-
-    private fun short(error: Throwable): String =
-        (error.message ?: error.javaClass.simpleName).take(160)
+    private fun showResult(message: String, error: Boolean) =
+        showFormResult(binding.llmResult, message, error)
 }

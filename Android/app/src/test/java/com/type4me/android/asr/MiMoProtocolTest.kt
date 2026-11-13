@@ -92,7 +92,18 @@ class MiMoProtocolTest {
 
     @Test
     fun bodyIsJsonSerializable() {
-        val body = MiMoProtocol.buildBody(AsrConfig(providerId = "mimo", apiKey = "k"), ByteArray(2))
-        assertTrue(JSONObject(body.toString()).has("messages"))
+        val body = MiMoProtocol.buildBody(
+            AsrConfig(providerId = "mimo", apiKey = "k", extra = mapOf("language" to "en")),
+            byteArrayOf(1, 2),
+        )
+        val parsed = JSONObject(body.toString())
+        assertEquals("mimo-v2.5-asr", parsed.getString("model"))
+        assertTrue(parsed.getBoolean("stream"))
+        assertEquals("en", parsed.getJSONObject("asr_options").getString("language"))
+        val message = parsed.getJSONArray("messages").getJSONObject(0)
+        assertEquals("user", message.getString("role"))
+        val audio = message.getJSONArray("content").getJSONObject(0)
+        assertEquals("input_audio", audio.getString("type"))
+        assertEquals("data:audio/wav;base64,AQI=", audio.getJSONObject("input_audio").getString("data"))
     }
 }

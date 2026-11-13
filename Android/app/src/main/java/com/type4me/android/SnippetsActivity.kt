@@ -13,6 +13,7 @@ import androidx.core.view.isVisible
 import androidx.core.view.updatePadding
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.type4me.android.ui.applyNavBarTopInset
+import com.type4me.android.ui.dp
 import com.type4me.android.data.Snippet
 import com.type4me.android.data.VocabularyStore
 import com.type4me.android.databinding.ActivitySnippetsBinding
@@ -120,6 +121,4 @@ class SnippetsActivity : AppCompatActivity() {
             ).apply { marginStart = dp(16) },
         )
     }
-
-    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 }

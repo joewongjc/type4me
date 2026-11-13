@@ -1,3 +1,3 @@
-# Keep JSON parsing reflective access out of release builds for now.
+# Silence missing optional OkHttp/Okio platform classes during release shrinking.
 -dontwarn okhttp3.**
 -dontwarn okio.**

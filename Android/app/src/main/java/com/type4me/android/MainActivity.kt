@@ -30,11 +30,12 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private var tab = TAB_HOME
-    private var askedForMicrophone = false
+    private var microphoneRequestPending = false
 
     private val requestMicrophone = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) {
+        microphoneRequestPending = false
         refreshScreens()
     }
 
@@ -93,19 +94,30 @@ class MainActivity : AppCompatActivity() {
 
     private var consentShown = false
 
+    private fun consentPreferences() =
+        getSharedPreferences(PREFS, MODE_PRIVATE)
+
     private fun showConsentIfNeeded() {
         if (consentShown) return
         if (!com.type4me.android.data.ConfigStore.hasAsrConfig(this)) return
         if (com.type4me.android.data.AppSettings.aiConsent(this)) return
+        if (consentPreferences().getBoolean(KEY_CONSENT_DECLINED, false)) return
         consentShown = true
         com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
             .setTitle(R.string.ai_consent_title)
             .setMessage(R.string.ai_consent_body)
-            .setNegativeButton(R.string.cancel) { _, _ -> }
+            .setNegativeButton(R.string.ai_consent_decline) { _, _ ->
+                consentPreferences().edit().putBoolean(KEY_CONSENT_DECLINED, true).apply()
+            }
             .setPositiveButton(R.string.ai_consent_agree) { _, _ ->
                 com.type4me.android.data.AppSettings.setAiConsent(this, true)
+                consentPreferences().edit().remove(KEY_CONSENT_DECLINED).apply()
                 refreshScreens()
             }
+            .setOnCancelListener {
+                consentPreferences().edit().putBoolean(KEY_CONSENT_DECLINED, true).apply()
+            }
+            .setOnDismissListener { consentShown = false }
             .show()
     }
 
@@ -203,13 +215,13 @@ class MainActivity : AppCompatActivity() {
         intent.removeExtra(EXTRA_OPEN_SETTINGS)
         intent.removeExtra(EXTRA_REQUEST_MICROPHONE)
         if (openSettings || wantsMicrophone) selectTab(TAB_SETTINGS)
-        if (!wantsMicrophone || askedForMicrophone) return
-        askedForMicrophone = true
+        if (!wantsMicrophone || microphoneRequestPending) return
         val granted = ContextCompat.checkSelfPermission(
             this,
             Manifest.permission.RECORD_AUDIO,
         ) == PackageManager.PERMISSION_GRANTED
         if (!granted) {
+            microphoneRequestPending = true
             binding.root.post { requestMicrophone.launch(Manifest.permission.RECORD_AUDIO) }
         }
     }
@@ -250,6 +262,8 @@ class MainActivity : AppCompatActivity() {
         private const val TAB_HOME = 0
         private const val TAB_SETTINGS = 1
         private const val KEY_TAB = "tab"
+        private const val PREFS = "type4me_prefs"
+        private const val KEY_CONSENT_DECLINED = "ai.consent.declined"
         private const val TAG_HOME = "home"
         private const val TAG_SETTINGS = "settings"
         private const val MAX_DEEP_LINK_TEXT_CHARS = 512 * 1024

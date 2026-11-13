@@ -30,6 +30,7 @@ class AzureSession(
 
     @Volatile
     private var awaitingCompletion = false
+    private var receivedFinal = false
     private var socket: WebSocket? = null
 
     override suspend fun connect(config: AsrConfig, hotwords: List<String>) {
@@ -50,6 +51,10 @@ class AzureSession(
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                if (receivedFinal) {
+                    if (!finished.isCompleted) finished.complete(currentText())
+                    return
+                }
                 val status = response?.code
                 val detail = response?.let {
                     runCatching { it.body?.string() }.getOrNull()?.take(200)
@@ -72,6 +77,16 @@ class AzureSession(
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                if (!receivedFinal) {
+                    reportSessionFailure(
+                        onError,
+                        error,
+                        AsrException(
+                            "Microsoft Azure closed before the transcript finished ($code)" +
+                                if (reason.isBlank()) "" else ": $reason",
+                        ),
+                    )
+                }
                 if (!finished.isCompleted) finished.complete(currentText())
             }
         }
@@ -94,16 +109,14 @@ class AzureSession(
             // short is already done, and some servers keep the socket open.
             socket?.cancel()
             socket = null
-            return current.trim()
+            return sessionResult(current.trim(), error.get())
         }
         awaitingCompletion = true
         socket?.send(AzureProtocol.COMMIT_MESSAGE)
         val text = withTimeoutOrNull(15_000) { finished.await() } ?: current
         socket?.cancel()
         socket = null
-        val failure = error.get()
-        if (text.isBlank() && failure != null) throw failure
-        return text.trim()
+        return sessionResult(text.trim(), error.get())
     }
 
     override suspend fun cancel() {
@@ -151,6 +164,7 @@ class AzureSession(
     }
 
     private fun finishWith(text: String) {
+        receivedFinal = true
         awaitingCompletion = false
         synchronized(lock) {
             confirmed = text.trim()
@@ -163,8 +177,7 @@ class AzureSession(
     private fun currentText(): String = synchronized(lock) { (confirmed + intermediate).trim() }
 
     private fun fail(failure: Throwable) {
-        error.compareAndSet(null, failure)
-        onError(failure)
+        reportSessionFailure(onError, error, failure)
         if (!opening.isCompleted) opening.completeExceptionally(failure)
         awaitingCompletion = false
         if (!finished.isCompleted) finished.complete(currentText())

@@ -4,7 +4,6 @@ import android.content.Context
 
 /** Small preferences that only affect how the keyboard and app behave. */
 object AppSettings {
-    private const val PREFS = "type4me_prefs"
     private const val KEY_HAPTICS = "key.haptics"
     private const val KEY_SOUNDS = "key.sounds"
     private const val KEY_CLIPBOARD = "keyboard.clipboard"
@@ -74,6 +73,5 @@ object AppSettings {
         prefs(context).edit().putBoolean(KEY_ONBOARDED, done).apply()
     }
 
-    private fun prefs(context: Context) =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    private fun prefs(context: Context) = AppPrefs.get(context)
 }

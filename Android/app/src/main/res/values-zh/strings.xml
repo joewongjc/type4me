@@ -34,6 +34,8 @@
     <string name="api_key">API Key</string>
     <string name="save">保存</string>
     <string name="saved">已保存</string>
+    <string name="save_failed">无法保存加密凭据，请重试。</string>
+    <string name="custom_http_warning">该自定义接口使用 http://，语音和密钥不会经过 TLS 加密，连接也可能被系统拦截；建议改用 https://。</string>
     <string name="testing">测试中…</string>
     <string name="test_ok">连接成功（%1$d ms）</string>
     <string name="test_failed">连接失败：%1$s</string>
@@ -49,7 +51,9 @@
     <string name="mode_new">新建模式</string>
     <string name="mode_edit">编辑</string>
     <string name="move_up">上移</string>
+    <string name="move_up_arrow">↑</string>
     <string name="move_down">下移</string>
+    <string name="move_down_arrow">↓</string>
     <string name="mode_name">名称</string>
     <string name="mode_name_hint">例如：邮件、周报</string>
     <string name="mode_prompt">Prompt</string>
@@ -71,14 +75,6 @@
     <string name="mode_punctuation_all">去掉全部标点</string>
     <string name="mode_short_off">关闭</string>
     <string name="mode_short_under">%1$d 字以下</string>
-    <string name="mode_builtin">内置</string>
-    <string name="mode_custom_badge">自定义</string>
-    <string name="mode_prompt_default">恢复默认 Prompt</string>
-    <string name="translate_target">翻译目标语言</string>
-    <string name="target_en">英语</string>
-    <string name="target_zh">简体中文</string>
-    <string name="target_ja">日语</string>
-    <string name="target_ko">韩语</string>
 
     <string name="asr_auth_mode">鉴权方式</string>
     <string name="asr_auth_api_key">API Key（新版控制台）</string>
@@ -136,7 +132,6 @@
     <string name="kb_gesture_hint">← 取消 · 松手出字 · 锁定 →</string>
     <string name="kb_gesture_send_hint">← 取消 · 松手出字 · 上滑发送</string>
     <string name="kb_locked">已锁定 · 点麦克风或完成结束</string>
-    <string name="kb_cancel_hint">← 取消</string>
     <string name="kb_cancel_release">松开取消</string>
     <string name="kb_lock_release">松开锁定</string>
     <string name="kb_send_release">松开并发送</string>
@@ -185,6 +180,11 @@
     <string name="scan_close">关闭</string>
     <string name="import_title">从 Mac 同步</string>
     <string name="import_from">来自 %1$s。勾选要同步到这台手机的内容。</string>
+    <string name="import_source_unknown">其他设备</string>
+    <string name="import_unknown_provider">未知服务商（%1$s）</string>
+    <string name="import_summary_asr">识别服务：%1$s</string>
+    <string name="import_summary_llm">处理模型：%1$s</string>
+    <string name="import_summary_separator"> · </string>
     <string name="import_speech">识别服务</string>
     <string name="import_models">处理模型</string>
     <string name="import_modes_section">模式</string>
@@ -199,10 +199,8 @@
     <string name="import_failed">导入失败，请重新扫码。</string>
     <string name="import_hotwords">热词 %1$d 个</string>
     <string name="import_snippets">片段 %1$d 个</string>
-    <string name="import_modes">模式 %1$d 个</string>
     <string name="import_skipped_asr">未同步识别服务：%1$s</string>
     <string name="import_skipped_llm">未同步文本模型：%1$s</string>
-    <string name="import_nothing">没有可导入的内容</string>
     <string name="tab_home">首页</string>
     <string name="tab_settings">设置</string>
     <string name="settings_title">设置</string>
@@ -231,6 +229,7 @@
     <string name="ai_consent_title">发送到第三方 AI 服务</string>
     <string name="ai_consent_body">Type4Me 没有自己的服务器。听写时，你配置的识别服务和文本模型会收到语音和文字，由它们按各自的隐私政策处理。历史记录只存在这台手机上。</string>
     <string name="ai_consent_agree">同意</string>
+    <string name="ai_consent_decline">暂不</string>
     <string name="ai_consent_revoke">撤回授权</string>
     <string name="section_erase">清除数据</string>
     <string name="speech_service">识别服务</string>
@@ -330,7 +329,6 @@
     <string name="keyboard_modes_min">键盘上至少要留一个模式。</string>
     <string name="asr_summary_format">%1$s · %2$s</string>
     <string name="back">返回</string>
-    <string name="mode_summary_translate_generic">自动识别口述语言，翻译为下面选择的语言</string>
     <string name="test_connection">测试连接</string>
     <string name="service_footer">可以直接在这里填写，也可以从 Mac 导入。每项里都能测试连接。</string>
     <string name="vocabulary_footer">热词帮识别服务认准专有名词，片段替换把说出的触发词换成固定内容。</string>

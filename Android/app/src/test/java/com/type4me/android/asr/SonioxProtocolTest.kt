@@ -4,6 +4,7 @@ import com.type4me.android.data.AsrConfig
 import com.type4me.android.data.AsrKind
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -38,7 +39,7 @@ class SonioxProtocolTest {
         val update = SonioxProtocol.parse(body)
         assertEquals("你好，", update.finalized)
         assertEquals("世界", update.partial)
-        assertTrue(!update.finished)
+        assertFalse(update.finished)
     }
 
     @Test

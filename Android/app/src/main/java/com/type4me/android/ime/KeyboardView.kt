@@ -48,7 +48,7 @@ class KeyboardView @JvmOverloads constructor(
 
     interface Listener {
         fun onMicDown()
-        fun onMicMove(cancelArmed: Boolean, lockArmed: Boolean, sendArmed: Boolean)
+        fun onMicMove(cancelArmed: Boolean)
         fun onMicUp(
             cancelArmed: Boolean,
             lockArmed: Boolean,
@@ -145,7 +145,6 @@ class KeyboardView @JvmOverloads constructor(
     private var spacePressed = false
     private var spaceTracking = false
     private var spaceRepeated = false
-    private var repeatingSpace = false
     private var spaceRepeatBeganAt = 0L
 
     private val deleteStart = object : Runnable {
@@ -171,7 +170,6 @@ class KeyboardView @JvmOverloads constructor(
         override fun run() {
             if (!spacePressed || spaceTracking) return
             spaceRepeated = true
-            repeatingSpace = true
             spaceRepeatBeganAt = SystemClock.uptimeMillis()
             listener?.onSpace()
             repeatHandler.postDelayed(spaceRepeat, repeatInterval(spaceRepeatBeganAt))
@@ -180,7 +178,7 @@ class KeyboardView @JvmOverloads constructor(
 
     private val spaceRepeat = object : Runnable {
         override fun run() {
-            if (!repeatingSpace || !spacePressed || spaceTracking) return
+            if (!spaceRepeated || !spacePressed || spaceTracking) return
             listener?.onSpace()
             repeatHandler.postDelayed(this, repeatInterval(spaceRepeatBeganAt))
         }
@@ -378,7 +376,7 @@ class KeyboardView @JvmOverloads constructor(
         micGlyph.visibility = View.VISIBLE
         micGlyph.start()
         micProgress.visibility = View.GONE
-        setMicAppearance(recording = true)
+        setMicRecordingAppearance()
         updateMicDescription()
 
         applyRecordingSideKeys()
@@ -466,8 +464,8 @@ class KeyboardView @JvmOverloads constructor(
         cancelArmed = false
         lockArmed = false
         sendArmed = false
-        // Every deletion moves the selection, which lands here. Cancelling the
-        // repeat from this path stops a held delete after its first character.
+        // Every deletion moves the selection, which lands here. Do not cancel
+        // the repeat: applyIdleSideKeys() keeps the pressed delete key intact.
         restoreMic()
         timerText.visibility = View.GONE
         setPartial("")
@@ -1117,7 +1115,7 @@ class KeyboardView @JvmOverloads constructor(
                     if (cancel != cancelArmed || lock != lockArmed || send != sendArmed) {
                         tapFeedback()
                         setHoldZones(cancel, lock, send)
-                        listener?.onMicMove(cancel, lock, send)
+                        listener?.onMicMove(cancel)
                     }
                     true
                 }
@@ -1168,11 +1166,12 @@ class KeyboardView @JvmOverloads constructor(
         }
         bar.addView(globeKey, LayoutParams(dp(44), LayoutParams.MATCH_PARENT))
 
-        punctuationKey = textKey(punctuationLabel(), function = false) {
-            listener?.onPunctuation(
-                if (AppSettings.fullWidthPunctuation(context)) "，" else ",",
-            )
-        }
+        punctuationKey = styledTextKey(
+            TextView(context),
+            punctuationLabel(),
+            function = false,
+            onClick = null,
+        )
         punctuationKey.contentDescription = context.getString(R.string.key_punctuation)
         punctuationKey.setOnTouchListener(punctuationTouch())
         bar.addView(punctuationKey, keyParams(1.0f))
@@ -1181,7 +1180,8 @@ class KeyboardView @JvmOverloads constructor(
             CenterGlyphTextView(context),
             spaceLabel,
             function = false,
-        ) { listener?.onSpace() }
+            onClick = null,
+        )
         spaceKey.contentDescription = context.getString(R.string.key_space_trackpad)
         var spaceDownX = 0f
         var lastX = 0f
@@ -1192,13 +1192,10 @@ class KeyboardView @JvmOverloads constructor(
                     spacePressed = true
                     spaceTracking = false
                     spaceRepeated = false
-                    repeatingSpace = false
                     spaceDownX = event.rawX
                     lastX = spaceDownX
                     pendingTravel = 0f
-                    repeatHandler.removeCallbacks(spaceStart)
-                    repeatHandler.removeCallbacks(spaceRepeat)
-                    repeatHandler.postDelayed(spaceStart, KEY_REPEAT_DELAY_MS)
+                    startRepeat(spaceStart, spaceRepeat)
                     tapFeedback()
                 }
 
@@ -1210,7 +1207,6 @@ class KeyboardView @JvmOverloads constructor(
                         pendingTravel = 0f
                         repeatHandler.removeCallbacks(spaceStart)
                         repeatHandler.removeCallbacks(spaceRepeat)
-                        repeatingSpace = false
                         spaceKey.text = null
                         spaceKey.showGlyph(
                             R.drawable.ic_cursor_move,
@@ -1236,15 +1232,9 @@ class KeyboardView @JvmOverloads constructor(
                 }
 
                 MotionEvent.ACTION_UP -> {
-                    repeatHandler.removeCallbacks(spaceStart)
-                    repeatHandler.removeCallbacks(spaceRepeat)
                     val wasTracking = spaceTracking
                     val wasRepeated = spaceRepeated
-                    spacePressed = false
-                    spaceTracking = false
-                    spaceRepeated = false
-                    repeatingSpace = false
-                    restoreSpaceLabel()
+                    cancelSpaceRepeat()
                     if (!wasTracking && !wasRepeated) listener?.onSpace()
                 }
 
@@ -1357,7 +1347,7 @@ class KeyboardView @JvmOverloads constructor(
         view: T,
         label: String,
         function: Boolean,
-        onClick: () -> Unit,
+        onClick: (() -> Unit)?,
     ): T = view.apply {
         text = label
         textSize = 16f
@@ -1373,12 +1363,12 @@ class KeyboardView @JvmOverloads constructor(
         elevation = dp(2).toFloat()
         isClickable = true
         isFocusable = true
-        setOnClickListener { onClick() }
+        onClick?.let { action -> setOnClickListener { action() } }
     }
 
-    private fun keyParams(weight: Float, first: Boolean = false): LayoutParams =
+    private fun keyParams(weight: Float): LayoutParams =
         LayoutParams(0, LayoutParams.MATCH_PARENT, weight).apply {
-            if (!first) marginStart = dp(6)
+            marginStart = dp(6)
         }
 
     // MARK: - Side keys
@@ -1460,8 +1450,7 @@ class KeyboardView @JvmOverloads constructor(
                     deleteArmed = false
                     deleteRepeated = false
                     deleteDownY = event.rawY
-                    repeatHandler.removeCallbacks(deleteStart)
-                    repeatHandler.postDelayed(deleteStart, KEY_REPEAT_DELAY_MS)
+                    startRepeat(deleteStart, repeatDelete)
                     tapFeedback()
                 }
 
@@ -1502,6 +1491,12 @@ class KeyboardView @JvmOverloads constructor(
             true
         }
 
+    private fun startRepeat(start: Runnable, repeat: Runnable) {
+        repeatHandler.removeCallbacks(start)
+        repeatHandler.removeCallbacks(repeat)
+        repeatHandler.postDelayed(start, KEY_REPEAT_DELAY_MS)
+    }
+
     private fun cancelDeleteRepeat() {
         repeatingDelete = false
         deleteArmed = false
@@ -1512,7 +1507,6 @@ class KeyboardView @JvmOverloads constructor(
     }
 
     private fun cancelSpaceRepeat() {
-        repeatingSpace = false
         spacePressed = false
         spaceTracking = false
         spaceRepeated = false
@@ -1611,17 +1605,14 @@ class KeyboardView @JvmOverloads constructor(
         sendArmed = false
     }
 
-    private fun setMicAppearance(recording: Boolean) {
+    private fun setMicRecordingAppearance() {
         // Keep the disc mounted and use a complete palette swap so crossing a
         // gesture zone can never leave the control half-painted.
         micCircle.visibility = View.VISIBLE
-        micCircle.setBackgroundResource(
-            if (recording) R.drawable.mic_circle_recording else R.drawable.mic_circle,
-        )
+        micCircle.setBackgroundResource(R.drawable.mic_circle_recording)
         micGlyph.visibility = View.VISIBLE
-        micGlyph.iconTint =
-            color(if (recording) R.color.mic_record_icon else R.color.mic_icon)
-        if (recording) micGlyph.start() else micGlyph.stop()
+        micGlyph.iconTint = color(R.color.mic_record_icon)
+        micGlyph.start()
         micProgress.visibility = View.GONE
         updateMicLayerOrder()
     }

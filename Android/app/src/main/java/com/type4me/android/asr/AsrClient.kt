@@ -1,6 +1,5 @@
 package com.type4me.android.asr
 
-import com.type4me.android.audio.WavEncoder
 import com.type4me.android.data.AsrConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -54,17 +53,10 @@ class OpenAITranscriptionClient(
         client.newCall(request).execute().use { response ->
             val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
-                throw AsrException(errorMessage(response.code, body))
+                throw AsrException(AsrHttp.errorMessage(response.code, body))
             }
             parseText(body)
         }
-    }
-
-    /** Uploads a second of silence. A 2xx response means URL, key and model are usable. */
-    suspend fun test(config: AsrConfig): Long = withContext(Dispatchers.IO) {
-        val started = System.currentTimeMillis()
-        transcribe(config, WavEncoder.encode(ByteArray(32_000)))
-        System.currentTimeMillis() - started
     }
 
     private fun endpoint(baseUrl: String): String {
@@ -85,18 +77,6 @@ class OpenAITranscriptionClient(
         // A valid empty transcript is the service saying it heard nothing;
         // the caller has a clearer message for that than the raw JSON.
         return text.trim()
-    }
-
-    private fun errorMessage(code: Int, body: String): String {
-        val json = runCatching { JSONObject(body) }.getOrNull()
-        val detail = json?.optJSONObject("error")?.optString("message")?.takeIf { it.isNotBlank() }
-            ?: json?.optString("message")?.takeIf { it.isNotBlank() }
-            ?: json?.optString("detail")?.takeIf { it.isNotBlank() }
-            ?: body.take(160).takeIf { it.isNotBlank() }
-        return buildString {
-            if (code > 0) append("HTTP ").append(code) else append("Unexpected response")
-            if (detail != null) append(": ").append(detail)
-        }
     }
 
     companion object {

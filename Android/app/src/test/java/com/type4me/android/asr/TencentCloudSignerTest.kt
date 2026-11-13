@@ -1,6 +1,7 @@
 package com.type4me.android.asr
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
 
@@ -78,7 +79,7 @@ class TencentCloudSignerTest {
             "secret",
             1_700_000_000L + 86_400 * 2,
         )
-        assertEquals(false, first.headers["Authorization"] == later.headers["Authorization"])
+        assertNotEquals(first.headers["Authorization"], later.headers["Authorization"])
     }
 
     @Test

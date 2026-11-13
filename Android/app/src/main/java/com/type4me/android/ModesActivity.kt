@@ -3,7 +3,6 @@ package com.type4me.android
 import android.content.Intent
 import android.os.Bundle
 import android.view.Gravity
-import android.view.View
 import android.widget.CheckBox
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -19,6 +18,7 @@ import com.type4me.android.ui.applyNavBarTopInset
 import com.type4me.android.pipeline.ModeLibrary
 import com.type4me.android.ui.color
 import com.type4me.android.ui.dp
+import com.type4me.android.ui.pageToolbar
 
 /** Settings › Modes: reorder, show/hide and edit every mode, including custom ones. */
 class ModesActivity : AppCompatActivity() {
@@ -34,36 +34,7 @@ class ModesActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(color(R.color.screen_bg))
         }
-        val toolbar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(4), 0, dp(12), 0)
-        }
-        toolbar.addView(
-            TextView(this).apply {
-                text = "‹"
-                textSize = 30f
-                gravity = Gravity.CENTER
-                setTextColor(color(R.color.ink))
-                setPadding(dp(12), 0, dp(12), 0)
-                isClickable = true
-                contentDescription = getString(R.string.back)
-                setOnClickListener { finish() }
-            },
-            LinearLayout.LayoutParams(dp(48), dp(56)),
-        )
-        toolbar.addView(
-            TextView(this).apply {
-                text = getString(R.string.modes_title)
-                textSize = 18f
-                setTypeface(typeface, android.graphics.Typeface.BOLD)
-                setTextColor(color(R.color.ink))
-                gravity = android.view.Gravity.CENTER_VERTICAL
-                maxLines = 1
-                ellipsize = android.text.TextUtils.TruncateAt.END
-            },
-            LinearLayout.LayoutParams(0, dp(56), 1f),
-        )
+        val toolbar = pageToolbar(R.string.modes_title) { finish() }
         val scroll = android.widget.ScrollView(this)
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -148,13 +119,13 @@ class ModesActivity : AppCompatActivity() {
             }
             top.addView(check, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
             top.addView(
-                moveButton("↑", R.string.move_up, index > 0) {
+                moveButton(getString(R.string.move_up_arrow), R.string.move_up, index > 0) {
                     ModeLibrary.move(this, index, index - 1)
                     render()
                 },
             )
             top.addView(
-                moveButton("↓", R.string.move_down, index < modes.lastIndex) {
+                moveButton(getString(R.string.move_down_arrow), R.string.move_down, index < modes.lastIndex) {
                     ModeLibrary.move(this, index, index + 1)
                     render()
                 },

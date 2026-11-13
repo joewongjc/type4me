@@ -1,7 +1,6 @@
 package com.type4me.android.asr
 
 import com.type4me.android.data.AsrConfig
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import org.json.JSONObject
 
 /**
@@ -142,15 +141,5 @@ object DeepgramProtocol {
         val path = if (hostEnd >= 0) withoutQuery.substring(hostEnd) else ""
         if (path.isNotEmpty() && path != "/v1/listen") return base
         return "$authority/v2/listen$query"
-    }
-
-    private fun httpForm(url: String): okhttp3.HttpUrl? {
-        val trimmed = url.trim()
-        val http = when {
-            trimmed.startsWith("wss://", ignoreCase = true) -> "https://" + trimmed.substring(6)
-            trimmed.startsWith("ws://", ignoreCase = true) -> "http://" + trimmed.substring(5)
-            else -> trimmed
-        }
-        return http.toHttpUrlOrNull()
     }
 }

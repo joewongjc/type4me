@@ -11,7 +11,6 @@ object SonioxProtocol {
         val finalized: String,
         val partial: String,
         val finished: Boolean,
-        val error: String?,
     )
 
     fun startMessage(config: AsrConfig, hotwords: List<String>): String {
@@ -61,7 +60,6 @@ object SonioxProtocol {
             finalized = finalized.toString(),
             partial = partial.toString(),
             finished = json.optBoolean("finished", false),
-            error = null,
         )
     }
 }

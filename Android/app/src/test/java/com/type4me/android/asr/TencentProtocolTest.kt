@@ -15,7 +15,6 @@ class TencentProtocolTest {
         )!!
         assertEquals(0, message.code)
         assertEquals("success", message.message)
-        assertEquals("v1", message.voiceId)
         assertFalse(message.final)
         assertEquals(1, message.updates.size)
         assertEquals(TencentProtocol.SentenceUpdate(3, "你好", true), message.updates[0])

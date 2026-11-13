@@ -4,12 +4,10 @@ import android.os.Bundle
 import android.view.View
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
-import android.widget.Spinner
-import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
+import androidx.core.widget.doAfterTextChanged
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.doOnLayout
@@ -18,6 +16,9 @@ import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.type4me.android.ui.applyNavBarTopInset
+import com.type4me.android.ui.formText
+import com.type4me.android.ui.shortError
+import com.type4me.android.ui.showFormResult
 import com.type4me.android.asr.BatchAsr
 import com.type4me.android.asr.StreamingAsr
 import com.type4me.android.data.AsrConfig
@@ -26,6 +27,8 @@ import com.type4me.android.data.AsrPreset
 import com.type4me.android.data.ConfigStore
 import com.type4me.android.data.Presets
 import com.type4me.android.databinding.ActivitySpeechServiceBinding
+import java.lang.ref.WeakReference
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 class SpeechServiceActivity : AppCompatActivity() {
@@ -39,8 +42,8 @@ class SpeechServiceActivity : AppCompatActivity() {
     private val sensitivities = listOf(-0.5, -0.3, 0.0, 0.3, 0.5)
 
     private companion object {
-        /** Shown instead of a saved secret; a line with this value keeps the stored key. */
-        const val SECRET_MASK = "••••"
+        /** Also treated as "keep the stored value" by ConfigStore when saving. */
+        const val SECRET_MASK = "********"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -54,8 +57,10 @@ class SpeechServiceActivity : AppCompatActivity() {
         binding.saveAsr.setOnClickListener { saveAsr() }
         binding.testAsr.setOnClickListener { testAsr() }
         binding.deleteAsr.setOnClickListener { confirmDelete() }
+        binding.asrBaseUrl.doAfterTextChanged { updateHttpWarning() }
         setupSpinners()
         loadConfig()
+        updateHttpWarning()
         // A Spinner can deliver a queued selection callback on first layout,
         // which would overwrite the saved values.
         binding.root.doOnLayout { attachPresetListeners() }
@@ -156,6 +161,7 @@ class SpeechServiceActivity : AppCompatActivity() {
                 val saved = ConfigStore.asrProfile(this@SpeechServiceActivity, preset.id)
                 if (saved != null) fillFromConfig(saved) else applyAsrPreset(preset)
                 binding.deleteAsr.isVisible = saved != null
+                updateHttpWarning()
             }
 
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
@@ -272,9 +278,19 @@ class SpeechServiceActivity : AppCompatActivity() {
             return
         }
         val presetId = selectedPresetId()
-        ConfigStore.saveAsr(this, presetId, config)
+        val saved = runCatching { ConfigStore.saveAsr(this, presetId, config) }.isSuccess
+        if (!saved) {
+            Toast.makeText(this, R.string.save_failed, Toast.LENGTH_SHORT).show()
+            return
+        }
         Toast.makeText(this, R.string.saved, Toast.LENGTH_SHORT).show()
         finish()
+    }
+
+    private fun updateHttpWarning() {
+        val custom = selectedPresetId() in setOf("custom", "customhttp")
+        val insecure = formText(binding.asrBaseUrl).startsWith("http://", ignoreCase = true)
+        binding.asrHttpWarning.isVisible = custom && insecure && binding.asrBaseUrlLayout.isVisible
     }
 
     private fun testAsr() {
@@ -283,19 +299,26 @@ class SpeechServiceActivity : AppCompatActivity() {
             Toast.makeText(this, R.string.asr_incomplete, Toast.LENGTH_SHORT).show()
             return
         }
-        binding.testAsr.isEnabled = false
+        val testButton = binding.testAsr
+        testButton.isEnabled = false
+        val buttonRef = WeakReference(testButton)
         showResult(getString(R.string.testing), error = false)
         lifecycleScope.launch {
-            runCatching {
-                if (config.isStreaming) StreamingAsr.test(config) else BatchAsr.test(config)
+            try {
+                val outcome = runCatching {
+                    if (config.isStreaming) StreamingAsr.test(config) else BatchAsr.test(config)
+                }
+                if (!isActive) return@launch
+                outcome
+                    .onSuccess { ms ->
+                        showResult(getString(R.string.test_ok, ms), error = false)
+                    }
+                    .onFailure { error ->
+                        showResult(getString(R.string.test_failed, shortError(error)), error = true)
+                    }
+            } finally {
+                buttonRef.get()?.takeIf { it.isAttachedToWindow }?.isEnabled = true
             }
-                .onSuccess { ms ->
-                    showResult(getString(R.string.test_ok, ms), error = false)
-                }
-                .onFailure { error ->
-                    showResult(getString(R.string.test_failed, short(error)), error = true)
-                }
-            binding.testAsr.isEnabled = true
         }
     }
 
@@ -327,18 +350,18 @@ class SpeechServiceActivity : AppCompatActivity() {
     private fun currentAsr(): AsrConfig = when (asrKind) {
         AsrKind.OPENAI -> AsrConfig(
             kind = AsrKind.OPENAI,
-            baseUrl = text(binding.asrBaseUrl),
-            model = text(binding.asrModel),
-            apiKey = text(binding.asrApiKey),
+            baseUrl = formText(binding.asrBaseUrl),
+            model = formText(binding.asrModel),
+            apiKey = formText(binding.asrApiKey),
         )
 
         AsrKind.VOLCANO -> {
             val legacy = binding.volcAuthMode.selectedItemPosition == 1
             AsrConfig(
                 kind = AsrKind.VOLCANO,
-                apiKey = if (legacy) "" else text(binding.asrApiKey),
-                appKey = if (legacy) text(binding.volcAppKey) else "",
-                accessKey = if (legacy) text(binding.volcAccessKey) else "",
+                apiKey = if (legacy) "" else formText(binding.asrApiKey),
+                appKey = if (legacy) formText(binding.volcAppKey) else "",
+                accessKey = if (legacy) formText(binding.volcAccessKey) else "",
                 resourceId = if (binding.volcResource.selectedItemPosition == 1) {
                     Presets.VOLC_RESOURCE_BIG
                 } else {
@@ -350,7 +373,7 @@ class SpeechServiceActivity : AppCompatActivity() {
         AsrKind.SONIOX -> AsrConfig(
             kind = AsrKind.SONIOX,
             model = "stt-rt-v5",
-            apiKey = text(binding.asrApiKey),
+            apiKey = formText(binding.asrApiKey),
             endpointSensitivity = sensitivities[
                 binding.sonioxSensitivity.selectedItemPosition.coerceIn(0, sensitivities.lastIndex)
             ],
@@ -363,19 +386,18 @@ class SpeechServiceActivity : AppCompatActivity() {
             AsrConfig(
                 kind = if (batch) preset.batchKind ?: preset.kind else preset.kind,
                 providerId = if (presetId == "customhttp") "custom" else presetId,
-                baseUrl = text(binding.asrBaseUrl).ifBlank {
+                baseUrl = formText(binding.asrBaseUrl).ifBlank {
                     if (batch) preset.batchBaseUrl.ifBlank { preset.baseUrl } else preset.baseUrl
                 },
-                model = text(binding.asrModel).ifBlank {
+                model = formText(binding.asrModel).ifBlank {
                     if (batch) preset.batchModel else preset.model
                 },
-                apiKey = text(binding.asrApiKey),
+                apiKey = formText(binding.asrApiKey),
                 // Secret extras are shown masked, so keep their saved values and
                 // let anything typed in the editor win.
                 extra = preset.extra +
                     savedSecretExtras +
-                    ConfigStore.secretExtras(this, presetId) +
-                    parseExtra(text(binding.asrExtra)),
+                    parseExtra(formText(binding.asrExtra)),
             )
         }
     }
@@ -433,7 +455,6 @@ class SpeechServiceActivity : AppCompatActivity() {
             key to value
         }
         .filterKeys { it.isNotEmpty() }
-        .filterValues { it != SECRET_MASK }
 
     private fun sensitivityIndex(value: Double): Int {
         val index = sensitivities.indexOfFirst { kotlin.math.abs(it - value) < 0.001 }
@@ -461,16 +482,6 @@ class SpeechServiceActivity : AppCompatActivity() {
         override fun onNothingSelected(parent: AdapterView<*>?) = Unit
     }
 
-    private fun text(view: TextView): String = view.text?.toString()?.trim().orEmpty()
-
-    private fun showResult(message: String, error: Boolean) {
-        binding.asrResult.visibility = View.VISIBLE
-        binding.asrResult.text = message
-        binding.asrResult.setTextColor(
-            ContextCompat.getColor(this, if (error) R.color.brand_red else R.color.success),
-        )
-    }
-
-    private fun short(error: Throwable): String =
-        (error.message ?: error.javaClass.simpleName).take(160)
+    private fun showResult(message: String, error: Boolean) =
+        showFormResult(binding.asrResult, message, error)
 }

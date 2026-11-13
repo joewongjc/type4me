@@ -24,11 +24,6 @@ enum class Mode {
     )
 
     val usesTextModel: Boolean get() = this != QUICK
-
-    companion object {
-        /** Legacy order, used when migrating the old fixed mode list. */
-        val keyboardOrder: List<Mode> = listOf(INTELLI_SENSE, QUICK, TRANSLATE, AGENT, POLISH)
-    }
 }
 
 enum class ModePunctuation {

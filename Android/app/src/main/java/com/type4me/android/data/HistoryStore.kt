@@ -44,11 +44,6 @@ object HistoryStore {
         }.getOrDefault(emptyList())
     }
 
-    fun add(context: Context, entry: HistoryEntry) {
-        val entries = (listOf(entry) + all(context)).take(LIMIT)
-        write(context, entries)
-    }
-
     /**
      * Records a dictation with the next id, reading and rewriting the list once.
      * Returns the assigned id.

@@ -16,7 +16,7 @@ object TranslationValidator {
         if (text.isEmpty()) return Result(true)
         if (text.contains("```") || text.contains("<think>")) return Result(true)
         if (looksLikeExplanation(text)) return Result(true)
-        val letters = text.count { it.isLetter() }
+        val letters = countLetters(text)
         if (letters == 0) return Result(false)
         // Latin-script targets only need Latin output; CJK, Arabic,
         // Devanagari, Thai and Cyrillic have an unmistakable script.
@@ -28,39 +28,51 @@ object TranslationValidator {
     }
 
     private fun scriptRatio(text: String, target: TranslateTarget): Double {
-        val letters = text.count { it.isLetter() }.coerceAtLeast(1)
-        val matching = text.count { char ->
-            when (target) {
-                TranslateTarget.SIMPLIFIED_CHINESE,
-                TranslateTarget.TRADITIONAL_CHINESE,
-                -> Character.UnicodeScript.of(char.code) == Character.UnicodeScript.HAN
-
-                TranslateTarget.JAPANESE -> {
-                    val script = Character.UnicodeScript.of(char.code)
-                    script == Character.UnicodeScript.HIRAGANA ||
-                        script == Character.UnicodeScript.KATAKANA ||
-                        script == Character.UnicodeScript.HAN
-                }
-
-                TranslateTarget.KOREAN ->
-                    Character.UnicodeScript.of(char.code) == Character.UnicodeScript.HANGUL
-
-                TranslateTarget.ARABIC ->
-                    Character.UnicodeScript.of(char.code) == Character.UnicodeScript.ARABIC
-
-                TranslateTarget.HINDI ->
-                    Character.UnicodeScript.of(char.code) == Character.UnicodeScript.DEVANAGARI
-
-                TranslateTarget.THAI ->
-                    Character.UnicodeScript.of(char.code) == Character.UnicodeScript.THAI
-
-                TranslateTarget.RUSSIAN ->
-                    Character.UnicodeScript.of(char.code) == Character.UnicodeScript.CYRILLIC
-
-                else -> Character.UnicodeScript.of(char.code) == Character.UnicodeScript.LATIN
-            }
+        val letters = countLetters(text).coerceAtLeast(1)
+        var matching = 0
+        forEachCodePoint(text) { codePoint ->
+            if (!Character.isLetter(codePoint)) return@forEachCodePoint
+            if (matchesTargetScript(codePoint, target)) matching++
         }
         return matching.toDouble() / letters
+    }
+
+    private fun countLetters(text: String): Int {
+        var count = 0
+        forEachCodePoint(text) { codePoint ->
+            if (Character.isLetter(codePoint)) count++
+        }
+        return count
+    }
+
+    private fun forEachCodePoint(text: String, action: (Int) -> Unit) {
+        var index = 0
+        while (index < text.length) {
+            val codePoint = text.codePointAt(index)
+            action(codePoint)
+            index += Character.charCount(codePoint)
+        }
+    }
+
+    private fun matchesTargetScript(codePoint: Int, target: TranslateTarget): Boolean {
+        val script = Character.UnicodeScript.of(codePoint)
+        return when (target) {
+            TranslateTarget.SIMPLIFIED_CHINESE,
+            TranslateTarget.TRADITIONAL_CHINESE,
+            -> script == Character.UnicodeScript.HAN
+
+            TranslateTarget.JAPANESE ->
+                script == Character.UnicodeScript.HIRAGANA ||
+                    script == Character.UnicodeScript.KATAKANA ||
+                    script == Character.UnicodeScript.HAN
+
+            TranslateTarget.KOREAN -> script == Character.UnicodeScript.HANGUL
+            TranslateTarget.ARABIC -> script == Character.UnicodeScript.ARABIC
+            TranslateTarget.HINDI -> script == Character.UnicodeScript.DEVANAGARI
+            TranslateTarget.THAI -> script == Character.UnicodeScript.THAI
+            TranslateTarget.RUSSIAN -> script == Character.UnicodeScript.CYRILLIC
+            else -> script == Character.UnicodeScript.LATIN
+        }
     }
 
     private fun targetScriptDiffers(target: TranslateTarget, raw: String): Boolean =

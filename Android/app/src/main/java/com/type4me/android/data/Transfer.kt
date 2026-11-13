@@ -188,57 +188,44 @@ object TransferCodec {
         return TransferEndpoint(json.optString("p"), fields)
     }
 
-    private fun JSONArray?.toEndpoints(): List<TransferEndpoint> {
-        if (this == null) return emptyList()
+    private fun <T> JSONArray?.mapObjects(transform: (JSONObject) -> T?): List<T>? {
+        val array = this ?: return null
         return buildList {
-            for (index in 0 until length()) {
-                optJSONObject(index)?.let { add(endpoint(it)) }
+            for (index in 0 until array.length()) {
+                val item = array.optJSONObject(index) ?: continue
+                transform(item)?.let(::add)
             }
         }
     }
 
-    private fun JSONArray?.toModes(): List<TransferMode> {
-        if (this == null) return emptyList()
-        return buildList {
-            for (index in 0 until length()) {
-                val item = optJSONObject(index) ?: continue
-                val kind = item.optString("k")
-                if (kind.isEmpty()) continue
-                add(
-                    TransferMode(
-                        id = item.optString("i"),
-                        kind = kind,
-                        name = item.optStringOrNull("n"),
-                        prompt = item.optStringOrNull("p"),
-                        targetLanguage = item.optStringOrNull("g"),
-                        punctuation = item.optStringOrNull("u"),
-                        shortTextExemption = item.optInt("x", 0).takeIf { it > 0 },
-                    ),
-                )
-            }
+    private fun JSONArray?.toEndpoints(): List<TransferEndpoint> =
+        mapObjects { endpoint(it) }.orEmpty()
+
+    private fun JSONArray?.toModes(): List<TransferMode> =
+        mapObjects { item ->
+            val kind = item.optString("k")
+            if (kind.isEmpty()) return@mapObjects null
+            TransferMode(
+                id = item.optString("i"),
+                kind = kind,
+                name = item.optStringOrNull("n"),
+                prompt = item.optStringOrNull("p"),
+                targetLanguage = item.optStringOrNull("g"),
+                punctuation = item.optStringOrNull("u"),
+                shortTextExemption = item.optInt("x", 0).takeIf { it > 0 },
+            )
+        }.orEmpty()
+
+    private fun JSONArray?.toStrings(): List<String>? = this?.let { array ->
+        (0 until array.length()).mapNotNull {
+            array.optString(it).trim().takeIf(String::isNotEmpty)
         }
     }
 
-    private fun JSONArray?.toStrings(): List<String>? {
-        if (this == null) return null
-        return buildList {
-            for (index in 0 until length()) {
-                val value = optString(index).trim()
-                if (value.isNotEmpty()) add(value)
-            }
-        }
-    }
-
-    private fun JSONArray?.toSnippets(): List<Snippet>? {
-        if (this == null) return null
-        return buildList {
-            for (index in 0 until length()) {
-                val item = optJSONObject(index) ?: continue
-                val trigger = item.optString("t").trim()
-                if (trigger.isEmpty()) continue
-                add(Snippet(trigger, item.optString("r")))
-            }
-        }
+    private fun JSONArray?.toSnippets(): List<Snippet>? = mapObjects<Snippet> { item ->
+        val trigger = item.optString("t").trim()
+        if (trigger.isEmpty()) return@mapObjects null
+        Snippet(trigger, item.optString("r"))
     }
 
     private fun JSONObject.optStringOrNull(key: String): String? {

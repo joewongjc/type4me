@@ -233,7 +233,7 @@ class VoiceImeService : InputMethodService(), KeyboardView.Listener {
         }
     }
 
-    override fun onMicMove(cancelArmed: Boolean, lockArmed: Boolean, sendArmed: Boolean) {
+    override fun onMicMove(cancelArmed: Boolean) {
         if (phase == Phase.RECORDING || phase == Phase.LOCKED) {
             keyboard?.setCancelArmed(cancelArmed)
         }
@@ -541,7 +541,7 @@ class VoiceImeService : InputMethodService(), KeyboardView.Listener {
         }
         val llm = ConfigStore.llm(this)
             ?: return input to getString(R.string.kb_llm_fallback)
-        val request = Prompts.request(this, mode, input, field)
+        val request = Prompts.request(mode, input, field)
             ?: return input to null
         return try {
             var output = chat.complete(llm, request)
@@ -831,11 +831,16 @@ class VoiceImeService : InputMethodService(), KeyboardView.Listener {
             connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DEL))
         } else {
             connection.getTextBeforeCursor(2, 0)?.toString()?.let { before ->
-                if (before.isNotEmpty()) recentDeletions.addFirst(before.takeLast(1))
+                if (before.isNotEmpty()) {
+                    // Two UTF-16 units cover one supplementary code point.
+                    val codePoint = before.codePointBefore(before.length)
+                    recentDeletions.addFirst(before.takeLast(Character.charCount(codePoint)))
+                }
             }
             connection.deleteSurroundingTextInCodePoints(1, 0)
         }
         while (recentDeletions.size > 200) recentDeletions.removeLast()
+        // Deletions stay queued here; a later clear puts them back for undo.
         forgetCorrection()
         editHistory.invalidate()
         keyboard?.hideClipboardSuggestion()
@@ -844,19 +849,21 @@ class VoiceImeService : InputMethodService(), KeyboardView.Listener {
 
     override fun onClear() {
         val connection = currentInputConnection ?: return
-        val restore = recentDeletions.joinToString("")
-        if (restore.isNotEmpty()) connection.commitText(restore, 1)
+        // Capture the field before commitText: an editor can apply the
+        // insertion later, making a second read disagree with the deletion.
         val before = connection.getTextBeforeCursor(100_000, 0)?.toString().orEmpty()
         val after = connection.getTextAfterCursor(100_000, 0)?.toString().orEmpty()
-        if (before.isEmpty() && after.isEmpty()) {
+        val restore = recentDeletions.joinToString("")
+        val action = ClearEdit.action(before, after, restore)
+        if (action == null) {
             recentDeletions.clear()
             return
         }
-        val cursor = before.length
-        val beforeCount = before.codePointCount(0, before.length)
-        val afterCount = after.codePointCount(0, after.length)
-        connection.deleteSurroundingTextInCodePoints(beforeCount, afterCount)
-        editHistory.record(EditAction.Clear(before + after, cursor, beforeCount, afterCount))
+        // Put the deleted pieces back only when there are any; the snapshot
+        // above already holds the whole field, so no text is read back.
+        if (restore.isNotEmpty()) connection.commitText(restore, 1)
+        connection.deleteSurroundingTextInCodePoints(action.beforeCount, action.afterCount)
+        editHistory.record(action)
         recentDeletions.clear()
         forgetCorrection()
         updateUndoState()
@@ -896,8 +903,7 @@ class VoiceImeService : InputMethodService(), KeyboardView.Listener {
 
             is EditAction.Clear -> {
                 connection.commitText(action.text, 1)
-                val back = action.text.length - action.cursor
-                repeat(back.coerceAtLeast(0)) {
+                repeat(ClearEdit.stepsBack(action.text, action.cursor)) {
                     connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_LEFT))
                     connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_LEFT))
                 }
@@ -1006,10 +1012,15 @@ class VoiceImeService : InputMethodService(), KeyboardView.Listener {
 
     private fun commitTyping(text: String) {
         currentInputConnection?.commitText(text, 1)
+        invalidateEditState()
+    }
+
+    /** Drops transient correction, undo, deletion and clipboard state. */
+    private fun invalidateEditState(hideClipboardSuggestion: Boolean = true) {
+        recentDeletions.clear()
         forgetCorrection()
         editHistory.invalidate()
-        recentDeletions.clear()
-        keyboard?.hideClipboardSuggestion()
+        if (hideClipboardSuggestion) keyboard?.hideClipboardSuggestion()
         updateUndoState()
     }
 
@@ -1038,11 +1049,7 @@ class VoiceImeService : InputMethodService(), KeyboardView.Listener {
             connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
             connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER))
         }
-        forgetCorrection()
-        editHistory.invalidate()
-        recentDeletions.clear()
-        keyboard?.hideClipboardSuggestion()
-        updateUndoState()
+        invalidateEditState()
     }
 
     override fun onNewline() {
@@ -1068,10 +1075,8 @@ class VoiceImeService : InputMethodService(), KeyboardView.Listener {
 
     override fun onModeSelected(mode: ModeDefinition) {
         ConfigStore.setMode(this, mode)
-        recentDeletions.clear()
-        forgetCorrection()
-        editHistory.invalidate()
-        updateUndoState()
+        // The clipboard suggestion survives a mode change.
+        invalidateEditState(hideClipboardSuggestion = false)
     }
 
     override fun onPasteClipboard(text: String) {
@@ -1231,4 +1236,24 @@ class VoiceImeService : InputMethodService(), KeyboardView.Listener {
             keyboard?.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
         }
     }
+}
+
+/** Pure text/cursor math for a swipe-up clear. */
+internal object ClearEdit {
+    /** The field is captured before commitText, so a late insertion is not read twice. */
+    fun action(before: String, after: String, restore: String): EditAction.Clear? {
+        val text = before + restore + after
+        if (text.isEmpty()) return null
+        val cursor = before.length + restore.length
+        return EditAction.Clear(
+            text = text,
+            cursor = cursor,
+            beforeCount = text.codePointCount(0, cursor),
+            afterCount = text.codePointCount(cursor, text.length),
+        )
+    }
+
+    /** Cursor steps are counted in code points, like the deletion counts. */
+    fun stepsBack(text: String, cursor: Int): Int =
+        text.codePointCount(cursor.coerceIn(0, text.length), text.length)
 }

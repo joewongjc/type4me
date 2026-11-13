@@ -53,20 +53,8 @@ object PortableBatchB {
 
     private fun execute(request: Request): String = client.newCall(request).execute().use { response ->
         val body = response.body?.string().orEmpty()
-        if (!response.isSuccessful) throw AsrException(errorMessage(response.code, body))
+        if (!response.isSuccessful) throw AsrException(AsrHttp.errorMessage(response.code, body))
         body
-    }
-
-    private fun errorMessage(code: Int, body: String): String {
-        val json = runCatching { JSONObject(body) }.getOrNull()
-        val detail = json?.optJSONObject("error")?.optString("message")?.takeIf { it.isNotBlank() }
-            ?: json?.optString("message")?.takeIf { it.isNotBlank() }
-            ?: json?.optString("detail")?.takeIf { it.isNotBlank() }
-            ?: body.take(160).takeIf { it.isNotBlank() }
-        return buildString {
-            append("HTTP ").append(code)
-            if (detail != null) append(": ").append(detail)
-        }
     }
 
     private fun requireAudio(pcm: ByteArray) {
@@ -160,7 +148,7 @@ object PortableBatchB {
                 val wav = WavEncoder.encode(pcm)
                 val inlineData = JSONObject()
                     .put("mimeType", "audio/wav")
-                    .put("data", java.util.Base64.getEncoder().encodeToString(wav))
+                    .put("data", AsrHttp.base64(wav))
                 val body = JSONObject()
                     .put(
                         "contents",

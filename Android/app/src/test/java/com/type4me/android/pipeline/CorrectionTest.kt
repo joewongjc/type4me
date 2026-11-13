@@ -42,6 +42,19 @@ class CorrectionTest {
     }
 
     @Test
+    fun marksEveryOccurrenceBeforeTheSelection() {
+        val request = CorrectionRequest(
+            selected = "张为",
+            before = "张为和张为还有张为",
+        )
+        assertEquals(
+            "⟦1⟧张为⟦/1⟧和⟦2⟧张为⟦/2⟧还有⟦3⟧张为⟦/3⟧" +
+                "⟦*⟧张为⟦/*⟧",
+            Correction.markedText(request),
+        )
+    }
+
+    @Test
     fun readsTheAlsoNumbers() {
         val result = Correction.resolve(
             """{"replacement": "张伟", "also": [2]}""",

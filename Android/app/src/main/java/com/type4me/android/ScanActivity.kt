@@ -83,7 +83,10 @@ class ScanActivity : AppCompatActivity() {
                 ),
             )
         }
-        intent.getStringExtra(EXTRA_SEED)?.let(::handle)
+        intent.getStringExtra(EXTRA_SEED)?.let { seed ->
+            intent.removeExtra(EXTRA_SEED)
+            handle(seed)
+        }
         if (scanModel.imported) return
 
         val granted = ContextCompat.checkSelfPermission(
@@ -115,23 +118,27 @@ class ScanActivity : AppCompatActivity() {
     }
 
     private fun showPermissionPanel(blocked: Boolean) {
+        if (isFinishing || isDestroyed) return
         binding.permissionPanel.visibility = View.VISIBLE
         binding.permissionText.setText(R.string.scan_needs_camera)
         binding.openSettings.visibility = if (blocked) View.VISIBLE else View.GONE
     }
 
     private fun showUnavailable() {
+        if (isFinishing || isDestroyed) return
         binding.scanStatus.setText(R.string.scan_camera_unavailable)
     }
 
     private fun startCamera() {
         val future = ProcessCameraProvider.getInstance(this)
         future.addListener({
+            if (isFinishing || isDestroyed) return@addListener
             val provider = runCatching { future.get() }.getOrNull()
             if (provider == null) {
                 showUnavailable()
                 return@addListener
             }
+            if (isFinishing || isDestroyed) return@addListener
             cameraProvider = provider
             val preview = Preview.Builder().build().apply {
                 surfaceProvider = binding.preview.surfaceProvider
@@ -215,7 +222,7 @@ class ScanActivity : AppCompatActivity() {
     }
 
     private fun handle(text: String) {
-        if (scanModel.imported) return
+        if (isFinishing || isDestroyed || scanModel.imported) return
         when (val status = scanModel.accept(text)) {
             is TransferAssembler.Status.Ignored -> Unit
 

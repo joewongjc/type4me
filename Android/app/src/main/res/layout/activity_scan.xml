@@ -40,7 +40,7 @@
             android:layout_height="wrap_content"
             android:gravity="center"
             android:text="@string/scan_hint"
-            android:textColor="#FFFFFF"
+            android:textColor="@color/on_scan_overlay"
             android:textSize="16sp" />
     </LinearLayout>
 
@@ -63,7 +63,7 @@
             android:layout_height="wrap_content"
             android:gravity="center"
             android:text="@string/scan_needs_camera"
-            android:textColor="#FFFFFF"
+            android:textColor="@color/on_scan_overlay"
             android:textSize="16sp" />
 
         <com.google.android.material.button.MaterialButton

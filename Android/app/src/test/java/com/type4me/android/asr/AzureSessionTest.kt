@@ -9,10 +9,13 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
 class AzureSessionTest {
@@ -73,13 +76,18 @@ class AzureSessionTest {
 
     @Test
     fun shortRecordingsSkipTheCommit() {
+        val sentTypes = CopyOnWriteArrayList<String>()
+        val appendReceived = CountDownLatch(1)
         val server = MockWebServer()
         server.enqueue(
             MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
                 override fun onOpen(webSocket: WebSocket, response: Response) = Unit
 
                 override fun onMessage(webSocket: WebSocket, text: String) {
-                    if (JSONObject(text).getString("type") != "session.update") return
+                    val type = JSONObject(text).getString("type")
+                    sentTypes += type
+                    if (type == "input_audio_buffer.append") appendReceived.countDown()
+                    if (type != "session.update") return
                     webSocket.send("""{"type":"session.updated"}""")
                 }
             }),
@@ -94,9 +102,15 @@ class AzureSessionTest {
             val text = runBlocking {
                 session.connect(AsrConfig(providerId = "azure", apiKey = "k", baseUrl = "my-resource"), emptyList())
                 session.send(ByteArray(1_600))
+                // The short-recording path cancels the socket immediately; wait
+                // for the server callback before asserting what it observed.
+                assertTrue(appendReceived.await(5, TimeUnit.SECONDS))
                 session.finish()
             }
             assertEquals("", text)
+            assertFalse(sentTypes.contains("input_audio_buffer.commit"))
+            assertTrue(sentTypes.contains("session.update"))
+            assertTrue(sentTypes.contains("input_audio_buffer.append"))
         } finally {
             server.shutdown()
         }

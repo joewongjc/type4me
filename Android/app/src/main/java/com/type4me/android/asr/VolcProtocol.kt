@@ -11,7 +11,6 @@ object VolcProtocol {
 
     private const val TYPE_FULL_CLIENT_REQUEST = 1
     private const val TYPE_AUDIO_ONLY_REQUEST = 2
-    private const val TYPE_SERVER_RESPONSE = 9
     private const val TYPE_SERVER_ERROR = 15
 
     private const val FLAGS_NO_SEQUENCE = 0

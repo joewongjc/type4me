@@ -2,6 +2,7 @@ package com.type4me.android.asr
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -12,12 +13,12 @@ class VolcProtocolTest {
         val header = VolcProtocol.decodeHeader(packet)
         assertEquals(2, header.messageType)
         assertEquals(0, header.flags)
-        assertTrue(!header.isFinal)
+        assertFalse(header.isFinal)
 
         val last = VolcProtocol.decodeHeader(VolcProtocol.audioPacket(ByteArray(0), last = true))
         assertEquals(2, last.flags)
         // Last-packet is a client flag, not the server's final-response flag.
-        assertTrue(!last.isFinal)
+        assertFalse(last.isFinal)
     }
 
     @Test
@@ -38,19 +39,8 @@ class VolcProtocolTest {
 
     @Test
     fun decodesAFinalServerResponse() {
-        val payload = """{"result":{"text":"你好，世界。"}}""".toByteArray()
-        val message = ByteArray(8 + payload.size)
-        message[0] = 0x11
-        message[1] = 0x94.toByte() // server response, async final
-        message[2] = 0x10 // JSON, no compression
-        message[3] = 0
-        message[4] = (payload.size ushr 24).toByte()
-        message[5] = (payload.size ushr 16).toByte()
-        message[6] = (payload.size ushr 8).toByte()
-        message[7] = payload.size.toByte()
-        payload.copyInto(message, 8)
-
-        val response = VolcProtocol.decode(message)
+        // 0x94 encodes message type 9 (server response) and async-final flags.
+        val response = VolcProtocol.decode(volcServerFrame("你好，世界。", final = true))
         assertEquals("你好，世界。", response.text)
         assertTrue(response.final)
     }

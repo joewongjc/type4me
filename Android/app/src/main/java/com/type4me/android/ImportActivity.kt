@@ -18,13 +18,17 @@ import com.google.android.material.button.MaterialButton
 import com.type4me.android.ui.applyNavBarTopInset
 import com.type4me.android.data.ImportSelection
 import com.type4me.android.data.PendingImport
+import com.type4me.android.data.Presets
 import com.type4me.android.data.TransferEndpoint
 import com.type4me.android.data.TransferImporter
 import com.type4me.android.data.TransferMode
 import com.type4me.android.data.TransferPayload
 import com.type4me.android.ui.color
 import com.type4me.android.ui.dp
+import com.type4me.android.ui.pageToolbar
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -32,12 +36,16 @@ import kotlinx.coroutines.withContext
 class ImportActivity : AppCompatActivity() {
 
     private lateinit var selection: ImportSelection
+    private var scroll: ScrollView? = null
+    private var importButton: MaterialButton? = null
+    private var importJob: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val payload = PendingImport.payload
         if (payload == null) {
+            PendingImport.clear()
             finish()
             return
         }
@@ -47,45 +55,29 @@ class ImportActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(color(R.color.screen_bg))
         }
-        val toolbar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(4), 0, dp(12), 0)
-        }
-        toolbar.addView(
-            TextView(this).apply {
-                text = "‹"
-                textSize = 30f
-                gravity = Gravity.CENTER
-                setTextColor(color(R.color.ink))
-                isClickable = true
-                contentDescription = getString(R.string.back)
-                setOnClickListener { finish() }
-            },
-            LinearLayout.LayoutParams(dp(48), dp(56)),
-        )
-        toolbar.addView(
-            TextView(this).apply {
-                text = getString(R.string.import_title)
-                textSize = 18f
-                setTypeface(typeface, android.graphics.Typeface.BOLD)
-                setTextColor(color(R.color.ink))
-                gravity = android.view.Gravity.CENTER_VERTICAL
-                maxLines = 1
-                ellipsize = android.text.TextUtils.TruncateAt.END
-            },
-            LinearLayout.LayoutParams(0, dp(56), 1f),
-        )
+        val toolbar = pageToolbar(R.string.import_title) { cancelImport() }
         root.addView(toolbar)
+        onBackPressedDispatcher.addCallback(
+            object : androidx.activity.OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    isEnabled = false
+                    cancelImport()
+                }
+            },
+        )
 
         val scroll = ScrollView(this)
+        this.scroll = scroll
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16), 0, dp(16), dp(32))
         }
         content.addView(
             TextView(this).apply {
-                text = getString(R.string.import_from, payload.sourceName ?: "Mac")
+                text = getString(
+                    R.string.import_from,
+                    payload.sourceName ?: getString(R.string.import_source_unknown),
+                )
                 textSize = 14f
                 setTextColor(color(R.color.ink_secondary))
                 setPadding(dp(4), 0, dp(4), dp(10))
@@ -207,35 +199,9 @@ class ImportActivity : AppCompatActivity() {
         val importButton = MaterialButton(this).apply {
             text = getString(R.string.import_action)
             isAllCaps = false
-            setOnClickListener { button ->
-                button.isEnabled = false
-                lifecycleScope.launch {
-                    val outcome = runCatching {
-                        withContext(Dispatchers.IO) {
-                            TransferImporter.apply(this@ImportActivity, payload, selection)
-                        }
-                    }
-                    val result = outcome.getOrNull()
-                    if (result == null) {
-                        outcome.exceptionOrNull()?.let { Log.e(TAG, "import failed", it) }
-                        Toast.makeText(
-                            this@ImportActivity,
-                            R.string.import_failed,
-                            Toast.LENGTH_LONG,
-                        ).show()
-                        button.isEnabled = true
-                        return@launch
-                    }
-                    PendingImport.payload = null
-                    Toast.makeText(
-                        this@ImportActivity,
-                        getString(R.string.import_done, summary(result)),
-                        Toast.LENGTH_LONG,
-                    ).show()
-                    finish()
-                }
-            }
+            setOnClickListener { startImport(payload) }
         }
+        this.importButton = importButton
         content.addView(
             importButton,
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(46)).apply {
@@ -252,20 +218,73 @@ class ImportActivity : AppCompatActivity() {
             insets
         }
         ViewCompat.requestApplyInsets(root)
+        if (savedInstanceState != null) {
+            val savedScroll = savedInstanceState.getInt(KEY_SCROLL_Y, 0)
+            scroll.post { scroll.scrollTo(0, savedScroll) }
+        }
+    }
+
+    private fun startImport(payload: TransferPayload) {
+        if (importJob?.isActive == true) return
+        val button = importButton ?: return
+        button.isEnabled = false
+        importJob = lifecycleScope.launch {
+            val outcome = runCatching {
+                withContext(Dispatchers.IO) {
+                    TransferImporter.apply(this@ImportActivity, payload, selection)
+                }
+            }
+            if (!isActive) return@launch
+            val result = outcome.getOrNull()
+            if (result == null) {
+                outcome.exceptionOrNull()?.let { Log.e(TAG, "import failed", it) }
+                Toast.makeText(
+                    this@ImportActivity,
+                    R.string.import_failed,
+                    Toast.LENGTH_LONG,
+                ).show()
+                if (isActive) button.isEnabled = true
+                return@launch
+            }
+            PendingImport.clear()
+            Toast.makeText(
+                this@ImportActivity,
+                getString(R.string.import_done, summary(result)),
+                Toast.LENGTH_LONG,
+            ).show()
+            finish()
+        }
+    }
+
+    private fun cancelImport() {
+        importJob?.cancel()
+        importJob = null
+        PendingImport.clear()
+        finish()
     }
 
     private fun summary(result: com.type4me.android.data.ImportResult): String = buildList {
-        result.asrName?.let { add(getString(R.string.import_speech) + " " + it) }
-        result.llmName?.let { add(getString(R.string.import_models) + " " + it) }
+        result.asrName?.let { add(getString(R.string.import_summary_asr, it)) }
+        result.llmName?.let { add(getString(R.string.import_summary_llm, it)) }
         if (result.modeCount > 0) add(getString(R.string.import_modes_count, result.modeCount))
         if (result.hotwordCount > 0) add(getString(R.string.import_hotwords, result.hotwordCount))
         if (result.snippetCount > 0) add(getString(R.string.import_snippets, result.snippetCount))
-        if (result.skippedAsr.isNotEmpty()) add(getString(R.string.import_skipped_asr, result.skippedAsr.joinToString()))
-        if (result.skippedLlm.isNotEmpty()) add(getString(R.string.import_skipped_llm, result.skippedLlm.joinToString()))
-    }.joinToString(" · ")
+        if (result.skippedAsr.isNotEmpty()) {
+            add(getString(R.string.import_skipped_asr, result.skippedAsr.joinToString()))
+        }
+        if (result.skippedLlm.isNotEmpty()) {
+            add(getString(R.string.import_skipped_llm, result.skippedLlm.joinToString()))
+        }
+    }.joinToString(getString(R.string.import_summary_separator))
 
-    private fun TransferEndpoint.displayName(): String =
-        PresetsName.asr(provider)
+    private fun TransferEndpoint.displayName(): String {
+        val known = Presets.asr.firstOrNull { it.id == provider }
+        return when {
+            known != null && provider == "custom" -> getString(R.string.custom_provider)
+            known != null -> known.displayName
+            else -> getString(R.string.import_unknown_provider, provider)
+        }
+    }
 
     private fun TransferMode.displayName(): String =
         name?.takeIf { it.isNotBlank() } ?: when (kind) {
@@ -304,7 +323,7 @@ class ImportActivity : AppCompatActivity() {
         setPadding(dp(4), dp(16), dp(4), dp(4))
     }
 
-    /** Keeps the checkbox choices across rotation and the default-button recreate. */
+    /** Keeps the checkbox choices and scroll offset across rotation and default-button recreate. */
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         if (!this::selection.isInitialized) return
@@ -316,6 +335,15 @@ class ImportActivity : AppCompatActivity() {
         outState.putBoolean(KEY_HOTWORDS, selection.hotwords)
         outState.putBoolean(KEY_SNIPPETS, selection.snippets)
         outState.putBoolean(KEY_TEXT_OUTPUT, selection.textOutput)
+        outState.putInt(KEY_SCROLL_Y, scroll?.scrollY ?: 0)
+    }
+
+    override fun onDestroy() {
+        if (importJob?.isActive == true) importJob?.cancel()
+        importJob = null
+        scroll = null
+        importButton = null
+        super.onDestroy()
     }
 
     @Suppress("DEPRECATION")
@@ -351,30 +379,6 @@ class ImportActivity : AppCompatActivity() {
         const val KEY_HOTWORDS = "selection.hotwords"
         const val KEY_SNIPPETS = "selection.snippets"
         const val KEY_TEXT_OUTPUT = "selection.textOutput"
-    }
-
-    /** Provider display names, without pulling the whole ASR config layer in. */
-    private object PresetsName {
-        fun asr(provider: String): String = when (provider) {
-            "volcano" -> "Volcengine"
-            "soniox" -> "Soniox"
-            "openai" -> "OpenAI"
-            "groq" -> "Groq"
-            "mistral" -> "Mistral AI"
-            "siliconflow" -> "SiliconFlow"
-            "stepfun" -> "StepFun"
-            "mimo" -> "Xiaomi MiMo"
-            "deepgram" -> "Deepgram"
-            "cartesia" -> "Cartesia"
-            "assemblyai" -> "AssemblyAI"
-            "elevenlabs" -> "ElevenLabs"
-            "gemini" -> "Gemini"
-            "grok" -> "Grok"
-            "metaMuse" -> "Meta Muse"
-            "bailian" -> "Bailian"
-            "azure" -> "Microsoft Azure"
-            "tencent" -> "Tencent Cloud"
-            else -> provider
-        }
+        const val KEY_SCROLL_Y = "scroll.y"
     }
 }

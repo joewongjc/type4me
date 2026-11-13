@@ -75,7 +75,6 @@ class AssemblyAIProtocolTest {
         ) as AssemblyAIProtocol.Event.Turn
         assertTrue(complete.update.isFinal)
         assertEquals("Hello there.", complete.update.displayText)
-        assertEquals("Hello there.", complete.update.authoritativeText)
     }
 
     @Test
@@ -97,7 +96,6 @@ class AssemblyAIProtocolTest {
         ) as AssemblyAIProtocol.Event.Turn
         assertEquals("hello", event.update.finalizedText)
         assertEquals("hello world", event.update.displayText)
-        assertEquals("hello", event.update.authoritativeText)
     }
 
     @Test
@@ -109,7 +107,6 @@ class AssemblyAIProtocolTest {
                 turnOrder = 0,
                 finalizedText = "",
                 displayText = "Hello",
-                authoritativeText = "Hello",
                 isFinal = false,
                 isFormatted = false,
             ),
@@ -124,7 +121,6 @@ class AssemblyAIProtocolTest {
                 turnOrder = 0,
                 finalizedText = "Hello.",
                 displayText = "Hello.",
-                authoritativeText = "Hello.",
                 isFinal = true,
                 isFormatted = true,
             ),
@@ -134,7 +130,6 @@ class AssemblyAIProtocolTest {
                 turnOrder = 1,
                 finalizedText = "",
                 displayText = "World",
-                authoritativeText = "World",
                 isFinal = false,
                 isFormatted = false,
             ),
@@ -152,7 +147,6 @@ class AssemblyAIProtocolTest {
                 turnOrder = 0,
                 finalizedText = "",
                 displayText = "Hello?",
-                authoritativeText = "Hello?",
                 isFinal = false,
                 isFormatted = false,
             ),
@@ -168,7 +162,6 @@ class AssemblyAIProtocolTest {
                 turnOrder = 0,
                 finalizedText = "你好。",
                 displayText = "你好。",
-                authoritativeText = "你好。",
                 isFinal = true,
                 isFormatted = true,
             ),

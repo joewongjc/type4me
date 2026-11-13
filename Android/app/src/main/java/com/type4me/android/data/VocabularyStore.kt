@@ -34,10 +34,6 @@ object VocabularyStore {
             .apply()
     }
 
-    /** A comma-separated prompt hint for batch services that support one. */
-    fun hotwordPrompt(context: Context): String? =
-        hotwords(context).take(50).takeIf { it.isNotEmpty() }?.joinToString(", ")
-
     private fun read(context: Context): Saved {
         val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getString(KEY, null) ?: return Saved(emptyList(), emptyList())

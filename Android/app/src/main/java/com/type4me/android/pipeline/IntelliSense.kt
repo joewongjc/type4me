@@ -22,11 +22,7 @@ data class FieldContext(
  * the text around the cursor and the kind of field.
  */
 object IntelliSense {
-    fun request(
-        text: String,
-        field: FieldContext,
-        mode: ModeDefinition? = null,
-    ): Prompts.Request {
+    fun request(text: String, field: FieldContext): Prompts.Request {
         val additions = mutableListOf<String>()
         if (!field.isSensitive) {
             sceneInstructions(field)?.let { additions += it }
@@ -74,12 +70,15 @@ object IntelliSense {
     )
 
     private fun changedPrimaryScript(input: String, output: String): Boolean {
-        val inputCjk = input.count { isCjk(it) }
+        val inputCount = codePointCount(input)
+        if (inputCount == 0) return false
+        val inputCjk = countCodePoints(input) { isCjk(it) }
         if (inputCjk < 4) return false
-        val inputRatio = inputCjk.toDouble() / input.length
-        if (inputRatio < 0.3) return false
-        val outputCjk = output.count { isCjk(it) }
-        return outputCjk.toDouble() / output.length < 0.1
+        if (inputCjk.toDouble() / inputCount < 0.3) return false
+        val outputCount = codePointCount(output)
+        if (outputCount == 0) return true
+        val outputCjk = countCodePoints(output) { isCjk(it) }
+        return outputCjk.toDouble() / outputCount < 0.1
     }
 
     private fun keepsNumbers(input: String, output: String): Boolean {
@@ -87,8 +86,21 @@ object IntelliSense {
         return numbers.all { it in output }
     }
 
-    private fun isCjk(char: Char): Boolean =
-        char.code in 0x4E00..0x9FFF || char.code in 0x3400..0x4DBF
+    private fun isCjk(codePoint: Int): Boolean =
+        codePoint in 0x4E00..0x9FFF || codePoint in 0x3400..0x4DBF
+
+    private fun codePointCount(text: String): Int = text.codePointCount(0, text.length)
+
+    private fun countCodePoints(text: String, predicate: (Int) -> Boolean): Int {
+        var count = 0
+        var index = 0
+        while (index < text.length) {
+            val codePoint = text.codePointAt(index)
+            if (predicate(codePoint)) count++
+            index += Character.charCount(codePoint)
+        }
+        return count
+    }
 
     private fun sceneInstructions(field: FieldContext): String? {
         val kind = field.inputType and InputType.TYPE_MASK_CLASS

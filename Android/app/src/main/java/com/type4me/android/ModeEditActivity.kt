@@ -4,7 +4,6 @@ import android.os.Bundle
 import android.text.InputType
 import android.view.MotionEvent
 import android.view.View
-import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.CheckBox
 import android.widget.EditText
@@ -30,6 +29,7 @@ import com.type4me.android.pipeline.Prompts
 import com.type4me.android.pipeline.TranslateTarget
 import com.type4me.android.ui.color
 import com.type4me.android.ui.dp
+import com.type4me.android.ui.pageToolbar
 import java.util.UUID
 
 /** Create or edit one mode: name, prompt, translation target and per-mode output. */
@@ -57,35 +57,9 @@ class ModeEditActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(color(R.color.screen_bg))
         }
-        val toolbar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER_VERTICAL
-            setPadding(dp(4), 0, dp(12), 0)
-        }
-        toolbar.addView(
-            TextView(this).apply {
-                text = "‹"
-                textSize = 30f
-                gravity = android.view.Gravity.CENTER
-                setTextColor(color(R.color.ink))
-                isClickable = true
-                contentDescription = getString(R.string.back)
-                setOnClickListener { finish() }
-            },
-            LinearLayout.LayoutParams(dp(48), dp(56)),
-        )
-        toolbar.addView(
-            TextView(this).apply {
-                text = if (id == null) getString(R.string.mode_new) else mode.label(this@ModeEditActivity)
-                textSize = 18f
-                setTypeface(typeface, android.graphics.Typeface.BOLD)
-                setTextColor(color(R.color.ink))
-                gravity = android.view.Gravity.CENTER_VERTICAL
-                maxLines = 1
-                ellipsize = android.text.TextUtils.TruncateAt.END
-            },
-            LinearLayout.LayoutParams(0, dp(56), 1f),
-        )
+        val toolbar = pageToolbar(
+            if (id == null) getString(R.string.mode_new) else mode.label(this),
+        ) { finish() }
         root.addView(toolbar)
 
         val scroll = ScrollView(this)

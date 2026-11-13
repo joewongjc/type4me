@@ -34,6 +34,8 @@
     <string name="api_key">API key</string>
     <string name="save">Save</string>
     <string name="saved">Saved</string>
+    <string name="save_failed">Could not save the encrypted credential. Try again.</string>
+    <string name="custom_http_warning">This custom endpoint uses http://, so audio and keys travel without TLS. The connection may be blocked; use https:// when possible.</string>
     <string name="testing">Testing…</string>
     <string name="test_ok">Connected in %1$d ms</string>
     <string name="test_failed">Connection failed: %1$s</string>
@@ -49,7 +51,9 @@
     <string name="mode_new">New Mode</string>
     <string name="mode_edit">Edit</string>
     <string name="move_up">Move up</string>
+    <string name="move_up_arrow">↑</string>
     <string name="move_down">Move down</string>
+    <string name="move_down_arrow">↓</string>
     <string name="mode_name">Name</string>
     <string name="mode_name_hint">e.g. Email, Weekly Report</string>
     <string name="mode_prompt">Prompt</string>
@@ -71,14 +75,6 @@
     <string name="mode_punctuation_all">Remove All Punctuation</string>
     <string name="mode_short_off">Off</string>
     <string name="mode_short_under">Under %1$d chars</string>
-    <string name="mode_builtin">Built-in</string>
-    <string name="mode_custom_badge">Custom</string>
-    <string name="mode_prompt_default">Restore Default Prompt</string>
-    <string name="translate_target">Translate into</string>
-    <string name="target_en">English</string>
-    <string name="target_zh">Simplified Chinese</string>
-    <string name="target_ja">Japanese</string>
-    <string name="target_ko">Korean</string>
 
     <string name="asr_auth_mode">Authentication</string>
     <string name="asr_auth_api_key">API key (new console)</string>
@@ -136,7 +132,6 @@
     <string name="kb_gesture_hint">← Cancel · Release · Lock →</string>
     <string name="kb_gesture_send_hint">← Cancel · Release · Send ↑</string>
     <string name="kb_locked">Locked · Tap the mic or Done</string>
-    <string name="kb_cancel_hint">← Cancel</string>
     <string name="kb_cancel_release">Release to cancel</string>
     <string name="kb_lock_release">Release to lock</string>
     <string name="kb_send_release">Release and send</string>
@@ -185,6 +180,11 @@
     <string name="scan_close">Close</string>
     <string name="import_title">Sync from Mac</string>
     <string name="import_from">From %1$s. Check what to bring over to this phone.</string>
+    <string name="import_source_unknown">another device</string>
+    <string name="import_unknown_provider">Unknown provider (%1$s)</string>
+    <string name="import_summary_asr">Speech Service: %1$s</string>
+    <string name="import_summary_llm">Text Models: %1$s</string>
+    <string name="import_summary_separator"> · </string>
     <string name="import_speech">Speech Service</string>
     <string name="import_models">Text Models</string>
     <string name="import_modes_section">Modes</string>
@@ -199,10 +199,8 @@
     <string name="import_failed">Could not import that setup. Try scanning again.</string>
     <string name="import_hotwords">%1$d hotwords</string>
     <string name="import_snippets">%1$d snippets</string>
-    <string name="import_modes">%1$d modes</string>
     <string name="import_skipped_asr">Skipped speech service: %1$s</string>
     <string name="import_skipped_llm">Skipped text model: %1$s</string>
-    <string name="import_nothing">Nothing to import in that code</string>
     <string name="tab_home">Home</string>
     <string name="tab_settings">Settings</string>
     <string name="settings_title">Settings</string>
@@ -231,6 +229,7 @@
     <string name="ai_consent_title">Sending to third-party AI services</string>
     <string name="ai_consent_body">Type4Me has no servers of its own. When you dictate, the speech service and text model you set up receive the audio and text and handle them under their own privacy policies. Your history stays on this phone.</string>
     <string name="ai_consent_agree">Agree</string>
+    <string name="ai_consent_decline">Not now</string>
     <string name="ai_consent_revoke">Withdraw permission</string>
     <string name="section_erase">Erase Data</string>
     <string name="speech_service">Speech Service</string>
@@ -330,7 +329,6 @@
     <string name="keyboard_modes_min">Keep at least one mode on the keyboard.</string>
     <string name="asr_summary_format">%1$s · %2$s</string>
     <string name="back">Back</string>
-    <string name="mode_summary_translate_generic">Detects the spoken language and translates it into the language chosen below</string>
     <string name="test_connection">Test Connection</string>
     <string name="service_footer">Fill them in here or import them from your Mac. Each one has a connection test.</string>
     <string name="vocabulary_footer">Hotwords help the speech service get names and terms right; snippets swap a spoken trigger for fixed text.</string>

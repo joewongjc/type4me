@@ -7,7 +7,6 @@ import org.json.JSONObject
 internal object ElevenLabsProtocol {
     const val ENDPOINT = "wss://api.elevenlabs.io/v1/speech-to-text/realtime"
     const val DEFAULT_MODEL = "scribe_v2_realtime"
-    const val DEFAULT_BATCH_MODEL = "scribe_v2"
     const val SAMPLE_RATE = 16_000
 
     /** Server response distilled into the shape a live session needs. */
@@ -35,7 +34,7 @@ internal object ElevenLabsProtocol {
 
     fun audioChunkMessage(pcm: ByteArray): String = JSONObject()
         .put("message_type", "input_audio_chunk")
-        .put("audio_base_64", base64(pcm))
+        .put("audio_base_64", AsrHttp.base64(pcm))
         .put("sample_rate", SAMPLE_RATE)
         .toString()
 
@@ -111,7 +110,4 @@ internal object ElevenLabsProtocol {
             else -> null
         }
     }
-
-    private fun base64(bytes: ByteArray): String =
-        java.util.Base64.getEncoder().encodeToString(bytes)
 }

@@ -1,6 +1,8 @@
 package com.type4me.android.pipeline
 
 import com.type4me.android.data.TranslateTarget
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -22,7 +24,6 @@ class PromptsTest {
     @Test
     fun customPromptWithPlaceholderBecomesOneMessage() {
         val request = Prompts.request(
-            context = null,
             mode = ModeDefinition(
                 id = "custom",
                 kind = Mode.CUSTOM,
@@ -30,6 +31,8 @@ class PromptsTest {
             ),
             text = "原话",
         )
-        assertTrue(request != null)
+        val actual = requireNotNull(request)
+        assertEquals("整理：原话", actual.user)
+        assertNull(actual.system)
     }
 }

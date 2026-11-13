@@ -33,6 +33,14 @@ class IntelliSenseTest {
     }
 
     @Test
+    fun countsSupplementaryPlanesAsOneCodePoint() {
+        val supplementary = String(Character.toChars(0x10400)).repeat(8)
+        val input = "这是中文$supplementary"
+        val output = "The meeting is postponed."
+        assertEquals(input, IntelliSense.check(input, output))
+    }
+
+    @Test
     fun detectsCredentialsButNotOrdinaryText() {
         assertEquals(false, SensitiveText.contains("明天下午三点开会"))
         assertEquals(true, SensitiveText.contains("api_key = sk-abcdefghijklmnop"))

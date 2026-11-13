@@ -128,6 +128,16 @@
                             android:maxLines="1" />
                     </com.google.android.material.textfield.TextInputLayout>
 
+                    <TextView
+                        android:id="@+id/asrHttpWarning"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="@string/custom_http_warning"
+                        android:textColor="@color/brand_red"
+                        android:textSize="12sp"
+                        android:visibility="gone" />
+
                     <com.google.android.material.textfield.TextInputLayout
                         android:id="@+id/asrModelLayout"
                         style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
