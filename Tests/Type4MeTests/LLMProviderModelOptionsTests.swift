@@ -83,6 +83,9 @@ final class LLMProviderModelOptionsTests: XCTestCase {
         XCTAssertEqual(LLMProvider.deepseek.thinkingDisableField(for: "deepseek-v4-flash"), .thinking)
         XCTAssertEqual(LLMProvider.zhipu.thinkingDisableField(for: "glm-5.2"), .thinking)
         XCTAssertEqual(LLMProvider.openrouter.thinkingDisableField(for: "deepseek/deepseek-v4-flash-0731"), .reasoning)
+        // Ollama is reached through its OpenAI-compatible /v1 endpoint, which drops
+        // the native-API-only `think` field; reasoning_effort is the field it honors.
+        XCTAssertEqual(LLMProvider.ollama.thinkingDisableField(for: "qwen3.5:4b-mlx"), .reasoningEffort)
 
         XCTAssertNil(LLMProvider.kimi.thinkingDisableField(for: "kimi-k3.1-pro-highspeed"))
         XCTAssertNil(LLMProvider.zhipu.thinkingDisableField(for: "glm-5.3-flash"))
