@@ -227,8 +227,10 @@ enum LLMProvider: String, CaseIterable, Codable, Sendable {
             // reasoning: { effort: "none" }
             return .reasoning
         case .ollama:
-            // think: false
-            return .think
+            // reasoning_effort: "none". The client posts to Ollama's OpenAI-compatible
+            // endpoint (/v1/chat/completions), which silently drops the native-API-only
+            // `think` field, so thinking models kept reasoning despite the toggle.
+            return .reasoningEffort
         case .magpie:
             // reasoning_effort: <lowest level supported by model>
             return .lowestReasoningEffort
@@ -292,7 +294,9 @@ enum ThinkingDisableField: Equatable {
     case reasoningEffort
     /// `reasoning: { effort: "none" }` — OpenRouter's unified reasoning control
     case reasoning
-    /// `think: false` — Ollama
+    /// `think: false` — Ollama native `/api/chat` only; the app posts to the
+    /// OpenAI-compatible `/v1` endpoint, which drops this field, so no provider
+    /// maps to it anymore.
     case think
     /// `reasoning_effort: <lowest supported level>` — Magpie
     case lowestReasoningEffort
