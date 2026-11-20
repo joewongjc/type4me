@@ -77,6 +77,7 @@ struct BailianASRConfig: ASRRecognitionModeConfigurable, Sendable {
     static let defaultModel = "qwen-audio-3.1-asr-flash-streaming"
     static let supportedModels = [
         "qwen-audio-3.1-asr-flash-streaming",
+        "qwen-audio-3.1-asr-flash-message",
         "qwen-audio-3.0-asr-flash-streaming",
         "fun-asr-realtime",
         "fun-asr-flash-8k-realtime",
@@ -145,6 +146,24 @@ struct BailianASRConfig: ASRRecognitionModeConfigurable, Sendable {
             visibleModes: [.batch]
         ),
         CredentialField(
+            key: "disfluencyRemovalEnabled",
+            label: L("千问原生润色", "Qwen Native Polishing"),
+            placeholder: "",
+            isSecure: false,
+            isOptional: true,
+            defaultValue: "true",
+            options: [
+                FieldOption(value: "true", label: L("开启", "On")),
+                FieldOption(value: "false", label: L("关闭", "Off")),
+            ],
+            visibleModes: [.streaming],
+            isSegmented: true,
+            hint: L(
+                "开启后由模型自动过滤语气词、口语重复和自我纠正；关闭则保留逐字原话",
+                "Automatically filter filler words, repetitions, and self-corrections; turn off for verbatim transcripts"
+            )
+        ),
+        CredentialField(
             key: "languageHint",
             label: L("语言提示", "Language Hint"),
             placeholder: "zh / en / ja / ko ...",
@@ -180,6 +199,8 @@ struct BailianASRConfig: ASRRecognitionModeConfigurable, Sendable {
                 return region == .china
             case "intlApiKey":
                 return region == .international
+            case "disfluencyRemovalEnabled":
+                return (Self.sanitized(values["model"]) ?? defaultModel).hasPrefix("qwen-audio-3.1-asr-flash-message")
             default:
                 return true
             }
@@ -195,6 +216,7 @@ struct BailianASRConfig: ASRRecognitionModeConfigurable, Sendable {
     let languageHint: String
     let vocabularyId: String
     let baseURL: String
+    let disfluencyRemovalEnabled: Bool
 
     /// Active API key for the selected region.
     var apiKey: String {
@@ -220,6 +242,7 @@ struct BailianASRConfig: ASRRecognitionModeConfigurable, Sendable {
         self.languageHint = Self.supportedLanguageHints.contains(rawLanguageHint) ? rawLanguageHint : ""
         self.vocabularyId = Self.sanitized(credentials["vocabularyId"]) ?? ""
         self.baseURL = Self.sanitized(credentials["baseURL"]) ?? ""
+        self.disfluencyRemovalEnabled = Self.sanitized(credentials["disfluencyRemovalEnabled"])?.lowercased() != "false"
     }
 
     func toCredentials() -> [String: String] {
@@ -231,6 +254,7 @@ struct BailianASRConfig: ASRRecognitionModeConfigurable, Sendable {
             "languageHint": languageHint,
             "vocabularyId": vocabularyId,
             "baseURL": baseURL,
+            "disfluencyRemovalEnabled": String(disfluencyRemovalEnabled),
         ]
         if !chinaApiKey.isEmpty { values["apiKey"] = chinaApiKey }
         if !intlApiKey.isEmpty { values["intlApiKey"] = intlApiKey }

@@ -53,6 +53,13 @@ enum BailianProtocol {
             "heartbeat": false,
         ]
 
+        if config.model.hasPrefix("qwen-audio-3.1-asr-flash-message") {
+            parameters["disfluency_removal_enabled"] = config.disfluencyRemovalEnabled
+            parameters["intermediate_result_enabled"] = true
+            parameters.removeValue(forKey: "semantic_punctuation_enabled")
+            parameters.removeValue(forKey: "multi_threshold_mode_enabled")
+        }
+
         if let vocabularyID = sanitized(options.boostingTableID) ?? sanitized(config.vocabularyId) {
             parameters["vocabulary_id"] = vocabularyID
         }

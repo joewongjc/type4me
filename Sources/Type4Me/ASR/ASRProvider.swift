@@ -101,6 +101,8 @@ struct CredentialField: Sendable, Identifiable {
     let visibleModes: Set<ASRRecognitionMode>?
     /// Renders a multi-line editor (headers, JSON templates) instead of a single-line field.
     let isMultiline: Bool
+    /// Renders a segmented control instead of a dropdown picker when `options` is non-empty.
+    let isSegmented: Bool
     /// Short usage note shown under the field label.
     let hint: String?
 
@@ -109,7 +111,7 @@ struct CredentialField: Sendable, Identifiable {
 
     var id: String { key }
 
-    init(key: String, label: String, placeholder: String, isSecure: Bool, isOptional: Bool, defaultValue: String, options: [FieldOption] = [], allowCustomInput: Bool = false, visibleModes: Set<ASRRecognitionMode>? = nil, isMultiline: Bool = false, hint: String? = nil) {
+    init(key: String, label: String, placeholder: String, isSecure: Bool, isOptional: Bool, defaultValue: String, options: [FieldOption] = [], allowCustomInput: Bool = false, visibleModes: Set<ASRRecognitionMode>? = nil, isMultiline: Bool = false, isSegmented: Bool = false, hint: String? = nil) {
         self.key = key
         self.label = label
         self.placeholder = placeholder
@@ -120,6 +122,7 @@ struct CredentialField: Sendable, Identifiable {
         self.allowCustomInput = allowCustomInput
         self.visibleModes = visibleModes
         self.isMultiline = isMultiline
+        self.isSegmented = isSegmented
         self.hint = hint
     }
 
