@@ -206,7 +206,13 @@ struct ASRSettingsView: View {
     private func fieldRow(_ field: CredentialField) -> some View {
         let title = isOptional(field) ? L("\(field.label)（可选）", "\(field.label) (optional)") : field.label
         VStack(alignment: .leading, spacing: 4) {
-            if !field.options.isEmpty {
+            if !field.options.isEmpty && field.isSegmented {
+                Text(title).font(.system(size: 13)).foregroundStyle(T4.secondary)
+                Picker(title, selection: binding(for: field)) {
+                    ForEach(field.options, id: \.value) { Text($0.label).tag($0.value) }
+                }
+                .pickerStyle(.segmented)
+            } else if !field.options.isEmpty {
                 optionRow(field, title: title)
             } else if field.isMultiline {
                 Text(title).font(.system(size: 13)).foregroundStyle(T4.secondary)

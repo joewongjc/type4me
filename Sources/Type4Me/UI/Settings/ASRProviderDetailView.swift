@@ -653,6 +653,26 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
                     }
                 }
             }
+        } else if !field.options.isEmpty && field.isSegmented {
+            let pickerBinding = Binding<String>(
+                get: {
+                    let val = asrCredentialValues[field.key] ?? ""
+                    return val.isEmpty ? field.defaultValue : val
+                },
+                set: {
+                    asrCredentialValues[field.key] = $0
+                }
+            )
+            settingsOptionRow(
+                field.label,
+                subtitle: field.hint,
+                controlWidth: SettingsControlWidth.inlineSegmented
+            ) {
+                settingsInlineSegmentedPicker(
+                    selection: pickerBinding,
+                    options: field.options.map { ($0.value, $0.label) }
+                )
+            }
         } else if !field.options.isEmpty {
             let pickerBinding = Binding<String>(
                 get: {
