@@ -1,10 +1,12 @@
 package com.type4me.android
 
 import android.Manifest
+import android.animation.ValueAnimator
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
 import android.os.Bundle
+import android.view.animation.PathInterpolator
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
@@ -31,6 +33,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private var tab = TAB_HOME
     private var microphoneRequestPending = false
+    private var tabIndicatorPlaced = false
 
     private val requestMicrophone = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -56,6 +59,7 @@ class MainActivity : AppCompatActivity() {
         enableEdgeToEdge()
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        binding.tabBarBlur.sourceView = binding.content
 
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
@@ -191,20 +195,41 @@ class MainActivity : AppCompatActivity() {
         binding.tabSettings.isSelected = !home
         binding.tabHome.contentDescription = getString(R.string.tab_home)
         binding.tabSettings.contentDescription = getString(R.string.tab_settings)
-        binding.tabHome.background = ContextCompat.getDrawable(
-            this,
-            if (home) R.drawable.tab_item_selected else R.drawable.tab_item_normal,
-        )
-        binding.tabSettings.background = ContextCompat.getDrawable(
-            this,
-            if (home) R.drawable.tab_item_normal else R.drawable.tab_item_selected,
-        )
         val selected = ContextCompat.getColor(this, R.color.tab_selected_icon)
         val plain = ContextCompat.getColor(this, R.color.ink_secondary)
         binding.tabHomeIcon.imageTintList = ColorStateList.valueOf(if (home) selected else plain)
         binding.tabHomeLabel.setTextColor(if (home) selected else plain)
         binding.tabSettingsIcon.imageTintList = ColorStateList.valueOf(if (home) plain else selected)
         binding.tabSettingsLabel.setTextColor(if (home) plain else selected)
+        placeTabIndicator(home, animate = tabIndicatorPlaced)
+        tabIndicatorPlaced = true
+        binding.tabBarBlur.invalidate()
+    }
+
+    private fun placeTabIndicator(home: Boolean, animate: Boolean) {
+        val place = {
+            val target = if (home) {
+                0f
+            } else {
+                (binding.tabSettings.left - binding.tabHome.left).toFloat()
+            }
+            val indicator = binding.tabIndicator
+            indicator.animate().cancel()
+            if (animate && ValueAnimator.areAnimatorsEnabled()) {
+                indicator.animate()
+                    .translationX(target)
+                    .setDuration(TAB_INDICATOR_ANIMATION_MS)
+                    .setInterpolator(PathInterpolator(0.2f, 0f, 0f, 1f))
+                    .start()
+            } else {
+                indicator.translationX = target
+            }
+        }
+        if (binding.tabHome.isLaidOut && binding.tabHome.width > 0) {
+            place()
+        } else {
+            binding.tabHome.post(place)
+        }
     }
 
     private fun handleIntent(intent: Intent?) {
@@ -267,5 +292,6 @@ class MainActivity : AppCompatActivity() {
         private const val TAG_HOME = "home"
         private const val TAG_SETTINGS = "settings"
         private const val MAX_DEEP_LINK_TEXT_CHARS = 512 * 1024
+        private const val TAB_INDICATOR_ANIMATION_MS = 280L
     }
 }

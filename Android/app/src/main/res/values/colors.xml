@@ -12,6 +12,8 @@
     <color name="tab_selected_content">#F6F6F6</color>
     <color name="tab_selected_bg">#F0F0F0</color>
     <color name="tab_selected_icon">#1A1A1A</color>
+    <color name="tab_bar_glass_tint">#8CFFFFFF</color>
+    <color name="tab_bar_glass_border">#14000000</color>
 
     <color name="brand_red">#D6574A</color>
     <color name="success">#4D9E59</color>
