@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import os
 
@@ -257,15 +258,28 @@ enum CodexCLIProcessRunner {
                 switch first {
                 case .exited(let status):
                     group.cancelAll()
+                    try Task.checkCancellation()
                     return status
                 case .timedOut:
-                    if process.isRunning { process.terminate() }
+                    requestStop(process)
                     group.cancelAll()
                     throw CodexCLIError.timedOut
                 }
             }
         } onCancel: {
-            if process.isRunning { process.terminate() }
+            requestStop(process)
+        }
+    }
+
+    /// Codex may be flushing telemetry when interrupted. Bound the grace
+    /// period so a waiter cannot hold the timeout or cancellation open.
+    static func requestStop(_ process: Process) {
+        guard process.isRunning else { return }
+        process.interrupt()
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 1) {
+            if process.isRunning {
+                Darwin.kill(process.processIdentifier, SIGKILL)
+            }
         }
     }
 }
@@ -286,7 +300,7 @@ enum CodexCLIError: Error, LocalizedError {
                 "Codex CLI not found; install Codex CLI or update the ChatGPT/Codex desktop app"
             )
         case .timedOut:
-            return L("Codex CLI 超时，已回退到原始文本", "Codex CLI timed out; falling back to raw text")
+            return L("Codex CLI 请求超时", "Codex CLI request timed out")
         case .processWaitFailed:
             return L("无法等待 Codex CLI 进程", "Could not wait for the Codex CLI process")
         case .processFailed(_, let message):

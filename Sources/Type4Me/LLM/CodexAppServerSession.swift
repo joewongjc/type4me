@@ -1,4 +1,3 @@
-import Darwin
 import Foundation
 
 /// A persistent Codex App Server connection. Reusing one ephemeral thread
@@ -328,7 +327,7 @@ actor CodexAppServerSession {
         try? FileManager.default.removeItem(at: workspace)
 
         if let processToStop, processToStop.isRunning {
-            Self.stopAndReap(processToStop)
+            CodexCLIProcessRunner.requestStop(processToStop)
         }
 
         for request in requests {
@@ -336,23 +335,6 @@ actor CodexAppServerSession {
         }
         for turn in turns {
             turn.resume(throwing: error)
-        }
-    }
-
-    /// App Server ignores SIGTERM while flushing telemetry. SIGINT matches the
-    /// CLI's documented Ctrl+C exit path; the bounded SIGKILL fallback prevents
-    /// an orphan if a future runtime stops honoring it.
-    private static func stopAndReap(_ process: Process) {
-        process.interrupt()
-        DispatchQueue.global(qos: .utility).async {
-            let deadline = Date().addingTimeInterval(1)
-            while process.isRunning, Date() < deadline {
-                Thread.sleep(forTimeInterval: 0.02)
-            }
-            if process.isRunning {
-                Darwin.kill(process.processIdentifier, SIGKILL)
-            }
-            process.waitUntilExit()
         }
     }
 
