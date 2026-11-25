@@ -337,8 +337,11 @@ extension DictationMode {
 /// One dictation. Tap to expand and see the original words.
 struct HistoryRow: View {
     let entry: HistoryEntry
+    @EnvironmentObject private var history: HistoryStore
     @State private var copied = false
     @State private var expanded = false
+    @State private var confirmDelete = false
+    @State private var deleteFailed = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -375,6 +378,17 @@ struct HistoryRow: View {
                 if entry.delivered == .copied {
                     Text(L("· 已复制到剪贴板", "· Copied to clipboard"))
                 }
+                Spacer(minLength: 0)
+                Button {
+                    confirmDelete = true
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.system(size: 13, weight: .medium))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(L("删除记录", "Delete dictation"))
             }
             .font(.system(size: 11))
             .foregroundStyle(T4.tertiary)
@@ -395,6 +409,23 @@ struct HistoryRow: View {
         .padding(.vertical, 12)
         .contentShape(Rectangle())
         .onTapGesture { withAnimation(.easeInOut(duration: 0.15)) { expanded.toggle() } }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("history-row")
+        .alert(L("删除这条听写记录？", "Delete this dictation?"), isPresented: $confirmDelete) {
+            Button(L("取消", "Cancel"), role: .cancel) {}
+            Button(L("删除", "Delete"), role: .destructive) {
+                do {
+                    try history.delete(id: entry.id)
+                } catch {
+                    deleteFailed = true
+                }
+            }
+        }
+        .alert(L("未能删除记录", "Couldn't Delete Dictation"), isPresented: $deleteFailed) {
+            Button(L("好", "OK"), role: .cancel) {}
+        } message: {
+            Text(L("请重试。", "Please try again."))
+        }
     }
 }
 
