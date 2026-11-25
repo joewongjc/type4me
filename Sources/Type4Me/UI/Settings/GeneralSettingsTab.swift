@@ -51,7 +51,9 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
     @State private var showMicrophonePrioritySheet = false
     @State private var draftMicrophonePriorityEntries: [AudioInputDevicePreferenceEntry] = []
 
-    @State private var reviseHotkeyConflict = false
+    @State private var pasteLastResultHotkey = PasteLastResultShortcut.load()
+    @State private var pasteLastResultHotkeyError: String?
+    @State private var reviseHotkeyConflict: String?
     @State private var reviseSettings: ReviseSettings = ReviseSettingsStore.shared.load()
     @State private var reviseKeyCode: Int? = ReviseSettingsStore.shared.load().hotkey?.keyCode
     @State private var reviseModifiers: UInt64? = ReviseSettingsStore.shared.load().hotkey?.modifiers
@@ -121,6 +123,8 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
                 dockIconRow
                 SettingsDivider()
                 keepOnNormalInputRow
+                SettingsDivider()
+                pasteLastResultHotkeyRow
                 SettingsDivider()
                 cancellationRetentionRow
                 SettingsDivider()
@@ -520,6 +524,49 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
         )
     }
 
+    private var pasteLastResultHotkeyRow: some View {
+        settingsOptionRow(
+            PasteLastResultShortcut.title,
+            subtitle: L("将最近的识别结果粘贴到当前输入框。", "Paste the latest dictation into the current field."),
+            controlWidth: SettingsControlWidth.provider
+        ) {
+            HotkeyRecorderView(
+                keyCode: .constant(pasteLastResultHotkey?.keyCode),
+                modifiers: .constant(pasteLastResultHotkey?.modifiers),
+                onCapture: { code, mods in
+                    guard PasteLastResultShortcut.accepts(keyCode: code, modifiers: mods) else {
+                        pasteLastResultHotkeyError = L(
+                            "请使用带 Command、Control 或 Option 的组合键，并避开 ⌘V。",
+                            "Use a combination with Command, Control, or Option. ⌘V is reserved."
+                        )
+                        return
+                    }
+                    if let conflict = PasteLastResultShortcut.conflict(
+                        keyCode: code, modifiers: mods, modes: ModeStorage().load()
+                    ) {
+                        pasteLastResultHotkeyError = L("「\(conflict)」正在使用此快捷键。", "\"\(conflict)\" is using this shortcut.")
+                        return
+                    }
+                    let shortcut = HotkeyBinding(keyCode: code, modifiers: mods, style: .toggle)
+                    pasteLastResultHotkey = shortcut
+                    PasteLastResultShortcut.save(shortcut)
+                },
+                onClear: {
+                    pasteLastResultHotkey = nil
+                    PasteLastResultShortcut.save(nil)
+                }
+            )
+            .alert(L("无法使用此快捷键", "Shortcut Unavailable"), isPresented: Binding(
+                get: { pasteLastResultHotkeyError != nil },
+                set: { if !$0 { pasteLastResultHotkeyError = nil } }
+            )) {
+                Button(L("好", "OK"), role: .cancel) { }
+            } message: {
+                Text(pasteLastResultHotkeyError ?? "")
+            }
+        }
+    }
+
     private var reviseHotkeyRow: some View {
         settingsOptionRow(
             L("改口快捷键", "Revise Hotkey"),
@@ -529,8 +576,12 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
             HotkeyRecorderView(
                 keyCode: $reviseKeyCode, modifiers: $reviseModifiers,
                 onCapture: { code, mods in
-                    guard !ManualInputSettings.matches(keyCode: code, modifiers: mods, modes: ModeStorage().load()) else {
-                        reviseHotkeyConflict = true
+                    if ManualInputSettings.matches(keyCode: code, modifiers: mods, modes: ModeStorage().load()) {
+                        reviseHotkeyConflict = L("手动输入", "Manual Input")
+                        return
+                    }
+                    if PasteLastResultShortcut.conflictsWithSavedShortcut(keyCode: code, modifiers: mods) {
+                        reviseHotkeyConflict = PasteLastResultShortcut.title
                         return
                     }
                     reviseKeyCode = code
@@ -548,11 +599,15 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
                     persistReviseSettings()
                 }
             )
-            .alert(L("快捷键已被占用", "Shortcut Already in Use"), isPresented: $reviseHotkeyConflict) {
+            .alert(L("快捷键已被占用", "Shortcut Already in Use"), isPresented: Binding(
+                get: { reviseHotkeyConflict != nil },
+                set: { if !$0 { reviseHotkeyConflict = nil } }
+            )) {
                 Button(L("好", "OK"), role: .cancel) { }
             } message: {
-                Text(L("此组合用于手动输入，请为改口选择其他快捷键。",
-                       "This combination opens manual input. Choose another shortcut for Revise."))
+                if let conflict = reviseHotkeyConflict {
+                    Text(L("「\(conflict)」正在使用此快捷键。", "\"\(conflict)\" is using this shortcut."))
+                }
             }
         }
     }

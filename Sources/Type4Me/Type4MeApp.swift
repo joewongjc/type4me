@@ -447,6 +447,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         NotificationCenter.default.addObserver(
+            forName: .pasteLastResultShortcutDidChange, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshModeAvailability() }
+        }
+
+        NotificationCenter.default.addObserver(
             forName: .reviseSettingsDidChange,
             object: nil,
             queue: .main
@@ -1226,6 +1232,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 onStart: toggle, onStop: toggle,
                 onAbort: { [weak self] in MainActor.assumeIsolated { self?.cancelManualInput() } }))
         }
+        if let key = PasteLastResultShortcut.load(),
+           PasteLastResultShortcut.conflict(keyCode: key.keyCode, modifiers: key.modifiers, modes: availableModes) == nil {
+            bindings.append(ModeBinding(
+                bindingId: key.id, owner: .globalAction(.pasteLastResult), keyCode: CGKeyCode(key.keyCode),
+                modifiers: CGEventFlags(rawValue: key.modifiers ?? 0), style: .toggle,
+                onStart: { [weak self] in MainActor.assumeIsolated { self?.pasteLastResult() } },
+                onStop: {}
+            ))
+        }
         hotkeyManager.onManualModePress = { [weak self] id in
             MainActor.assumeIsolated {
                 guard let self, self.isEditingManualInput else { return false }
@@ -1361,6 +1376,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             MainActor.assumeIsolated { [weak self] in
                 self?.syncESCAbortSetting()
             }
+        }
+    }
+
+    private func pasteLastResult() {
+        guard MenuBarPresentation.canStartRecording(in: appState.barPhase) else { return }
+        guard let target = LastResultPasteTarget.capture() else {
+            showPasteLastResultOutcome(.unavailable)
+            return
+        }
+        Task {
+            let outcome = await session.pasteLastResult(into: target)
+            if MenuBarPresentation.canStartRecording(in: appState.barPhase) {
+                showPasteLastResultOutcome(outcome)
+            }
+        }
+    }
+
+    private func showPasteLastResultOutcome(_ outcome: LastResultPasteOutcome) {
+        switch outcome {
+        case .inserted:
+            break
+        case .noResult:
+            appState.showTransientNotification(L("暂无可粘贴的结果", "No dictation result to paste"))
+        case .unavailable:
+            appState.showTransientNotification(L("无法在当前输入框粘贴", "Can't paste into the current field"))
+        case .unconfirmed:
+            appState.showTransientNotification(L("请检查上一条结果是否已粘贴", "Check whether the last result was pasted"))
         }
     }
 

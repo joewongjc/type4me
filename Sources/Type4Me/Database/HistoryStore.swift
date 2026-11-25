@@ -314,8 +314,8 @@ actor HistoryStore {
         return executeQuery(sql)
     }
 
-    /// Returns the effective final text of the most recent completed record
-    /// for the menu-bar recovery action. A later applied Voice Revise result
+    /// Returns the effective final text of the most recent delivered result
+    /// for the recovery actions. A later applied Voice Revise result
     /// supersedes the record's original final text; an undone revision does
     /// not. The caller deliberately does not receive a record or any other
     /// history metadata, which keeps the menu snapshot free of dictated
@@ -334,7 +334,7 @@ actor HistoryStore {
             history.final_text
         )
         FROM recognition_history AS history
-        WHERE history.status = 'completed'
+        WHERE history.status IN ('completed', 'llm_error', 'stream_recovered')
           AND TRIM(COALESCE(
               (
                   SELECT revision.after_text
@@ -346,7 +346,7 @@ actor HistoryStore {
               ),
               history.final_text
           )) != ''
-        ORDER BY history.created_at DESC
+        ORDER BY history.created_at DESC, history.rowid DESC
         LIMIT 1;
         """
         var statement: OpaquePointer?

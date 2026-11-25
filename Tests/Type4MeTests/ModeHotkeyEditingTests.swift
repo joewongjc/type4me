@@ -7,6 +7,21 @@ import XCTest
 /// pure logic that both surfaces now depend on.
 @MainActor
 final class ModeHotkeyEditingTests: XCTestCase {
+    func testPasteShortcutCannotShareModifiersWithAnExistingModifierBinding() {
+        let optionHold = HotkeyBinding(keyCode: 61, modifiers: nil, style: .hold)
+        let optionAndCommand = CGEventFlags([.maskAlternate, .maskCommand]).rawValue
+        XCTAssertTrue(PasteLastResultShortcut.conflicts(with: optionHold, keyCode: 9, modifiers: optionAndCommand))
+        XCTAssertFalse(PasteLastResultShortcut.conflicts(with: optionHold, keyCode: 9, modifiers: CGEventFlags.maskControl.rawValue))
+    }
+
+    func testPasteShortcutAccountsForFnBeingIgnoredOnFunctionKeys() {
+        let control = CGEventFlags.maskControl.rawValue
+        let fnControl = HotkeyBinding(keyCode: 63, modifiers: control, style: .hold)
+        let controlF1 = HotkeyBinding(keyCode: 122, modifiers: control, style: .toggle)
+        XCTAssertTrue(PasteLastResultShortcut.conflicts(with: fnControl, keyCode: 122, modifiers: control))
+        XCTAssertTrue(PasteLastResultShortcut.conflicts(with: controlF1, keyCode: 63, modifiers: control))
+    }
+
 
     private func target(
         modeId: UUID,

@@ -5,6 +5,7 @@ typealias HotkeyStyle = ProcessingMode.HotkeyStyle
 
 enum GlobalHotkeyAction: String, Codable, Sendable {
     case revise
+    case pasteLastResult
 }
 
 enum HotkeyOwner: Hashable, Sendable {
@@ -976,6 +977,8 @@ final class HotkeyManager: NSObject {
                 // Cross-task collision (e.g. revise while voice input active): reject!
                 binding.onBusyConflict?() ?? onBusyConflict?()
             }
+        } else if binding.owner == .globalAction(.pasteLastResult) {
+            dispatchBindingCallback(binding.onStart)
         } else {
             startRecording(with: binding)
         }

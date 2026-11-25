@@ -183,6 +183,29 @@ final class HistoryStoreTests: XCTestCase {
         XCTAssertEqual(latest, "revised final")
     }
 
+    func testLatestCopyableFinalTextIncludesRecoveredOutputsInInsertionOrder() async {
+        let date = Date()
+        for (status, text) in [
+            ("completed", "first"),
+            ("llm_error", "raw fallback"),
+            ("stream_recovered", "batch fallback"),
+            ("cancelled_processed", "cancelled")
+        ] {
+            await store.insert(HistoryRecord(
+                id: status, createdAt: date, durationSeconds: 1,
+                rawText: text, processingMode: nil, processedText: nil,
+                finalText: text, status: status, characterCount: text.count, asrProvider: nil
+            ))
+            if status == "llm_error" {
+                let latest = await store.latestCopyableFinalText()
+                XCTAssertEqual(latest, "raw fallback")
+            }
+        }
+
+        let latest = await store.latestCopyableFinalText()
+        XCTAssertEqual(latest, "batch fallback")
+    }
+
     func testLatestCopyableFinalTextFallsBackThroughUndoneRevisions() async {
         await store.insert(HistoryRecord(
             id: "revised", createdAt: Date(), durationSeconds: 1,

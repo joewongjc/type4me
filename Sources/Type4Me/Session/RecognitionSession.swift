@@ -76,6 +76,15 @@ actor RecognitionSession {
 
     var canStartRecording: Bool { state == .idle }
 
+    func pasteLastResult(into target: LastResultPasteTarget) async -> LastResultPasteOutcome {
+        // The UI can report completion just before clipboard restoration and
+        // the history write finish. Allow that in-flight result to settle.
+        guard await awaitIdle(timeout: .seconds(1)), state == .idle else { return .unavailable }
+        guard let text = await historyStore.latestCopyableFinalText() else { return .noResult }
+        guard state == .idle else { return .unavailable }
+        return target.insert(text)
+    }
+
     /// Wait until the session reaches idle state, with a timeout.
     /// Returns true if idle was reached, false on timeout.
     func awaitIdle(timeout: Duration = .seconds(3)) async -> Bool {
