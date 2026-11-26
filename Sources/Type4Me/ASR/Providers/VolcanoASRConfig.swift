@@ -65,7 +65,7 @@ struct VolcanoASRConfig: ASRProviderConfig, Sendable {
             isOptional: false,
             defaultValue: resourceIdAuto,
             options: [
-                FieldOption(value: resourceIdAuto, label: L("自动（优先 2.0，额度用完切 1.0）", "Auto (prefer 2.0, fallback to 1.0)")),
+                FieldOption(value: resourceIdAuto, label: L("自动（默认使用 2.0）", "Auto (defaults to 2.0)")),
                 FieldOption(value: resourceIdSeedASR, label: L("流式语音识别模型 2.0", "Streaming ASR Model 2.0")),
                 FieldOption(value: resourceIdBigASR, label: L("流式语音识别大模型", "Streaming ASR Large Model")),
             ]
