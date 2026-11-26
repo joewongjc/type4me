@@ -48,6 +48,14 @@ final class HistoryStore: ObservableObject {
         persist()
     }
 
+    func delete(id: UUID) throws {
+        guard let index = entries.firstIndex(where: { $0.id == id }) else { return }
+        var remaining = entries
+        remaining.remove(at: index)
+        try write(remaining)
+        entries = remaining
+    }
+
     func clear() {
         entries.removeAll()
         persist()
@@ -65,8 +73,12 @@ final class HistoryStore: ObservableObject {
     }
 
     private func persist() {
-        guard let data = try? JSONEncoder().encode(entries) else { return }
-        try? data.write(to: fileURL, options: .atomic)
+        try? write(entries)
+    }
+
+    private func write(_ entries: [HistoryEntry]) throws {
+        let data = try JSONEncoder().encode(entries)
+        try data.write(to: fileURL, options: .atomic)
     }
 }
 
