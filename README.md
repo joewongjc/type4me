@@ -34,6 +34,8 @@ iPhone 上的 Type4Me 是一个语音键盘：切到 Type4Me，按住说话、�
 
 手机版已开放 TestFlight 公开测试：在 iPhone 上打开 [https://testflight.apple.com/join/57f5897s](https://testflight.apple.com/join/57f5897s)，按提示装好 TestFlight 后就能安装（需要 iOS 26）。App Store 上架情况以实际页面为准。也可以用 Xcode 自己编译安装，步骤见 [iOS/README.md](iOS/README.md)。
 
+安卓版在 [Android/](Android/README.md)：按输入法模型实现，键盘进程直接录音，不需要主 App 常驻后台。构建步骤和当前支持范围见该目录的 README。
+
 <table>
   <tr>
     <td width="25%"><img src="docs/screenshots/ios-1.1-keyboard.png" alt="键盘：按住说话，松手出字" /></td>
@@ -174,6 +176,8 @@ Requires macOS 14 (Sonoma) or later. Both editions share the same settings, so y
 Type4Me on iPhone is a voice keyboard: switch to it in a text field, hold to talk and let go to type. Use the mode dial, Intelli Sense and selection correction as you write. Speech services, models, modes and vocabulary sync over by scanning a QR code on the Mobile page in the Mac app's sidebar, so there are no API keys to retype.
 
 The mobile app is in public beta on TestFlight: open [https://testflight.apple.com/join/57f5897s](https://testflight.apple.com/join/57f5897s) on your iPhone and follow the prompts (iOS 26 required). Check the App Store for availability. You can also build and install it yourself with Xcode; see [iOS/README.md](iOS/README.md) (in Chinese).
+
+An Android build lives in [Android/](Android/README.md). It follows Android's input-method model and records in the keyboard process, so the app doesn't need to stay open; that README (in Chinese) covers build steps and the current feature scope.
 
 The keyboard screenshot shows the previous layout; see the app for the 1.1.0 mode dial and recording gestures.
 
