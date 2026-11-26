@@ -23,6 +23,7 @@ final class BailianASRConfigTests: XCTestCase {
     func testSupportedModelsExposeCurrentRealtimeModels() {
         XCTAssertEqual(BailianASRConfig.defaultModel, "qwen-audio-3.1-asr-flash-streaming")
         XCTAssertEqual(BailianASRConfig.supportedModels.first, "qwen-audio-3.1-asr-flash-streaming")
+        XCTAssertTrue(BailianASRConfig.supportedModels.contains("qwen-audio-3.1-asr-flash-message"))
         XCTAssertTrue(BailianASRConfig.supportedModels.contains("qwen-audio-3.0-asr-flash-streaming"))
         XCTAssertFalse(BailianASRConfig.supportedModels.contains("qwen3-asr-flash-realtime"))
         XCTAssertTrue(BailianASRConfig.supportedModels.contains("fun-asr-realtime"))
@@ -35,7 +36,49 @@ final class BailianASRConfigTests: XCTestCase {
         XCTAssertEqual(modelField.defaultValue, BailianASRConfig.defaultModel)
         XCTAssertTrue(modelField.allowCustomInput)
         XCTAssertTrue(modelField.options.map(\.value).contains("qwen-audio-3.1-asr-flash-streaming"))
+        XCTAssertTrue(modelField.options.map(\.value).contains("qwen-audio-3.1-asr-flash-message"))
         XCTAssertTrue(modelField.options.map(\.value).contains("fun-asr-realtime"))
+    }
+
+    func testNativePolishingDefaultsOnAndPersistsDisabledValue() throws {
+        let field = try XCTUnwrap(BailianASRConfig.credentialFields.first { $0.key == "disfluencyRemovalEnabled" })
+        XCTAssertEqual(field.defaultValue, "true")
+        XCTAssertEqual(field.options.map(\.value), ["true", "false"])
+        XCTAssertTrue(field.isSegmented)
+
+        let defaultConfig = try XCTUnwrap(BailianASRConfig(credentials: ["apiKey": "sk-test-key"]))
+        XCTAssertTrue(defaultConfig.disfluencyRemovalEnabled)
+        var values = defaultConfig.toCredentials()
+        values["disfluencyRemovalEnabled"] = "false"
+        let disabledConfig = try XCTUnwrap(BailianASRConfig(credentials: values))
+        XCTAssertFalse(disabledConfig.disfluencyRemovalEnabled)
+        XCTAssertEqual(disabledConfig.toCredentials()["disfluencyRemovalEnabled"], "false")
+    }
+
+    func testDisplayedCredentialFields_scopesNativePolishingToFlashMessageStreaming() {
+        let defaultFields = BailianASRConfig.displayedCredentialFields(for: [:])
+        XCTAssertFalse(defaultFields.contains { $0.key == "disfluencyRemovalEnabled" })
+
+        let messageFields = BailianASRConfig.displayedCredentialFields(for: [
+            "model": "qwen-audio-3.1-asr-flash-message",
+        ])
+        XCTAssertTrue(messageFields.contains { $0.key == "disfluencyRemovalEnabled" })
+
+        let versionedMessageFields = BailianASRConfig.displayedCredentialFields(for: [
+            "model": "qwen-audio-3.1-asr-flash-message-2026-11-01",
+        ])
+        XCTAssertTrue(versionedMessageFields.contains { $0.key == "disfluencyRemovalEnabled" })
+
+        let streamingModelFields = BailianASRConfig.displayedCredentialFields(for: [
+            "model": "qwen-audio-3.1-asr-flash-streaming",
+        ])
+        XCTAssertFalse(streamingModelFields.contains { $0.key == "disfluencyRemovalEnabled" })
+
+        let batchFields = BailianASRConfig.displayedCredentialFields(for: [
+            "recognitionMode": "batch",
+            "model": "qwen-audio-3.1-asr-flash-message",
+        ])
+        XCTAssertFalse(batchFields.contains { $0.key == "disfluencyRemovalEnabled" })
     }
 
     func testInit_rejectsMissingAPIKey() {

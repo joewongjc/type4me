@@ -50,6 +50,8 @@ final class BailianProtocolTests: XCTestCase {
         XCTAssertEqual(parameters["heartbeat"] as? Bool, false)
         XCTAssertEqual(parameters["vocabulary_id"] as? String, "vocab-from-options")
         XCTAssertEqual(parameters["language_hints"] as? [String], ["zh"])
+        XCTAssertNil(parameters["disfluency_removal_enabled"])
+        XCTAssertNil(parameters["intermediate_result_enabled"])
     }
 
     func testBuildRunTaskMessage_omitsEmptyLanguageHints() throws {
@@ -90,6 +92,50 @@ final class BailianProtocolTests: XCTestCase {
         )
         let payload = try XCTUnwrap(json["payload"] as? [String: Any])
         XCTAssertEqual(payload["model"] as? String, "qwen-audio-3.1-asr-flash-streaming")
+        let parameters = try XCTUnwrap(payload["parameters"] as? [String: Any])
+        XCTAssertNil(parameters["disfluency_removal_enabled"])
+        XCTAssertNil(parameters["intermediate_result_enabled"])
+        XCTAssertEqual(parameters["semantic_punctuation_enabled"] as? Bool, false)
+        XCTAssertEqual(parameters["multi_threshold_mode_enabled"] as? Bool, false)
+    }
+
+    func testBuildRunTaskMessage_flashMessageEnablesNativePolishingAndIntermediateResults() throws {
+        let config = try XCTUnwrap(BailianASRConfig(credentials: [
+            "apiKey": "sk-test-key",
+            "model": "qwen-audio-3.1-asr-flash-message",
+        ]))
+
+        let message = BailianProtocol.buildRunTaskMessage(
+            config: config,
+            options: ASRRequestOptions(),
+            taskID: "task-qwen-message"
+        )
+        let json = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: Data(message.utf8)) as? [String: Any]
+        )
+        let payload = try XCTUnwrap(json["payload"] as? [String: Any])
+        XCTAssertEqual(payload["model"] as? String, "qwen-audio-3.1-asr-flash-message")
+        let parameters = try XCTUnwrap(payload["parameters"] as? [String: Any])
+        XCTAssertEqual(parameters["disfluency_removal_enabled"] as? Bool, true)
+        XCTAssertEqual(parameters["intermediate_result_enabled"] as? Bool, true)
+        XCTAssertNil(parameters["semantic_punctuation_enabled"])
+        XCTAssertNil(parameters["multi_threshold_mode_enabled"])
+    }
+
+    func testNativePolishingCanBeDisabledWithoutDisablingIntermediateResults() throws {
+        let config = try XCTUnwrap(BailianASRConfig(credentials: [
+            "apiKey": "sk-test-key",
+            "model": "qwen-audio-3.1-asr-flash-message",
+            "disfluencyRemovalEnabled": "false",
+            "vocabularyId": "vocab-test",
+        ]))
+        let message = BailianProtocol.buildRunTaskMessage(config: config, options: ASRRequestOptions(), taskID: "test")
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(message.utf8)) as? [String: Any])
+        let payload = try XCTUnwrap(json["payload"] as? [String: Any])
+        let parameters = try XCTUnwrap(payload["parameters"] as? [String: Any])
+        XCTAssertEqual(parameters["disfluency_removal_enabled"] as? Bool, false)
+        XCTAssertEqual(parameters["intermediate_result_enabled"] as? Bool, true)
+        XCTAssertEqual(parameters["vocabulary_id"] as? String, "vocab-test")
     }
 
     func testParseServerEvent_buildsPartialTranscript() throws {
