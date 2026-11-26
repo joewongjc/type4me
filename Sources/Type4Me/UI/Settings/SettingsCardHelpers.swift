@@ -855,6 +855,7 @@ extension SettingsCardHelpers {
         switch status {
         case .failed(let msg):
             statusMessageLabel(msg, systemImage: "exclamationmark.circle.fill", color: TF.settingsAccentRed)
+                .help(msg)
         case .notice(let msg):
             statusMessageLabel(msg, systemImage: "info.circle.fill", color: TF.settingsAccentAmber)
         case .idle, .testing, .saved, .success:

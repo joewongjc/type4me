@@ -14,7 +14,7 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
     @State private var customASRModeFields: Set<String> = []
     @State private var asrTestStatus: SettingsTestStatus = .idle
     @State private var testTask: Task<Void, Never>?
-    @State private var volcResourceHint: String?
+    @State private var didTestVolcanoModel1 = false
 
     private var isDirty: Bool {
         asrCredentialValues != savedASRValues
@@ -332,12 +332,13 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
             registerDraftParticipant()
         }
         .onDisappear {
+            testTask?.cancel()
             draftCoordinator?.unregister(.asrCredentials)
         }
         .onChange(of: provider) { _, newProvider in
             testTask?.cancel()
             asrTestStatus = .idle
-            volcResourceHint = nil
+            didTestVolcanoModel1 = false
             loadCredentials()
             refreshModelStatus()
             registerDraftParticipant()
@@ -496,8 +497,8 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
                 }
             }
 
-            if let hint = volcResourceHint {
-                Text(hint)
+            if didTestVolcanoModel1 {
+                Text(L("模型 1.0 测试通过", "Model 1.0 passed the connection test"))
                     .font(.system(size: 11))
                     .foregroundStyle(TF.settingsAccentAmber)
                     .padding(.horizontal, 2)
@@ -584,13 +585,23 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
         }
     }
 
+    private func setCredentialValue(_ value: String, for key: String) {
+        let previous = asrCredentialValues.updateValue(value, forKey: key)
+        guard provider == .volcano, previous != value else { return }
+        // The automatic resource was validated against the previous draft.
+        asrCredentialValues.removeValue(forKey: "resolvedResourceId")
+        testTask?.cancel()
+        asrTestStatus = .idle
+        didTestVolcanoModel1 = false
+    }
+
     @ViewBuilder
     private func credentialFieldRow(_ field: CredentialField) -> some View {
         if field.isMultiline {
             let binding = Binding<String>(
                 get: { asrCredentialValues[field.key] ?? field.defaultValue },
                 set: {
-                    asrCredentialValues[field.key] = $0
+                    setCredentialValue($0, for: field.key)
                 }
             )
             settingsMultilineField(field.label, subtitle: field.hint, text: binding, prompt: field.placeholder)
@@ -614,17 +625,17 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
                 set: { newValue in
                     if newValue == CredentialField.customValue {
                         customASRModeFields.insert(field.key)
-                        asrCredentialValues[field.key] = ""
+                        setCredentialValue("", for: field.key)
                     } else {
                         customASRModeFields.remove(field.key)
-                        asrCredentialValues[field.key] = newValue
+                        setCredentialValue(newValue, for: field.key)
                     }
                 }
             )
             let customBinding = Binding<String>(
                 get: { asrCredentialValues[field.key] ?? "" },
                 set: {
-                    asrCredentialValues[field.key] = $0
+                    setCredentialValue($0, for: field.key)
                 }
             )
             settingsOptionRow(field.label, controlWidth: SettingsControlWidth.input) {
@@ -680,7 +691,7 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
                     return val.isEmpty ? field.defaultValue : val
                 },
                 set: {
-                    asrCredentialValues[field.key] = $0
+                    setCredentialValue($0, for: field.key)
                 }
             )
             settingsPickerField(field.label, selection: pickerBinding, options: field.options)
@@ -688,7 +699,7 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
             let binding = Binding<String>(
                 get: { asrCredentialValues[field.key] ?? "" },
                 set: {
-                    asrCredentialValues[field.key] = $0
+                    setCredentialValue($0, for: field.key)
                 }
             )
             settingsSecureField(
@@ -703,7 +714,7 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
                     return val.isEmpty ? field.defaultValue : val
                 },
                 set: {
-                    asrCredentialValues[field.key] = $0
+                    setCredentialValue($0, for: field.key)
                 }
             )
             settingsField(field.label, subtitle: field.hint, text: binding, prompt: field.placeholder)
@@ -983,10 +994,11 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
     }
 
     private func revertCredentials() {
+        testTask?.cancel()
         asrCredentialValues = savedASRValues
         syncCustomASRModeFields()
         asrTestStatus = .idle
-        volcResourceHint = nil
+        didTestVolcanoModel1 = false
     }
 
     private func handleSetAsDefault() {
@@ -1003,7 +1015,7 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
     private func testASRConnection() {
         testTask?.cancel()
         asrTestStatus = .testing
-        volcResourceHint = nil
+        didTestVolcanoModel1 = false
         let testValues = effectiveASRValues
         let currentProvider = provider
 
@@ -1040,51 +1052,40 @@ struct ASRProviderDetailView: View, SettingsCardHelpers {
 
     private func testVolcanoWithAutoResource(baseValues: [String: String]) async {
         let options = currentASRRequestOptions(enablePunc: false)
-        let seedId = VolcanoASRConfig.resourceIdSeedASR
-        let bigId = VolcanoASRConfig.resourceIdBigASR
+        let candidates = [
+            (VolcanoASRConfig.resourceIdSeedASR, "2.0"),
+            (VolcanoASRConfig.resourceIdBigASR, "1.0"),
+        ]
+        var failures: [String] = []
 
-        let seedLatency = await testVolcResource(baseValues: baseValues, resourceId: seedId, options: options)
-        guard !Task.isCancelled else { return }
-
-        if let seedLatency {
-            asrCredentialValues["resolvedResourceId"] = seedId
-            asrTestStatus = .success(seedLatency)
-            onTestSucceeded?(seedLatency)
-            return
+        for (resourceId, version) in candidates {
+            guard !Task.isCancelled, effectiveASRValues == baseValues else { return }
+            var values = baseValues
+            values["resourceId"] = resourceId
+            guard let config = VolcanoASRConfig(credentials: values) else {
+                asrTestStatus = .failed(L("请检查鉴权凭证", "Check your credentials"))
+                return
+            }
+            do {
+                let start = ContinuousClock.now
+                try await ASRProviderRegistry.validateCredentials(for: .volcano, config: config, options: options)
+                guard !Task.isCancelled, effectiveASRValues == baseValues else { return }
+                let latency = ContinuousClock.now - start
+                asrCredentialValues["resolvedResourceId"] = resourceId
+                asrTestStatus = .success(latency)
+                onTestSucceeded?(latency)
+                if resourceId == VolcanoASRConfig.resourceIdBigASR {
+                    didTestVolcanoModel1 = true
+                }
+                return
+            } catch {
+                guard !Task.isCancelled, effectiveASRValues == baseValues else { return }
+                let reason = Self.describeConnectionError(error)
+                failures.append(L("模型 \(version) — \(reason)", "Model \(version) — \(reason)"))
+            }
         }
 
-        let bigLatency = await testVolcResource(baseValues: baseValues, resourceId: bigId, options: options)
-        guard !Task.isCancelled else { return }
-
-        if let bigLatency {
-            asrCredentialValues["resolvedResourceId"] = bigId
-            asrTestStatus = .success(bigLatency)
-            onTestSucceeded?(bigLatency)
-            volcResourceHint = L(
-                "当前使用大模型版本，开通「模型 2.0」可节省约 80% 费用，识别效果相同",
-                "Using bigmodel tier. Enable \"Model 2.0\" for ~80% cost savings with identical quality"
-            )
-            return
-        }
-
-        asrTestStatus = .failed(L("连接失败，请检查鉴权凭证", "Connection failed, check credentials"))
-    }
-
-    /// Returns the connection latency when the resource accepts the credentials, `nil` otherwise.
-    private func testVolcResource(baseValues: [String: String], resourceId: String, options: ASRRequestOptions) async -> Duration? {
-        var values = baseValues
-        values["resourceId"] = resourceId
-        guard let config = VolcanoASRConfig(credentials: values) else { return nil }
-        let client = VolcASRClient()
-        do {
-            let start = ContinuousClock.now
-            try await client.connect(config: config, options: options)
-            let latency = ContinuousClock.now - start
-            await client.disconnect()
-            return latency
-        } catch {
-            return nil
-        }
+        asrTestStatus = .failed(failures.joined(separator: "\n"))
     }
 
     private static func describeConnectionError(_ error: Error) -> String {
