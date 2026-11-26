@@ -343,6 +343,34 @@ final class HotkeyStateMachineTests: XCTestCase {
         XCTAssertFalse(manager.isActiveRecordingBinding(reviseBinding.bindingId))
     }
 
+    func testPasteLastResultRunsOncePerPressWithoutOwningRecording() {
+        let manager = makeManager()
+        let paste = BindingCounters()
+        let voice = BindingCounters()
+        let shortcut = ModeBinding(
+            bindingId: UUID(), owner: .globalAction(.pasteLastResult), keyCode: 9,
+            modifiers: [.maskAlternate], style: .toggle,
+            onStart: { paste.recordStart() }, onStop: { paste.recordStop() }
+        )
+        let voiceShortcut = makeToggleBinding(modeId: UUID(), counters: voice)
+        manager.registerBindings([voiceShortcut, shortcut])
+        defer { manager.resetActiveState() }
+        for _ in 0..<2 {
+            manager.simulateBindingEvent(shortcut, pressed: true)
+            manager.simulateBindingEvent(shortcut, pressed: false)
+        }
+        XCTAssertEqual(paste.startCount, 2)
+        XCTAssertEqual(paste.stopCount, 0)
+        XCTAssertFalse(manager.isActiveRecordingBinding(shortcut.bindingId))
+
+        manager.simulateBindingEvent(voiceShortcut, pressed: true)
+        manager.simulateBindingEvent(shortcut, pressed: true)
+        manager.simulateBindingEvent(shortcut, pressed: false)
+        XCTAssertEqual(paste.startCount, 2)
+        XCTAssertEqual(voice.abortCount, 0)
+        XCTAssertTrue(manager.isActiveRecordingBinding(voiceShortcut.bindingId))
+    }
+
     // MARK: - Suite 2: Standalone Modifier Hotkey State Machine (Issue #243 / MSOR-7 Scenarios 1-13)
 
     /// Scenario 1: Toggle Left Command + 'M' Key Contamination.

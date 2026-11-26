@@ -70,6 +70,7 @@ struct HotkeyRecorderView: View {
 
     private func startRecording() {
         isRecording = true
+        NotificationCenter.default.post(name: .hotkeyRecordingDidStart, object: nil)
         pendingModifierCode = nil
         modifierCaptureTask?.cancel()
         modifierCaptureTask = nil
@@ -176,6 +177,7 @@ struct HotkeyRecorderView: View {
     }
 
     private func stopRecording() {
+        let wasRecording = isRecording
         isRecording = false
         recordingTimeoutTask?.cancel()
         recordingTimeoutTask = nil
@@ -186,6 +188,9 @@ struct HotkeyRecorderView: View {
         if let monitor = eventMonitor {
             NSEvent.removeMonitor(monitor)
             eventMonitor = nil
+        }
+        if wasRecording {
+            NotificationCenter.default.post(name: .hotkeyRecordingDidEnd, object: nil)
         }
     }
 

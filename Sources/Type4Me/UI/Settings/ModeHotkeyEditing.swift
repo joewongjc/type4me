@@ -162,6 +162,9 @@ enum ModeHotkeyEditing {
     ) -> (Int?, UInt64?) -> String? {
         { code, mods in
             guard let code else { return nil }
+            if PasteLastResultShortcut.conflictsWithSavedShortcut(keyCode: code, modifiers: mods) {
+                return PasteLastResultShortcut.title
+            }
             if !target.isManualInput,
                ManualInputSettings.matches(keyCode: code, modifiers: mods, modes: ModeStorage().load()) {
                 return L("手动输入", "Manual Input")
