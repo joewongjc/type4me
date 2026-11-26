@@ -3,6 +3,26 @@ import XCTest
 
 final class CodexCLIClientTests: XCTestCase {
 
+    func testOneShotTimeoutStopsProcessThatIgnoresGracefulSignals() async throws {
+        let process = Process()
+        let ready = Pipe()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-c", "trap '' INT TERM; printf 1; exec /bin/sleep 5"]
+        process.standardOutput = ready
+        try process.run()
+        XCTAssertEqual(try ready.fileHandleForReading.read(upToCount: 1), Data("1".utf8))
+        let clock = ContinuousClock()
+        let started = clock.now
+
+        do {
+            _ = try await CodexCLIProcessRunner.waitForExit(process, timeout: .milliseconds(250))
+            XCTFail("Expected the running process to time out")
+        } catch CodexCLIError.timedOut {
+            XCTAssertFalse(process.isRunning)
+            XCTAssertLessThan(started.duration(to: clock.now), .seconds(3))
+        }
+    }
+
     func testConfigUsesLunaByDefaultWithoutAPIKey() throws {
         let field = try XCTUnwrap(CodexCLILLMConfig.credentialFields.first)
         XCTAssertEqual(field.key, "model")
