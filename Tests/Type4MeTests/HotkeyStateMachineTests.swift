@@ -35,6 +35,41 @@ final class BindingCounters: @unchecked Sendable {
 /// standalone modifier hotkey state machine lifecycle (Issue #243 / MSOR-7).
 final class HotkeyStateMachineTests: XCTestCase {
 
+    func testEscapeCancellationCanBeDisabledWithoutEndingRecording() throws {
+        let suite = "Type4MeTests.Escape.\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let manager = makeManager()
+        let counters = BindingCounters()
+        let started = expectation(description: "modifier hold classified")
+        let binding = ModeBinding(
+            bindingId: UUID(), modeId: UUID(), keyCode: 63, modifiers: [], style: .hold,
+            onStart: { started.fulfill() }, onStop: { counters.recordStop() },
+            onAbort: { counters.recordAbort() }
+        )
+        manager.registerBindings([binding])
+        manager.simulateModifierFlags(.maskSecondaryFn, keyCode: 63)
+        wait(for: [started], timeout: 2)
+        XCTAssertTrue(manager.isActiveRecordingBinding(binding.bindingId))
+        var cancellations = 0
+        manager.onESCAbort = {
+            cancellations += 1
+            return true
+        }
+
+        let escape = try XCTUnwrap(CGEvent(keyboardEventSource: nil, virtualKey: 53, keyDown: true))
+        defaults.set(false, forKey: HotkeyManager.escapeCancelsRecordingKey)
+        XCTAssertNotNil(manager.handleKeyboardEvent(type: .keyDown, event: escape, defaults: defaults))
+        XCTAssertEqual(cancellations, 0)
+        XCTAssertEqual(counters.abortCount, 0)
+        XCTAssertTrue(manager.isActiveRecordingBinding(binding.bindingId))
+
+        defaults.removeObject(forKey: HotkeyManager.escapeCancelsRecordingKey)
+        XCTAssertNil(manager.handleKeyboardEvent(type: .keyDown, event: escape, defaults: defaults))
+        XCTAssertEqual(cancellations, 1)
+        manager.resetActiveState()
+    }
+
     func testManualComposerConsumesModePressWithoutStartingVoiceOrHoldTimer() {
         for style in [ProcessingMode.HotkeyStyle.hold, .toggle] {
             let manager = makeManager()

@@ -40,6 +40,8 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
     @AppStorage("tf_micKeepAlive") private var micKeepAlive = false
     @AppStorage(ASRSampleArchive.enabledKey) private var saveASRSamples = false
     @AppStorage(CrossModeFinishPreference.storageKey) private var allowCrossModeFinish = CrossModeFinishPreference.defaultValue
+    @AppStorage(HotkeyManager.escapeCancelsRecordingKey)
+    private var escapeCancelsRecording = HotkeyManager.escapeCancelsRecordingDefault
     @AppStorage(AudioInputDevicePreferenceStore.modeKey) private var microphonePreferenceMode = AudioInputDevicePreferenceMode.systemDefault.rawValue
     @AppStorage(AudioInputDevicePreferenceStore.priorityEntriesKey) private var microphonePriorityEntriesStorage = ""
     @AppStorage("tf_selectedSpeakerUID") private var selectedSpeakerUID = ""
@@ -88,6 +90,12 @@ struct GeneralSettingsTab: View, SettingsCardHelpers {
                 micKeepAliveRow
                 SettingsDivider()
                 crossModeFinishRow
+                SettingsDivider()
+                settingsToggleRow(
+                    L("Esc 取消录音或转写", "Esc Cancels Dictation"),
+                    subtitle: L("关闭后，Esc 交给当前应用。", "When off, the current app receives Esc."),
+                    isOn: $escapeCancelsRecording
+                )
                 SettingsDivider()
                 asrSampleArchiveRow
             }

@@ -426,8 +426,8 @@ final class HotkeyManager: NSObject {
     /// When true, all hotkey events pass through unhandled (used during hotkey recording).
     var isSuppressed = false
 
-    /// When true, ESC key aborts active recording.
-    var isESCAbortEnabled = true
+    static let escapeCancelsRecordingKey = "tf_escapeCancelsRecording"
+    static let escapeCancelsRecordingDefault = true
 
     /// Let Escape dismiss an IME candidate before cancelling the typed draft.
     var passesEscapeToInputMethod: (() -> Bool)?
@@ -840,8 +840,20 @@ final class HotkeyManager: NSObject {
             return Unmanaged.passUnretained(event)
         }
 
-        // MARK: Keyboard events
+        return handleKeyboardEvent(type: type, event: event)
+    }
+
+    func handleKeyboardEvent(
+        type: CGEventType, event: CGEvent, defaults: UserDefaults = .standard
+    ) -> Unmanaged<CGEvent>? {
         let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
+        if keyCode == 53 {
+            let enabled = defaults.object(forKey: Self.escapeCancelsRecordingKey) as? Bool
+                ?? Self.escapeCancelsRecordingDefault
+            // Bypass modifier-gesture reduction too. A regular key press can
+            // otherwise abort a recording started by a modifier-only hold.
+            guard enabled else { return Unmanaged.passUnretained(event) }
+        }
         if type == .keyDown {
             let isRepeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
             if !isModifierKeyCode(keyCode) {
@@ -901,29 +913,25 @@ final class HotkeyManager: NSObject {
             return nil  // Swallow matched regular key events
         }
 
-        // ESC key (keyCode 53) - abort active recording or processing
-        if isESCAbortEnabled && type == .keyDown && keyCode == 53 {
-            if passesEscapeToInputMethod?() == true { return Unmanaged.passUnretained(event) }
-            let hotkeyOwnedSession = activeRecordingBindingId != nil || holdState.values.contains(true)
-            // A recording session may also be driven outside the hotkey system
-            // (e.g. a `type4me://` URL Scheme command), in which case none of this
-            // manager's hotkey bookkeeping is set. `onESCAbort` validates the real
-            // session phase via appState and returns false when idle, so consult it
-            // on every ESC — not only when this manager owns the recording —
-            // otherwise URL-initiated recordings can never be cancelled with ESC.
-            if onESCAbort?() == true {
-                return nil  // Swallow ESC: abort was handled
-            }
-            if hotkeyOwnedSession || isProcessing {
-                // We believed a session was active but the callback declined —
-                // stale state. Clean up and let ESC pass through to the system.
-                NSLog("[HotkeyManager] ESC abort not handled, resetting stale state")
-                isProcessing = false
-                resetActiveState()
-            }
+        if type == .keyDown, keyCode == 53, handleEscapeKeyDown() {
+            return nil
         }
 
         return Unmanaged.passUnretained(event)
+    }
+
+    /// Returns true only when Type4Me handled the global Escape key.
+    private func handleEscapeKeyDown() -> Bool {
+        guard passesEscapeToInputMethod?() != true else { return false }
+
+        // URL and menu recordings may have no active hotkey binding.
+        if onESCAbort?() == true { return true }
+        if activeRecordingBindingId != nil || holdState.values.contains(true) || isProcessing {
+            NSLog("[HotkeyManager] ESC abort not handled, resetting stale state")
+            isProcessing = false
+            resetActiveState()
+        }
+        return false
     }
 
     // MARK: - Binding dispatch

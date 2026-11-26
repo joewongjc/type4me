@@ -1366,17 +1366,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return true
         }
 
-        // Sync ESC abort enabled setting to HotkeyManager
-        syncESCAbortSetting()
-        NotificationCenter.default.addObserver(
-            forName: UserDefaults.didChangeNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated { [weak self] in
-                self?.syncESCAbortSetting()
-            }
-        }
     }
 
     private func pasteLastResult() {
@@ -1528,10 +1517,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
-    }
-
-    private func syncESCAbortSetting() {
-        hotkeyManager.isESCAbortEnabled = true
     }
 
     private var retryTimer: Timer?
