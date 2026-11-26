@@ -146,12 +146,18 @@ final class TextInjectionEngine: @unchecked Sendable {
     }
 
     /// Copy text to the system clipboard (used at session end).
-    func copyToClipboard(_ text: String, transient: Bool = false) {
-        let pb = NSPasteboard.general
-        pb.clearContents()
-        pb.setString(text, forType: .string)
-        if transient {
-            pb.setData(Data(), forType: PasteboardHistoryPolicy.transientType)
+    @discardableResult
+    func copyToClipboard(
+        _ text: String, transient: Bool = false, pasteboard: NSPasteboard = .general,
+        restoreOnFailure: ClipboardSnapshot? = nil
+    ) -> Bool {
+        PasteboardHistoryPolicy.publishText(text, transient: transient) { item in
+            let changeCount = pasteboard.clearContents()
+            guard pasteboard.writeObjects([item]) else {
+                restoreOnFailure?.restore(to: pasteboard, expectedChangeCount: changeCount)
+                return false
+            }
+            return true
         }
     }
 
@@ -180,26 +186,35 @@ final class TextInjectionEngine: @unchecked Sendable {
             }
             // Delivery fallback: no valid external target application. Always preserve the
             // dictated text in the system clipboard so the user's speech is never lost.
-            copyToClipboard(text, transient: false)
+            let copied = copyToClipboard(text, transient: false)
             pendingClipboardRestore = nil
-            DebugFileLogger.log("injection fallback: no valid external target app; copied to clipboard")
-            return TrackedInjectionResult(outcome: .copiedToClipboard, observationContext: nil)
+            DebugFileLogger.log("injection fallback: no valid external target app; copied=\(copied)")
+            return TrackedInjectionResult(outcome: copied ? .copiedToClipboard : .discarded, observationContext: nil)
         }
 
         let before = trackingMetadata != nil
             ? captureFocusedElementSnapshot(isPrePaste: true, authorize: authorizeCapture)
             : nil
 
-        copyToClipboard(text, transient: shouldRestoreClipboard)
+        guard copyToClipboard(text, transient: shouldRestoreClipboard, restoreOnFailure: savedClipboard) else {
+            pendingClipboardRestore = nil
+            DebugFileLogger.log("injection: clipboard write failed; paste skipped")
+            return TrackedInjectionResult(outcome: .discarded, observationContext: nil)
+        }
         let postWriteChangeCount = NSPasteboard.general.changeCount
         usleep(50_000)
 
+        guard NSPasteboard.general.changeCount == postWriteChangeCount else {
+            pendingClipboardRestore = nil
+            return TrackedInjectionResult(outcome: .discarded, observationContext: nil)
+        }
+
         guard simulatePaste() else {
             // Delivery fallback: paste event creation failed. Always preserve text in the clipboard.
-            copyToClipboard(text, transient: false)
+            let copied = copyToClipboard(text, transient: false)
             pendingClipboardRestore = nil
-            DebugFileLogger.log("injection fallback: paste event creation failed; copied to clipboard")
-            return TrackedInjectionResult(outcome: .copiedToClipboard, observationContext: nil)
+            DebugFileLogger.log("injection fallback: paste event creation failed; copied=\(copied)")
+            return TrackedInjectionResult(outcome: copied ? .copiedToClipboard : .discarded, observationContext: nil)
         }
         usleep(100_000)
 

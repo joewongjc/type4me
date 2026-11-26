@@ -3,6 +3,33 @@ import XCTest
 @testable import Type4Me
 
 final class PasteboardHistoryPolicyTests: XCTestCase {
+    func testTemporaryItemAlreadyContainsMarkerWhenPublished() {
+        var writeCount = 0
+        let result = PasteboardHistoryPolicy.publishText("dictation", transient: true) { item in
+            writeCount += 1
+            XCTAssertEqual(item.string(forType: .string), "dictation")
+            XCTAssertEqual(item.data(forType: PasteboardHistoryPolicy.transientType), Data())
+            return false
+        }
+        XCTAssertEqual(writeCount, 1)
+        XCTAssertFalse(result)
+    }
+
+    func testTemporaryAndRegularCopiesPublishTheExpectedPasteboardItem() throws {
+        let pasteboard = NSPasteboard(name: .init("Type4MeTests.copy.\(UUID().uuidString)"))
+        let engine = TextInjectionEngine()
+
+        XCTAssertTrue(engine.copyToClipboard("temporary dictation", transient: true, pasteboard: pasteboard))
+        let temporary = try XCTUnwrap(pasteboard.pasteboardItems?.first)
+        XCTAssertEqual(temporary.string(forType: .string), "temporary dictation")
+        XCTAssertEqual(temporary.data(forType: PasteboardHistoryPolicy.transientType), Data())
+
+        XCTAssertTrue(engine.copyToClipboard("retained dictation", pasteboard: pasteboard))
+        let retained = try XCTUnwrap(pasteboard.pasteboardItems?.first)
+        XCTAssertEqual(retained.string(forType: .string), "retained dictation")
+        XCTAssertFalse(retained.types.contains(PasteboardHistoryPolicy.transientType))
+    }
+
     func testRestoredClipboardIsMarkedTransientAndPreservesAllItems() throws {
         let pasteboard = NSPasteboard(name: .init("Type4MeTests.restore.\(UUID().uuidString)"))
         pasteboard.clearContents()
