@@ -4,11 +4,11 @@ struct SonioxASRConfig: ASRProviderConfig, Sendable {
 
     static let provider = ASRProvider.soniox
     static let displayName = "Soniox"
-    static let defaultModel = "stt-rt-v5"
-    static let asyncModel = "stt-async-v5"
+    static let defaultModel = "stt-rt-v6"
+    static let asyncModel = "stt-async-v6"
     static let defaultEndpointSensitivity = -0.3
     static let supportedModels = [
-        "stt-rt-v5",
+        "stt-rt-v6",
     ]
 
     static var credentialFields: [CredentialField] {[

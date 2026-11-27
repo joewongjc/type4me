@@ -21,12 +21,12 @@ final class SonioxASRConfigTests: XCTestCase {
     func testToCredentials_roundTripsConfiguredValues() throws {
         let config = try XCTUnwrap(SonioxASRConfig(credentials: [
             "apiKey": "soniox_test_key",
-            "model": "stt-rt-v5",
+            "model": "stt-rt-v6",
             "endpointSensitivity": "-0.5",
         ]))
 
         XCTAssertEqual(config.toCredentials()["apiKey"], "soniox_test_key")
-        XCTAssertEqual(config.toCredentials()["model"], "stt-rt-v5")
+        XCTAssertEqual(config.toCredentials()["model"], "stt-rt-v6")
         XCTAssertEqual(config.toCredentials()["endpointSensitivity"], "-0.5")
     }
 
@@ -41,14 +41,14 @@ final class SonioxASRConfigTests: XCTestCase {
         }
     }
 
-    func testInitMigratesLegacyRealtimeModelsToV5() throws {
-        for legacyModel in ["stt-rt-v3", "stt-rt-v4"] {
+    func testInitMigratesLegacyRealtimeModelsToV6() throws {
+        for legacyModel in ["stt-rt-v3", "stt-rt-v4", "stt-rt-v5"] {
             let config = try XCTUnwrap(SonioxASRConfig(credentials: [
                 "apiKey": "soniox_test_key",
                 "model": legacyModel,
             ]))
 
-            XCTAssertEqual(config.model, "stt-rt-v5")
+            XCTAssertEqual(config.model, "stt-rt-v6")
             XCTAssertTrue(config.isValid)
         }
     }
